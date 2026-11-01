@@ -63,7 +63,12 @@ Internal modules import their owning layer rather than the root facade.
 
 - `Agent` resolves `model`, `system_prompt` and `plugins`; `plugin_validation`
   controls session startup readiness. Defaults are normal plugins replaced through
-  slots. Startup validation runs after session services settle and before the
+  slots. Core composition resolves immutable `Kit` scopes before prompt metadata,
+  event declarations or mounts. Direct recipes override child-kit exports;
+  sibling kits have equal precedence regardless of nesting. Built-ins are the
+  final fallback. Static descriptions retain origins, exclusions and replacement
+  histories; the kernel knows neither kits nor composition precedence.
+  Startup validation runs after session services settle and before the
   runtime starts. The kernel exposes dependency diagnostics while retaining
   deferred-service lifetimes.
 - `RuntimeServices` has no slot and is installed first. It provides the tool

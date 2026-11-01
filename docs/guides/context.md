@@ -10,8 +10,10 @@ application text first and appends declared plugin sections automatically. Omitt
 `system_prompt` includes just the plugin sections. The default is `Unplaced.APPEND`;
 no explicit composition is required for a simple agent.
 
-Automatic sections follow the configured `plugins` list, then each plugin's
-declaration order. Dependencies may change setup order without changing the prompt.
+Automatic sections follow the resolved plugin list, then each plugin's
+declaration order. [Kit composition](plugins.md#publish-library-defaults-with-kit)
+removes excluded and replaced recipes before collecting sections. Dependencies
+may change setup order without changing the prompt.
 
 ## Declare system sections
 

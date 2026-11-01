@@ -28,6 +28,28 @@ integrations are optional extras; the standalone kernel uses only the standard
 library. Harnessed is distributed under the
 [MIT License](https://github.com/mathisarends/harnessed/blob/main/LICENSE).
 
+## Unreleased
+
+Library defaults can be published as `Kit(name, plugins)` and customized with
+`kit.without(*types)` and direct slot overrides. Composition uses local boundaries:
+direct entries override child-kit exports, sibling kits have equal precedence
+regardless of nesting, and built-in agent plugins are the final fallback.
+`agent.describe()` exposes immutable static order, origins, replacement history
+and exclusions. Kits do not change kernel injection or lifecycle contracts.
+
+**Breaking:** prompts and event declarations are collected only after resolving
+the selected recipes. Replaced and excluded plugins contribute no metadata.
+Automatic prompt sections follow resolved order, including inherited replacement
+positions. Explicit references to discarded recipes raise a configuration error.
+
+To upgrade from 0.8.0, review order-sensitive prompts and reference the selected
+recipes in explicit `SystemPrompt` documents. Libraries can replace manual merge
+helpers with Kit factories and namespaced slots. Resolve sibling conflicts with
+a direct entry at their shared boundary; fix internal kit conflicts inside that
+kit. See [plugin composition](guides/plugins.md#publish-library-defaults-with-kit)
+and run `uv run python -m examples.36_plugin_kits` for an offline example.
+Conversation state and audit-event formats remain unchanged.
+
 ## 0.8.0 (2026-10-30)
 
 This minor release replaces automatic session archives with explicit

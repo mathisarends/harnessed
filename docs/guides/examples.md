@@ -85,3 +85,10 @@ console mode remains offline.
 configuration-dependent plugin sections, explicitly orders them across plugins
 and nested groups, and renders the same document as plain text, XML and Markdown.
 See [system prompts and changing context](context.md).
+
+## Plugin kits
+
+`uv run python -m examples.36_plugin_kits` publishes library defaults, nests them
+in a project kit, excludes optional tools and replaces a library capability by
+slot. It prints static provenance and runs the selected tool with a scripted model.
+See [library composition](plugins.md#publish-library-defaults-with-kit).
