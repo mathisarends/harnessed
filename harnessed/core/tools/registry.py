@@ -7,7 +7,7 @@ from functools import partial
 from types import MappingProxyType, MethodType
 from typing import Annotated, Any, overload
 
-from pydantic import ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, RootModel, TypeAdapter, ValidationError
 from pydantic.fields import FieldInfo
 
 from harnessed.core.errors import ToolNameConflict
@@ -61,6 +61,7 @@ class ToolSpec:
     override: bool = False
     output_limit: OutputLimitSetting = OutputLimit.INHERIT
     parameter_fields: ParameterFields | None = None
+    params: type[BaseModel] | None = None
     metadata: tuple[object, ...] = ()
     chain: ToolChain = ToolChain.CONTINUE
 
@@ -71,6 +72,18 @@ class ToolSpec:
             raise ValueError("STOP_AFTER tools must run sequentially")
         if self.description is not None and not isinstance(self.description, str):
             raise TypeError("Tool description must be a string or None")
+        if self.params is not None:
+            if (
+                not isinstance(self.params, type)
+                or not issubclass(self.params, BaseModel)
+                or self.params is BaseModel
+                or issubclass(self.params, RootModel)
+            ):
+                raise TypeError("params must be a Pydantic BaseModel subclass, not RootModel")
+            if self.parameter_fields is not None:
+                raise ValueError(
+                    "params cannot be combined with parameter_fields; use model fields"
+                )
         validate_output_limit(self.output_limit)
         validate_enabled(self.enabled)
 
@@ -215,6 +228,7 @@ class ToolRegistry:
         output_limit: OutputLimitSetting = OutputLimit.INHERIT,
         override: bool = False,
         owner: Context | None = None,
+        params: type[BaseModel] | None = None,
         metadata: tuple[object, ...] = (),
         chain: ToolChain = ToolChain.CONTINUE,
     ) -> Callable[[F], F]: ...
@@ -234,6 +248,7 @@ class ToolRegistry:
         output_limit: OutputLimitSetting = OutputLimit.INHERIT,
         override: bool = False,
         owner: Context | None = None,
+        params: type[BaseModel] | None = None,
         metadata: tuple[object, ...] = (),
         chain: ToolChain = ToolChain.CONTINUE,
     ):
@@ -250,6 +265,7 @@ class ToolRegistry:
                 output_limit=output_limit,
                 override=override,
                 owner=owner,
+                params=params,
                 metadata=metadata,
                 chain=chain,
             )
@@ -273,6 +289,7 @@ class ToolRegistry:
         owner: Context | None = None,
         spec: ToolSpec | None = None,
         parameter_fields: Mapping[str, FieldInfo] | None = None,
+        params: type[BaseModel] | None = None,
         metadata: tuple[object, ...] = (),
         chain: ToolChain = ToolChain.CONTINUE,
     ) -> Disposer:
@@ -286,6 +303,7 @@ class ToolRegistry:
             readonly=readonly,
             override=override,
             output_limit=output_limit,
+            params=params,
             metadata=metadata,
             chain=chain,
         )
@@ -315,7 +333,12 @@ class ToolRegistry:
                 f"{self._owner_name(owner)} must declare override=True"
             )
         arguments = ToolArguments.from_signature(
-            tool_name, plan.signature, plan.hints, plan.dependencies, parameter_fields
+            tool_name,
+            plan.signature,
+            plan.hints,
+            plan.dependencies,
+            parameter_fields,
+            params=spec.params,
         )
         definition = ToolDefinition(
             tool_name,
@@ -357,7 +380,7 @@ class ToolRegistry:
         spec = spec or ToolSpec()
         if spec.name is not None and spec.name != definition.name:
             raise ValueError("External tool spec name must match its definition")
-        if spec.parameter_fields is not None:
+        if spec.parameter_fields is not None or spec.params is not None:
             raise ValueError("External tools use their definition's parameter schema")
         spec = replace(
             spec,

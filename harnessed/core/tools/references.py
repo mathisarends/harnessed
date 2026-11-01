@@ -63,6 +63,12 @@ def call_arguments(reference: ToolReference, arguments: dict) -> dict:
         {name: Dependency(ToolContext) for name, hint in plan.hints.items() if hint is ToolContext}
     )
     plan = replace(plan, signature=signature)
-    return ToolArguments.from_signature(reference.name, plan.signature, plan.hints, injected).parse(
-        arguments
+    spec = getattr(reference.declaration, "_harnessed_tool", None)
+    if spec is None:
+        raise TypeError("Tool references must point to a @tool method")
+    form = ToolArguments.from_signature(
+        reference.name, plan.signature, plan.hints, injected, params=spec.params
     )
+    parsed = form.parse(arguments)
+    # A scripted response carries wire arguments, not the Python parameter object.
+    return arguments if spec.params is not None else parsed
