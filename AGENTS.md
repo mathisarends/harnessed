@@ -47,7 +47,7 @@ and `harnessed.hooks`.
 
 Ruff enforces the parent-relative import rule with `TID252` and
 `ban-relative-imports = "parents"`. Run `uv run ruff check .` before committing;
-the same rule also runs through pre-commit and CI.
+the same rule also runs through prek and CI.
 
 Keep production imports at module scope. Ruff enforces `PLC0415`; the explicit
 exceptions are `models/pydantic_ai.py` (optional SDK) and `plugins/skills.py`
@@ -113,7 +113,7 @@ workflows and bump the key when Python validation behavior changes.
 Before editing, run `uv run smelt context <module-or-path>` to inspect its role.
 After editing, run `uv run smelt check --changed --base origin/main --format json`.
 Before finishing, run the full `uv run smelt check --show-hints`, Ruff, ty and
-the relevant tests. Pre-commit and CI run the full architecture check.
+the relevant tests. Prek and CI run the full architecture check.
 
 Fix errors in code; do not introduce a debt baseline. Review warnings in context,
 especially public APIs that static usage analysis cannot see. Preserve the lazy
