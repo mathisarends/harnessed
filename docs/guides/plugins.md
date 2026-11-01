@@ -439,6 +439,7 @@ Plugins without application configuration remain plain:
 class Observer(Plugin):
     pass
 
+
 observer = Observer()
 ```
 

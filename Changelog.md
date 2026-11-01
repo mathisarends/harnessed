@@ -4,6 +4,9 @@
 
 ### Added
 
+- Extend installed-wheel verification to typed configuration objects, activation
+  dependency fields and mandatory instruction placement. The distribution smoke
+  test uses the current API on every supported CI platform and Python version.
 - Add `Plugin[MyConfig]` with an explicit `config=MyConfig(...)` object. The type
   argument declares runtime schema selection and typed `self.config` once,
   including through generic inheritance. Configurationless plugins keep plain

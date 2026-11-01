@@ -12,16 +12,18 @@ from importlib.metadata import distribution
 from pathlib import Path
 import re
 
-from harnessed.kernel import Context, Key
+from harnessed.kernel import Context, Key, dependency
 assert 'pydantic' not in sys.modules
 from harnessed import (
-    Agent, CompositionDescription, Kit, SessionState, OutputContract, Plugin, PluginSections,
+    Agent, CompositionDescription, Kit, SessionState, OutputContract, Plugin, PluginConfig,
+    PluginInstructions,
     PromptFormat, SectionDelivery,
-    SystemPrompt, SystemSection, Unplaced, tool,
+    SystemPrompt, Instructions, Unplaced, tool,
 )
+from harnessed.errors import ConfigError
 from harnessed.events import TextDeltaEvent, TurnFinishedEvent
-from harnessed.plugins import Skill, Skills
-from harnessed.testing import ScriptedModel, call, reply, assert_tool_called
+from harnessed.plugins import Service, Skill, Skills
+from harnessed.testing import ScriptedModel, call, reply, assert_tool_called, mount_plugin
 from pydantic import BaseModel
 import harnessed
 
@@ -48,28 +50,45 @@ assert not requirements & {
 }
 assert not any(str(file).startswith(('docs/', 'build/', 'site/')) for file in installed.files or ())
 
-class Calculator(Plugin):
+class CalculatorConfig(PluginConfig):
+    offset: int = 0
+
+class Calculator(Plugin[CalculatorConfig]):
     @tool(readonly=True)
     async def add(self, a: int, b: int) -> int:
-        return a + b
+        return a + b + self.config.offset
+
+backend_key = Key[str]('wheel.backend')
+
+class Consumer(Plugin):
+    backend = dependency(backend_key)
 
 class Answer(BaseModel):
     value: int
 
 class Guidance(Plugin, slot='wheel.guidance'):
-    usage = SystemSection(text='Plugin guidance.')
+    usage = Instructions(text='Plugin guidance.')
 
 async def main():
     defaults = Kit('library', [Guidance()])
     selected = Guidance()
-    configured = Agent(plugins=[defaults, selected])
+    configured = Agent(plugins=[defaults, selected],
+                       system_prompt=SystemPrompt(sections=(selected.usage,)))
     description = configured.describe()
     assert isinstance(description, CompositionDescription)
     assert configured.plugins[-1] is selected
     assert description.plugins[-1].replaces[0].kit_path == ('library',)
+    assert await configured.prompt.render() == 'Plugin guidance.'
     filtered = Agent(plugins=[defaults.without(Guidance)])
     assert filtered.describe().removed[0].removed_by == ('library',)
     assert await filtered.prompt.render() == ''
+
+    config = CalculatorConfig(offset=1)
+    async with mount_plugin(Calculator(config=config)) as active:
+        assert active.config is config
+        assert await active.add(19, 23) == 43
+    async with mount_plugin(Consumer(), services=(Service(backend_key, 'ready'),)) as active:
+        assert active.backend == 'ready'
 
     continuation = Agent(model=ScriptedModel(["remembered", "continued"]))
     initial = await continuation.run("remember")
@@ -79,10 +98,18 @@ async def main():
     assert not hasattr(continuation, "sessions")
 
     guidance = Guidance()
-    simple = Agent(system_prompt='Role.', plugins=[guidance])
+    for unplaced in (None, 'Role.'):
+        try:
+            Agent(system_prompt=unplaced, plugins=[guidance])
+        except ConfigError as error:
+            assert 'Guidance.usage' in str(error)
+        else:
+            raise AssertionError('Plugin instructions require explicit placement or exclusion')
+    simple = Agent(system_prompt=SystemPrompt(sections=('Role.', guidance.usage)),
+                   plugins=[guidance])
     assert await simple.prompt.render() == 'Role.\n\nPlugin guidance.'
     ordered = Agent(plugins=[guidance], system_prompt=SystemPrompt(
-        sections=(PluginSections(), 'Tail.'), unplaced=Unplaced.ERROR))
+        sections=(PluginInstructions(), 'Tail.'), unplaced=Unplaced.ERROR))
     assert await ordered.prompt.render() == 'Plugin guidance.\n\nTail.'
     async with Agent(model=ScriptedModel([reply('Ready')]),
                      system_prompt='Fixed.').session() as session:
@@ -93,9 +120,9 @@ async def main():
         assert not session.context.values
         assert await session.prompt.render() == 'Fixed.'
     agent = Agent(model=ScriptedModel([call(Calculator.add, a=19, b=23), reply('42')]),
-                  plugins=[Calculator()], system_prompt=SystemPrompt(
+                  plugins=[Calculator(config=CalculatorConfig())], system_prompt=SystemPrompt(
                       format=PromptFormat.MARKDOWN,
-                      sections=(SystemSection(title='Role', text='Fixed instructions.'),)))
+                      sections=(Instructions(title='Role', text='Fixed instructions.'),)))
     async with agent.session() as session:
         result = await session.run('Add')
         assert result.text == '42'

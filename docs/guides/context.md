@@ -32,7 +32,6 @@ class ObserveConfig(PluginConfig):
 
 
 class Observe(Plugin[ObserveConfig]):
-
     @instructions(title="Page state")
     def state(self) -> str:
         if self.config.canvas:
