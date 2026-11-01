@@ -134,16 +134,13 @@ class WorkerProcess:
             assert self.process.stdout is not None
             ready = await self.process.stdout.readline()
         if ready.strip() != b'{"ready":true}':
-            raise SandboxError("Sandbox worker did not become ready: " + self.diagnostics())
-
-    def diagnostics(self) -> str:
-        return self.stderr.decode("utf-8", errors="replace")
+            raise SandboxError("Sandbox worker did not become ready: " + self._diagnostics())
 
     async def request(self, payload: bytes, *, timeout: float, maximum: int) -> ProcessOutput:
         async with asyncio.timeout(timeout), self._lock:
             process = self.process
             if process is None or process.returncode is not None:
-                raise SandboxError("Sandbox worker is closed: " + self.diagnostics())
+                raise SandboxError("Sandbox worker is closed: " + self._diagnostics())
             assert process.stdin is not None and process.stdout is not None
             process.stdin.write(payload + b"\n")
             await process.stdin.drain()
@@ -168,3 +165,6 @@ class WorkerProcess:
         if self._drain is not None:
             self._drain.cancel()
             await asyncio.gather(self._drain, return_exceptions=True)
+
+    def _diagnostics(self) -> str:
+        return self.stderr.decode("utf-8", errors="replace")

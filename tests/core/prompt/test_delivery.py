@@ -203,10 +203,13 @@ async def test_runtime_guidance_is_not_restored_as_a_durable_fact():
 
 
 async def test_owned_context_visibility_uses_registration_state_during_teardown():
+    observed = []
+
     class InspectTeardown(Feature):
         async def teardown(self, context: Inject[DynamicContext]) -> None:
-            assert context.values == {}
+            observed.append(dict(context.values))
 
     async with Agent(model=ScriptedModel([])).session() as session:
         handle = await session.use(InspectTeardown(), section_delivery=SectionDelivery.CONTEXT)
         await handle.aclose()
+        assert observed == [{}]

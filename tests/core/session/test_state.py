@@ -278,11 +278,11 @@ async def test_export_rejects_a_paused_open_turn_and_abort_returns_a_closed_stat
         model=ScriptedModel([call(Work.work), "finished"]), plugins=[Work()]
     ).session() as session:
         handle = await session.submit("Work")
-        await started.wait()
+        await asyncio.wait_for(started.wait(), timeout=5)
         pausing = asyncio.create_task(session.pause())
         await asyncio.sleep(0)
         release.set()
-        await pausing
+        await asyncio.wait_for(pausing, timeout=5)
         with pytest.raises(SessionStateError):
             session.snapshot()
         await session.abort()

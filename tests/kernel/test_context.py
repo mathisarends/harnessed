@@ -3,7 +3,17 @@ from dataclasses import dataclass
 
 import pytest
 
-from harnessed.kernel import Bail, Context, ContextClosed, Emit, Inject, Parallel, Waterfall, plugin
+from harnessed.kernel import (
+    Bail,
+    Context,
+    ContextClosed,
+    Emit,
+    Inject,
+    Parallel,
+    PluginStatus,
+    Waterfall,
+    plugin,
+)
 
 
 class Service:
@@ -86,7 +96,7 @@ async def test_setup_failure_rolls_back_all_effects():
     @plugin
     async def broken(ctx):
         ctx.provide(Service, Service())
-        ctx.on(Ping, lambda event: None)
+        ctx.on(Ping, lambda event: pytest.fail("Failed plugin left an active listener"))
         ctx.effect(lambda: cleaned.append("cleanup"))
         raise ValueError("setup failed")
         yield
@@ -95,7 +105,7 @@ async def test_setup_failure_rolls_back_all_effects():
         with pytest.raises(ValueError, match="setup failed"):
             await ctx.plugin(broken())
         assert Service not in ctx
-        assert ctx._listeners(Ping()) == []
+        assert await ctx.dispatch(Ping()) is None
     assert cleaned == ["cleanup"]
 
 
@@ -243,15 +253,20 @@ async def test_listener_disposed_during_dispatch_does_not_run_from_stale_snapsho
 
         handle = await ctx.plugin(observer())
         await ctx.dispatch(Ping())
+        assert handle.status == PluginStatus.DISPOSED
 
 
 async def test_manually_disposed_listener_is_skipped_in_an_existing_dispatch_snapshot():
     async with Context() as ctx:
         remove = None
+        seen = []
 
         async def first(event):
+            seen.append(event)
             await remove()
 
         ctx.add_listener(Ping, first)
         remove = ctx.add_listener(Ping, lambda event: pytest.fail("Removed listener ran"))
-        await ctx.dispatch(Ping())
+        event = Ping()
+        await ctx.dispatch(event)
+        assert seen == [event]

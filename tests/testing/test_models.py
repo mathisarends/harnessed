@@ -78,7 +78,7 @@ async def test_callback_model_cancellation_waits_for_generator_cleanup():
     await asyncio.wait_for(started.wait(), 3)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await task
+        await asyncio.wait_for(task, timeout=5)
     assert closed.is_set()
 
 

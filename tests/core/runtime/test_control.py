@@ -256,7 +256,7 @@ async def test_cancelling_a_stop_caller_does_not_cancel_the_step():
         await wait_stopping(session)
         stop.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await stop
+            await asyncio.wait_for(stop, timeout=5)
         assert not model.closed.is_set()
         model.release.set()
         assert (await wait(run)).stop_reason is StopReason.STOPPED

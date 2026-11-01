@@ -162,17 +162,17 @@ def write_bytes(path: str, data: bytes, maximum: int) -> None:
                 pass
 
 
-def match_path(path: tuple[str, ...], pattern: tuple[str, ...]) -> bool:
+def _match_path(path: tuple[str, ...], pattern: tuple[str, ...]) -> bool:
     if not pattern:
         return not path
     if pattern[0] == "**":
-        return match_path(path, pattern[1:]) or bool(path and match_path(path[1:], pattern))
+        return _match_path(path, pattern[1:]) or bool(path and _match_path(path[1:], pattern))
     return bool(
-        path and fnmatch.fnmatchcase(path[0], pattern[0]) and match_path(path[1:], pattern[1:])
+        path and fnmatch.fnmatchcase(path[0], pattern[0]) and _match_path(path[1:], pattern[1:])
     )
 
 
-def matches(pattern: str, limit: int) -> list[str]:
+def _matches(pattern: str, limit: int) -> list[str]:
     if sys.platform == "win32":
         raise RuntimeError("The sandbox worker must execute inside a POSIX sandbox")
     parts(pattern)
@@ -191,7 +191,7 @@ def matches(pattern: str, limit: int) -> list[str]:
                 if not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode)):
                     continue
                 path = PurePosixPath(root, name)
-                if match_path(path.parts, PurePosixPath(pattern).parts):
+                if _match_path(path.parts, PurePosixPath(pattern).parts):
                     result.append(path.as_posix())
                     if len(result) == limit:
                         return result
@@ -219,7 +219,7 @@ def grep(request: Request) -> dict[str, list[str] | int]:
             )
         return value
 
-    paths = matches(request.path, 1001)
+    paths = _matches(request.path, 1001)
     if len(paths) > 1000:
         notes.append("Path limit reached; narrow the glob pattern to search further.")
     for path in paths[:1000]:
@@ -311,7 +311,30 @@ def command(request: Request) -> CommandResult:
     return CommandResult(process.returncode, text("stdout"), text("stderr"), timed_out)
 
 
-def dispatch(request: Request) -> object:
+def response(payload: str) -> str:
+    try:
+        data = json.loads(payload)
+        data["operation"] = Operation(data["operation"])
+        request = Request(**data)
+        value = _dispatch(request)
+        response = {"value": value, "error": None, "error_type": None}
+    except (OSError, ValueError, UnicodeError) as error:
+        response = {"value": None, "error": str(error), "error_type": type(error).__name__}
+    return json.dumps(response, ensure_ascii=True)
+
+
+def main() -> None:
+    if sys.version_info < (3, 12):  # noqa: UP036 -- Executed in application-supplied images.
+        raise RuntimeError("Sandbox helpers require Python 3.12+")
+    if "--serve" in sys.argv:
+        print('{"ready":true}', flush=True)
+        for line in sys.stdin:
+            print(response(line), flush=True)
+    else:
+        print(response(sys.stdin.read()), flush=True)
+
+
+def _dispatch(request: Request) -> object:
     if sys.platform == "win32":
         raise RuntimeError("The sandbox worker must execute inside a POSIX sandbox")
     if request.version != 1:
@@ -351,7 +374,7 @@ def dispatch(request: Request) -> object:
                 raise ValueError("Directory exceeds 1000 entries; use glob")
             return [metadata(str(PurePosixPath(request.path, name))) for name in sorted(names)]
         case Operation.GLOB:
-            return matches(request.path, request.limit if request.limit is not None else 1000)
+            return _matches(request.path, request.limit if request.limit is not None else 1000)
         case Operation.GREP:
             return grep(request)
         case Operation.READ_BYTES:
@@ -393,29 +416,6 @@ def dispatch(request: Request) -> object:
         case _:
             raise ValueError("Unknown sandbox operation")
     return None
-
-
-def response(payload: str) -> str:
-    try:
-        data = json.loads(payload)
-        data["operation"] = Operation(data["operation"])
-        request = Request(**data)
-        value = dispatch(request)
-        response = {"value": value, "error": None, "error_type": None}
-    except (OSError, ValueError, UnicodeError) as error:
-        response = {"value": None, "error": str(error), "error_type": type(error).__name__}
-    return json.dumps(response, ensure_ascii=True)
-
-
-def main() -> None:
-    if sys.version_info < (3, 12):  # noqa: UP036 -- Executed in application-supplied images.
-        raise RuntimeError("Sandbox helpers require Python 3.12+")
-    if "--serve" in sys.argv:
-        print('{"ready":true}', flush=True)
-        for line in sys.stdin:
-            print(response(line), flush=True)
-    else:
-        print(response(sys.stdin.read()), flush=True)
 
 
 if __name__ == "__main__":

@@ -25,6 +25,9 @@ if TYPE_CHECKING:
     from harnessed.core.stream import TransientEvent
 
 
+CURRENT_VERSION = 3
+
+
 def _validate_event(
     event: SessionEvent | TransientEvent,
     kinds: Mapping[str, type] | None = None,
@@ -61,7 +64,6 @@ def _validate_event(
     immutable(event)
 
 
-CURRENT_VERSION = 3
 _ADAPTER = TypeAdapter(
     LogEvent,
     config=ConfigDict(
@@ -71,11 +73,6 @@ _ADAPTER = TypeAdapter(
         hide_input_in_errors=True,
     ),
 )
-
-
-def event_schema(*, registry: EventRegistry | None = None) -> dict[str, Any]:
-    """Return the discriminated JSON schema of the current durable event values."""
-    return registry.schema() if registry is not None else _ADAPTER.json_schema()
 
 
 def encode_event(event: SessionEvent, *, registry: EventRegistry | None = None) -> dict[str, Any]:

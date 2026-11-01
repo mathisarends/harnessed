@@ -12,8 +12,7 @@ from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.tools.context import ToolContext
 from harnessed.core.tools.decorator import tool
 from harnessed.core.tools.registry import ToolRegistry
-from harnessed.kernel.di import InjectMarker
-from harnessed.kernel.plugin import PluginStatus
+from harnessed.kernel import InjectMarker, PluginStatus
 from harnessed.testing import ScriptedModel
 
 

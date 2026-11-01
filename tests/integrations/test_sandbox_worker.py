@@ -8,7 +8,9 @@ from types import SimpleNamespace
 import pytest
 
 from harnessed.integrations.sandbox import SandboxConfig, SandboxLimits, Workspace, worker
-from harnessed.integrations.sandbox._client import WorkerClient
+from harnessed.integrations.sandbox._client import (  # smelt: ignore[SMT420] -- Transport tests.
+    WorkerClient,
+)
 from harnessed.integrations.sandbox.process import WorkerProcess
 from harnessed.integrations.sandbox.types import ProcessOutput
 from harnessed.plugins.filesystem import FilesystemTools, LocalFileSystem, search_files
@@ -28,7 +30,7 @@ def worker_files(tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "sys", SimpleNamespace(platform="linux"))
     monkeypatch.setattr(
         worker,
-        "matches",
+        "_matches",
         lambda pattern, limit: [
             path.relative_to(tmp_path).as_posix() for path in sorted(tmp_path.glob(pattern))
         ][:limit],
@@ -235,7 +237,7 @@ async def test_shell_client_uses_requested_deadline_without_extra_transport_grac
         done, _ = await asyncio.wait([pending], timeout=0.5)
         assert pending in done, "Command received an extra transport timeout allowance"
         with pytest.raises(TimeoutError):
-            await pending
+            await asyncio.wait_for(pending, timeout=5)
         assert transport.closed
     finally:
         pending.cancel()
@@ -244,13 +246,13 @@ async def test_shell_client_uses_requested_deadline_without_extra_transport_grac
 
 async def test_worker_request_timeout_includes_waiting_for_serialized_channel():
     channel = WorkerProcess()
-    async with channel._lock:
+    async with channel._lock:  # smelt: ignore[SMT420] -- Ownership invariant.
         pending = asyncio.create_task(channel.request(b"unused", timeout=0.02, maximum=1024))
         try:
             done, _ = await asyncio.wait([pending], timeout=0.5)
             assert pending in done, "Queued request outlived its timeout"
             with pytest.raises(TimeoutError):
-                await pending
+                await asyncio.wait_for(pending, timeout=5)
         finally:
             pending.cancel()
             await asyncio.gather(pending, return_exceptions=True)
@@ -278,6 +280,6 @@ async def test_worker_io_uses_time_remaining_after_queue_wait():
         await asyncio.sleep(0.05)
         with pytest.raises(TimeoutError):
             await channel.request(b"second", timeout=0.5, maximum=1024)
-        assert (await first).stdout.strip() == b"first"
+        assert (await asyncio.wait_for(first, timeout=5)).stdout.strip() == b"first"
     finally:
         await channel.aclose()

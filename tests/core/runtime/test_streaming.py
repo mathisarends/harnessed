@@ -263,7 +263,7 @@ async def test_answer_waits_for_admission_and_caller_cancellation_does_not_revok
             assert not answering.done() and session.last(ApprovalResolvedEvent) is None
             answering.cancel()
             with pytest.raises(asyncio.CancelledError):
-                await answering
+                await asyncio.wait_for(answering, timeout=5)
         finally:
             release.set()
         events = [event async for event in stream]

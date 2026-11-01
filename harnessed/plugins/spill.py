@@ -21,8 +21,7 @@ from harnessed.core.session.events import (
 from harnessed.core.session.files import FileOffset, ReadLimit, SessionFiles
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import TokenCounter
-from harnessed.core.tools.decorator import tool
-from harnessed.core.tools.registry import ToolError
+from harnessed.core.tools import ToolError, tool
 from harnessed.kernel import Context, Inject, Priority, hook
 
 logger = logging.getLogger(__name__)
@@ -71,27 +70,6 @@ class _SessionSpills:
                 raise
         await self.files.remove(key)
 
-    async def _make_room(self, size: int, *, extra_files: int = 1, exclude: str = "") -> None:
-        entries = sorted(
-            (
-                entry
-                for entry in await self.files.entries()
-                if entry.key.startswith("spills/") and entry.key != exclude
-            ),
-            key=lambda entry: (entry.modified_ns, entry.key),
-        )
-        total = sum(entry.size_bytes for entry in entries)
-        count = len(entries)
-        for entry in entries:
-            if (
-                total + size <= self.config.max_bytes
-                and count + extra_files <= self.config.max_files
-            ):
-                break
-            await self._expire(entry.key)
-            count -= 1
-            total -= entry.size_bytes
-
     async def put(self, content: str) -> SpillRef:
         if len(content) > self.config.max_bytes:
             raise SpillCapacityExceeded("Tool output exceeds the session spill budget")
@@ -120,6 +98,27 @@ class _SessionSpills:
             raise ToolError(
                 "Spill file is unavailable. Rerun the source with smaller ranges."
             ) from None
+
+    async def _make_room(self, size: int, *, extra_files: int = 1, exclude: str = "") -> None:
+        entries = sorted(
+            (
+                entry
+                for entry in await self.files.entries()
+                if entry.key.startswith("spills/") and entry.key != exclude
+            ),
+            key=lambda entry: (entry.modified_ns, entry.key),
+        )
+        total = sum(entry.size_bytes for entry in entries)
+        count = len(entries)
+        for entry in entries:
+            if (
+                total + size <= self.config.max_bytes
+                and count + extra_files <= self.config.max_files
+            ):
+                break
+            await self._expire(entry.key)
+            count -= 1
+            total -= entry.size_bytes
 
 
 class SpillConfig(PluginConfig):

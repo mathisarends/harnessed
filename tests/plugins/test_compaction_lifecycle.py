@@ -104,7 +104,7 @@ async def test_compaction_failure_and_cancellation_always_close_the_started_life
         if cancel:
             task.cancel()
         with pytest.raises(asyncio.CancelledError if cancel else ValueError):
-            await task
+            await asyncio.wait_for(task, timeout=5)
         started = [e for e in recorder.events if isinstance(e, CompactionStartedEvent)]
         finished = [e for e in recorder.events if isinstance(e, CompactionFinishedEvent)]
         assert len(started) == len(finished) == 1

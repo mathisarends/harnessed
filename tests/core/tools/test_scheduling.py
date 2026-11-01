@@ -62,7 +62,7 @@ async def test_parallel_execution_overlaps_but_reviews_results_and_history_keep_
             for index in (2, 1, 0):
                 release[index].set()
                 await asyncio.wait_for(done[index].wait(), 2)
-            await running
+            await asyncio.wait_for(running, timeout=5)
         finally:
             for event in release:
                 event.set()

@@ -32,66 +32,6 @@ class PluginStatus(StrEnum):
     DISPOSED = "disposed"
 
 
-class _Runtime:
-    def __init__(self) -> None:
-        self.handles: list[PluginHandle] = []
-        self.task: asyncio.Task | None = None
-        self.dirty = False
-        self.errors: list[Exception] = []
-
-    def changed(self) -> None:
-        self.dirty = True
-        for handle in tuple(self.handles):
-            if (
-                handle.status == PluginStatus.STARTING
-                and handle._start_task is not None
-                and (handle._mount._closed or handle._signature() != handle._starting_signature)
-            ):
-                handle._start_task.cancel()
-        if not self.handles or (self.task is not None and not self.task.done()):
-            return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return
-        self.task = loop.create_task(self.reconcile(), name="harnessed:composition")
-
-    async def reconcile(self) -> None:
-        blocked = set()
-        while self.dirty:
-            self.dirty = False
-            for handle in tuple(self.handles):
-                if handle in blocked or (
-                    handle._disposed
-                    or handle._mount._closed
-                    or handle.status in (PluginStatus.STARTING, PluginStatus.STOPPING)
-                ):
-                    continue
-                signature = handle._signature()
-                try:
-                    cycle = handle._cycle(signature)
-                    if cycle:
-                        blocked.update(cycle)
-                        await handle._suspend()
-                        raise RuntimeError(
-                            "Cyclic plugin needs: " + " -> ".join(h.name for h in cycle)
-                        )
-                    if (
-                        handle.status == PluginStatus.ACTIVE
-                        and signature != handle._active_signature
-                    ):
-                        await handle._suspend()
-                    signature = handle._signature()
-                    if signature is not None and handle.status in (
-                        PluginStatus.WAITING,
-                        PluginStatus.FAILED,
-                    ):
-                        if signature != handle._failed_signature:
-                            await handle._activate()
-                except Exception as exc:
-                    self.errors.append(exc)
-
-
 class PluginHandle:
     """An owned recipe. Dependency loss suspends it; aclose permanently removes it."""
 
@@ -111,6 +51,12 @@ class PluginHandle:
         self._start_task: asyncio.Task | None = None
         self._dependents: set[PluginHandle] = set()
 
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc) -> None:
+        await self.aclose()
+
     @property
     def missing_services(self) -> tuple[ServiceKey[Any], ...]:
         """Required keys unavailable under the same visibility rules as activation."""
@@ -125,6 +71,18 @@ class PluginHandle:
             if provider is not None and provider.status != PluginStatus.ACTIVE:
                 missing.append(key)
         return tuple(missing)
+
+    async def aclose(self) -> None:
+        if self._disposed:
+            return
+        self._disposed = True
+        runtime = self._mount._scope.runtime
+        runtime.handles.remove(self)
+        try:
+            await self._suspend()
+        finally:
+            self.status = PluginStatus.DISPOSED
+            runtime.changed()
 
     def _signature(self):
         try:
@@ -273,23 +231,65 @@ class PluginHandle:
                 self._active_signature = None
                 self._mount._scope.runtime.changed()
 
-    async def aclose(self) -> None:
-        if self._disposed:
+
+class _Runtime:
+    def __init__(self) -> None:
+        self.handles: list[PluginHandle] = []
+        self.task: asyncio.Task | None = None
+        self.dirty = False
+        self.errors: list[Exception] = []
+
+    def changed(self) -> None:
+        self.dirty = True
+        for handle in tuple(self.handles):
+            if (
+                handle.status == PluginStatus.STARTING
+                and handle._start_task is not None
+                and (handle._mount._closed or handle._signature() != handle._starting_signature)
+            ):
+                handle._start_task.cancel()
+        if not self.handles or (self.task is not None and not self.task.done()):
             return
-        self._disposed = True
-        runtime = self._mount._scope.runtime
-        runtime.handles.remove(self)
         try:
-            await self._suspend()
-        finally:
-            self.status = PluginStatus.DISPOSED
-            runtime.changed()
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        self.task = loop.create_task(self._reconcile(), name="harnessed:composition")
 
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc) -> None:
-        await self.aclose()
+    async def _reconcile(self) -> None:
+        blocked = set()
+        while self.dirty:
+            self.dirty = False
+            for handle in tuple(self.handles):
+                if handle in blocked or (
+                    handle._disposed
+                    or handle._mount._closed
+                    or handle.status in (PluginStatus.STARTING, PluginStatus.STOPPING)
+                ):
+                    continue
+                signature = handle._signature()
+                try:
+                    cycle = handle._cycle(signature)
+                    if cycle:
+                        blocked.update(cycle)
+                        await handle._suspend()
+                        raise RuntimeError(
+                            "Cyclic plugin needs: " + " -> ".join(h.name for h in cycle)
+                        )
+                    if (
+                        handle.status == PluginStatus.ACTIVE
+                        and signature != handle._active_signature
+                    ):
+                        await handle._suspend()
+                    signature = handle._signature()
+                    if signature is not None and handle.status in (
+                        PluginStatus.WAITING,
+                        PluginStatus.FAILED,
+                    ):
+                        if signature != handle._failed_signature:
+                            await handle._activate()
+                except Exception as exc:
+                    self.errors.append(exc)
 
 
 @overload

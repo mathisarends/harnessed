@@ -1,7 +1,7 @@
 import pytest
 
 from harnessed import Agent, Plugin, tool
-from harnessed.core.compaction import plan_compaction
+from harnessed.core.compaction import CompactionManager, CompactionPolicy, CompactionSettings
 from harnessed.core.errors import ContextLengthExceeded
 from harnessed.core.messages import (
     AssistantMessage,
@@ -27,6 +27,8 @@ from harnessed.core.session.events import (
     UserMessageEvent,
 )
 from harnessed.core.session.session import SessionLog
+from harnessed.core.tokens import ApproximateTokenCounter, TokenCounter
+from harnessed.kernel import Context
 from harnessed.models import ModelInfo, ProviderState
 from harnessed.plugins import AgentLoop, Compaction
 from harnessed.testing import CallbackModel, ScriptedModel
@@ -81,19 +83,34 @@ async def append_step(log: SessionLog, turn: str, number: int) -> None:
     await log.append(StepEndedEvent(turn, number))
 
 
-async def apply_plan(log: SessionLog, **options) -> CompactionAppliedEvent:
-    settings = dict(keep_turns=1, keep_first_turns=0, preserve_turns=(), keep_steps=1)
-    settings.update(options)
-    plan = plan_compaction(log, **settings)
-    assert plan is not None
-    applied = CompactionAppliedEvent(
-        plan.through,
-        "summary",
-        preserve_turns=plan.preserve_turns,
-        preserve_inputs=plan.preserve_inputs,
-        retained_turns=plan.retained_turns,
+async def compact(
+    log: SessionLog,
+    *,
+    keep_turns: int = 1,
+    keep_first_turns: int = 0,
+    preserve_turns: tuple[str, ...] = (),
+    keep_steps: int = 1,
+) -> CompactionAppliedEvent | None:
+    settings = CompactionSettings(
+        keep_turns=keep_turns,
+        keep_first_turns=keep_first_turns,
+        preserve_turns=preserve_turns,
+        keep_steps=keep_steps,
     )
-    await log.append(applied)
+    async with Context() as ctx:
+        ctx.provide(TokenCounter, ApproximateTokenCounter())
+        ctx.provide(CompactionPolicy, CompactionPolicy(settings, lambda _: True, Brief()))
+        manager = CompactionManager(ctx, log, context_window=None)
+        applied, request = await manager.compact(
+            ModelRequest(log.messages), model=ScriptedModel([])
+        )
+        assert_pairs(request.messages)
+        return applied
+
+
+async def apply_plan(log: SessionLog) -> CompactionAppliedEvent:
+    applied = await compact(log)
+    assert applied is not None
     assert_pairs(log.messages)
     return applied
 
@@ -146,7 +163,7 @@ async def test_pinning_an_open_turn_prevents_compacting_its_steps(pinned):
     await append_step(log, "first", 1)
     await append_step(log, "first", 2)
     assert (
-        plan_compaction(
+        await compact(
             log,
             keep_turns=0,
             keep_steps=1,

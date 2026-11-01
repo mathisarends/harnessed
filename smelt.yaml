@@ -1,0 +1,107 @@
+# yaml-language-server: $schema=.smelt.schema.json
+version: 1
+
+project:
+  root_packages: [harnessed]
+  source_roots: ['.']
+  test_roots: [tests]
+  coverage: strict
+  exclude:
+    - path: examples/**
+      reason: Consumer examples exercise the public SDK and run in tests/test_examples.py.
+    - path: scripts/**
+      reason: Maintainer tools are checked by Ruff, ty and the wheel smoke check.
+
+architecture:
+  modules:
+    harnessed: sdk
+    harnessed.kernel: kernel
+    harnessed.core: core
+    harnessed.plugins: plugins
+    harnessed.models: models
+    harnessed.integrations: integrations
+    harnessed.testing: testing
+    harnessed.events: events
+  layers:
+    kernel:
+      path: kernel
+      may_depend_on: []
+      third_party: {default: deny}
+    core:
+      path: core
+      may_depend_on: [kernel]
+      third_party: {default: deny, allow: [pydantic]}
+    plugins:
+      path: plugins
+      may_depend_on: [kernel, core, models]
+      third_party: {default: deny, allow: [pydantic, pydantic_ai, yaml, mcp, jsonschema, referencing, httpx, anyio]}
+    models:
+      path: models
+      may_depend_on: [kernel, core]
+      third_party: {default: deny, allow: [pydantic, pydantic_ai]}
+    integrations:
+      path: integrations
+      may_depend_on: [kernel, core, plugins]
+      third_party: {default: deny, allow: [pydantic, opentelemetry]}
+    events:
+      path: events
+      may_depend_on: [kernel, core]
+      third_party: {default: deny, allow: [pydantic]}
+    sdk:
+      path: sdk
+      may_depend_on: [kernel, core, plugins, models, events]
+      third_party: {default: deny, allow: [pydantic, pydantic_ai]}
+    testing:
+      path: testing
+      may_depend_on: [kernel, core, plugins, models, sdk]
+      third_party: {default: deny, allow: [pydantic, pydantic_ai, pytest]}
+  imports:
+    type_checking: include
+    transitive: true
+    # Sibling scopes collapse entire subpackages, conflating contracts and their
+    # consumers (including TYPE_CHECKING edges). Enforce architectural cycles.
+    cycles: [layers]
+
+structure:
+  forbidden_names: [utils, helpers]
+  contracts:
+    conventions:
+      match: harnessed
+      future_annotations: when-needed
+      ordering:
+        module: [docstring, future-imports, imports, type-vars, public, private, dunder-assignments, main-guard]
+        fix: safe-only
+    kernel-api:
+      match: harnessed.kernel
+      public: ['.']
+
+tests:
+  layout: none  # Topic groups and consumer typing contracts need not mirror modules.
+  max_patches_per_test: 3
+
+ignore:
+  - rule: private-test-access
+    paths: [tests/core/session/test_image_cache.py]
+    reason: Cache unit tests measure private byte/entry bounds and eviction; SDK behavior is tested separately in test_image_assets.py.
+
+# Errors are adopted conventions; warnings need contextual review of the public API.
+rules:
+  import-cycle: error
+  public-definitions-first: error
+  bundled-instance-assignment: error
+  redundant-str-enum-value: error
+  prefer-package-import: error
+  internal-public-member: error
+  internal-static-helper: error
+  internal-public-module-symbol: warning
+  unnecessary-future-annotations: warning
+  prefer-match-type-dispatch: warning
+  private-test-access: error
+  string-patch-target: error
+  test-only-public-function: error
+  test-only-public-attribute: warning
+  test-without-outcome-check: warning
+  test-only-checks-possibly-empty-data: warning
+  unbounded-test-wait: warning
+  async-mock-without-await-check: warning
+  independent-test-case-loop: hint

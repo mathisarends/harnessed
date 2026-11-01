@@ -114,14 +114,14 @@ async def test_public_inbox_removal_discards_only_the_selected_queued_run():
         assert [item.content.text for item in snapshot] == ["discard this", "keep this"]
         assert all(item.kind is InboxKind.RUN and item.created_at > 0 for item in snapshot)
         await session.inbox.remove(snapshot[0].id)
-        discarded = await first
+        discarded = await asyncio.wait_for(first, timeout=5)
         assert discarded.stop_reason is StopReason.DISCARDED and discarded.turn_id is None
         assert session.status is SessionStatus.PAUSED and len(session.inbox.pending) == 1
         assert len(snapshot) == 2
         with pytest.raises(KeyError):
             await session.inbox.remove(snapshot[0].id)
         await session.resume()
-        assert (await second).text == "kept"
+        assert (await asyncio.wait_for(second, timeout=5)).text == "kept"
 
 
 def test_old_inbox_records_have_a_deterministic_creation_time():

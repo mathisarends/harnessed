@@ -18,7 +18,7 @@ async def test_cancelled_result_admission_drains_a_contended_lock(event_type):
     log = SessionLog("checkpoint")
     call = ToolCall("work", id="call") if event_type is ToolCallFinishedEvent else "call"
     receipt = event_type(call, ToolResult("finished result"))
-    async with log._lock:
+    async with log._lock:  # smelt: ignore[SMT420] -- Ownership invariant.
         append = asyncio.create_task(log.append(receipt))
         await asyncio.sleep(0)
         append.cancel()

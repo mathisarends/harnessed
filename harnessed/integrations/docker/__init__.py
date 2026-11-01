@@ -175,6 +175,15 @@ class DockerBackend(WorkerRuntime):
             detail = output.stderr.decode("utf-8", errors="replace")[:2000]
             raise SandboxError(f"Docker could not {operation}: {detail}")
 
+    async def aclose(self) -> None:
+        self._state = RuntimeState.CLOSED
+        if not self._attempted or self._removed:
+            return
+        output = await self.command(["rm", "--force", "--volumes", self.name])
+        if output.returncode and b"No such container" not in output.stderr:
+            self.check(output, "remove sandbox")
+        self._removed = True
+
     async def _request(
         self, payload: bytes, *, timeout: float, max_output_bytes: int
     ) -> ProcessOutput:
@@ -196,15 +205,6 @@ class DockerBackend(WorkerRuntime):
         except BaseException:
             await finish(self.aclose())
             raise
-
-    async def aclose(self) -> None:
-        self._state = RuntimeState.CLOSED
-        if not self._attempted or self._removed:
-            return
-        output = await self.command(["rm", "--force", "--volumes", self.name])
-        if output.returncode and b"No such container" not in output.stderr:
-            self.check(output, "remove sandbox")
-        self._removed = True
 
 
 class DockerSandbox(Sandbox):

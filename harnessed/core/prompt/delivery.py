@@ -6,8 +6,7 @@ from typing import Any
 from uuid import uuid4
 
 from harnessed.core.errors import ConfigError
-from harnessed.kernel import Context, PluginLike, PluginSpec
-from harnessed.kernel.plugin import as_plugin_spec
+from harnessed.kernel import Context, PluginLike, PluginSpec, as_plugin_spec
 
 from .context import DynamicContext
 from .values import PromptComposition, PromptContribution, SectionDelivery

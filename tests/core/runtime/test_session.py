@@ -317,7 +317,7 @@ async def test_cancel_stream_preserves_visible_prefix_and_closes_turn():
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.submit("go")
-        await started.wait()
+        await asyncio.wait_for(started.wait(), timeout=5)
         await agent.abort()
         partial = next(e for e in agent_audit.events if isinstance(e, AssistantMessageEvent))
         assert partial.interrupted and partial.message.content == "visible prefix"
@@ -345,7 +345,7 @@ async def test_cancel_tool_answers_outstanding_call_and_sets_signal():
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.submit("go")
-        await started.wait()
+        await asyncio.wait_for(started.wait(), timeout=5)
         await agent.abort()
         assert calls[0].signal.is_set()
         results = [e.result for e in agent_audit.events if isinstance(e, ToolCallFinishedEvent)]

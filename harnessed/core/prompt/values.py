@@ -192,7 +192,7 @@ class SystemSectionProvider[T: PromptOwner]:
         )
 
 
-def system_section[T: PromptOwner](
+def system_section[T: PromptOwner](  # smelt: ignore[SMT316] -- Lazy SDK export.
     *, title: str | None = None
 ) -> Callable[[Callable[[T], str | None]], SystemSectionProvider[T]]:
     """Declare pure, synchronous system instructions derived from recipe configuration."""
@@ -390,6 +390,16 @@ class PromptComposition:
             for value in resolved
         )
 
+    def __str__(self) -> str:
+        lines = [f"System prompt ({self.format.value}, {len(self.entries)} sections)"]
+        for index, entry in enumerate(self.entries, 1):
+            lines.append(f"  {index}. {entry.origin}: {entry.section.preview!r}")
+        lines.extend(f"  excluded: {origin}" for origin in self.excluded)
+        if self.context_entries:
+            lines.append("Context (dynamic, outside the system prompt)")
+            lines.extend(f"  - {key}: {preview}" for key, preview in self.context_entries)
+        return "\n".join(lines)
+
     async def render(self, ctx: Context | None = None) -> str:
         parts: list[str] = []
         for entry in self.entries:
@@ -406,13 +416,3 @@ class PromptComposition:
                     attribute = f" title={quoteattr(title)}" if title else ""
                     parts.append(f"<section{attribute}>\n{escape(text)}\n</section>")
         return "\n\n".join(parts)
-
-    def __str__(self) -> str:
-        lines = [f"System prompt ({self.format.value}, {len(self.entries)} sections)"]
-        for index, entry in enumerate(self.entries, 1):
-            lines.append(f"  {index}. {entry.origin}: {entry.section.preview!r}")
-        lines.extend(f"  excluded: {origin}" for origin in self.excluded)
-        if self.context_entries:
-            lines.append("Context (dynamic, outside the system prompt)")
-            lines.extend(f"  - {key}: {preview}" for key, preview in self.context_entries)
-        return "\n".join(lines)

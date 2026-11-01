@@ -47,9 +47,8 @@ from harnessed.core.messages import (
 )
 from harnessed.core.model import ToolDefinition
 from harnessed.core.plugin import Plugin, PluginConfig
-from harnessed.core.tools.context import ToolContext
+from harnessed.core.tools import ToolContext, ToolError, ToolRegistry, ToolSpec
 from harnessed.core.tools.enabled import ToolEnabled, bind_enabled
-from harnessed.core.tools.registry import ToolError, ToolRegistry, ToolSpec
 from harnessed.kernel import Context
 
 logger = logging.getLogger(__name__)

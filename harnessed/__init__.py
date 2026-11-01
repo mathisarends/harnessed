@@ -5,7 +5,17 @@ from typing import Any
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
+
 # Keep the standalone kernel independent of Pydantic and optional provider SDKs.
+def __getattr__(name: str) -> Any:
+    if name not in _EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module, attribute = _EXPORTS[name]
+    value = getattr(import_module(module), attribute)
+    globals()[name] = value
+    return value
+
+
 _EXPORTS = {
     "Agent": ("harnessed.agent", "Agent"),
     "ApprovalAnswer": ("harnessed.core.messages", "ApprovalAnswer"),
@@ -53,15 +63,6 @@ _EXPORTS = {
     "plugin": ("harnessed.kernel", "plugin"),
     "tool": ("harnessed.core.tools.decorator", "tool"),
 }
-
-
-def __getattr__(name: str) -> Any:
-    if name not in _EXPORTS:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    module, attribute = _EXPORTS[name]
-    value = getattr(import_module(module), attribute)
-    globals()[name] = value
-    return value
 
 
 def __dir__() -> list[str]:

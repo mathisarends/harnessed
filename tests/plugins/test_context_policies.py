@@ -216,7 +216,7 @@ async def test_failed_or_cancelled_compactor_does_not_commit_partial_compaction(
         agent_audit = Audit(agent)
         await agent.run("x" * 1000)
         await agent.submit("next")
-        await started.wait()
+        await asyncio.wait_for(started.wait(), timeout=5)
         await agent.abort()
         assert not any(isinstance(e, CompactionAppliedEvent) for e in agent_audit.events)
         assert "x" * 1000 in "\n".join(m.text for m in agent.log.messages)

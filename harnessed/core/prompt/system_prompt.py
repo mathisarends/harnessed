@@ -2,8 +2,7 @@ from dataclasses import dataclass
 
 from pydantic import ConfigDict, TypeAdapter
 
-from harnessed.kernel.context import Context, RegistrationState
-from harnessed.kernel.effects import Disposer
+from harnessed.kernel import Context, Disposer, RegistrationState
 
 _TEXT = TypeAdapter(str, config=ConfigDict(strict=True, hide_input_in_errors=True))
 

@@ -48,7 +48,7 @@ async def test_concurrent_runs_return_their_own_text_usage_and_turn_without_wait
         await model.started[0].wait()
         second = asyncio.create_task(session.run("second"))
         try:
-            await queued.wait()
+            await asyncio.wait_for(queued.wait(), timeout=5)
             model.release[0].set()
             await model.started[1].wait()
             one = await asyncio.wait_for(asyncio.shield(first), timeout=1)
@@ -59,7 +59,7 @@ async def test_concurrent_runs_return_their_own_text_usage_and_turn_without_wait
         finally:
             model.release[0].set()
             model.release[1].set()
-        two = await second
+        two = await asyncio.wait_for(second, timeout=5)
         assert two.text == "reply 2" and two.usage.total_tokens == 13
         assert two.turn_id != one.turn_id
 
@@ -91,7 +91,10 @@ async def test_stream_ends_with_its_turn_and_does_not_emit_the_following_turn():
         await session.control.join()
 
 
-async def test_public_max_token_policies_return_typed_stop_reasons_or_fail():
+@pytest.mark.parametrize("policy", tuple(TokenLimitBehavior))
+async def test_public_max_token_policies_return_typed_stop_reasons_or_fail(
+    policy: TokenLimitBehavior,
+) -> None:
     import pytest
 
     from harnessed import Agent, StopReason
@@ -101,23 +104,20 @@ async def test_public_max_token_policies_return_typed_stop_reasons_or_fail():
     from harnessed.testing import ScriptedModel
 
     partial = ModelResponse(AssistantMessage("partial"), stop_reason=StopReason.MAX_TOKENS)
-    for policy in TokenLimitBehavior:
-        model = ScriptedModel([partial, "complete"])
-        async with Agent(
-            model=model, plugins=[AgentLoop(on_max_tokens=policy)]
-        ).session() as session:
-            session_audit = Audit(session)
-            if policy == "fail":
-                with pytest.raises(OutputTokenLimit, match="output token limit"):
-                    await session.run("task")
-                assert session_audit.turns[-1].closed
-            else:
-                result = await session.run("task")
-                expected = StopReason.MAX_TOKENS if policy == "accept" else StopReason.END
-                assert result.stop_reason is expected
-                assert result.completed is (expected is StopReason.END)
-                assert result.text == ("partial" if policy == "accept" else "complete")
-                assert len(model.requests) == (1 if policy == "accept" else 2)
+    model = ScriptedModel([partial, "complete"])
+    async with Agent(model=model, plugins=[AgentLoop(on_max_tokens=policy)]).session() as session:
+        session_audit = Audit(session)
+        if policy == "fail":
+            with pytest.raises(OutputTokenLimit, match="output token limit"):
+                await session.run("task")
+            assert session_audit.turns[-1].closed
+        else:
+            result = await session.run("task")
+            expected = StopReason.MAX_TOKENS if policy == "accept" else StopReason.END
+            assert result.stop_reason is expected
+            assert result.completed is (expected is StopReason.END)
+            assert result.text == ("partial" if policy == "accept" else "complete")
+            assert len(model.requests) == (1 if policy == "accept" else 2)
 
 
 async def test_step_limit_takes_precedence_over_the_last_model_finish_reason():

@@ -19,7 +19,7 @@ env:
 
 jobs:
   quality:
-    name: Ruff, ty, docs, and pre-commit
+    name: Smelt, Ruff, ty, docs, and pre-commit
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

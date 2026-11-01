@@ -10,7 +10,7 @@ from harnessed.core.runtime.session import Session
 from harnessed.core.session.files import SessionFiles
 from harnessed.core.session.session import SessionLog
 from harnessed.core.session.state import SessionState
-from harnessed.core.tools.registry import ToolRegistry
+from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import Context
 
 

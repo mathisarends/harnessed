@@ -33,7 +33,7 @@ async def test_concurrent_close_waits_for_shared_resource_cleanup(cancel_first):
         if cancel_first:
             first.cancel()
             with pytest.raises(asyncio.CancelledError):
-                await first
+                await asyncio.wait_for(first, timeout=5)
         second = asyncio.create_task(session.aclose())
         try:
             await asyncio.sleep(0)
@@ -61,17 +61,21 @@ async def test_explicit_close_dispatches_resource_cleanup_once():
 
 
 async def test_closing_hook_cannot_wait_for_its_own_cleanup():
+    observed = []
+
     @plugin
     async def resources(ctx):
         async def closing(event):
             with pytest.raises(SessionStateError):
                 await event.session.aclose()
+            observed.append(event.session.status)
 
         ctx.on(SessionClosing, closing)
         yield
 
     async with Agent(model=ScriptedModel([]), plugins=[resources()]).session() as session:
         await asyncio.wait_for(session.aclose(), 2)
+        assert observed == [SessionStatus.CLOSED]
 
 
 async def test_rejected_driver_close_does_not_release_live_resources():

@@ -59,9 +59,6 @@ class _MemoryAssets:
     def retain(self, refs: set[AssetRef]) -> None:
         self._values = {ref.sha256: self._values[ref.sha256] for ref in refs}
 
-    def _clear(self) -> None:
-        self._values.clear()
-
     async def put(self, data: bytes, *, media_type: str) -> AssetRef:
         if not isinstance(data, bytes):
             raise TypeError("Asset content must be bytes")
@@ -76,6 +73,9 @@ class _MemoryAssets:
             raise FileNotFoundError(ref.sha256) from None
         ref.verify(data)
         return data
+
+    def _clear(self) -> None:
+        self._values.clear()
 
 
 __all__ = ["AssetRef", "AssetStore"]

@@ -8,14 +8,12 @@ from dataclasses import dataclass, field
 from typing import Any, Self, cast, overload
 from weakref import ref
 
-from harnessed.kernel.plugin import PluginStatus
-
 from .effects import Disposer, effect
 from .events import Event, EventBus
 from .hooks import HookFactory, ListenerFactory
 from .keys import Key as Key
 from .keys import MissingService, ServiceKey
-from .plugin import PluginHandle, PluginLike, _Runtime, as_plugin_spec
+from .plugin import PluginHandle, PluginLike, PluginStatus, _Runtime, as_plugin_spec
 from .spec import PluginDependencyIssue, PluginSpec
 
 _current: ContextVar[Context | None] = ContextVar("harnessed_context", default=None)
@@ -65,15 +63,15 @@ class Context:
         self._handle: PluginHandle | None = None
 
     @classmethod
+    def current(cls) -> Context | None:
+        """The owner of registrations in the current asynchronous call chain."""
+        return _current.get()
+
+    @classmethod
     def _child(cls, scope: _Scope) -> Self:
         child = cls()
         child._scope = scope
         return child
-
-    @classmethod
-    def current(cls) -> Context | None:
-        """The owner of registrations in the current asynchronous call chain."""
-        return _current.get()
 
     @contextmanager
     def activate(self):
@@ -244,6 +242,13 @@ class Context:
     async def dispatch[R](self, event: Event[R], *, default: Callable[[], Any] | None = None) -> R:
         return await self._scope.event_bus.dispatch(self, event, default=default)
 
+    async def __aenter__(self):
+        self._check_open()
+        return self
+
+    async def __aexit__(self, *exc) -> None:
+        await self.aclose()
+
     async def plugin(self, spec: PluginLike) -> PluginHandle:
         """Retain a plugin recipe; activate it while its declared needs are available."""
         self._check_open()
@@ -328,6 +333,12 @@ class Context:
             errors, runtime.errors = runtime.errors, []
             raise ExceptionGroup("Plugin composition failed", errors)
 
+    async def aclose(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        await self._stack.aclose()
+
     async def _install_ready(self, plugins):
         pending = [as_plugin_spec(spec) for spec in plugins]
         mounted: list[PluginHandle] = []
@@ -346,19 +357,6 @@ class Context:
                 await handle.aclose()
             raise
         return mounted, pending
-
-    async def aclose(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        await self._stack.aclose()
-
-    async def __aenter__(self):
-        self._check_open()
-        return self
-
-    async def __aexit__(self, *exc) -> None:
-        await self.aclose()
 
 
 def _check_declared_dependencies(specs: tuple[PluginSpec, ...], ctx: Context) -> None:

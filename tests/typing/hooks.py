@@ -8,8 +8,7 @@ from harnessed.events import (
     ModelRetryScheduledEvent,
     SessionEvent,
 )
-from harnessed.kernel import Bail, Context, Emit, Inject, PluginBase, Waterfall, hook
-from harnessed.kernel.hooks import Next
+from harnessed.kernel import Bail, Context, Emit, Inject, Next, PluginBase, Waterfall, hook
 
 
 class Notice(Emit):

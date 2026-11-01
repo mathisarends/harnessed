@@ -191,7 +191,7 @@ async def test_inbox_arrival_during_summary_does_not_change_the_summary_identity
         agent_audit = Audit(agent)
         await agent.run("x" * 2000)
         await agent.submit("current")
-        await started.wait()
+        await asyncio.wait_for(started.wait(), timeout=5)
         await agent.steer("NEXT STEP CONTEXT")
         release.set()
         await agent.control.join()

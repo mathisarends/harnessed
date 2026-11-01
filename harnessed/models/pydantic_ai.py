@@ -131,14 +131,6 @@ class PydanticAIModel:
             supports_structured_output=bool(profile.get("supports_json_schema_output")),
         )
 
-    @property
-    def info(self) -> ModelInfo:
-        return self._info
-
-    @property
-    def settings(self) -> GenerationSettings:
-        return self._generation_settings
-
     async def __aenter__(self) -> Self:
         await self._native.__aenter__()
         return self
@@ -151,21 +143,13 @@ class PydanticAIModel:
     ) -> bool | None:
         return await self._native.__aexit__(exc_type, exc_val, exc_tb)
 
-    def _settings(self, request: ModelRequest) -> NativeSettings:
-        effective = resolve_request_settings(request, self.settings).settings
-        settings = to_dict(effective.provider_options)
-        if effective.max_tokens is not None:
-            settings["max_tokens"] = effective.max_tokens
-        if effective.temperature is not None:
-            settings["temperature"] = effective.temperature
-        return settings
+    @property
+    def info(self) -> ModelInfo:
+        return self._info
 
-    def _parameters(self, request: ModelRequest) -> ModelRequestParameters:
-        return _parameters(
-            request,
-            native_output=self.info.supports_structured_output,
-            native_tools=self.native_tools,
-        )
+    @property
+    def settings(self) -> GenerationSettings:
+        return self._generation_settings
 
     async def request(self, request: ModelRequest) -> ModelResponse:
         from pydantic_ai.direct import model_request
@@ -185,6 +169,22 @@ class PydanticAIModel:
             if mapped is not None:
                 raise mapped from error
             raise
+
+    def _settings(self, request: ModelRequest) -> NativeSettings:
+        effective = resolve_request_settings(request, self.settings).settings
+        settings = to_dict(effective.provider_options)
+        if effective.max_tokens is not None:
+            settings["max_tokens"] = effective.max_tokens
+        if effective.temperature is not None:
+            settings["temperature"] = effective.temperature
+        return settings
+
+    def _parameters(self, request: ModelRequest) -> ModelRequestParameters:
+        return _parameters(
+            request,
+            native_output=self.info.supports_structured_output,
+            native_tools=self.native_tools,
+        )
 
     @asynccontextmanager
     async def stream(self, request: ModelRequest) -> AsyncGenerator[ModelStream, None]:

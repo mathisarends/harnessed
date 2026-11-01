@@ -11,11 +11,12 @@ from harnessed.kernel import (
     Key,
     MissingService,
     PluginBase,
+    PluginStatus,
+    as_plugin_spec,
+    binding_plan,
     hook,
     plugin,
 )
-from harnessed.kernel.di import binding_plan
-from harnessed.kernel.plugin import PluginStatus, as_plugin_spec
 
 
 async def test_injection_binds_values_without_creating_lifetime_dependencies():

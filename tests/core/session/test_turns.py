@@ -20,11 +20,10 @@ from harnessed.core.session.events import (
     TurnStartedEvent,
     UserMessageEvent,
 )
-from harnessed.core.session.turns import derive_turns
 from harnessed.models import ModelInfo
 from harnessed.plugins import Approvals
 from harnessed.testing import CallbackModel, ScriptedModel
-from tests._audit import Audit, AuditProjection
+from tests._audit import Audit, AuditProjection, derive_turns
 
 
 async def test_turns_group_model_requests_and_tools_while_followups_wait_for_their_turn():
@@ -47,7 +46,7 @@ async def test_turns_group_model_requests_and_tools_while_followups_wait_for_the
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.submit("first task")
-        await started.wait()
+        await asyncio.wait_for(started.wait(), timeout=5)
         live = agent_audit.turns[-1]
         assert not live.closed and (not live.steps[-1].closed)
         assert live.steps[-1].request is model.requests[0]
@@ -114,7 +113,7 @@ async def test_cancel_closes_the_open_step_and_turn_in_the_log():
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.submit("task")
-        await started.wait()
+        await asyncio.wait_for(started.wait(), timeout=5)
         await agent.abort()
         turn = agent_audit.turns[-1]
         assert turn.closed and turn.reason == TurnOutcome.ABORTED

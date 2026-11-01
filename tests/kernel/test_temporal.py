@@ -9,8 +9,7 @@ from harnessed.core.prompt.system_prompt import SystemPromptStore
 from harnessed.core.runtime.services import RuntimeServices
 from harnessed.core.tools.decorator import tool
 from harnessed.core.tools.registry import ToolRegistry
-from harnessed.kernel import Emit, MissingService
-from harnessed.kernel.plugin import PluginStatus
+from harnessed.kernel import Emit, MissingService, PluginStatus
 
 
 @dataclass
@@ -258,13 +257,13 @@ async def test_services_are_not_published_to_consumers_until_provider_setup_yiel
     async with Context() as ctx:
         handle = await ctx.plugin(consumer())
         mounting = asyncio.create_task(ctx.plugin(provider()))
-        await started.wait()
+        await asyncio.wait_for(started.wait(), timeout=5)
         await ctx.settle()
         assert Backend not in ctx and handle.status == PluginStatus.WAITING and seen == []
         with pytest.raises(MissingService):
             ctx[Backend]
         ready.set()
-        await mounting
+        await asyncio.wait_for(mounting, timeout=5)
         await ctx.settle()
         assert seen == ["ready"]
 
@@ -313,7 +312,7 @@ async def test_dependency_loss_cancels_unfinished_setup_and_retries_when_service
     async with Context() as ctx:
         handle = await ctx.plugin(consumer())
         remove = ctx.provide(Backend, Backend("slow"))
-        await started.wait()
+        await asyncio.wait_for(started.wait(), timeout=5)
         await remove()
         await asyncio.wait_for(ctx.settle(), 1)
         assert handle.status == PluginStatus.WAITING and cleaned == ["cleanup"]
@@ -335,7 +334,7 @@ async def test_context_close_cancels_background_setup():
     ctx = Context()
     handle = await ctx.plugin(consumer())
     ctx.provide(Backend, Backend("one"))
-    await started.wait()
+    await asyncio.wait_for(started.wait(), timeout=5)
     await asyncio.wait_for(ctx.aclose(), 1)
     assert handle.status == PluginStatus.DISPOSED and cleaned == ["cleanup"]
 

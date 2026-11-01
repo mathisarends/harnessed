@@ -169,25 +169,6 @@ class _LocalProcess:
         self._writes = asyncio.Lock()
         self._task = asyncio.create_task(self._run(backend), name="harnessed:shell-process")
 
-    async def _run(self, backend: LocalShell) -> None:
-        self.started.set()
-        state = ProcessState.EXITED
-        try:
-            result = await backend._execute(self)
-            self.returncode = result.returncode
-        except asyncio.CancelledError:
-            state = ProcessState.CANCELLED
-        except TimeoutError as error:
-            self.failure = error
-            state = ProcessState.TIMED_OUT
-        except Exception as error:
-            self.failure = error
-            state = ProcessState.FAILED
-        finally:
-            # _execute has drained process-tree cleanup before a terminal state is visible.
-            self.state = state
-            self.launched.set()
-
     def snapshot(self) -> ProcessSnapshot:
         return ProcessSnapshot(
             self.state,
@@ -233,6 +214,25 @@ class _LocalProcess:
         else:
             self._task.result()
         return self.snapshot()
+
+    async def _run(self, backend: LocalShell) -> None:
+        self.started.set()
+        state = ProcessState.EXITED
+        try:
+            result = await backend._execute(self)
+            self.returncode = result.returncode
+        except asyncio.CancelledError:
+            state = ProcessState.CANCELLED
+        except TimeoutError as error:
+            self.failure = error
+            state = ProcessState.TIMED_OUT
+        except Exception as error:
+            self.failure = error
+            state = ProcessState.FAILED
+        finally:
+            # _execute has drained process-tree cleanup before a terminal state is visible.
+            self.state = state
+            self.launched.set()
 
 
 class _ProcessProtocol(asyncio.SubprocessProtocol):

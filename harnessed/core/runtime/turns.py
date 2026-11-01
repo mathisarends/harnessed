@@ -83,7 +83,7 @@ class TurnRunner:
             ):
                 await self.log.append(TurnEndedEvent(turn, TurnOutcome.MAX_STEPS))
                 return True
-            if previous.steps and not await self.continue_from(previous.steps[-1]):
+            if previous.steps and not await self._continue_from(previous.steps[-1]):
                 await self.log.append(TurnEndedEvent(turn))
                 return True
         settings = start.settings
@@ -101,7 +101,7 @@ class TurnRunner:
             if final:
                 await self.log.append(TurnEndedEvent(turn, TurnOutcome.MAX_STEPS))
                 return True
-            if await self.continue_from(self.log.current_turn().steps[-1]):
+            if await self._continue_from(self.log.current_turn().steps[-1]):
                 continue
             await self.log.append(TurnEndedEvent(turn))
             return True
@@ -114,7 +114,7 @@ class TurnRunner:
         usage = sum_usage(e.usage for e in events if isinstance(e, ModelUsageRecordedEvent))
         return usage.total_tokens
 
-    async def continue_from(self, step: Step) -> bool:
+    async def _continue_from(self, step: Step) -> bool:
         if step.reason == StepOutcome.CONTEXT_LIMIT:
             return True
         response = next(

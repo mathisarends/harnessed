@@ -17,11 +17,11 @@ from .worker import Operation, Request
 
 
 class WorkerTransport(Protocol):
+    async def aclose(self) -> None: ...
+
     async def _request(
         self, payload: bytes, *, timeout: float, max_output_bytes: int
     ) -> ProcessOutput: ...
-
-    async def aclose(self) -> None: ...
 
 
 class _Reply(BaseModel):
@@ -46,7 +46,7 @@ class WorkerClient:
 
     async def initialize(self, seed: bytes | None) -> None:
         if seed is None:
-            request = self.file_request(
+            request = self._file_request(
                 Operation.STAT, Path("."), timeout=self.config.startup_timeout
             )
             info = await self.request(request, TypeAdapter(FileStat))
@@ -97,7 +97,7 @@ class WorkerClient:
             await finish(self.transport.aclose())
             raise SandboxError("Invalid sandbox worker response") from error
 
-    def file_request(self, operation: Operation, path: PurePath, **values: JsonValue) -> Request:
+    def _file_request(self, operation: Operation, path: PurePath, **values: JsonValue) -> Request:
         # Keyword construction is the typed worker-protocol boundary.
         data = {
             "operation": operation,
@@ -124,13 +124,13 @@ class WorkerClient:
         return ProcResult(result.returncode, result.stdout, result.stderr)
 
     async def read(self, path: PurePath, *, offset: int = 0, limit: int | None = None) -> str:
-        request = self.file_request(Operation.READ, path, offset=offset, limit=limit)
+        request = self._file_request(Operation.READ, path, offset=offset, limit=limit)
         return await self.request(request, TypeAdapter(str))
 
     async def read_bytes(self, path: PurePath, *, limit: int | None = None) -> bytes:
         if limit is not None and limit < 0:
             raise ValueError("File ranges must be non-negative")
-        request = self.file_request(Operation.READ_BYTES, path, limit=limit)
+        request = self._file_request(Operation.READ_BYTES, path, limit=limit)
         value = await self.request(request, TypeAdapter(str))
         try:
             data = base64.b64decode(value, validate=True)
@@ -146,16 +146,16 @@ class WorkerClient:
         if len(text.encode("utf-8")) > self.config.limits.max_transfer_bytes:
             raise ValueError("File write exceeds max_transfer_bytes")
         await self.request(
-            self.file_request(Operation.WRITE, path, text=text), TypeAdapter(type(None))
+            self._file_request(Operation.WRITE, path, text=text), TypeAdapter(type(None))
         )
 
     async def list(self, path: PurePath) -> Sequence[FileStat]:
         return await self.request(
-            self.file_request(Operation.LIST, path), TypeAdapter(list[FileStat])
+            self._file_request(Operation.LIST, path), TypeAdapter(list[FileStat])
         )
 
     async def glob(self, pattern: str, *, limit: int = 1000) -> Sequence[PurePath]:
-        request = self.file_request(Operation.GLOB, Path(pattern), limit=limit)
+        request = self._file_request(Operation.GLOB, Path(pattern), limit=limit)
         result = await self.request(request, TypeAdapter(list[str]))
         return tuple(Path(path) for path in result)
 
@@ -164,18 +164,18 @@ class WorkerClient:
             raise ValueError("Search requires a non-empty query and a limit in [1, 500]")
         if len(query.encode("utf-8")) > self.config.limits.max_transfer_bytes:
             raise ValueError("Search query exceeds max_transfer_bytes")
-        request = self.file_request(Operation.GREP, Path(pattern), text=query, limit=limit)
+        request = self._file_request(Operation.GREP, Path(pattern), text=query, limit=limit)
         return await self.request(request, TypeAdapter(SearchResult))
 
     async def stat(self, path: PurePath) -> FileStat:
-        return await self.request(self.file_request(Operation.STAT, path), TypeAdapter(FileStat))
+        return await self.request(self._file_request(Operation.STAT, path), TypeAdapter(FileStat))
 
     async def exists(self, path: PurePath) -> bool:
-        return await self.request(self.file_request(Operation.EXISTS, path), TypeAdapter(bool))
+        return await self.request(self._file_request(Operation.EXISTS, path), TypeAdapter(bool))
 
     async def delete(self, path: PurePath) -> None:
-        await self.request(self.file_request(Operation.DELETE, path), TypeAdapter(type(None)))
+        await self.request(self._file_request(Operation.DELETE, path), TypeAdapter(type(None)))
 
     async def replace(self, path: PurePath, old: str, new: str) -> None:
-        request = self.file_request(Operation.REPLACE, path, old=old, new=new)
+        request = self._file_request(Operation.REPLACE, path, old=old, new=new)
         await self.request(request, TypeAdapter(type(None)))

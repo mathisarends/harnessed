@@ -54,16 +54,16 @@ class SessionControl:
         if self.closing or self.status is SessionStatus.CLOSED:
             raise SessionClosed("This session is closed")
 
+    def notify(self) -> None:
+        self._changed.set()
+        self._changed = asyncio.Event()
+
     def _check_external(self) -> None:
         self.check_open()
         if self._inside_driver():
             raise SessionStateError(
                 "A driver hook or tool cannot wait for its own control boundary"
             )
-
-    def notify(self) -> None:
-        self._changed.set()
-        self._changed = asyncio.Event()
 
     @asynccontextmanager
     async def _request(self) -> AsyncGenerator[None]:
@@ -186,48 +186,6 @@ class SessionControl:
     async def abort(self, *, keep_inbox: bool = False) -> None:
         await self._terminate(immediate=True, keep_inbox=keep_inbox)
 
-    async def _terminate(
-        self, *, immediate: bool, keep_inbox: bool, during_close: bool = False
-    ) -> None:
-        if not during_close:
-            self._check_external()
-        if type(keep_inbox) is not bool:
-            raise TypeError("keep_inbox must be a bool")
-        async with self._request():
-            if not during_close:
-                self.check_open()
-            task = self.task
-            if task is not None and (task.done() or self.finishing):
-                task = None
-            busy = task is not None
-            if not busy and self.log.open_turn is None and not self.log.inbox.pending:
-                if self.log.control.state != ControlState.ACTIVE:
-                    await self.log.append(AgentControlChangedEvent(ControlState.ACTIVE))
-                return
-            state = self.log.control.state
-            requested = ControlState.ABORTING if immediate else ControlState.STOPPING
-            if state not in (requested, ControlState.ABORTING):
-                try:
-                    await self.log.append(AgentControlChangedEvent(requested, keep_inbox))
-                finally:
-                    if (
-                        immediate
-                        and task is not None
-                        and self.log.control.state == ControlState.ABORTING
-                    ):
-                        if not task.cancelling():
-                            task.cancel()
-            if not busy:
-                await self.finish_termination()
-        if task is not None:
-            try:
-                await asyncio.shield(task)
-            except asyncio.CancelledError:
-                if not task.cancelled():
-                    raise
-                await self.finish_termination()
-        self.synchronize()
-
     async def finish_termination(self) -> None:
         self.finishing = True
         await self.log.repair_interrupted()
@@ -277,3 +235,45 @@ class SessionControl:
                     raise
         self.status = SessionStatus.CLOSED
         self.notify()
+
+    async def _terminate(
+        self, *, immediate: bool, keep_inbox: bool, during_close: bool = False
+    ) -> None:
+        if not during_close:
+            self._check_external()
+        if type(keep_inbox) is not bool:
+            raise TypeError("keep_inbox must be a bool")
+        async with self._request():
+            if not during_close:
+                self.check_open()
+            task = self.task
+            if task is not None and (task.done() or self.finishing):
+                task = None
+            busy = task is not None
+            if not busy and self.log.open_turn is None and not self.log.inbox.pending:
+                if self.log.control.state != ControlState.ACTIVE:
+                    await self.log.append(AgentControlChangedEvent(ControlState.ACTIVE))
+                return
+            state = self.log.control.state
+            requested = ControlState.ABORTING if immediate else ControlState.STOPPING
+            if state not in (requested, ControlState.ABORTING):
+                try:
+                    await self.log.append(AgentControlChangedEvent(requested, keep_inbox))
+                finally:
+                    if (
+                        immediate
+                        and task is not None
+                        and self.log.control.state == ControlState.ABORTING
+                    ):
+                        if not task.cancelling():
+                            task.cancel()
+            if not busy:
+                await self.finish_termination()
+        if task is not None:
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                if not task.cancelled():
+                    raise
+                await self.finish_termination()
+        self.synchronize()

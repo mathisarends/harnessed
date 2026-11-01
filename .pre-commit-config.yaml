@@ -40,3 +40,9 @@ repos:
         language: system
         pass_filenames: false
         always_run: true
+      - id: smelt
+        name: Smelt architecture and conventions
+        entry: uv run --locked --no-sync smelt check --format concise
+        language: system
+        pass_filenames: false
+        always_run: true

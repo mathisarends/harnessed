@@ -17,8 +17,7 @@ from harnessed.core.session.events import (
     ToolCallFinishedEvent,
     ToolExecutionStartedEvent,
 )
-from harnessed.kernel import hook
-from harnessed.kernel.plugin import PluginStatus
+from harnessed.kernel import PluginStatus, hook
 from harnessed.plugins import AgentLoop, Approvals, Service
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit, AuditProjection
