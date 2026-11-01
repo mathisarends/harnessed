@@ -28,13 +28,9 @@ class FailureNudgeConfig(PluginConfig):
     threshold: int = Field(default=2, ge=1)
 
 
-class FailureNudge(Plugin, needs=(DynamicContext,)):
-    Config = FailureNudgeConfig
-
-    config: FailureNudgeConfig
-
+class FailureNudge(Plugin[FailureNudgeConfig], needs=(DynamicContext,)):
     def __init__(self, threshold: int = 2):
-        super().__init__(threshold=threshold)
+        super().__init__(config=FailureNudgeConfig(threshold=threshold))
 
     async def setup(self):
         self.failures = 0

@@ -4,6 +4,30 @@
 
 ### Added
 
+- Extend installed-wheel verification to typed configuration objects, activation
+  dependency fields and mandatory instruction placement. The distribution smoke
+  test uses the current API on every supported CI platform and Python version.
+- Add `Plugin[MyConfig]` with an explicit `config=MyConfig(...)` object. The type
+  argument declares runtime schema selection and typed `self.config` once,
+  including through generic inheritance. Configurationless plugins keep plain
+  `Plugin`. The recipe and its activations retain the same frozen config object.
+  The complete recipe example now also declares `FILE_EVENTS`, emits a typed
+  event through `ToolContext.emit` and observes it with an independent `@hook`.
+- Add typed `dependency(Service)` fields from `harnessed.kernel`: each field
+  declares both a stable activation binding and its lifetime requirement.
+  `dependency(key, optional=True)` captures a service or `None` without blocking
+  startup and restarts on appearance, disappearance or provider replacement.
+  Normalized `PluginSpec.needs` / `.observes` also drive composition descriptions
+  and startup diagnostics; named keys, Protocols, inheritance and overrides work.
+- Add kit-owned prompt fragments: place `kit.instructions` explicitly, or define
+  `Kit(..., fragments={"instructions": (recipe, child_kit), "name": (...)})` and
+  select `kit.fragment("name")`. Fragments preserve library-owned ordering,
+  omit removed recipes and include selected slot replacements through nesting.
+  Individual instruction references retain exact recipe identity.
+- Add `harnessed.testing.mount_plugin(recipe, services=(Service(Contract, fake),))`
+  to yield a typed active instance with guaranteed cleanup and a tool registry,
+  without an agent or model. `PluginHandle.instance` exposes the current kernel
+  activation. See `uv run python -m examples.37_plugin_recipes` for the new API.
 - Add `Kit(name, plugins)` and immutable `kit.without(*types)` for library-owned
   plugin defaults. Direct entries override child-kit exports by explicit slot;
   conflicting sibling kits require a local direct decision regardless of nesting.
@@ -24,14 +48,66 @@
 
 ### Breaking changes
 
+- Pass prompt content directly as positional arguments:
+  `SystemPrompt("Help with documents.", workspace.instructions, "Answer concisely.")`.
+  Replace `SystemPrompt(sections=parts)` with `SystemPrompt(*parts)`; `format`,
+  `exclude` and `unplaced` remain keyword-only options. The `sections=` constructor
+  keyword is removed.
+- Remove `Config = MyConfig`, the repeated `config: MyConfig` declaration and
+  arbitrary configuration keyword forwarding from the Plugin base constructor.
+  Use `class Files(Plugin[FilesConfig])` and
+  `Files(config=FilesConfig(max_read_bytes=100_000))`. Missing, wrong-model and
+  mutable configurations fail before activation. Existing typed feature
+  constructors retain their signatures and build explicit models internally.
+- Rename prompt content `SystemSection` to `Instructions`, `@system_section` to
+  `@instructions`, bound/provider types to `InstructionRef` / `InstructionProvider`,
+  and `PluginSections` to `PluginInstructions`. The renderer plugin formerly
+  exported as `harnessed.plugins.Instructions` is now `PromptRenderer`. No aliases
+  are retained. Plugin metadata inspection is `plugin.instruction_refs()`.
+- Require explicit placement or exclusion for every selected plugin instruction,
+  including empty content, a string system prompt, and no application prompt.
+  `SystemPrompt` defaults to `Unplaced.ERROR`; `PluginInstructions()` and explicit
+  `Unplaced.APPEND` remain visible opt-ins for accepting future contributions.
+  Coverage errors precede provider calls and file reads. Class docstrings remain
+  developer documentation and never become model instructions.
+- Replace class-level `Inject[T]` with `name = dependency(T)`. Call-scoped `Inject`
+  retains its existing behavior and does not declare lifetime requirements.
+  Dependency fields are read-only and available only during an activation,
+  including teardown and owned cleanup. Optional field changes reset activation
+  state. Extra instance `needs=` cannot remove field or registration requirements.
+- Default `Plugin.create_instance()` now replays explicit constructor arguments
+  instead of shallow-copying arbitrary attributes. Constructors must be repeatable
+  configuration/declaration code; allocate resources in setup. Constructor-created
+  containers are fresh per activation, while explicitly supplied clients retain
+  identity. Custom factories define sharing explicitly. Plugin configuration
+  models must be frozen, and `plugin.config` cannot be replaced.
+- Direct tool calls on recipes or disposed activations raise `RuntimeError`.
+  Declarative tool and prompt references remain available on recipes; prepared
+  calls keep their original activation and never follow replacement registrations.
 - Resolve plugin composition before collecting prompt contributions and event
   declarations. Replaced and excluded plugins no longer contribute metadata or
-  execute configuration-derived prompt providers. Automatic sections follow the
+  execute configuration-derived prompt providers. Explicit plugin groups follow the
   final resolved order, including the inherited slot position of replacements,
   rather than the original supplied list. Explicit references to discarded
   recipes fail instead of following a replacement.
 
 ### Upgrade from 0.8.0
+
+1. Replace Config aliases and repeated annotations with `Plugin[MyConfig]`.
+   Pass `config=MyConfig(...)` to plugins inheriting the base constructor.
+   Custom constructors use `super().__init__(config=MyConfig(...))`; plain
+   configurationless plugins continue to call `super().__init__()`.
+2. Rename instruction declarations and decorators to `Instructions` and
+   `@instructions`. Use explicit `SystemPrompt(files.usage, ...)` or
+   `kit.instructions`; omit contributions with `exclude=(files.usage,)`.
+3. Replace service attributes `backend: Inject[Backend]` and duplicate `needs`
+   entries with `backend = dependency(Backend)`. Use `optional=True` for stable
+   optional bindings, and keep extra `needs` for requirements without an attribute.
+4. Make constructors repeatable, keep models frozen, and move acquisition into
+   setup with Context cleanup. Use the active instance for direct tool tests via
+   `mount_plugin`. Review deliberate sharing in custom `create_instance` methods.
+
+For the kit-composition additions:
 
 1. Replace library-specific default merging and mirrored agent subclasses with
    `Kit` factories where useful. Declare namespaced slots on replaceable
@@ -39,7 +115,7 @@
    retain their contracts; no service-key or class-based replacement is inferred.
 2. When prompt order matters, use an explicit `SystemPrompt` referencing selected
    recipes. Remove references to discarded recipes or point them at the selected
-   replacement. A `PluginSections()` rest slot includes remaining selected sections.
+   replacement. A `PluginInstructions()` rest slot includes remaining selected sections.
 3. Resolve conflicting sibling-kit slots with a direct entry at their shared
    boundary. Resolve internal kit conflicts inside that kit. Inspect
    `agent.describe()` before opening a session to review the resulting decisions.

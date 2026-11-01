@@ -4,7 +4,7 @@ import sys
 import pytest
 from pydantic import ValidationError
 
-from harnessed import Agent, SystemPrompt, ToolCall
+from harnessed import Agent, PluginInstructions, SystemPrompt, ToolCall
 from harnessed.core.tools.registry import ToolRegistry
 from harnessed.plugins import AgentLoop
 from harnessed.plugins.shell import LocalShell, ProcResult, Shell, ShellBackend, ShellTools
@@ -21,7 +21,11 @@ def test_shell_tools_reject_backend_configuration(options):
 
 async def test_owned_shell_configures_its_local_backend(tmp_path):
     shell = Shell(tmp_path, env={"EXPLICIT": "yes"}, max_output_bytes=256)
-    async with Agent(model=ScriptedModel([]), plugins=[shell]).session() as session:
+    async with Agent(
+        system_prompt=SystemPrompt(PluginInstructions()),
+        model=ScriptedModel([]),
+        plugins=[shell],
+    ).session() as session:
         backend = session.ctx[ShellBackend]
         assert isinstance(backend, LocalShell)
         assert backend.options.env == {"EXPLICIT": "yes"}
@@ -95,7 +99,7 @@ async def test_shell_limits_are_schema_visible_and_configured_backends_are_used(
         await LocalShell().run([sys.executable], cwd=tmp_path, timeout=601)
     shell = Shell(tmp_path)
     async with Agent(
-        system_prompt=SystemPrompt(sections=(shell.usage,)),
+        system_prompt=SystemPrompt(shell.usage),
         model=ScriptedModel([]),
         plugins=[shell],
     ).session() as session:
@@ -119,7 +123,7 @@ async def test_shell_command_deadline_overrides_the_generic_tool_timeout(tmp_pat
 
     shell = Shell(tmp_path, implementation=Backend(), timeout=0.1, max_timeout=0.2)
     async with Agent(
-        system_prompt=SystemPrompt(sections=(shell.usage,)),
+        system_prompt=SystemPrompt(shell.usage),
         model=ScriptedModel([]),
         plugins=[
             AgentLoop(tool_timeout=0.01),
@@ -145,7 +149,7 @@ async def test_shell_schema_and_validation_use_each_mounts_timeout_limit(tmp_pat
 
     shell = Shell(tmp_path, implementation=Backend(), timeout=min(30, maximum), max_timeout=maximum)
     app = Agent(
-        system_prompt=SystemPrompt(sections=(shell.usage,)),
+        system_prompt=SystemPrompt(shell.usage),
         model=ScriptedModel([]),
         plugins=[shell],
     )
@@ -169,7 +173,7 @@ async def test_shell_schema_and_validation_use_each_mounts_timeout_limit(tmp_pat
     # A second mount keeps its own constraints; neither mutates the declaration.
     shell_3 = Shell(tmp_path)
     async with Agent(
-        system_prompt=SystemPrompt(sections=(shell_3.usage,)),
+        system_prompt=SystemPrompt(shell_3.usage),
         model=ScriptedModel([]),
         plugins=[shell_3],
     ).session() as session:

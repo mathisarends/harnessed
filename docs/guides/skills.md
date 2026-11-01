@@ -21,7 +21,7 @@ skills = Skills(
 )
 agent = Agent(
     model="deepseek:deepseek-chat",
-    system_prompt=SystemPrompt(sections=(skills.catalog,)),
+    system_prompt=SystemPrompt(skills.catalog),
     plugins=[skills],
 )
 ```

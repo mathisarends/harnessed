@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from harnessed import Agent, ApprovalAnswer, ToolCall
+from harnessed import Agent, ApprovalAnswer, PluginInstructions, SystemPrompt, ToolCall
 from harnessed.models import ModelChunk, ModelRequest, ToolMessage
 from harnessed.plugins import Approvals, BackgroundShell, Shell
 from harnessed.testing import CallbackModel
@@ -69,6 +69,7 @@ async def main() -> None:
     with TemporaryDirectory() as temporary:
         workspace = Path(temporary)
         agent = Agent(
+            system_prompt=SystemPrompt(PluginInstructions()),
             model=CallbackModel(respond),
             plugins=[
                 Shell(workspace),

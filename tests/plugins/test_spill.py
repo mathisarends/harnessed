@@ -34,9 +34,7 @@ def configure(model, *, plugins=()):
     return Agent(
         model=model,
         plugins=[Source(), *plugins],
-        system_prompt=SystemPrompt(
-            sections=tuple(p.usage for p in plugins if isinstance(p, Spill))
-        ),
+        system_prompt=SystemPrompt(*(p.usage for p in plugins if isinstance(p, Spill))),
     )
 
 

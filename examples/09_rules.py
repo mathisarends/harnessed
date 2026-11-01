@@ -18,6 +18,7 @@ def is_pytest(call: ToolCall) -> bool:
 
 class TestDiscipline(Plugin, needs=(Session,)):
     def __init__(self):
+        super().__init__()
         self.failures = 0
 
     @hook(ReviewToolResult)

@@ -1,6 +1,6 @@
 import pytest
 
-from harnessed import Agent, SystemPrompt, SystemSection
+from harnessed import Agent, Instructions, SystemPrompt
 from harnessed.core.prompt.system_prompt import SystemPromptStore
 from harnessed.kernel import Context, plugin
 from harnessed.testing import ScriptedModel
@@ -16,12 +16,12 @@ async def test_session_section_factories_render_once_and_own_their_registrations
 
     instructions = tmp_path / "instructions.md"
     instructions.write_text("Project rules.", encoding="utf-8")
-    section = SystemSection.from_factory(
+    section = Instructions.from_factory(
         factory=catalog, description="Catalog read at session startup"
     )
     app = Agent(
         model=ScriptedModel(["one", "two"]),
-        system_prompt=SystemPrompt(sections=(SystemSection.from_file(path=instructions), section)),
+        system_prompt=SystemPrompt(Instructions.from_file(path=instructions), section),
     )
     async with app.session() as first:
         await first.run("One")
@@ -39,7 +39,7 @@ async def test_session_section_factory_requires_an_explicit_owner():
         return "catalog"
 
     with pytest.raises(ValueError, match="session context"):
-        await SystemSection.from_factory(factory=catalog).render()
+        await Instructions.from_factory(factory=catalog).render()
 
 
 async def test_owned_snapshot_restores_the_previous_prompt_on_disposal():

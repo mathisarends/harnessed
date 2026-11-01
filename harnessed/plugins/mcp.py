@@ -285,16 +285,13 @@ class _RemoteTool:
         return _result(result)
 
 
-class MCP(Plugin, needs=(ToolRegistry,)):
+class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
     """Expose one MCP server's tools through the standard Harnessed runtime.
 
     Construction performs no I/O. Each session or runtime mount owns a fresh
     connection and a fixed tool catalog. Server annotations never grant local
     readonly status; configure trusted tools explicitly with readonly_tools.
     """
-
-    Config = MCPConfig
-    config: MCPConfig
 
     def __init__(
         self,
@@ -312,12 +309,14 @@ class MCP(Plugin, needs=(ToolRegistry,)):
             raise TypeError("MCP tool selections must be collections of names, not strings")
         super().__init__(
             name=f"mcp:{name}",
-            server_name=name,
-            include_tools=None if include_tools is None else tuple(include_tools),
-            readonly_tools=tuple(readonly_tools),
-            startup_timeout=startup_timeout,
-            call_timeout=call_timeout,
-            parallel=parallel,
+            config=MCPConfig(
+                server_name=name,
+                include_tools=None if include_tools is None else tuple(include_tools),
+                readonly_tools=tuple(readonly_tools),
+                startup_timeout=startup_timeout,
+                call_timeout=call_timeout,
+                parallel=parallel,
+            ),
         )
         ToolSpec(enabled=enabled)
         self.transport = transport

@@ -179,6 +179,7 @@ async def test_class_plugin_state_is_fresh_for_every_session_and_methods_support
 
     class Counter(Plugin, needs=(Session,)):
         def __init__(self):
+            super().__init__()
             self.count = 0
 
         @tool

@@ -20,12 +20,8 @@ class AgentFactory(Protocol):
 _DEFAULTS = AgentLoopConfig()
 
 
-class AgentLoop(Plugin, slot="loop"):
+class AgentLoop(Plugin[AgentLoopConfig], slot="loop"):
     """Configure the ReAct loop: step, tool, approval and output limits."""
-
-    Config = AgentLoopConfig
-
-    config: AgentLoopConfig
 
     def __init__(
         self,
@@ -41,14 +37,16 @@ class AgentLoop(Plugin, slot="loop"):
         error_formatter: ErrorFormatter | None = None,
     ) -> None:
         super().__init__(
-            max_steps=max_steps,
-            tool_timeout=tool_timeout,
-            max_parallel_tools=max_parallel_tools,
-            approval_timeout=approval_timeout,
-            context_window=context_window,
-            on_max_tokens=on_max_tokens,
-            output_retries=output_retries,
-            final_step=final_step,
+            config=AgentLoopConfig(
+                max_steps=max_steps,
+                tool_timeout=tool_timeout,
+                max_parallel_tools=max_parallel_tools,
+                approval_timeout=approval_timeout,
+                context_window=context_window,
+                on_max_tokens=on_max_tokens,
+                output_retries=output_retries,
+                final_step=final_step,
+            )
         )
         self.error_formatter = error_formatter
 

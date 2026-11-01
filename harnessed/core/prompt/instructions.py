@@ -4,7 +4,7 @@ from harnessed.core.prompt.values import PromptComposition, SystemPrompt
 from harnessed.kernel import Context
 
 
-class Instructions(Plugin, slot="instructions", needs=(SystemPromptStore,)):
+class PromptRenderer(Plugin, slot="instructions", needs=(SystemPromptStore,)):
     """Render literal instructions and file sections once when a session opens."""
 
     def __init__(

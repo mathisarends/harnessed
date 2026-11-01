@@ -1,19 +1,26 @@
 import pytest
 
-from harnessed.kernel import Context, Inject, Key, PluginBase, PluginStatus, as_plugin_spec
+from harnessed.kernel import (
+    Context,
+    Key,
+    PluginBase,
+    PluginStatus,
+    as_plugin_spec,
+    dependency,
+)
 
 
-class Feature(PluginBase, provides=True, needs=(str,)):
-    backend: Inject[str]
-    optional: Inject[int | None]
+class Feature(PluginBase, provides=True):
+    backend = dependency(str)
+    optional = dependency(int, optional=True)
 
     async def setup(self, ctx: Context) -> None:
         assert ctx[Feature] is self
         self.computed = self.backend.upper()
 
 
-class Consumer(PluginBase, provides=True, needs=(Feature,)):
-    feature: Inject[Feature]
+class Consumer(PluginBase, provides=True):
+    feature = dependency(Feature)
 
 
 async def test_class_injection_precedes_setup_and_is_isolated_between_mounts():
@@ -78,9 +85,9 @@ async def test_inherited_provides_uses_declaring_class_and_named_keys():
         assert type(ctx[key]) is Named
 
 
-async def test_deferred_annotation_is_resolved_before_mount():
-    class Deferred(PluginBase, needs=(str,)):
-        backend: "Inject[str]"
+async def test_field_requirement_is_validated_before_mount():
+    class Deferred(PluginBase):
+        backend = dependency(str)
 
     recipe = Deferred()
     with pytest.raises(RuntimeError, match="mounted plugin"):
@@ -90,9 +97,9 @@ async def test_deferred_annotation_is_resolved_before_mount():
             await ctx.install([recipe], strict=True)
 
 
-async def test_private_deferred_injection_has_the_same_recipe_guard_and_mount_binding():
-    class Private(PluginBase, provides=True, needs=(str,)):
-        _backend: "Inject[str]"
+async def test_private_dependency_has_the_same_recipe_guard_and_mount_binding():
+    class Private(PluginBase, provides=True):
+        _backend = dependency(str)
 
     recipe = Private()
     with pytest.raises(RuntimeError, match="mounted plugin"):
@@ -101,9 +108,7 @@ async def test_private_deferred_injection_has_the_same_recipe_guard_and_mount_bi
         ctx.provide(str, "ready")
         await ctx.plugin(recipe)
         assert ctx[Private]._backend == "ready"
-        compiled = Private._compiled_injections
         assert as_plugin_spec(recipe).needs == (str,)
-        assert Private._compiled_injections is compiled
 
 
 async def test_failed_setup_removes_automatic_provision():

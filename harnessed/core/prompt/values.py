@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from functools import partial
@@ -44,7 +44,7 @@ class PromptOwner(Protocol):
 
 
 @dataclass(frozen=True, slots=True, eq=False, kw_only=True)
-class SystemSection:
+class Instructions:
     """System instructions supplied as text, a file, or a session-scoped factory.
 
     Access on a plugin recipe binds its identity and diagnostic name to that
@@ -78,15 +78,15 @@ class SystemSection:
     def __get__(self, instance: None, owner: type | None = None) -> Self: ...
 
     @overload
-    def __get__(self, instance: PromptOwner, owner: type | None = None) -> BoundSystemSection: ...
+    def __get__(self, instance: PromptOwner, owner: type | None = None) -> InstructionRef: ...
 
     def __get__(
         self, instance: PromptOwner | None, owner: type | None = None
-    ) -> Self | BoundSystemSection:
+    ) -> Self | InstructionRef:
         return self if instance is None else self.bind(instance, self._attribute)
 
-    def bind(self, owner: PromptOwner, attribute: str) -> BoundSystemSection:
-        return BoundSystemSection(owner=owner, declaration=self, attribute=attribute, section=self)
+    def bind(self, owner: PromptOwner, attribute: str) -> InstructionRef:
+        return InstructionRef(owner=owner, declaration=self, attribute=attribute, section=self)
 
     @classmethod
     def from_file(
@@ -139,13 +139,13 @@ class SystemSection:
 
 
 @dataclass(frozen=True, slots=True, eq=False, kw_only=True)
-class BoundSystemSection:
+class InstructionRef:
     """A section reference bound to one configured plugin recipe."""
 
     owner: PromptOwner
     declaration: object
     attribute: str
-    section: SystemSection
+    section: Instructions
     provider: Callable[[], str | None] | None = field(default=None, repr=False)
 
     @property
@@ -156,7 +156,7 @@ class BoundSystemSection:
     def origin(self) -> str:
         return f"{self.owner.name}.{self.attribute}"
 
-    def resolve(self) -> SystemSection:
+    def resolve(self) -> Instructions:
         if self.provider is None:
             return self.section
         text = self.provider()
@@ -165,10 +165,10 @@ class BoundSystemSection:
         return replace(self.section, text=text or "")
 
 
-class SystemSectionProvider[T: PromptOwner]:
+class InstructionProvider[T: PromptOwner]:
     def __init__(self, callback: Callable[[T], str | None], *, title: str | None) -> None:
         self.callback = callback
-        self.section = SystemSection(title=title)
+        self.section = Instructions(title=title)
         self.attribute = ""
 
     def __set_name__(self, owner: type, name: str) -> None:
@@ -178,12 +178,12 @@ class SystemSectionProvider[T: PromptOwner]:
     def __get__(self, instance: None, owner: type | None = None) -> Self: ...
 
     @overload
-    def __get__(self, instance: T, owner: type | None = None) -> BoundSystemSection: ...
+    def __get__(self, instance: T, owner: type | None = None) -> InstructionRef: ...
 
-    def __get__(self, instance: T | None, owner: type | None = None) -> Self | BoundSystemSection:
+    def __get__(self, instance: T | None, owner: type | None = None) -> Self | InstructionRef:
         if instance is None:
             return self
-        return BoundSystemSection(
+        return InstructionRef(
             owner=instance,
             declaration=self,
             attribute=self.attribute,
@@ -192,21 +192,21 @@ class SystemSectionProvider[T: PromptOwner]:
         )
 
 
-def system_section[T: PromptOwner](  # smelt: ignore[SMT316] -- Lazy SDK export.
+def instructions[T: PromptOwner](  # smelt: ignore[SMT316] -- Lazy SDK export.
     *, title: str | None = None
-) -> Callable[[Callable[[T], str | None]], SystemSectionProvider[T]]:
+) -> Callable[[Callable[[T], str | None]], InstructionProvider[T]]:
     """Declare pure, synchronous system instructions derived from recipe configuration."""
 
-    def decorate(callback: Callable[[T], str | None]) -> SystemSectionProvider[T]:
+    def decorate(callback: Callable[[T], str | None]) -> InstructionProvider[T]:
         if inspect.iscoroutinefunction(callback) or inspect.isasyncgenfunction(callback):
-            raise TypeError("@system_section requires a synchronous configuration provider")
-        return SystemSectionProvider(callback, title=title)
+            raise TypeError("@instructions requires a synchronous configuration provider")
+        return InstructionProvider(callback, title=title)
 
     return decorate
 
 
 @dataclass(frozen=True, slots=True)
-class PluginSections:
+class PluginInstructions:
     """Place one plugin's sections, or all remaining sections when plugin is None.
 
     A complete prompt may contain at most one remaining-sections slot, including
@@ -216,30 +216,41 @@ class PluginSections:
     plugin: PromptOwner | None = None
 
 
-type PromptPart = str | SystemSection | BoundSystemSection | PluginSections | SystemPrompt
+@dataclass(frozen=True, slots=True)
+class InstructionFragment:
+    """A named kit-owned group, resolved against the final plugin selection."""
+
+    owner: object
+    name: str
+
+
+type PromptPart = (
+    str | Instructions | InstructionRef | PluginInstructions | InstructionFragment | SystemPrompt
+)
 
 
 @dataclass(frozen=True, slots=True, init=False)
 class SystemPrompt:
-    """An ordered document with automatic placement of remaining plugin sections.
+    """An ordered document requiring explicit placement or exclusion of instructions.
 
+    Pass content in order as positional arguments; unpack iterables with ``*parts``.
+    Rendering, exclusions and the unplaced policy are keyword-only options.
     Nested documents inherit the outermost format and unplaced policy.
     """
 
     sections: tuple[PromptPart, ...]
     format: PromptFormat
-    exclude: tuple[BoundSystemSection | SystemSection, ...]
+    exclude: tuple[InstructionRef | Instructions | InstructionFragment, ...]
     unplaced: Unplaced
 
     def __init__(
         self,
-        *,
-        sections: Iterable[PromptPart] = (),
+        *sections: PromptPart,
         format: PromptFormat = PromptFormat.PLAIN,
-        exclude: Iterable[BoundSystemSection | SystemSection] = (),
-        unplaced: Unplaced = Unplaced.APPEND,
+        exclude: Iterable[InstructionRef | Instructions | InstructionFragment] = (),
+        unplaced: Unplaced = Unplaced.ERROR,
     ) -> None:
-        object.__setattr__(self, "sections", tuple(sections))
+        object.__setattr__(self, "sections", sections)
         object.__setattr__(self, "format", PromptFormat(format))
         object.__setattr__(self, "exclude", tuple(exclude))
         object.__setattr__(self, "unplaced", Unplaced(unplaced))
@@ -248,14 +259,14 @@ class SystemPrompt:
 @dataclass(frozen=True, slots=True)
 class PromptContribution:
     name: str
-    sections: tuple[BoundSystemSection, ...] = ()
+    sections: tuple[InstructionRef, ...] = ()
     context_description: tuple[str, str] | None = None
     owner: PromptOwner | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class PromptEntry:
-    section: SystemSection
+    section: Instructions
     origin: str
 
 
@@ -266,10 +277,12 @@ class PromptComposition:
         self,
         prompt: str | SystemPrompt | None = None,
         contributions: Iterable[PromptContribution] = (),
+        *,
+        fragments: Mapping[tuple[int, str], tuple[PromptOwner, ...]] | None = None,
     ) -> None:
         contributions = tuple(contributions)
         if isinstance(prompt, str):
-            prompt = SystemPrompt(sections=(prompt,))
+            prompt = SystemPrompt(prompt)
         if prompt is None:
             prompt = SystemPrompt()
         if not isinstance(prompt, SystemPrompt):
@@ -285,20 +298,37 @@ class PromptComposition:
             for contribution in contributions
             for section in contribution.sections
         }
-        by_declaration: dict[int, list[BoundSystemSection]] = {}
+        by_declaration: dict[int, list[InstructionRef]] = {}
         for section in available.values():
             by_declaration.setdefault(id(section.declaration), []).append(section)
-        selected: list[SystemSection | BoundSystemSection | PluginSections] = []
-        excluded: list[SystemSection | BoundSystemSection] = []
+        selected: list[Instructions | InstructionRef | PluginInstructions] = []
+        excluded: list[Instructions | InstructionRef] = []
+
+        def fragment(value: InstructionFragment) -> tuple[PromptOwner, ...]:
+            key = (id(value.owner), value.name)
+            if fragments is None or key not in fragments:
+                raise ConfigError(
+                    f"Instruction fragment {value.name!r} belongs to an uninstalled kit"
+                )
+            return fragments[key]
 
         def flatten(group: SystemPrompt) -> None:
-            excluded.extend(group.exclude)
+            for value in group.exclude:
+                if isinstance(value, InstructionFragment):
+                    for owner in fragment(value):
+                        excluded.extend(
+                            section for section in available.values() if section.owner is owner
+                        )
+                else:
+                    excluded.append(value)
             for part in group.sections:
                 if isinstance(part, SystemPrompt):
                     flatten(part)
+                elif isinstance(part, InstructionFragment):
+                    selected.extend(PluginInstructions(owner) for owner in fragment(part))
                 elif isinstance(part, str):
-                    selected.append(SystemSection(text=part))
-                elif isinstance(part, SystemSection | BoundSystemSection | PluginSections):
+                    selected.append(Instructions(text=part))
+                elif isinstance(part, Instructions | InstructionRef | PluginInstructions):
                     selected.append(part)
                 else:
                     raise TypeError(
@@ -310,23 +340,23 @@ class PromptComposition:
         literal_seen: set[int] = set()
 
         def reference(
-            value: SystemSection | BoundSystemSection,
-        ) -> SystemSection | BoundSystemSection:
-            if isinstance(value, BoundSystemSection):
+            value: Instructions | InstructionRef,
+        ) -> Instructions | InstructionRef:
+            if isinstance(value, InstructionRef):
                 if value.identity not in available:
                     raise ConfigError(
                         f"System section {value.origin} belongs to an uninstalled plugin"
                     )
                 return available[value.identity]
-            if not isinstance(value, SystemSection):
+            if not isinstance(value, Instructions):
                 raise TypeError("Exclusions must be system section references")
             matches = by_declaration.get(id(value), [])
             if len(matches) > 1:
                 raise ConfigError("Ambiguous section; reference it through a configured plugin")
             return matches[0] if matches else value
 
-        def claim(value: SystemSection | BoundSystemSection, *, exclusion: bool) -> None:
-            if isinstance(value, BoundSystemSection):
+        def claim(value: Instructions | InstructionRef, *, exclusion: bool) -> None:
+            if isinstance(value, InstructionRef):
                 if value.identity in seen:
                     raise ConfigError(f"System section {value.origin} was placed or excluded twice")
                 seen.add(value.identity)
@@ -341,14 +371,14 @@ class PromptComposition:
         for value in excluded:
             claim(value, exclusion=True)
         excluded_ids = set(seen)
-        placed: list[SystemSection | BoundSystemSection | PluginSections] = []
-        rest: PluginSections | None = None
+        placed: list[Instructions | InstructionRef | PluginInstructions] = []
+        rest: PluginInstructions | None = None
         for value in selected:
-            if isinstance(value, PluginSections):
+            if isinstance(value, PluginInstructions):
                 if value.plugin is None:
                     if rest is not None:
                         raise ConfigError(
-                            "Only one PluginSections() rest slot is allowed per prompt"
+                            "Only one PluginInstructions() rest slot is allowed per prompt"
                         )
                     rest = value
                     placed.append(value)
@@ -357,7 +387,7 @@ class PromptComposition:
                     (item for item in contributions if item.owner is value.plugin), None
                 )
                 if contribution is None:
-                    raise ConfigError("PluginSections refers to an uninstalled plugin")
+                    raise ConfigError("PluginInstructions refers to an uninstalled plugin")
                 for section in contribution.sections:
                     if section.identity not in excluded_ids:
                         claim(section, exclusion=False)
@@ -367,9 +397,9 @@ class PromptComposition:
                 claim(section, exclusion=False)
                 placed.append(section)
         remaining = [section for identity, section in available.items() if identity not in seen]
-        resolved: list[SystemSection | BoundSystemSection] = []
+        resolved: list[Instructions | InstructionRef] = []
         for value in placed:
-            if isinstance(value, PluginSections):
+            if isinstance(value, PluginInstructions):
                 resolved.extend(remaining)
             else:
                 resolved.append(value)
@@ -378,14 +408,15 @@ class PromptComposition:
                 raise ConfigError(
                     "Unplaced system sections: "
                     + ", ".join(section.origin for section in remaining)
+                    + ". Place each explicitly or exclude it."
                 )
             resolved.extend(remaining)
         self.excluded = tuple(
-            value.origin for value in excluded if isinstance(value, BoundSystemSection)
+            value.origin for value in excluded if isinstance(value, InstructionRef)
         )
         self.entries = tuple(
             PromptEntry(value.resolve(), value.origin)
-            if isinstance(value, BoundSystemSection)
+            if isinstance(value, InstructionRef)
             else PromptEntry(value, value.title or "application section")
             for value in resolved
         )

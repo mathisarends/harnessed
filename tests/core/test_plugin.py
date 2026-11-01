@@ -2,9 +2,9 @@ import asyncio
 from typing import Self
 
 import pytest
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import Field, ValidationError
 
-from harnessed import Agent, ApprovalAnswer, Plugin, PluginState, tool
+from harnessed import Agent, ApprovalAnswer, Plugin, PluginConfig, PluginState, tool
 from harnessed.kernel import Context, Emit, PluginFailed, Priority, hook
 from harnessed.plugins import Approvals
 from harnessed.testing import ScriptedModel, call
@@ -33,16 +33,15 @@ async def test_plugin_mount_does_not_deepcopy_external_clients_or_locks():
 
 
 def test_plugin_config_schema_validates_external_options():
-    class ConfiguredConfig(BaseModel):
+    class ConfiguredConfig(PluginConfig):
         limit: int = Field(gt=0)
 
-    class Configured(Plugin):
-        Config = ConfiguredConfig
-        config: ConfiguredConfig
+    class Configured(Plugin[ConfiguredConfig]):
+        pass
 
-    assert Configured(limit=3).config.limit == 3
+    assert Configured(config=ConfiguredConfig(limit=3)).config.limit == 3
     with pytest.raises(ValidationError):
-        Configured(limit=0)
+        Configured(config=ConfiguredConfig(limit=0))
 
 
 async def test_failed_setup_reports_immediately_and_releases_partial_effects(caplog):

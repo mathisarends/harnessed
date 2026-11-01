@@ -30,6 +30,12 @@ library. Harnessed is distributed under the
 
 ## Unreleased
 
+Compose prompts as `SystemPrompt("Help with documents.", workspace.instructions,
+"Answer concisely.")`. Content is positional; `format`, `exclude` and `unplaced`
+remain keyword-only options. Replace `SystemPrompt(sections=parts)` with
+`SystemPrompt(*parts)` when migrating from 0.8.0. See the
+[prompt composition guide](guides/context.md#compose-the-exact-order).
+
 Library defaults can be published as `Kit(name, plugins)` and customized with
 `kit.without(*types)` and direct slot overrides. Composition uses local boundaries:
 direct entries override child-kit exports, sibling kits have equal precedence

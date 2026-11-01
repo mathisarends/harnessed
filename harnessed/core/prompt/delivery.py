@@ -9,7 +9,13 @@ from harnessed.core.errors import ConfigError
 from harnessed.kernel import Context, PluginLike, PluginSpec, as_plugin_spec
 
 from .context import DynamicContext
-from .values import PromptComposition, PromptContribution, SectionDelivery
+from .values import (
+    PluginInstructions,
+    PromptComposition,
+    PromptContribution,
+    SectionDelivery,
+    SystemPrompt,
+)
 
 
 def runtime_sections(
@@ -28,13 +34,15 @@ def runtime_sections(
     key = f"runtime.sections.{spec.name}.{uuid4().hex}"
 
     @wraps(spec.factory)
-    async def mount(ctx: Context, *args: Any, **kwargs: Any) -> AsyncGenerator[None, None]:
-        async with asynccontextmanager(spec.factory)(ctx, *args, **kwargs):
-            composition = PromptComposition(contributions=(contribution,))
+    async def mount(ctx: Context, *args: Any, **kwargs: Any) -> AsyncGenerator[object, None]:
+        async with asynccontextmanager(spec.factory)(ctx, *args, **kwargs) as instance:
+            composition = PromptComposition(
+                SystemPrompt(PluginInstructions()), contributions=(contribution,)
+            )
             text = await composition.render(ctx)
             if text:
                 ctx[DynamicContext].register(key, text, owner=ctx)
-            yield
+            yield instance
 
     return replace(
         spec,

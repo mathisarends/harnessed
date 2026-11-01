@@ -4,7 +4,16 @@ import threading
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import Inject, Plugin, ToolCall, ToolContext, plugin, tool
+from harnessed import (
+    Inject,
+    Plugin,
+    PluginInstructions,
+    SystemPrompt,
+    ToolCall,
+    ToolContext,
+    plugin,
+    tool,
+)
 from harnessed.core.hooks import ReviewToolResult
 from harnessed.core.messages import PolicyDecision, Role
 from harnessed.core.model import ModelChunk
@@ -194,6 +203,7 @@ async def test_builtin_writes_are_barriers_between_read_groups_and_same_file_ali
     async with Application(
         model=model,
         plugins=[Approvals(default=PolicyDecision.ALLOW), filesystem(), FilesystemTools()],
+        system_prompt=SystemPrompt(PluginInstructions()),
     ).session() as agent:
         agent_audit = Audit(agent)
         running = asyncio.create_task(agent.run("go"))

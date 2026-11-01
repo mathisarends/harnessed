@@ -14,8 +14,8 @@ from harnessed.plugins import (
     AgentLoop,
     Approvals,
     ContextValue,
-    Instructions,
     NoopTracer,
+    PromptRenderer,
     Service,
     ToolOutputLimit,
 )
@@ -30,7 +30,7 @@ def test_resolved_composition_contains_actual_configured_plugins():
         ToolOutputLimit,
         Approvals,
         NoopTracer,
-        Instructions,
+        PromptRenderer,
         Service,
     ]
     assert app.plugins[1].config.max_steps == 9

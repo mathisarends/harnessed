@@ -74,7 +74,7 @@ class OpenTelemetryConfig(PluginConfig):
     max_content_length: int = Field(default=16_384, ge=1)
 
 
-class OpenTelemetryTracer(Plugin, slot="tracer"):
+class OpenTelemetryTracer(Plugin[OpenTelemetryConfig], slot="tracer"):
     """Export runtime spans through an application-owned OpenTelemetry provider.
 
     Import this module explicitly after installing ``harnessed[otel]``. The
@@ -83,9 +83,6 @@ class OpenTelemetryTracer(Plugin, slot="tracer"):
     replacing it. Content capture is opt-in and bounded per input/output field.
     """
 
-    Config = OpenTelemetryConfig
-    config: OpenTelemetryConfig
-
     def __init__(
         self,
         *,
@@ -93,7 +90,11 @@ class OpenTelemetryTracer(Plugin, slot="tracer"):
         capture_content: bool = False,
         max_content_length: int = 16_384,
     ) -> None:
-        super().__init__(capture_content=capture_content, max_content_length=max_content_length)
+        super().__init__(
+            config=OpenTelemetryConfig(
+                capture_content=capture_content, max_content_length=max_content_length
+            )
+        )
         self.tracer_provider = tracer_provider
 
     async def setup(self, ctx: Context) -> None:

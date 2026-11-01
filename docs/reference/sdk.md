@@ -145,7 +145,7 @@ Replacements keep the first inherited slot position.
 
 `agent.describe()` returns a `CompositionDescription` with `plugins` and `removed`
 tuples and a readable `str()` rendering. Plugin descriptions contain `name`,
-`kit_path`, `origin`, `slot`, `needs`, `provides` and recursive `replaces` tuples.
+`kit_path`, `origin`, `slot`, `needs`, `observes`, `provides` and recursive `replaces` tuples.
 Exclusions contain `plugin` and `removed_by`. Direct inputs use an empty kit
 path; built-ins use `("harnessed",)`. The result records static declarations,
 not live activation or services published dynamically by setup. Only selected
@@ -163,25 +163,30 @@ these settings once, and `ModelRequestedEvent.model` records the selected
 
 ## System prompt composition
 
-`SystemPrompt(*, sections=(), format=PromptFormat.PLAIN, exclude=(),
-unplaced=Unplaced.APPEND)` is an immutable document. Sections are strings,
-keyword-only `SystemSection(text="", title=None, description="")` values,
-plugin-bound references, `PluginSections(plugin)` groups, a `PluginSections()`
-rest slot, or nested SystemPrompt documents.
+`SystemPrompt(*sections, format=PromptFormat.PLAIN, exclude=(),
+unplaced=Unplaced.ERROR)` is an immutable document. Pass content as positional
+arguments in the intended order, such as
+`SystemPrompt("Help with documents.", workspace.instructions, "Answer concisely.")`.
+For an iterable, use `SystemPrompt(*parts)`. Rendering and placement policies
+remain keyword-only options. Sections are strings,
+keyword-only `Instructions(text="", title=None, description="")` values,
+plugin-bound references, `PluginInstructions(plugin)` groups, a `PluginInstructions()`
+rest slot, kit-owned `InstructionFragment` values, or nested SystemPrompt documents.
 The outermost format governs the flattened document: PLAIN joins text with blank
 lines, MARKDOWN adds optional level-two headings, and XML renders escaped section
 elements. Untitled and empty sections have defined behavior in every format; see
 the [context guide](../guides/context.md).
 
-Plugins declare sections as attributes or synchronous `@system_section(title=...)`
+Plugins declare sections as attributes or synchronous `@instructions(title=...)`
 methods returning `str | None`. Configuration providers run once at agent
-construction. `SystemSection.from_file(path=..., title=..., missing_ok=False)`
-and `SystemSection.from_factory(factory=..., title=..., description=...)` run once
+construction. `Instructions.from_file(path=..., title=..., missing_ok=False)`
+and `Instructions.from_factory(factory=..., title=..., description=...)` run once
 per opened session. Factories are async callbacks accepting the session Context.
 
-Unplaced sections append in resolved plugin and declaration order by default,
-including with `Agent(system_prompt="...")` or no application text. Setup order
-does not affect them. A rest slot is resolved globally after all explicit placements
+Every selected plugin declaration requires placement or exclusion, including
+with `Agent(system_prompt="...")` or no application text. Empty content still
+requires a decision. `Unplaced.APPEND` is an explicit opt-in only. Setup order
+does not affect prompt order. A rest slot is resolved globally after all explicit placements
 and exclusions, including later nested ones; at most one slot is allowed per prompt.
 The outermost document controls format and unplaced policy. `Unplaced.ERROR`
 requires complete placement or exclusion, but open groups and slots accept future
@@ -196,6 +201,13 @@ removed on suspension or unmount; providers/factories run once per activation an
 failures roll back the mount. `IGNORE` does not execute section providers, factories
 or file reads. The system text stays fixed; new tools still change the tool catalog.
 Use ContextValue for dynamic facts. All prompt policies are exported by `harnessed`.
+
+`Kit(name, plugins, fragments={"instructions": (recipe, nested_kit), ...})`
+optionally defines named ordered groups. `kit.instructions` defaults to all selected
+descendants; `kit.fragment(name)` selects a named group. `without` drops removed
+selectors; slot replacements contribute instead of discarded recipes, including
+through nested kits. Individual instruction references never follow replacements.
+Place or exclude fragments explicitly. See [kit fragments](../guides/context.md#delegate-a-kits-internal-ordering).
 
 ## Session
 
@@ -300,11 +312,12 @@ unhashable. See [values and record versions](../concepts/values.md).
 | @tool(metadata=(value, ...)) | Immutable application annotations keyed by exact type; no automatic model or persistence effect |
 | @tool(chain=ToolChain.STOP_AFTER) | Run this tool, then skip remaining calls from the same model response; default CONTINUE |
 | ToolResult(..., break_chain=True) | Request the same boundary dynamically; already-started parallel calls finish |
-| PluginConfig / Config = MyConfig | Module-level validated configuration model |
+| Plugin[MyConfig] / config=MyConfig(...) | One frozen module-level model supplies runtime validation and the type of self.config |
 | PluginState(factory) | Typed state freshly created before each mount's setup; available through cleanup |
-| name: Inject[T] | Per-mount dependency assigned before setup; optional T \| None receives None if absent |
+| name = dependency(T) | Stable typed service binding and lifetime requirement; no duplicate needs entry |
+| name = dependency(T, optional=True) | Nonblocking service-or-None binding; provider changes restart the activation |
 | class Capability(Plugin, provides=True) | Publish the mount under the declaring class; provides=Key selects another key |
-| Plugin.create_instance() | Customize fresh instance construction; defaults to shallow copying shared inputs |
+| Plugin.create_instance() | Customize fresh instance construction; defaults to replaying explicit constructor arguments |
 | @plugin | Kernel services and hooks in an async generator |
 | class Capability(Plugin, needs=(Backend,)) / Inject[T] | Temporal lifetime / per-call service resolution |
 | @hook / Context.hook | Typed observer, bail or waterfall extension |
@@ -314,10 +327,21 @@ unhashable. See [values and record versions](../concepts/values.md).
 | ctx.effect(cleanup) | Owned idempotent sync/async cleanup |
 | await ctx.enter(manager) | Async context manager exited when the scope closes |
 | Service(T, implementation) | Structural dependency registration |
+| mount_plugin(recipe, services=...) | Typed test activation with cleanup; exported by harnessed.testing |
+
+`class Files(Plugin[FilesConfig]): ...` inherits a typed constructor requiring
+`config=FilesConfig(...)`; the model is validated when it is constructed. Missing,
+non-model, mutable or mismatched configurations fail before activation. The
+`Config = ...` alias and arbitrary keyword forwarding were removed. Plain
+`class Observer(Plugin): ...` needs no config argument. Explicit feature constructors
+may build the model internally while preserving their own typed signatures.
+See [typed configuration](../guides/plugins.md#typed-configuration-without-duplicate-declarations).
 
 A keyword-only ToolContext is implicit; ordinary dependencies use Inject.
-Declare service requirements explicitly with `needs=(...)` for composition and
-temporal restarts. `Inject` binds values without adding lifetime dependencies.
+Declare stable service bindings with `dependency` from `harnessed.kernel`; add
+`needs=(...)` for lifetime requirements without an attribute. Optional fields are
+reported as `observes`. Class-level `Inject` fields were removed. Callable `Inject`
+parameters bind values without adding lifetime dependencies.
 Model-filled parameters become a strict Pydantic form; unknown fields and invalid
 values fail before invocation. `@tool(params=MyParams)` uses a Pydantic `BaseModel`
 subclass as the top-level argument schema and passes its validated instance to the

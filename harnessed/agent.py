@@ -13,8 +13,8 @@ from harnessed.core.errors import ConfigError
 from harnessed.core.event_registry import EventRegistry
 from harnessed.core.model import Model
 from harnessed.core.outputs import OutputContract, OutputTypes
-from harnessed.core.plugin import Service, plugin_contribution, plugin_events
-from harnessed.core.prompt.instructions import Instructions
+from harnessed.core.plugin import Plugin, Service, plugin_contribution, plugin_events
+from harnessed.core.prompt.instructions import PromptRenderer
 from harnessed.core.prompt.values import PromptComposition, SystemPrompt
 from harnessed.core.runtime.agent_loop import AgentLoop
 from harnessed.core.runtime.opener import open_session
@@ -47,7 +47,7 @@ class Agent:
         self.plugin_validation = PluginValidation(plugin_validation)
         supplied: list[PluginInput] = list(plugins)
         if system_prompt is not None:
-            supplied.insert(0, Instructions(system_prompt))
+            supplied.insert(0, PromptRenderer(system_prompt))
         if model is not None:
             supplied.insert(0, Service(Model, model))
         composition = compose_plugins(
@@ -58,7 +58,7 @@ class Agent:
                 ToolOutputLimit(),
                 Approvals(),
                 NoopTracer(),
-                Instructions(),
+                PromptRenderer(),
             ],
         )
         self._description = composition.description
@@ -75,14 +75,17 @@ class Agent:
                     )
                 value = Service(Model, implementation)
             normalized.append(value)
-        declared = next((value for value in normalized if isinstance(value, Instructions)), None)
+        declared = next((value for value in normalized if isinstance(value, PromptRenderer)), None)
         self.prompt = PromptComposition(
             declared.values if declared is not None else None,
             (plugin_contribution(value) for value in normalized),
+            fragments=composition.instruction_fragments(
+                {id(value): value for value in normalized if isinstance(value, Plugin)}
+            ),
         )
         self.plugins = tuple(
-            Instructions(value.values, composition=self.prompt)
-            if isinstance(value, Instructions)
+            PromptRenderer(value.values, composition=self.prompt)
+            if isinstance(value, PromptRenderer)
             else value
             for value in normalized
         )

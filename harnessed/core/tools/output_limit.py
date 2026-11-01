@@ -12,15 +12,11 @@ class ToolOutputLimitConfig(PluginConfig):
     max_chars: Annotated[int, Field(ge=256)] = 32_000
 
 
-class ToolOutputLimit(Plugin, slot="output_limit"):
+class ToolOutputLimit(Plugin[ToolOutputLimitConfig], slot="output_limit"):
     """Bound final tool results before they enter the durable log and model history."""
 
-    Config = ToolOutputLimitConfig
-
-    config: ToolOutputLimitConfig
-
     def __init__(self, max_chars: int = 32_000) -> None:
-        super().__init__(max_chars=max_chars)
+        super().__init__(config=ToolOutputLimitConfig(max_chars=max_chars))
 
     @property
     def max_chars(self) -> int:

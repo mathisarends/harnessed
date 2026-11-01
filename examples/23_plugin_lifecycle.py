@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import Protocol
 
-from harnessed import Agent, ApprovalAnswer, Plugin, SystemPrompt, SystemSection, ToolCall, tool
+from harnessed import Agent, ApprovalAnswer, Instructions, Plugin, SystemPrompt, ToolCall, tool
 from harnessed.events import TurnEndedEvent
 from harnessed.hooks import ExecuteTool, SessionAppended
 from harnessed.kernel import Context, Inject, PluginState, plugin
@@ -45,7 +45,7 @@ class NotesTools(Plugin, needs=(Notes,)):
 
     def __init__(self, config: NotesConfig):
         super().__init__()
-        self.usage = SystemSection(text=config.instruction)
+        self.usage = Instructions(text=config.instruction)
 
     @tool
     async def save_note(self, text: str, notes: Inject[Notes]) -> str:
@@ -78,7 +78,7 @@ async def trace(ctx: Context):
 async def main():
     notes = NotesTools(NotesConfig())
     harness = Agent(
-        system_prompt=SystemPrompt(sections=(notes.usage,)),
+        system_prompt=SystemPrompt(notes.usage),
         model=ScriptedModel(
             [
                 [ModelChunk(tool_call=ToolCall("save_note", {"text": "Try Harnessed"}))],

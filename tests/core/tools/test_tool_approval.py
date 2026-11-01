@@ -7,10 +7,10 @@ from harnessed.testing import ScriptedModel
 from tests._audit import Audit
 
 
-class Cleanup(Plugin):
+class Cleanup(Plugin, provides=True):
     def __init__(self):
         super().__init__()
-        self.deleted = []
+        self.deleted: list[str] = []
 
     @tool
     async def cleanup(self, *, call: ToolContext) -> str:
@@ -37,7 +37,9 @@ async def test_a_tool_asks_the_configured_approver_mid_call():
         requests = [e for e in session_audit.events if isinstance(e, ApprovalRequestedEvent)]
         assert [e.scope for e in requests] == ["tool-call"] * 3
         assert requests[-1].grant_id is not None  # the ALWAYS grant answered the third call
-        assert tools.deleted == ["c1", "c2"]
+        assert tools.deleted == []
+        active = session.ctx[Cleanup]
+        assert active.deleted == ["c1", "c2"]
 
 
 async def test_a_stream_consumer_answers_a_tool_approval():
@@ -49,4 +51,6 @@ async def test_a_stream_consumer_answers_a_tool_approval():
             if isinstance(event, events.ApprovalNeededEvent):
                 assert event.reason == "Delete 3 generated files?"
                 await session.approvals.answer(event.request_id, ApprovalAnswer.ALLOW)
-        assert tools.deleted == ["c0"]
+        assert tools.deleted == []
+        active = session.ctx[Cleanup]
+        assert active.deleted == ["c0"]

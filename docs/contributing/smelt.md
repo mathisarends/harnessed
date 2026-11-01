@@ -144,7 +144,7 @@ uv run smelt config schema > .smelt.schema.json
    cycles, with separately configurable treatment of annotation-only cycles.
    Preserve each edge and its import phase in the diagnostic witness.
 2. Recognize static lazy-export tables paired with `__getattr__` and the SDK
-   type stub. `system_section` is a documented public export, but currently needs
+   type stub. `instructions` is a documented public export, but currently needs
    a reasoned exception to internal-member analysis.
 3. Diagnose unknown suppression identifiers. During adoption, readable rule names
    in `ignore[...]` comments were silently unrecognized, whereas unused valid

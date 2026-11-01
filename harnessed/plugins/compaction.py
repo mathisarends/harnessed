@@ -70,12 +70,8 @@ class CompactionConfig(CompactionSettings):
     trigger: _Trigger = _DEFAULT_TRIGGER
 
 
-class Compaction(Plugin, slot="compaction"):
+class Compaction(Plugin[CompactionConfig], slot="compaction"):
     """Choose when to summarize, what to retain and which model to use."""
-
-    Config = CompactionConfig
-
-    config: CompactionConfig
 
     def __init__(
         self,
@@ -91,13 +87,15 @@ class Compaction(Plugin, slot="compaction"):
     ) -> None:
         super().__init__(
             needs=[Model, TokenCounter],
-            trigger=trigger,
-            keep_turns=keep_turns,
-            keep_steps=keep_steps,
-            keep_first_turns=keep_first_turns,
-            preserve_turns=preserve_turns,
-            summary_tokens=summary_tokens,
-            focus=focus,
+            config=CompactionConfig(
+                trigger=trigger,
+                keep_turns=keep_turns,
+                keep_steps=keep_steps,
+                keep_first_turns=keep_first_turns,
+                preserve_turns=preserve_turns,
+                summary_tokens=summary_tokens,
+                focus=focus,
+            ),
         )
         self.summarizer = summarizer
 

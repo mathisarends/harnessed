@@ -10,10 +10,10 @@ from harnessed import (
     Agent,
     File,
     Image,
+    Instructions,
     Plugin,
     Session,
     SystemPrompt,
-    SystemSection,
     ToolCall,
     tool,
 )
@@ -82,10 +82,8 @@ async def main():
         harness = Agent(
             model=model,
             system_prompt=SystemPrompt(
-                sections=(
-                    SystemSection(text="You are a code reviewer."),
-                    SystemSection.from_file(path=root / "AGENTS.md"),
-                )
+                Instructions(text="You are a code reviewer."),
+                Instructions.from_file(path=root / "AGENTS.md"),
             ),
             plugins=[
                 ContextValue("ci", "Authentication tests are available."),

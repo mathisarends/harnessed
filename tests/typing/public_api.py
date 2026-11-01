@@ -39,7 +39,15 @@ from harnessed.events import (
     TurnFinishedEvent,
     TurnOutcome,
 )
-from harnessed.kernel import Context, Inject, PluginDependencyIssue, PluginSpec, hook, plugin
+from harnessed.kernel import (
+    Context,
+    Inject,
+    PluginDependencyIssue,
+    PluginSpec,
+    dependency,
+    hook,
+    plugin,
+)
 from harnessed.models import ToolArgumentsMode, ToolCallDelta, ToolCallStart
 from harnessed.plugins import AgentLoop, Spill
 
@@ -53,7 +61,7 @@ assert_type(configured("workspace", enabled=False), PluginSpec)
 
 
 class EventObserver(Plugin, needs=(SessionLog,)):
-    log: Inject[SessionLog]
+    log = dependency(SessionLog)
 
     @hook(AssistantMessageEvent)
     async def on_assistant(self, event: AssistantMessageEvent) -> None:

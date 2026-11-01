@@ -22,9 +22,7 @@ async def test_explicit_output_policy_on_tool_methods(limit):
     async with Agent(
         model=model,
         plugins=plugins,
-        system_prompt=SystemPrompt(
-            sections=tuple(p.usage for p in plugins if isinstance(p, Spill))
-        ),
+        system_prompt=SystemPrompt(*(p.usage for p in plugins if isinstance(p, Spill))),
     ).session() as session:
         result = (await session.run("Read the instructions")).tool_calls[0][1]
         if limit is None:

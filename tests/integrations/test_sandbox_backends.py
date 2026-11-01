@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from harnessed import Agent
+from harnessed import Agent, PluginInstructions, SystemPrompt
 from harnessed.integrations import bubblewrap, docker
 from harnessed.integrations.sandbox import (
     SandboxConfig,
@@ -422,7 +422,11 @@ async def test_live_bubblewrap_shell_and_filesystem_share_isolation(tmp_path):
 
 async def exercise_live_sandbox(sandbox, tmp_path):
     (tmp_path / "input.txt").write_text("source", encoding="utf-8")
-    agent = Agent(model=ScriptedModel([]), plugins=[sandbox, FilesystemTools(), ShellTools()])
+    agent = Agent(
+        model=ScriptedModel([]),
+        plugins=[sandbox, FilesystemTools(), ShellTools()],
+        system_prompt=SystemPrompt(PluginInstructions()),
+    )
     async with agent.session() as session:
         services = sandbox.services(session)
         files = services.file_system

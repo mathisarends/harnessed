@@ -45,7 +45,7 @@ async def main():
     )
     spill = Spill(threshold_tokens=100, preview_tokens=8)
     agent = Agent(
-        system_prompt=SystemPrompt(sections=(spill.usage,)),
+        system_prompt=SystemPrompt(spill.usage),
         model=model,
         plugins=[
             AgentLoop(context_window=2000),

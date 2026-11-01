@@ -1,5 +1,6 @@
 from .context import Context, ContextClosed, Key, MissingService, RegistrationState
 from .declarations import Bundle, HookEntry, PluginBase, Registration
+from .dependencies import DependencyField, dependency
 from .di import BindingPlan, Dependency, Inject, InjectMarker, binding_plan
 from .effects import Disposer, effect, run_sync
 from .events import (
@@ -27,6 +28,7 @@ __all__ = [
     "Context",
     "ContextClosed",
     "Dependency",
+    "DependencyField",
     "Disposer",
     "Emit",
     "Event",
@@ -56,6 +58,7 @@ __all__ = [
     "Waterfall",
     "as_plugin_spec",
     "binding_plan",
+    "dependency",
     "effect",
     "hook",
     "on",

@@ -10,7 +10,7 @@ from typing import Annotated, Protocol
 from pydantic import Field
 
 from harnessed.core.plugin import Plugin, PluginConfig
-from harnessed.core.prompt.values import SystemSection
+from harnessed.core.prompt.values import Instructions
 from harnessed.core.tools import ToolError, ToolRegistry, tool
 from harnessed.kernel import Context, Inject, run_sync
 
@@ -216,10 +216,12 @@ class LocalFileSystem:
         await run_sync(edit)
 
 
-class FilesystemTools(Plugin, needs=(FileSystemBackend, ToolRegistry)):
+class FilesystemTools[ConfigT: PluginConfig](
+    Plugin[ConfigT], needs=(FileSystemBackend, ToolRegistry)
+):
     """Expose workspace tools through a separately owned FileSystemBackend service."""
 
-    usage = SystemSection(
+    usage = Instructions(
         text=(
             "File paths are relative to the workspace. Read a range before editing. "
             "Use glob and grep to discover relevant files."
@@ -307,17 +309,15 @@ class FilesystemConfig(PluginConfig):
     root: Path = Path(".")
 
 
-class Filesystem(FilesystemTools, slot="filesystem"):
+class Filesystem(FilesystemTools[FilesystemConfig], slot="filesystem"):
     """Own a local or application-supplied backend and its workspace tools."""
 
     needs = (ToolRegistry,)
-    Config = FilesystemConfig
-    config: FilesystemConfig
 
     def __init__(
         self, root: str | Path = ".", *, implementation: FileSystemBackend | None = None
     ) -> None:
-        super().__init__(root=Path(root))
+        super().__init__(config=FilesystemConfig(root=Path(root)))
         self.implementation = implementation
 
     async def setup(self, ctx: Context) -> None:

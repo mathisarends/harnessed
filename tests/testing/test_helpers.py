@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from harnessed import Agent, PolicyDecision, SystemPrompt, SystemSection
+from harnessed import Agent, Instructions, PolicyDecision, SystemPrompt
 from harnessed.plugins import Approvals, Filesystem, Shell
 from harnessed.plugins.filesystem import FileSystemBackend, LocalFileSystem
 from harnessed.testing import FakeShell, InMemoryFS, ScriptedModel, assert_tool_called, call, reply
@@ -14,7 +14,7 @@ async def test_scripted_replies_and_fake_shell_keep_process_results_and_argument
     shell = FakeShell({"pytest": "1 passed"})
     model = ScriptedModel([call("run_command", argv=["pytest"]), reply("done")])
     result = await Agent(
-        system_prompt=SystemPrompt(sections=(shell.usage,)),
+        system_prompt=SystemPrompt(shell.usage),
         model=model,
         plugins=[shell, Approvals(default=PolicyDecision.ALLOW)],
     ).run("Test")
@@ -32,7 +32,7 @@ async def test_virtual_and_local_filesystems_share_ranges_newlines_and_edit_sema
 ):
     inmemoryfs = InMemoryFS()
     async with Agent(
-        system_prompt=SystemPrompt(sections=(inmemoryfs.usage,)),
+        system_prompt=SystemPrompt(inmemoryfs.usage),
         model=ScriptedModel([]),
         plugins=[inmemoryfs],
     ).session() as session:
@@ -57,13 +57,7 @@ async def test_pytest_fixture_replaces_feature_slots_without_duplicate_configura
     filesystem = Filesystem(tmp_path)
     shell = Shell(tmp_path)
     configured = Agent(
-        system_prompt=SystemPrompt(
-            sections=(
-                SystemSection(text="Fixed."),
-                filesystem.usage,
-                shell.usage,
-            )
-        ),
+        system_prompt=SystemPrompt(Instructions(text="Fixed."), filesystem.usage, shell.usage),
         plugins=[filesystem, shell],
     )
     virtual_files = InMemoryFS({"note.txt": "virtual"})
@@ -71,7 +65,7 @@ async def test_pytest_fixture_replaces_feature_slots_without_duplicate_configura
     async with harnessed_session(
         configured,
         system_prompt=SystemPrompt(
-            sections=(SystemSection(text="Fixed."), virtual_files.usage, virtual_shell.usage)
+            Instructions(text="Fixed."), virtual_files.usage, virtual_shell.usage
         ),
         script=[call("read_file", path="note.txt"), reply("done")],
         plugins=[virtual_files, virtual_shell],
