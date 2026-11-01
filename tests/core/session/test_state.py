@@ -12,7 +12,7 @@ from harnessed import (
     Inject,
     Observation,
     Plugin,
-    PluginInstructions,
+    PluginOrder,
     Session,
     SessionState,
     SystemPrompt,
@@ -30,7 +30,7 @@ from harnessed.testing import ExtractiveSummarizer, ScriptedModel, call
 
 async def test_roundtrip_continuation_matches_a_live_conversation_and_uses_current_configuration():
     model = ScriptedModel(["first", "second", "third"])
-    agent = Agent(model=model, system_prompt="Original instructions.")
+    agent = Agent(model=model, instructions="Original instructions.")
     async with agent.session() as session:
         await session.context.set("customer", "one")
         first = await session.run("Remember this.")
@@ -45,7 +45,7 @@ async def test_roundtrip_continuation_matches_a_live_conversation_and_uses_curre
         assert session.context.values == {"customer": "one"}
         assert not session.events and not session.turns
     newer = ScriptedModel(["updated"])
-    async with Agent(model=newer, system_prompt="New instructions.").session(
+    async with Agent(model=newer, instructions="New instructions.").session(
         state=restored
     ) as session:
         await session.context.set("customer", "two")
@@ -142,7 +142,7 @@ async def test_spill_contents_survive_compaction_json_and_session_close():
             return text
 
     agent = Agent(
-        system_prompt=SystemPrompt(PluginInstructions()),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([call(Source.source), "stored", "continued"]),
         plugins=[
             Source(),
@@ -221,7 +221,7 @@ async def test_default_state_images_and_spill_need_no_filesystem_writes(monkeypa
     monkeypatch.setattr(Path, "write_bytes", denied)
     monkeypatch.setattr(Path, "write_text", denied)
     agent = Agent(
-        system_prompt=SystemPrompt(PluginInstructions()),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([call(Source.source), "done"]),
         plugins=[Source(), Spill(threshold_tokens=32)],
     )
@@ -235,7 +235,7 @@ async def test_repeated_imports_compact_the_active_state_without_resurrecting_ol
     model = ScriptedModel([f"reply {index}" for index in range(10)])
     agent = Agent(
         model=model,
-        system_prompt="Current instructions.",
+        instructions="Current instructions.",
         plugins=[
             Compaction(
                 trigger=every_turns(1),

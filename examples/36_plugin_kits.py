@@ -2,7 +2,14 @@
 
 import asyncio
 
-from harnessed import Agent, Kit, Plugin, SystemPrompt, instructions, tool
+from harnessed import (
+    Agent,
+    Kit,
+    Plugin,
+    PluginOrder,
+    SystemPrompt,
+    tool,
+)
 from harnessed.plugins import AgentLoop
 from harnessed.testing import ScriptedModel, call
 
@@ -12,9 +19,8 @@ class TextTools(Plugin, slot="example.text"):
         super().__init__()
         self.prefix = prefix
 
-    @instructions()
-    def usage(self) -> str:
-        return f"Use label to format text with the {self.prefix!r} prefix."
+    def instructions(self) -> SystemPrompt:
+        return SystemPrompt(f"Use label to format text with the {self.prefix!r} prefix.")
 
     @tool(readonly=True)
     def label(self, text: str) -> str:
@@ -28,7 +34,11 @@ class DebugTools(Plugin):
 
 
 def library_kit() -> Kit:
-    return Kit("library", [TextTools(), DebugTools(), AgentLoop(max_steps=12)])
+    return Kit(
+        "library",
+        [TextTools(), DebugTools(), AgentLoop(max_steps=12)],
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+    )
 
 
 async def main() -> None:
@@ -36,7 +46,7 @@ async def main() -> None:
     agent = Agent(
         model=ScriptedModel([call("label", text="Hello"), "Application: Hello"]),
         plugins=[project, TextTools(prefix="Application")],
-        system_prompt=SystemPrompt(project.instructions),
+        instructions="Help with text.",
     )
     print(agent.describe())
     print((await agent.run("Label Hello")).text)

@@ -10,7 +10,7 @@ from typing import Annotated, Protocol
 from pydantic import Field
 
 from harnessed.core.plugin import Plugin, PluginConfig
-from harnessed.core.prompt.values import Instructions
+from harnessed.core.prompt.values import Instructions, SystemPrompt
 from harnessed.core.tools import ToolError, ToolRegistry, tool
 from harnessed.kernel import Context, Inject, run_sync
 
@@ -216,17 +216,21 @@ class LocalFileSystem:
         await run_sync(edit)
 
 
+_FILESYSTEMTOOLS_INSTRUCTIONS = Instructions(
+    text=(
+        "File paths are relative to the workspace. Read a range before editing. "
+        "Use glob and grep to discover relevant files."
+    )
+)
+
+
 class FilesystemTools[ConfigT: PluginConfig](
     Plugin[ConfigT], needs=(FileSystemBackend, ToolRegistry)
 ):
     """Expose workspace tools through a separately owned FileSystemBackend service."""
 
-    usage = Instructions(
-        text=(
-            "File paths are relative to the workspace. Read a range before editing. "
-            "Use glob and grep to discover relevant files."
-        )
-    )
+    def instructions(self) -> SystemPrompt:
+        return SystemPrompt(_FILESYSTEMTOOLS_INSTRUCTIONS)
 
     @tool(readonly=True, parallel=True)
     async def read_file(

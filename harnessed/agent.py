@@ -13,7 +13,7 @@ from harnessed.core.errors import ConfigError
 from harnessed.core.event_registry import EventRegistry
 from harnessed.core.model import Model
 from harnessed.core.outputs import OutputContract, OutputTypes
-from harnessed.core.plugin import Plugin, Service, plugin_contribution, plugin_events
+from harnessed.core.plugin import Service, plugin_contribution, plugin_events
 from harnessed.core.prompt.instructions import PromptRenderer
 from harnessed.core.prompt.values import PromptComposition, SystemPrompt
 from harnessed.core.runtime.agent_loop import AgentLoop
@@ -40,14 +40,15 @@ class Agent:
         self,
         *,
         model: Model | str | None = None,
-        system_prompt: str | SystemPrompt | None = None,
-        plugins: Iterable[PluginInput] = (),
+        instructions: str | None = None,
+        prompt: SystemPrompt | None = None,
+        plugins: Iterable[PluginInput | None] = (),
         plugin_validation: PluginValidation = PluginValidation.ERROR,
     ) -> None:
         self.plugin_validation = PluginValidation(plugin_validation)
-        supplied: list[PluginInput] = list(plugins)
-        if system_prompt is not None:
-            supplied.insert(0, PromptRenderer(system_prompt))
+        supplied: list[PluginInput] = [value for value in plugins if value is not None]
+        if prompt is not None:
+            supplied.insert(0, PromptRenderer(prompt))
         if model is not None:
             supplied.insert(0, Service(Model, model))
         composition = compose_plugins(
@@ -79,12 +80,10 @@ class Agent:
         self.prompt = PromptComposition(
             declared.values if declared is not None else None,
             (plugin_contribution(value) for value in normalized),
-            fragments=composition.instruction_fragments(
-                {id(value): value for value in normalized if isinstance(value, Plugin)}
-            ),
+            instructions=instructions,
         )
         self.plugins = tuple(
-            PromptRenderer(value.values, composition=self.prompt)
+            PromptRenderer(self.prompt.document, composition=self.prompt)
             if isinstance(value, PromptRenderer)
             else value
             for value in normalized

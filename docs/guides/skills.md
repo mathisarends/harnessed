@@ -6,7 +6,7 @@ when each session opens. Only names and descriptions enter the system prompt.
 The model loads complete instructions and UTF-8 resources when it needs them.
 
 ```python
-from harnessed import Agent, SystemPrompt
+from harnessed import Agent, PluginOrder, SystemPrompt
 from harnessed.plugins import Skill, Skills
 
 skills = Skills(
@@ -21,7 +21,7 @@ skills = Skills(
 )
 agent = Agent(
     model="deepseek:deepseek-chat",
-    system_prompt=SystemPrompt(skills.catalog),
+    prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     plugins=[skills],
 )
 ```

@@ -2,7 +2,16 @@
 
 import asyncio
 
-from harnessed import Agent, Plugin, SessionState, SystemPrompt, ToolResult, ToolStatus, tool
+from harnessed import (
+    Agent,
+    Plugin,
+    PluginOrder,
+    SessionState,
+    SystemPrompt,
+    ToolResult,
+    ToolStatus,
+    tool,
+)
 from harnessed.plugins import Spill
 from harnessed.testing import ScriptedModel, call
 
@@ -20,7 +29,7 @@ async def main():
     model = ScriptedModel([call("test_log"), "The full output is stored."])
     spill = Spill(threshold_tokens=100, preview_tokens=16, max_files=8, max_bytes=1_000_000)
     agent = Agent(
-        system_prompt=SystemPrompt(spill.usage),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
         plugins=[Logs(), spill],
     )
@@ -35,7 +44,7 @@ async def main():
     # Import the compact conversation and its referenced resources.
     spill_2 = Spill(threshold_tokens=100)
     resumed = Agent(
-        system_prompt=SystemPrompt(spill_2.usage),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([call("read_spill", path=path, offset=1, limit=24), "Read the range."]),
         plugins=[spill_2],
     )

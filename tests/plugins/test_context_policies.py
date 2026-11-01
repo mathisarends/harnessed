@@ -3,11 +3,14 @@ import json
 
 import pytest
 
-from harnessed import Agent as Application
+from harnessed import (
+    Agent as Application,
+)
 from harnessed import (
     Inject,
     Observation,
     Plugin,
+    PluginOrder,
     PolicyDecision,
     Session,
     SystemPrompt,
@@ -54,7 +57,7 @@ async def test_large_results_spill_to_session_files_and_keep_structured_metadata
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("large"))], "done"])
     spill = Spill(threshold_tokens=100, preview_tokens=8)
     app = Application(
-        system_prompt=SystemPrompt(spill.usage),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
         plugins=[Approvals(default=PolicyDecision.ALLOW), tools, spill],
     )
@@ -82,7 +85,7 @@ async def test_large_results_spill_to_session_files_and_keep_structured_metadata
         state = agent.snapshot()
     spill_2 = Spill()
     async with Application(
-        system_prompt=SystemPrompt(spill_2.usage),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([]),
         plugins=[spill_2],
     ).session(state=state) as restored:
@@ -92,7 +95,7 @@ async def test_large_results_spill_to_session_files_and_keep_structured_metadata
 async def test_session_spill_reads_unicode_ranges_reject_escape_and_reuse_content(tmp_path):
     spill = Spill()
     async with Application(
-        system_prompt=SystemPrompt(spill.usage),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([]),
         plugins=[spill],
     ).session() as session:
@@ -112,7 +115,9 @@ async def test_read_spill_tool_returns_bounded_ranges_without_respilling():
     model = ScriptedModel([])
     spill_5 = Spill(threshold_tokens=1)
     async with Application(
-        system_prompt=SystemPrompt(spill_5.usage), model=model, plugins=[spill_5]
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+        model=model,
+        plugins=[spill_5],
     ).session() as agent:
         agent_audit = Audit(agent)
         ref = await agent.ctx[SpillStore].put("x" * 100)

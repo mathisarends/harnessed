@@ -22,7 +22,11 @@ from pydantic_ai import direct
 from pydantic_ai import messages as native
 from pydantic_ai.models.function import DeltaThinkingPart, DeltaToolCall, FunctionModel
 
-from harnessed import Agent, Plugin, events
+from harnessed import (
+    Agent,
+    Plugin,
+    events,
+)
 from harnessed.core.errors import (
     AuthError,
     ConfigError,
@@ -968,7 +972,7 @@ async def test_native_anthropic_provider_preserves_signed_thinking_across_tool_r
             "claude-sonnet-5-5", provider=AnthropicProvider(api_key="test", http_client=client)
         )
         result = await Agent(
-            model=PydanticAIModel(model), system_prompt="Fixed rules.", plugins=[Calculator()]
+            model=PydanticAIModel(model), instructions="Fixed rules.", plugins=[Calculator()]
         ).run(
             "Add",
             settings=GenerationSettings(

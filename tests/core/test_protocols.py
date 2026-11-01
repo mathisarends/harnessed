@@ -3,8 +3,15 @@ from typing import Protocol
 
 import pytest
 
-from harnessed import Agent as Application
-from harnessed import PluginInstructions, SystemPrompt, ToolCall, plugin
+from harnessed import (
+    Agent as Application,
+)
+from harnessed import (
+    PluginOrder,
+    SystemPrompt,
+    ToolCall,
+    plugin,
+)
 from harnessed.core.approvals import Approver
 from harnessed.core.compaction import Summarizer
 from harnessed.core.hooks import ToolPolicy
@@ -82,7 +89,7 @@ async def test_foreign_fs_and_model_work_through_di_without_framework_inheritanc
     assert ForeignFiles.__bases__ == (object,)
     assert ForeignModel.__bases__ == (object,)
     async with Application(
-        system_prompt=SystemPrompt(PluginInstructions()),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
         plugins=[Approvals(default=PolicyDecision.ALLOW), foreign_files(), FilesystemTools()],
     ).session() as agent:

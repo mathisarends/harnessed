@@ -19,11 +19,12 @@ def harnessed_session():
         script=(),
         plugins=(),
         state=None,
-        system_prompt: str | SystemPrompt | None = None,
+        instructions: str | None = None,
+        prompt: SystemPrompt | None = None,
     ):
         plugins = tuple(plugins)
         replaced = {as_plugin_spec(value).slot for value in plugins} | {"model"}
-        if system_prompt is not None:
+        if prompt is not None or instructions is not None:
             replaced.add("instructions")
         configured = (
             tuple(value for value in agent.plugins if as_plugin_spec(value).slot not in replaced)
@@ -32,7 +33,8 @@ def harnessed_session():
         )
         app = Agent(
             model=ScriptedModel(script),
-            system_prompt=system_prompt,
+            instructions=instructions,
+            prompt=prompt,
             plugins=(*configured, *plugins),
         )
         return app.session(state=state)

@@ -1,374 +1,245 @@
 import pytest
 
-from harnessed import (
-    Agent,
-    Instructions,
-    Plugin,
-    PluginConfig,
-    PluginInstructions,
-    PromptFormat,
-    SystemPrompt,
-    Unplaced,
-    instructions,
-)
-from harnessed.core.errors import ConfigError
+from harnessed import Agent, Instructions, Plugin, PluginOrder, PromptFormat, SystemPrompt, tool
+from harnessed.errors import ConfigError
+from harnessed.kernel import Context
 from harnessed.testing import ScriptedModel
 
 
-class ObserveConfig(PluginConfig):
-    canvas: bool = False
-
-
-class Observe(Plugin[ObserveConfig]):
-    @instructions(title="Page state")
-    def state(self) -> str:
-        return "Canvas image." if self.config.canvas else "DOM snapshot."
-
-    freshness = Instructions(title="Freshness", text="Use the latest observation.")
-
-
-class Interaction(Plugin):
-    refs = Instructions(title="References", text="Use current refs.")
-
-
-@pytest.mark.parametrize("format", PromptFormat)
-async def test_explicit_order_across_plugins_and_groups_reaches_model_unchanged(format):
-    observe = Observe(name="browser.observe", config=ObserveConfig(canvas=True))
-    interaction = Interaction(name="browser.interaction")
-    group = SystemPrompt(interaction.refs, observe.state)
-    model = ScriptedModel(["done"])
-    agent = Agent(
-        model=model,
-        plugins=[observe, interaction],
-        system_prompt=SystemPrompt(
-            Instructions(text="Role."), group, observe.freshness, format=format
-        ),
-    )
-    assert [entry.origin for entry in agent.prompt.entries] == [
-        "application section",
-        "browser.interaction.refs",
-        "browser.observe.state",
-        "browser.observe.freshness",
-    ]
-    async with agent.session() as session:
-        text = await session.prompt.render()
-        await session.run("Go")
-        assert model.requests[0].messages[0].text == text
-        assert text.index("Role.") < text.index("Use current refs.") < text.index("Canvas image.")
-        assert "DOM snapshot." not in text
+class Observe(Plugin):
+    def instructions(self) -> SystemPrompt:
+        return SystemPrompt(
+            Instructions(title="Page state", text="DOM snapshot."),
+            Instructions(title="Freshness", text="Use the latest observation."),
+        )
 
 
 @pytest.mark.parametrize(
     ("format", "expected"),
     [
-        (PromptFormat.PLAIN, 'a < b & "c"\n\nUntitled.'),
-        (PromptFormat.MARKDOWN, '## A & "B"\n\na < b & "c"\n\nUntitled.'),
+        (PromptFormat.PLAIN, "Role.\n\nDOM snapshot.\n\nUse the latest observation."),
+        (
+            PromptFormat.MARKDOWN,
+            (
+                "Role.\n\n## Page state\n\nDOM snapshot."
+                "\n\n## Freshness\n\nUse the latest observation."
+            ),
+        ),
         (
             PromptFormat.XML,
-            '<section title=\'A &amp; "B"\'>\na &lt; b &amp; "c"\n</section>'
-            "\n\n<section>\nUntitled.\n</section>",
+            (
+                '<section>\nRole.\n</section>\n\n<section title="Page state">'
+                '\nDOM snapshot.\n</section>\n\n<section title="Freshness">'
+                "\nUse the latest observation.\n</section>"
+            ),
         ),
     ],
 )
-async def test_renderers_preserve_text_and_escape_xml_metadata_and_content(format, expected):
+async def test_explicit_collection_renders_complete_blocks(format, expected):
     agent = Agent(
-        system_prompt=SystemPrompt(
-            Instructions(title='A & "B"', text='a < b & "c"'),
-            Instructions(title="Empty", text=""),
-            Instructions(text="Untitled."),
-            format=format,
-        )
+        instructions="Role.",
+        plugins=[Observe()],
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED, format=format),
     )
     assert await agent.prompt.render() == expected
+    assert "Observe.instructions" in str(agent.prompt)
+    async with Agent(
+        model=ScriptedModel([]),
+        instructions="Role.",
+        plugins=[Observe()],
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED, format=format),
+    ).session() as session:
+        assert await session.prompt.render() == expected
 
 
-def test_unplaced_duplicate_excluded_and_foreign_references_fail_before_providers_run():
+def test_plugin_order_is_required_and_validated():
+    with pytest.raises(TypeError, match="order"):
+        SystemPrompt.from_plugins()
+    with pytest.raises(ValueError):
+        SystemPrompt.from_plugins(order="setup")
+
+
+@pytest.mark.parametrize("prompt", [None, SystemPrompt("Application text.")])
+def test_missing_collection_fails_before_configuration_providers_run(prompt):
+    class Feature(Plugin):
+        def instructions(self) -> SystemPrompt:
+            pytest.fail("No implicit instruction collection")
+
+    with pytest.raises(ConfigError, match="from_plugins.*Feature"):
+        Agent(instructions="Role.", plugins=[Feature()], prompt=prompt)
+
+
+def test_only_selected_configuration_is_evaluated_once():
     calls = []
 
     class Feature(Plugin):
-        @instructions()
-        def state(self) -> str:
+        def instructions(self) -> SystemPrompt:
             calls.append(self)
-            return "State."
+            return SystemPrompt(str(len(calls)))
 
     feature = Feature()
-    foreign = Feature()
-    for prompt, message in [
-        (SystemPrompt(unplaced=Unplaced.ERROR), "Unplaced"),
-        (SystemPrompt(feature.state, feature.state), "twice"),
-        (SystemPrompt(feature.state, exclude=(feature.state,)), "twice"),
-        (SystemPrompt(foreign.state), "uninstalled"),
-        (SystemPrompt(exclude=(foreign.state,)), "uninstalled"),
-    ]:
-        with pytest.raises(ConfigError, match=message):
-            Agent(plugins=[feature], system_prompt=prompt)
-    assert calls == []
+    agent = Agent(plugins=[feature], prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED))
+    assert calls == [feature]
+    assert agent.prompt.entries[0].section.text == "1"
 
 
-async def test_exclusion_does_not_evaluate_provider_and_is_visible_in_inspection():
-    class Feature(Plugin):
-        @instructions()
-        def unused(self) -> str:
-            pytest.fail("An excluded provider was evaluated")
-
-    feature = Feature()
-    agent = Agent(
-        plugins=[feature],
-        system_prompt=SystemPrompt(exclude=(feature.unused,)),
-    )
-    assert "excluded: Feature.unused" in str(agent.prompt)
-    assert await agent.prompt.render() == ""
-
-
-async def test_same_plugin_class_has_independent_references_and_no_content_deduplication():
-    one, two = (
-        Observe(config=ObserveConfig(), name="one"),
-        Observe(config=ObserveConfig(), name="two"),
-    )
-    agent = Agent(
-        plugins=[one, two],
-        system_prompt=SystemPrompt(two.state, one.state, exclude=(one.freshness, two.freshness)),
-    )
-    assert await agent.prompt.render() == "DOM snapshot.\n\nDOM snapshot."
-    assert [entry.origin for entry in agent.prompt.entries] == ["two.state", "one.state"]
-
-
-async def test_configuration_provider_is_evaluated_once_per_agent_not_per_session():
+async def test_configuration_is_not_recomputed_per_session():
     calls = []
 
     class Feature(Plugin):
-        @instructions()
-        def state(self) -> str:
+        def instructions(self) -> SystemPrompt:
             calls.append(self)
-            return str(len(calls))
+            return SystemPrompt("Configured.")
 
-    feature = Feature()
     agent = Agent(
         model=ScriptedModel([]),
-        plugins=[feature],
-        system_prompt=SystemPrompt(feature.state),
+        plugins=[Feature()],
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
-    assert calls == [feature]
-    for _ in range(2):
-        async with agent.session() as session:
-            assert await session.prompt.render() == "1"
-    assert calls == [feature]
+    async with agent.session() as first:
+        assert await first.prompt.render() == "Configured."
+    async with agent.session() as second:
+        assert await second.prompt.render() == "Configured."
+    assert len(calls) == 1
 
 
-@pytest.mark.parametrize("format", tuple(PromptFormat))
-async def test_none_configuration_provider_omits_section_in_every_format(
-    format: PromptFormat,
-) -> None:
-    class Feature(Plugin):
-        @instructions(title="Optional")
-        def optional(self) -> str | None:
-            return None
+@pytest.mark.parametrize("value", ["text", None, Instructions(text="text"), 42])
+def test_plugin_provider_must_return_a_document(value):
+    class Invalid(Plugin):
+        def instructions(self):
+            return value
 
-    feature = Feature()
+    with pytest.raises(TypeError, match="Invalid.instructions.*SystemPrompt"):
+        Agent(plugins=[Invalid()], prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED))
+
+
+def test_plugin_provider_cannot_request_recursive_collection():
+    class Invalid(Plugin):
+        def instructions(self) -> SystemPrompt:
+            return SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)
+
+    with pytest.raises(ValueError, match="must return content"):
+        Agent(plugins=[Invalid()], prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED))
+
+
+async def test_none_is_normalized_and_nested_documents_inherit_outer_format():
     agent = Agent(
-        plugins=[feature],
-        system_prompt=SystemPrompt(feature.optional, format=format),
+        prompt=SystemPrompt(
+            None,
+            SystemPrompt(Instructions(title="Nested", text='a < b & "c"'), format=PromptFormat.XML),
+            None,
+            format=PromptFormat.MARKDOWN,
+        )
     )
-    assert await agent.prompt.render() == ""
+    assert len(agent.prompt.entries) == 1
+    assert await agent.prompt.render() == '## Nested\n\na < b & "c"'
+    assert SystemPrompt(None, "A", None).sections == ("A",)
 
 
-def test_instruction_fields_and_prompt_options_reject_invalid_inputs():
+async def test_xml_escaping_and_empty_sections():
+    agent = Agent(
+        prompt=SystemPrompt(
+            Instructions(title='A & "B"', text='a < b & "c"'),
+            Instructions(title="Empty", text=""),
+            "Untitled.",
+            format=PromptFormat.XML,
+        )
+    )
+    assert await agent.prompt.render() == (
+        '<section title=\'A &amp; "B"\'>\na &lt; b &amp; "c"\n</section>'
+        "\n\n<section>\nUntitled.\n</section>"
+    )
+
+
+def test_collection_only_belongs_to_outer_document():
+    with pytest.raises(ValueError, match="outermost"):
+        SystemPrompt(SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED))
+
+
+@pytest.mark.parametrize("value", [42, ("text",), ["text"]])
+def test_invalid_parts_fail_at_document_construction(value):
+    with pytest.raises(TypeError, match="SystemPrompt sections"):
+        SystemPrompt(value)
+
+
+def test_instruction_validation_and_removed_constructor_options():
     with pytest.raises(TypeError):
         Instructions("text")
-    with pytest.raises(TypeError):
-        SystemPrompt(sections=("text",))
     with pytest.raises(TypeError):
         Instructions(text=42)
     with pytest.raises(ValueError):
         Instructions(title="Two\nlines")
-    with pytest.raises(ValueError):
-        SystemPrompt(format="yaml")
-    with pytest.raises(TypeError, match="section references"):
-        Agent(system_prompt=SystemPrompt(42))
-    with pytest.raises(TypeError, match="section references"):
-        Agent(system_prompt=SystemPrompt(("text",)))
+    with pytest.raises(TypeError):
+        SystemPrompt(exclude=())
+    with pytest.raises(TypeError):
+        SystemPrompt(unplaced="append")
+    with pytest.raises(TypeError):
+        Agent(system_prompt="Old keyword")
+    with pytest.raises(TypeError, match="instructions"):
+        Agent(instructions=SystemPrompt("Wrong type"))
 
 
-def test_async_configuration_provider_is_rejected_at_declaration():
-    with pytest.raises(TypeError, match="synchronous"):
-
-        @instructions()
-        async def state(self: Observe) -> str:
-            return "async"
-
-
-async def test_runtime_system_plugin_is_rejected_before_setup_or_event_registration():
-    calls = []
-
-    class Feature(Plugin):
-        usage = Instructions(text="SystemMessage rules.")
-
-        async def setup(self) -> None:
-            calls.append(self)
-
-    async with Agent(model=ScriptedModel([])).session() as session:
-        with pytest.raises(ConfigError, match="system sections"):
-            await session.use(Feature())
-        assert calls == []
-        assert not session.context.values
-        assert await session.prompt.render() == ""
-
-
-async def test_nested_format_is_inherited_from_outermost_document():
-    section = Instructions(title="Nested", text="Text.")
-    inner = SystemPrompt(section, format=PromptFormat.XML)
-    agent = Agent(system_prompt=SystemPrompt(inner, format=PromptFormat.MARKDOWN))
-    assert await agent.prompt.render() == "## Nested\n\nText."
-
-
-def test_duplicate_standalone_section_and_unknown_exclusion_are_rejected():
+async def test_content_values_have_no_reference_identity_or_implicit_deduplication():
     section = Instructions(text="Same.")
-    with pytest.raises(ConfigError, match="twice"):
-        Agent(system_prompt=SystemPrompt(section, section))
-    with pytest.raises(ConfigError, match="does not belong"):
-        Agent(system_prompt=SystemPrompt(exclude=(section,)))
+    agent = Agent(prompt=SystemPrompt(section, section, "Same."))
+    assert await agent.prompt.render() == "Same.\n\nSame.\n\nSame."
 
 
-@pytest.mark.parametrize("prompt", [None, "Role.", SystemPrompt("Role.")])
-def test_unplaced_instructions_fail_for_every_default_prompt_form(prompt):
-    one, two = (
-        Observe(config=ObserveConfig(), name="one"),
-        Observe(config=ObserveConfig(), name="two"),
-    )
-    with pytest.raises(ConfigError, match="two.state.*Place each explicitly or exclude"):
-        Agent(plugins=[two, one], system_prompt=prompt)
-
-
-async def test_explicit_append_policy_keeps_configured_and_declaration_order():
-    one, two = (
-        Observe(config=ObserveConfig(), name="one"),
-        Observe(config=ObserveConfig(), name="two"),
-    )
-    agent = Agent(plugins=[two, one], system_prompt=SystemPrompt(unplaced=Unplaced.APPEND))
-    assert [entry.origin for entry in agent.prompt.entries][-4:] == [
-        "two.state",
-        "two.freshness",
-        "one.state",
-        "one.freshness",
-    ]
-    assert (await agent.prompt.render()).count("DOM snapshot.") == 2
-
-
-async def test_plugin_groups_expand_in_place_and_respect_global_exclusions():
-    observe, interaction = Observe(config=ObserveConfig()), Interaction()
-    agent = Agent(
-        plugins=[observe, interaction],
-        system_prompt=SystemPrompt(
-            PluginInstructions(interaction),
-            "Middle.",
-            PluginInstructions(observe),
-            exclude=(observe.freshness,),
-            unplaced=Unplaced.ERROR,
-        ),
-    )
-    assert await agent.prompt.render() == "Use current refs.\n\nMiddle.\n\nDOM snapshot."
-    assert "excluded: Observe.freshness" in str(agent.prompt)
-
-
-async def test_rest_slot_resolves_globally_before_later_nested_placements_and_exclusions():
-    observe, interaction = Observe(config=ObserveConfig()), Interaction()
-    agent = Agent(
-        plugins=[observe, interaction],
-        system_prompt=SystemPrompt(
-            "Start.",
-            PluginInstructions(),
-            "Middle.",
-            SystemPrompt(interaction.refs, exclude=(observe.freshness,)),
-            unplaced=Unplaced.ERROR,
-        ),
-    )
-    assert await agent.prompt.render() == (
-        "Start.\n\nDOM snapshot.\n\nMiddle.\n\nUse current refs."
-    )
-
-
-async def test_rest_slot_reserves_later_plugin_groups():
-    observe, interaction = Observe(config=ObserveConfig()), Interaction()
-    agent = Agent(
-        plugins=[observe, interaction],
-        system_prompt=SystemPrompt(PluginInstructions(), "Middle.", PluginInstructions(observe)),
-    )
-    assert await agent.prompt.render() == (
-        "Use current refs.\n\nMiddle.\n\nDOM snapshot.\n\nUse the latest observation."
-    )
-
-
-@pytest.mark.parametrize(
-    ("sections", "message"),
-    [
-        ((PluginInstructions(), SystemPrompt(PluginInstructions())), "Only one"),
-        ((PluginInstructions(Observe(config=ObserveConfig())),), "uninstalled"),
-    ],
-)
-def test_invalid_groups_fail_before_any_provider_runs(sections, message):
-    class Feature(Plugin):
-        @instructions()
-        def state(self) -> str:
-            pytest.fail("Placement validation must run before providers")
-
-    with pytest.raises(ConfigError, match=message):
-        Agent(plugins=[Feature()], system_prompt=SystemPrompt(*sections))
-
-
-def test_overlapping_groups_and_individual_placements_are_rejected():
-    feature = Observe(config=ObserveConfig())
-    for sections in [
-        (PluginInstructions(feature), feature.state),
-        (PluginInstructions(feature), PluginInstructions(feature)),
-    ]:
-        with pytest.raises(ConfigError, match="twice"):
-            Agent(plugins=[feature], system_prompt=SystemPrompt(*sections))
-
-
-async def test_strict_mode_checks_coverage_but_open_groups_accept_new_declarations():
-    class Extended(Interaction):
-        extra = Instructions(text="New guidance.")
-
-    feature = Extended()
-    with pytest.raises(ConfigError, match="Extended.extra"):
-        Agent(
-            plugins=[feature],
-            system_prompt=SystemPrompt(feature.refs, unplaced=Unplaced.ERROR),
-        )
-    for group in [PluginInstructions(feature), PluginInstructions()]:
-        agent = Agent(
-            plugins=[feature],
-            system_prompt=SystemPrompt(group, unplaced=Unplaced.ERROR),
-        )
-        assert await agent.prompt.render() == "Use current refs.\n\nNew guidance."
-
-
-async def test_prompt_order_does_not_follow_dependency_setup_order():
-    from harnessed.kernel import Context
+async def test_prompt_order_is_independent_of_dependency_setup_order():
+    started = []
 
     class Backend:
         pass
 
-    setup = []
-
     class Consumer(Plugin, needs=(Backend,)):
-        usage = Instructions(text="Consumer first.")
+        def instructions(self) -> SystemPrompt:
+            return SystemPrompt("Consumer first.")
 
         async def setup(self) -> None:
-            setup.append("consumer")
+            started.append("consumer")
 
     class Provider(Plugin):
-        usage = Instructions(text="Provider second.")
+        def instructions(self) -> SystemPrompt:
+            return SystemPrompt("Provider second.")
 
         async def setup(self, ctx: Context) -> None:
-            setup.append("provider")
             ctx.provide(Backend, Backend())
+            started.append("provider")
 
     agent = Agent(
         model=ScriptedModel([]),
         plugins=[Consumer(), Provider()],
-        system_prompt=SystemPrompt(PluginInstructions()),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
     async with agent.session() as session:
-        assert setup == ["provider", "consumer"]
+        assert started == ["provider", "consumer"]
         assert await session.prompt.render() == "Consumer first.\n\nProvider second."
+
+
+def test_async_instruction_providers_are_rejected_at_class_definition():
+    with pytest.raises(TypeError, match="synchronous"):
+
+        class Invalid(Plugin):
+            async def instructions(self) -> SystemPrompt:
+                return SystemPrompt("Invalid.")
+
+
+def test_instruction_provider_name_is_reserved_for_content():
+    with pytest.raises(TypeError, match="reserved"):
+
+        class Invalid(Plugin):
+            @tool(readonly=True)
+            def instructions(self) -> SystemPrompt:
+                return SystemPrompt("Not a tool.")
+
+
+async def test_additive_plugin_instances_keep_all_blocks_in_list_order():
+    class Named(Plugin):
+        def instructions(self) -> SystemPrompt:
+            return SystemPrompt(self.name)
+
+    agent = Agent(
+        plugins=[Named(name="one"), Named(name="two"), Named(name="one")],
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+    )
+    assert await agent.prompt.render() == "one\n\ntwo\n\none"

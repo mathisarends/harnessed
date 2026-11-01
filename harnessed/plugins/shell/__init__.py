@@ -11,7 +11,7 @@ from pydantic.fields import FieldInfo
 from harnessed.core.hooks import SessionClosing
 from harnessed.core.messages import ToolResult, ToolStatus, result_content, to_dict
 from harnessed.core.plugin import Plugin, PluginConfig
-from harnessed.core.prompt.values import Instructions
+from harnessed.core.prompt.values import Instructions, SystemPrompt
 from harnessed.core.runtime.inbox import SessionInbox
 from harnessed.core.tools.decorator import tool
 from harnessed.core.tools.registry import ToolError, ToolRegistry
@@ -91,15 +91,15 @@ class ShellConfig(ShellToolsConfig):
     env: dict[str, str] | None = None
 
 
+_SHELL_INSTRUCTIONS = Instructions(
+    text=("Run executables with argv. Filter large output and check exit codes before continuing.")
+)
+
+
 class Shell(ShellTools[ShellConfig], slot="shell"):
     """Expose argv-based commands with safe approval defaults and bounded output."""
 
     needs = (ToolRegistry,)
-    usage = Instructions(
-        text=(
-            "Run executables with argv. Filter large output and check exit codes before continuing."
-        )
-    )
 
     def __init__(
         self,
@@ -125,6 +125,9 @@ class Shell(ShellTools[ShellConfig], slot="shell"):
         )
         self.implementation = implementation
 
+    def instructions(self) -> SystemPrompt:
+        return SystemPrompt(_SHELL_INSTRUCTIONS)
+
     async def setup(self, ctx: Context) -> None:
         await super().setup(ctx)
         backend = self.implementation
@@ -143,19 +146,20 @@ class BackgroundShellConfig(ShellToolsConfig):
     max_background_commands: Annotated[int, Field(ge=1)] = 32
 
 
+_BACKGROUNDSHELL_INSTRUCTIONS = Instructions(
+    text=(
+        "Use start_command for long shell work, then continue other tasks. "
+        "Completion arrives through the session inbox, including while idle. "
+        "read_command inspects live output; write_command sends stdin or EOF; "
+        "terminate_command kills a dead end before retrying. list_commands finds retained IDs."
+    )
+)
+
+
 class BackgroundShell(
     Plugin[BackgroundShellConfig], needs=(ShellBackend, ToolRegistry, SessionInbox)
 ):
     """Opt in to session-owned background commands on an interactive ShellBackend."""
-
-    usage = Instructions(
-        text=(
-            "Use start_command for long shell work, then continue other tasks. "
-            "Completion arrives through the session inbox, including while idle. "
-            "read_command inspects live output; write_command sends stdin or EOF; "
-            "terminate_command kills a dead end before retrying. list_commands finds retained IDs."
-        )
-    )
 
     def __init__(
         self,
@@ -173,6 +177,9 @@ class BackgroundShell(
                 max_background_commands=max_background_commands,
             )
         )
+
+    def instructions(self) -> SystemPrompt:
+        return SystemPrompt(_BACKGROUNDSHELL_INSTRUCTIONS)
 
     async def setup(self, ctx: Context) -> None:
         self.cwd = self.config.cwd

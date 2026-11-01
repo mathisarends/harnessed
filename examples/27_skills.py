@@ -3,7 +3,11 @@ import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from harnessed import Agent, SystemPrompt
+from harnessed import (
+    Agent,
+    PluginOrder,
+    SystemPrompt,
+)
 from harnessed.plugins import Skill, Skills, Spill, ToolOutputLimit
 from harnessed.plugins.skills import SkillCatalog
 from harnessed.testing import ScriptedModel, call
@@ -38,7 +42,7 @@ async def main():
         )
         spill = Spill(threshold_tokens=1)
         agent = Agent(
-            system_prompt=SystemPrompt(skills.catalog, spill.usage),
+            prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
             model=model,
             plugins=[
                 skills,

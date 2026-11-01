@@ -96,18 +96,19 @@ Run-only backends explicitly reject background starts. See
 
 ## Agent
 
-`Agent(*, model=None, system_prompt=None, plugins=(),
+`Agent(*, model=None, instructions=None, prompt=None, plugins=(),
 plugin_validation=PluginValidation.ERROR)` resolves reusable configuration.
 
 | Member | Behavior |
 | --- | --- |
 | model | Harnessed Model or provider:model string; wrap native models with PydanticAIModel |
-| system_prompt | Plain text or an explicitly ordered SystemPrompt |
+| instructions | Caller-owned text prepended to the selected prompt |
+| prompt | Content document or explicit SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED) strategy |
 | plugins | Iterable of configured plugins or Kit values, resolved by local slots before mounting |
 | plugin_validation | ERROR rejects unresolved plugins at session startup; WARN emits PluginDependencyWarning and retains them for later activation |
 | agent.plugins | Tuple of resolved plugins |
 | agent.describe() | Immutable CompositionDescription with configured order, kit origins, replacement histories and exclusions |
-| agent.prompt | Inspectable PromptComposition with order, origins, format and exclusions |
+| agent.prompt | Inspectable PromptComposition with final order, origins and format |
 | agent.session(*, state=None) | Open a fresh live Session from optional immutable SessionState |
 | agent.run(prompt, state=None, **options) | Run one turn and return its terminal result and state |
 | SessionState.from_json(payload) / state.to_json() | Validate or encode the canonical conversation snapshot in memory |
@@ -163,51 +164,44 @@ these settings once, and `ModelRequestedEvent.model` records the selected
 
 ## System prompt composition
 
-`SystemPrompt(*sections, format=PromptFormat.PLAIN, exclude=(),
-unplaced=Unplaced.ERROR)` is an immutable document. Pass content as positional
-arguments in the intended order, such as
-`SystemPrompt("Help with documents.", workspace.instructions, "Answer concisely.")`.
-For an iterable, use `SystemPrompt(*parts)`. Rendering and placement policies
-remain keyword-only options. Sections are strings,
-keyword-only `Instructions(text="", title=None, description="")` values,
-plugin-bound references, `PluginInstructions(plugin)` groups, a `PluginInstructions()`
-rest slot, kit-owned `InstructionFragment` values, or nested SystemPrompt documents.
-The outermost format governs the flattened document: PLAIN joins text with blank
-lines, MARKDOWN adds optional level-two headings, and XML renders escaped section
-elements. Untitled and empty sections have defined behavior in every format; see
-the [context guide](../guides/context.md).
+`Plugin.instructions() -> SystemPrompt` is the single plugin instruction contract.
+The base method returns an empty document. Overrides synchronously derive actual
+content from recipe configuration, without services or activation state.
 
-Plugins declare sections as attributes or synchronous `@instructions(title=...)`
-methods returning `str | None`. Configuration providers run once at agent
-construction. `Instructions.from_file(path=..., title=..., missing_ok=False)`
-and `Instructions.from_factory(factory=..., title=..., description=...)` run once
-per opened session. Factories are async callbacks accepting the session Context.
+`SystemPrompt(*parts, format=PromptFormat.PLAIN)` is an immutable content document.
+Parts are strings, `Instructions`, nested documents or `None`; `None` is normalized
+away. The outermost format controls all nested content. PLAIN joins text with blank
+lines, MARKDOWN adds optional level-two headings, and XML escapes section content.
 
-Every selected plugin declaration requires placement or exclusion, including
-with `Agent(system_prompt="...")` or no application text. Empty content still
-requires a decision. `Unplaced.APPEND` is an explicit opt-in only. Setup order
-does not affect prompt order. A rest slot is resolved globally after all explicit placements
-and exclusions, including later nested ones; at most one slot is allowed per prompt.
-The outermost document controls format and unplaced policy. `Unplaced.ERROR`
-requires complete placement or exclusion, but open groups and slots accept future
-sections. Use individual references without open groups/slots to detect additions.
-Reference identity follows the configured recipe and declaration; equal text is
-retained. Duplicate, foreign and conflicting references fail before providers run.
+`SystemPrompt.from_plugins(*parts, order=PluginOrder.AS_LISTED, format=...)` opts into
+collection. **The keyword-only `order` argument has no default.** Fixed parts appear
+before complete plugin blocks in resolved plugin-list order. Nested kits expand
+at their list position; removals disappear and replacements keep inherited slot
+positions. Only final winners' providers run, once at agent construction.
+A plugin provider returns a content document and cannot request collection itself.
+A selected override without an explicit collection strategy raises `ConfigError`
+before providers run. Collection strategies cannot be nested inside content.
+
+`Agent(instructions="...")` prepends caller text. `Agent(prompt=...)` selects the
+outer document or strategy. `Kit(name, plugins, prompt=...)` supplies a default
+using normal slot precedence: parent defaults override children and explicit
+agent prompts override kits. Conflicting sibling prompt defaults require a direct
+choice. Caller instructions do not replace a kit's strategy. Optional `None`
+entries in public plugin lists are ignored.
+
+`Instructions(text="", title=None, description="")` is a content value, not a
+plugin descriptor. `from_file(path=..., title=..., missing_ok=False)` and
+`from_factory(factory=..., title=..., description=...)` defer reads or async
+Context callbacks until each session opens. Session effects have session ownership.
+`print(agent.prompt)` shows final order and origins;
 `await session.prompt.render()` returns the actual session text.
 
-`session.use(plugin, section_delivery=SectionDelivery.ERROR)` rejects declared
-sections before mounting. `CONTEXT` delivers guidance as mount-owned active context,
-removed on suspension or unmount; providers/factories run once per activation and
-failures roll back the mount. `IGNORE` does not execute section providers, factories
-or file reads. The system text stays fixed; new tools still change the tool catalog.
-Use ContextValue for dynamic facts. All prompt policies are exported by `harnessed`.
-
-`Kit(name, plugins, fragments={"instructions": (recipe, nested_kit), ...})`
-optionally defines named ordered groups. `kit.instructions` defaults to all selected
-descendants; `kit.fragment(name)` selects a named group. `without` drops removed
-selectors; slot replacements contribute instead of discarded recipes, including
-through nested kits. Individual instruction references never follow replacements.
-Place or exclude fragments explicitly. See [kit fragments](../guides/context.md#delegate-a-kits-internal-ordering).
+`session.use(plugin, section_delivery=SectionDelivery.ERROR)` rejects overridden
+instruction providers before mounting. `CONTEXT` evaluates the method and content
+sources once per activation and delivers mount-owned context, removed on suspension
+or unmount. Failures roll back the mount. `IGNORE` never calls providers, factories
+or reads files. Runtime delivery does not change the fixed system prompt.
+See the [context guide](../guides/context.md).
 
 ## Session
 

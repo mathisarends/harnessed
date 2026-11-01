@@ -9,11 +9,13 @@ class PromptRenderer(Plugin, slot="instructions", needs=(SystemPromptStore,)):
 
     def __init__(
         self,
-        values: str | SystemPrompt | None = None,
+        values: SystemPrompt | None = None,
         *,
         composition: PromptComposition | None = None,
     ) -> None:
         super().__init__()
+        if values is not None and not isinstance(values, SystemPrompt):
+            raise TypeError("PromptRenderer requires a SystemPrompt")
         self.values = values
         self.composition = composition
 

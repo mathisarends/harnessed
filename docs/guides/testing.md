@@ -5,7 +5,7 @@ It records requests and accepts strings, complete responses, or sequences of
 stream chunks. `call` and `reply` make ordinary tool rounds concise:
 
 ```python
-from harnessed import Agent, PolicyDecision, Plugin, tool
+from harnessed import Agent, Plugin, PolicyDecision, tool
 from harnessed.testing import ScriptedModel, assert_tool_called, call, reply
 
 
@@ -70,14 +70,14 @@ and tool execution are unavailable.
 They use the normal tool schemas, injection, approvals, execution and log paths.
 
 ```python
-from harnessed import SystemPrompt
+from harnessed import PluginOrder, SystemPrompt
 from harnessed.plugins import Approvals
-from harnessed.testing import InMemoryFS, FakeShell
+from harnessed.testing import FakeShell, InMemoryFS
 
 files = InMemoryFS({"project/notes.txt": "Remember this."})
 commands = FakeShell({"pytest": "1 passed"})
 agent = Agent(
-    system_prompt=SystemPrompt(files.usage, commands.usage),
+    prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     model=ScriptedModel([call("run_command", argv=["pytest"]), reply("Tests pass")]),
     plugins=[files, commands, Approvals(default=PolicyDecision.ALLOW)],
 )
@@ -100,10 +100,13 @@ The fixture opens a real session with a scripted model. Extra plugins replace
 matching slots in an existing agent configuration:
 
 ```python
+from harnessed import PluginOrder
+
+
 async def test_workspace(harnessed_session):
     files = InMemoryFS({"note.txt": "virtual"})
     async with harnessed_session(
-        system_prompt=SystemPrompt(files.usage),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         script=[call("read_file", path="note.txt"), reply("done")],
         plugins=[files],
     ) as session:
@@ -112,9 +115,10 @@ async def test_workspace(harnessed_session):
 ```
 
 The fixture also accepts an existing `Agent` as its first argument. When replacing
-plugins declaring instructions, update `system_prompt=` to place or exclude the
-replacement recipes. An explicit `PluginInstructions()` rest group accepts their
-declarations automatically. Provider SDKs
+plugins, retain an explicit `prompt=SystemPrompt.from_plugins(
+order=PluginOrder.AS_LISTED)` strategy to collect their selected instruction
+blocks. The fixture accepts `instructions=` for caller text and `prompt=` for
+the strategy. Provider SDKs
 and credentials are unnecessary for these tests. Configure pytest-asyncio as you
 normally would for asynchronous tests; Harnessed does not change its settings.
 
