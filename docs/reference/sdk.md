@@ -103,9 +103,10 @@ plugin_validation=PluginValidation.ERROR)` resolves reusable configuration.
 | --- | --- |
 | model | Harnessed Model or provider:model string; wrap native models with PydanticAIModel |
 | system_prompt | Plain text or an explicitly ordered SystemPrompt |
-| plugins | Explicit configured plugins, merged with default slots |
+| plugins | Iterable of configured plugins or Kit values, resolved by local slots before mounting |
 | plugin_validation | ERROR rejects unresolved plugins at session startup; WARN emits PluginDependencyWarning and retains them for later activation |
 | agent.plugins | Tuple of resolved plugins |
+| agent.describe() | Immutable CompositionDescription with configured order, kit origins, replacement histories and exclusions |
 | agent.prompt | Inspectable PromptComposition with order, origins, format and exclusions |
 | agent.session(*, state=None) | Open a fresh live Session from optional immutable SessionState |
 | agent.run(prompt, state=None, **options) | Run one turn and return its terminal result and state |
@@ -120,6 +121,37 @@ tuple contains immutable `PluginDependencyIssue` snapshots with `.plugin`
 `PluginValidation.WARN` emits one `PluginDependencyWarning` with the same `.issues`
 and permits later activation. Setup failures still propagate in either mode.
 See [startup validation](../guides/plugins.md#session-startup-validation).
+
+## Kit composition
+
+`from harnessed import Kit, CompositionDescription` exposes static library
+composition. `Kit(name: str, plugins: Iterable[PluginInput])` captures its inputs
+once as a tuple; `PluginInput` is a configured kernel plugin or another Kit.
+The name must be a nonempty string. A kit has no lifecycle of its own.
+
+`kit.without(*types)` returns a new kit excluding all matching recipe types and
+subclasses recursively. Each requested type must match a remaining recipe
+(`ValueError` otherwise); non-type arguments raise `TypeError`. The original kit
+and child kits remain unchanged. It does not remove dependent plugins or agent
+fallbacks. `None`, booleans and arbitrary nested lists are not plugin inputs.
+
+At each boundary, direct plugins override child-kit exports by slot. Duplicate
+direct slots and conflicting sibling-kit exports raise `PluginConflict`; a
+direct entry at that boundary resolves a sibling conflict. Internal child-kit
+conflicts must be resolved inside that child. Nesting depth does not set global
+precedence. All resolved supplied plugins override the agent's built-in
+fallbacks. Unslotted recipes are additive, regardless of class or service keys.
+Replacements keep the first inherited slot position.
+
+`agent.describe()` returns a `CompositionDescription` with `plugins` and `removed`
+tuples and a readable `str()` rendering. Plugin descriptions contain `name`,
+`kit_path`, `origin`, `slot`, `needs`, `provides` and recursive `replaces` tuples.
+Exclusions contain `plugin` and `removed_by`. Direct inputs use an empty kit
+path; built-ins use `("harnessed",)`. The result records static declarations,
+not live activation or services published dynamically by setup. Only selected
+recipes contribute prompts and event types. Kits are not kernel plugin recipes
+and cannot be mounted with `session.use()`.
+See [library defaults](../guides/plugins.md#publish-library-defaults-with-kit).
 
 Model generation defaults live on `model.settings: GenerationSettings`, exported
 from `harnessed.models`. Configure `PydanticAIModel(..., settings=GenerationSettings(...))`
@@ -147,7 +179,7 @@ construction. `SystemSection.from_file(path=..., title=..., missing_ok=False)`
 and `SystemSection.from_factory(factory=..., title=..., description=...)` run once
 per opened session. Factories are async callbacks accepting the session Context.
 
-Unplaced sections append in configured plugin and declaration order by default,
+Unplaced sections append in resolved plugin and declaration order by default,
 including with `Agent(system_prompt="...")` or no application text. Setup order
 does not affect them. A rest slot is resolved globally after all explicit placements
 and exclusions, including later nested ones; at most one slot is allowed per prompt.

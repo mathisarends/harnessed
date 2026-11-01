@@ -3,8 +3,13 @@ from contextlib import asynccontextmanager
 from typing import Any, Unpack, overload
 
 from harnessed.core.approvals import Approvals
-from harnessed.core.composition import PluginValidation
-from harnessed.core.errors import ConfigError, PluginConflict
+from harnessed.core.composition import (
+    CompositionDescription,
+    PluginInput,
+    PluginValidation,
+    compose_plugins,
+)
+from harnessed.core.errors import ConfigError
 from harnessed.core.event_registry import EventRegistry
 from harnessed.core.model import Model
 from harnessed.core.outputs import OutputContract, OutputTypes
@@ -21,7 +26,6 @@ from harnessed.core.session.state import SessionState
 from harnessed.core.tools.output_limit import ToolOutputLimit
 from harnessed.core.tracing import NoopTracer
 from harnessed.kernel import Context, PluginLike
-from harnessed.kernel.plugin import as_plugin_spec
 from harnessed.models.pydantic_ai import PydanticAIModel
 
 
@@ -37,17 +41,29 @@ class Agent:
         *,
         model: Model | str | None = None,
         system_prompt: str | SystemPrompt | None = None,
-        plugins: Iterable[PluginLike] = (),
+        plugins: Iterable[PluginInput] = (),
         plugin_validation: PluginValidation = PluginValidation.ERROR,
     ) -> None:
         self.plugin_validation = PluginValidation(plugin_validation)
-        supplied: list[PluginLike] = list(plugins)
+        supplied: list[PluginInput] = list(plugins)
         if system_prompt is not None:
             supplied.insert(0, Instructions(system_prompt))
         if model is not None:
             supplied.insert(0, Service(Model, model))
+        composition = compose_plugins(
+            supplied,
+            defaults=[
+                RuntimeServices(),
+                AgentLoop(),
+                ToolOutputLimit(),
+                Approvals(),
+                NoopTracer(),
+                Instructions(),
+            ],
+        )
+        self._description = composition.description
         normalized: list[PluginLike] = []
-        for value in supplied:
+        for value in composition.plugins:
             if isinstance(value, Service) and value.key is Model:
                 implementation = value.value
                 if isinstance(implementation, str):
@@ -64,32 +80,19 @@ class Agent:
             declared.values if declared is not None else None,
             (plugin_contribution(value) for value in normalized),
         )
-        defaults: list[PluginLike] = [
-            AgentLoop(),
-            ToolOutputLimit(),
-            Approvals(),
-            NoopTracer(),
-            Instructions(composition=self.prompt),
-        ]
-        occupied = {as_plugin_spec(value).slot: index for index, value in enumerate(defaults)}
-        explicit: set[str] = set()
-        for value in normalized:
-            if isinstance(value, Instructions):
-                value = Instructions(value.values, composition=self.prompt)
-            spec = as_plugin_spec(value)
-            if spec.slot is not None:
-                if spec.slot in explicit:
-                    raise PluginConflict(f"Multiple plugins in slot {spec.slot!r}")
-                explicit.add(spec.slot)
-                if spec.slot in occupied:
-                    defaults[occupied[spec.slot]] = value
-                    continue
-                occupied[spec.slot] = len(defaults)
-            defaults.append(value)
-        self.plugins = (RuntimeServices(), *defaults)
+        self.plugins = tuple(
+            Instructions(value.values, composition=self.prompt)
+            if isinstance(value, Instructions)
+            else value
+            for value in normalized
+        )
         self._events = EventRegistry(
             kind for plugin in self.plugins for kind in plugin_events(plugin)
         )
+
+    def describe(self) -> CompositionDescription:
+        """Inspect configured order, origins, replacements and exclusions without mounting."""
+        return self._description
 
     @asynccontextmanager
     async def session(

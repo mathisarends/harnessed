@@ -15,7 +15,8 @@ import re
 from harnessed.kernel import Context, Key
 assert 'pydantic' not in sys.modules
 from harnessed import (
-    Agent, SessionState, OutputContract, Plugin, PluginSections, PromptFormat, SectionDelivery,
+    Agent, CompositionDescription, Kit, SessionState, OutputContract, Plugin, PluginSections,
+    PromptFormat, SectionDelivery,
     SystemPrompt, SystemSection, Unplaced, tool,
 )
 from harnessed.events import TextDeltaEvent, TurnFinishedEvent
@@ -55,10 +56,21 @@ class Calculator(Plugin):
 class Answer(BaseModel):
     value: int
 
-class Guidance(Plugin):
+class Guidance(Plugin, slot='wheel.guidance'):
     usage = SystemSection(text='Plugin guidance.')
 
 async def main():
+    defaults = Kit('library', [Guidance()])
+    selected = Guidance()
+    configured = Agent(plugins=[defaults, selected])
+    description = configured.describe()
+    assert isinstance(description, CompositionDescription)
+    assert configured.plugins[-1] is selected
+    assert description.plugins[-1].replaces[0].kit_path == ('library',)
+    filtered = Agent(plugins=[defaults.without(Guidance)])
+    assert filtered.describe().removed[0].removed_by == ('library',)
+    assert await filtered.prompt.render() == ''
+
     continuation = Agent(model=ScriptedModel(["remembered", "continued"]))
     initial = await continuation.run("remember")
     state = SessionState.from_json(initial.state.to_json())

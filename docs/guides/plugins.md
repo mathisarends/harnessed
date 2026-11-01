@@ -32,6 +32,141 @@ An explicit slot replaces the default in that slot. Two explicit plugins with
 the same slot raise `PluginConflict`. A custom plugin declares its slot with
 `class CustomLoop(Plugin, slot="loop")`. No hidden preset adds capabilities.
 
+## Publish library defaults with Kit
+
+Import `Kit` from `harnessed` to offer an ordered bundle of defaults. A kit has
+no setup, teardown, hooks, tools or prompt of its own. Its factory may accept
+ordinary application configuration; the kit only captures its name and recipes.
+
+```python
+from pathlib import Path
+
+from harnessed import Agent, Kit
+from harnessed.plugins import AgentLoop, Compaction, Filesystem, Shell
+from harnessed.testing import ScriptedModel
+
+
+def project_kit(root: str | Path = ".") -> Kit:
+    return Kit(
+        "project",
+        [
+            Filesystem(root),
+            Shell(root),
+            AgentLoop(max_steps=30),
+            Compaction(keep_steps=4),
+        ],
+    )
+
+
+agent = Agent(
+    model=ScriptedModel(["done"]),
+    plugins=[
+        project_kit().without(Shell),
+        AgentLoop(max_steps=10),
+        Compaction(keep_steps=8),
+    ],
+)
+print(agent.describe())
+```
+
+The supplied `AgentLoop` and `Compaction` replace the kit recipes in their slots.
+The excluded Shell never mounts. Library defaults also replace Harnessed's
+built-in defaults; explicit agent inputs replace either. `model=` and
+`system_prompt=` are direct inputs, so they override kit-provided
+`Service(Model, ...)` and `Instructions(...)`. Supplying the same slot twice
+directly, including through a keyword and `plugins`, remains an error.
+
+### Local precedence and ordering
+
+At each composition boundary, direct recipes override contributions exported by
+child kits with the same slot. Two direct recipes in one slot raise
+`PluginConflict`. Two child kits exporting the same slot also conflict unless
+that boundary supplies a direct recipe to decide it. Messages identify the slot
+and competing kit paths.
+
+```python
+research = Kit("research", [project_kit(), Compaction(keep_steps=6)])
+agent = Agent(
+    model=model,
+    plugins=[research, Compaction(keep_steps=10)],
+)
+```
+
+Inside `research`, the six-step recipe overrides the project default. At the
+agent boundary, the ten-step recipe overrides the result. Each kit must resolve
+its own internal conflicts: an override at a parent boundary does not repair an
+invalid child kit. Sibling kits have equal precedence regardless of their
+internal nesting; adding a wrapper kit never silently settles their conflict.
+The built-in defaults are the final fallback after supplied scopes are resolved.
+
+Recipes keep their configured order within each scope. A replacement occupies
+the first inherited position for its slot, even if the direct override appears
+before the kit. When overriding several sibling kits, the first contributing
+kit determines that position. Recipes without a slot remain additive; neither
+their Python class nor their `provides` declarations cause implicit replacement.
+Namespaced slot strings such as `"my_library.observation"` avoid collisions with
+other libraries. Independent implementations can opt into the same slot without
+inheriting from each other.
+
+### Exclude recipes
+
+`kit.without(*types)` returns a new kit and recursively removes every recipe
+matching a requested type or subclass. Every requested type must match at least
+one remaining recipe, or it raises `ValueError`; non-type arguments raise
+`TypeError`. Chained calls search the remaining recipes. An empty call returns
+an equivalent kit. Inputs are captured as tuples, so generators can be reused
+through the resulting kit; recipes themselves remain shared configuration
+objects rather than deep copies.
+
+Only that kit and its children are affected. Exclusion does not remove dependents,
+install providers, or disable Harnessed's fallback plugins. For example, excluding
+a library's `AgentLoop` restores the built-in loop unless another override is
+supplied. Missing service requirements are still reported at session startup.
+
+### Inspect the resolved composition
+
+`agent.describe()` returns an immutable `CompositionDescription`, exported from
+`harnessed`. It does not open a session or execute setup or session prompt
+factories. Its fields are:
+
+| Field | Meaning |
+| --- | --- |
+| `plugins` | Tuple of plugin descriptions in final configured order, including built-in runtime services |
+| `removed` | Tuple of exclusions, each with a `plugin` description and `removed_by` kit path |
+
+Every plugin description exposes `name`, `kit_path`, `origin`, `slot`, `needs`,
+`provides` and `replaces`. The latter is a tuple of replaced plugin descriptions,
+preserving earlier replacement histories. Direct agent inputs have an empty
+`kit_path`; built-ins use `("harnessed",)`. Service declarations reflect the
+recipe's metadata, not services dynamically published during setup.
+
+```python
+description = agent.describe()
+for item in description.plugins:
+    print(item.origin, item.slot)
+    for previous in item.replaces:
+        print("  replaces", previous.origin)
+for removal in description.removed:
+    print("removed", removal.plugin.origin, "by", removal.removed_by)
+```
+
+`print(description)` provides a readable view of the same data. This is a static
+configuration snapshot; `session.ctx.plugin_diagnostics()` remains the live view
+of waiting plugins and missing services.
+
+Composition completes before prompt contributions and event declarations are
+collected. Excluded and replaced recipes contribute no guidance, context metadata,
+events, hooks or tools. Automatic prompt sections follow the resolved plugin
+order. Explicit section references remain tied to their original recipe: a
+reference to an excluded or replaced recipe raises `ConfigError` instead of
+silently following its replacement. Reference the selected recipe or use a
+`PluginSections()` rest slot when appropriate.
+
+Kits are accepted by `Agent(plugins=...)` and other kits, not by kernel
+`Context.plugin()` / `install()` or live `session.use()`. Runtime dependency
+injection, binding overlays and plugin lifetimes retain their existing semantics.
+Run `uv run python -m examples.36_plugin_kits` for a complete offline example.
+
 ## Per-mount state and cleanup
 
 The configuration object is a reusable recipe. Declare mutable runtime state with

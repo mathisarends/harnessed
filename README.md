@@ -52,8 +52,9 @@ asyncio.run(main())
 controls how missing services are reported at startup. It is reusable; each
 session owns its runtime and plugin lifetimes.
 
-- **Composition:** tools, policies and capabilities are plugins. Slots replace
-  defaults, and `agent.plugins` shows the resolved composition.
+- **Composition:** tools, policies and capabilities are plugins. Libraries publish
+  defaults with `Kit`; slots replace them and `without()` excludes recipe types.
+  `agent.describe()` shows the resolved order, origins and replacement history.
 - **Ownership:** removing a plugin removes its registrations and effects.
   Explicit `needs=(...)` requirements suspend and rebuild mounts as services
   change. `Inject[T]` binds values; `provides=True` publishes the mounted plugin.

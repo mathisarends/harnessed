@@ -4,6 +4,15 @@
 
 ### Added
 
+- Add `Kit(name, plugins)` and immutable `kit.without(*types)` for library-owned
+  plugin defaults. Direct entries override child-kit exports by explicit slot;
+  conflicting sibling kits require a local direct decision regardless of nesting.
+  Class and service-key equality never imply replacement. Built-in agent plugins
+  remain the final fallback, and removed recipes never mount.
+- Add `agent.describe()` returning an immutable `CompositionDescription` with
+  final order, kit paths, declared dependencies/services, replacement histories
+  and exclusions. See the [composition guide](docs/guides/plugins.md) and offline
+  example `uv run python -m examples.36_plugin_kits`.
 - Support `@hook(EventA, EventB, ...)` to forward several event types to one
   sync or async handler. The handler accepts every listed event, usually through
   a union annotation, while retaining event, result and continuation type checks.
@@ -12,6 +21,28 @@
   waterfall events cannot share a decorator. See the
   [hook guide](docs/guides/tools.md#hook-signatures) for examples and the behavior
   of repeated or overlapping event keys.
+
+### Breaking changes
+
+- Resolve plugin composition before collecting prompt contributions and event
+  declarations. Replaced and excluded plugins no longer contribute metadata or
+  execute configuration-derived prompt providers. Automatic sections follow the
+  final resolved order, including the inherited slot position of replacements,
+  rather than the original supplied list. Explicit references to discarded
+  recipes fail instead of following a replacement.
+
+### Upgrade from 0.8.0
+
+1. Replace library-specific default merging and mirrored agent subclasses with
+   `Kit` factories where useful. Declare namespaced slots on replaceable
+   capabilities. Existing direct plugin lists and explicit lifetime `needs`
+   retain their contracts; no service-key or class-based replacement is inferred.
+2. When prompt order matters, use an explicit `SystemPrompt` referencing selected
+   recipes. Remove references to discarded recipes or point them at the selected
+   replacement. A `PluginSections()` rest slot includes remaining selected sections.
+3. Resolve conflicting sibling-kit slots with a direct entry at their shared
+   boundary. Resolve internal kit conflicts inside that kit. Inspect
+   `agent.describe()` before opening a session to review the resulting decisions.
 
 ## 0.8.0 (2026-10-30)
 
