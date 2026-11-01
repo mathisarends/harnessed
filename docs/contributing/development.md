@@ -11,7 +11,7 @@ uv run ruff check .
 uv run ruff format --check .
 uv run ty check --error-on-warning
 uv run pytest
-uv run pre-commit run --all-files
+uv run prek run --all-files
 uv run mkdocs build --strict
 uv build --no-sources
 uv run python scripts/check_wheel.py
@@ -19,9 +19,13 @@ uv run twine check --strict dist/*
 ```
 
 `uv.lock` pins development tools, including Smelt CLI 0.3.0, and optional provider
-dependencies. Install the commit
-hooks with `uv run pre-commit install`. Ruff enforces modern syntax and absolute
-imports across package boundaries. Ty checks production code, examples, scripts
+dependencies. Install the commit hooks with `uv run prek install`.
+Existing pre-commit users should run
+`uv run prek install --force` once to replace the installed Git hooks.
+The hook definitions stay in `.pre-commit-config.yaml`, which prek reads directly;
+Dependabot continues to update the pinned hook revisions through its `pre-commit`
+ecosystem. Ruff enforces modern syntax and absolute imports across package
+boundaries. Ty checks production code, examples, scripts
 and positive/negative consumer contracts. Expected failures must remain real
 errors; unused ignore comments are errors too.
 
@@ -33,7 +37,7 @@ importlib mode so modules such as `core/test_compaction.py` and
 
 | Check | Coverage |
 | --- | --- |
-| Quality | Smelt, Ruff, ty and repository pre-commit hooks |
+| Quality | Smelt, Ruff, ty and repository hooks run by prek |
 | Documentation | Strict MkDocs build, navigation, local links and anchors |
 | Runtime | Linux, Windows and macOS x Python 3.12, 3.13 and 3.14 |
 | Platform types | ty with the matching Python version and OS in each cell |
@@ -57,7 +61,7 @@ package and relative imports), and the provider-SDK/YAML boundaries.
 
 Smelt checks strict architecture coverage, direct and transitive dependencies,
 kernel facade imports, source conventions and test quality. Its full check runs
-through pre-commit and CI; the changed check is for the edit loop. See the
+through prek and CI; the changed check is for the edit loop. See the
 [Smelt policy and adoption feedback](smelt.md) for the configuration rationale,
 reviewed exceptions and analysis limits.
 

@@ -104,12 +104,13 @@ codes; a preceding standalone comment does not suppress the following statement.
 uv run smelt context harnessed.core.runtime.session
 uv run smelt check --changed --base origin/main --format json
 uv run smelt check --show-hints
-uv run pre-commit run --all-files
+uv run prek run --all-files
 ```
 
-The local pre-commit hook always checks the whole project with the locked tool.
-CI invokes that same hook. Checking only changed filenames could miss effects on
-importers. Regenerate the ignored editor schema after installing/updating Smelt:
+The local Git hook runs Smelt through prek and always checks the whole project
+with the locked tool. CI invokes that same hook. Checking only changed filenames
+could miss effects on importers. Regenerate the ignored editor schema after
+installing/updating Smelt:
 
 ```bash
 uv run smelt config schema > .smelt.schema.json
