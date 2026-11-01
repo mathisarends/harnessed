@@ -21,7 +21,7 @@ from harnessed.core.hooks import SessionAppended
 from harnessed.core.messages import AssistantMessage, ToolMessage, ToolStatus, freeze, to_dict
 from harnessed.core.plugin import Plugin
 from harnessed.core.prompt.context import DynamicContext
-from harnessed.core.prompt.values import SystemSection
+from harnessed.core.prompt.values import Instructions
 from harnessed.core.session.events import (
     CompactionAppliedEvent,
     ToolCallFinishedEvent,
@@ -294,14 +294,15 @@ class Skills(Plugin, slot="skills", needs=(SessionLog, DynamicContext)):
             else str(source)
             for source in sources
         )
-        self.catalog = SystemSection.from_factory(
+        self.catalog = Instructions.from_factory(
             factory=self._render_catalog,
             title="Skills",
             description=f"Skills: {description}; earlier sources win; read at session startup",
         )
 
     async def _catalog(self, ctx: Context) -> _Catalog:
-        if self._key not in ctx:
+        key = self.recipe._key
+        if key not in ctx:
             try:
                 catalog = await asyncio.to_thread(_discover, self.sources)
             except ConfigError:
@@ -310,8 +311,8 @@ class Skills(Plugin, slot="skills", needs=(SessionLog, DynamicContext)):
                 raise ConfigError(
                     f"Cannot read configured skill sources {self.sources!r}: {error}"
                 ) from error
-            ctx.provide(self._key, catalog)
-        return ctx[self._key]
+            ctx.provide(key, catalog)
+        return ctx[key]
 
     async def _render_catalog(self, ctx: Context) -> str:
         catalog = await self._catalog(ctx)

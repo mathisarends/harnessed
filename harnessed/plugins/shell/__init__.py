@@ -9,7 +9,7 @@ from pydantic.fields import FieldInfo
 from harnessed.core.hooks import SessionClosing
 from harnessed.core.messages import ToolResult, ToolStatus, result_content, to_dict
 from harnessed.core.plugin import Plugin, PluginConfig
-from harnessed.core.prompt.values import SystemSection
+from harnessed.core.prompt.values import Instructions
 from harnessed.core.runtime.inbox import SessionInbox
 from harnessed.core.tools.decorator import tool
 from harnessed.core.tools.registry import ToolError, ToolRegistry
@@ -100,7 +100,7 @@ class Shell(ShellTools, slot="shell"):
 
     needs = (ToolRegistry,)
     Config = ShellConfig
-    usage = SystemSection(
+    usage = Instructions(
         text=(
             "Run executables with argv. Filter large output and check exit codes before continuing."
         )
@@ -151,7 +151,7 @@ class BackgroundShell(Plugin, needs=(ShellBackend, ToolRegistry, SessionInbox)):
 
     Config = BackgroundShellConfig
     config: BackgroundShellConfig
-    usage = SystemSection(
+    usage = Instructions(
         text=(
             "Use start_command for long shell work, then continue other tasks. "
             "Completion arrives through the session inbox, including while idle. "

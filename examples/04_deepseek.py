@@ -4,7 +4,7 @@ import asyncio
 import os
 from pathlib import Path
 
-from harnessed import Agent, ApprovalAnswer, SystemPrompt, SystemSection
+from harnessed import Agent, ApprovalAnswer, Instructions, SystemPrompt
 from harnessed.events import ApprovalNeededEvent, TextDeltaEvent, ToolCallRequestedEvent
 from harnessed.plugins import AgentLoop, Filesystem
 
@@ -16,10 +16,10 @@ async def main():
         model=f"deepseek:{os.environ.get('DEEPSEEK_MODEL', 'deepseek-chat')}",
         system_prompt=SystemPrompt(
             sections=(
-                SystemSection(
+                Instructions(
                     text="Help the user understand this Python project. Answer in English."
                 ),
-                SystemSection.from_file(path=workspace / "AGENTS.md", missing_ok=True),
+                Instructions.from_file(path=workspace / "AGENTS.md", missing_ok=True),
                 filesystem.usage,
             )
         ),

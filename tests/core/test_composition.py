@@ -2,7 +2,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from harnessed import Agent, CompositionDescription, Kit, Plugin, SystemSection
+from harnessed import Agent, CompositionDescription, Instructions, Kit, Plugin, SystemPrompt
 from harnessed.core.composition import compose_plugins
 from harnessed.errors import PluginConflict, PluginDependencyError
 from harnessed.kernel import Bundle, Context, PluginLike, plugin
@@ -167,13 +167,15 @@ def test_function_factories_are_configured_once_and_kernel_bundles_remain_recipe
 
 def test_callable_plugin_instances_keep_their_prompt_metadata():
     class CallablePlugin(Plugin):
-        usage = SystemSection(text="Keep this contribution.")
+        usage = Instructions(text="Keep this contribution.")
 
         def __call__(self):
             pass
 
     recipe = CallablePlugin()
-    agent = Agent(plugins=[Kit("library", [recipe])])
+    agent = Agent(
+        plugins=[Kit("library", [recipe])], system_prompt=SystemPrompt(sections=(recipe.usage,))
+    )
     assert recipe in agent.plugins
     assert "Keep this contribution." in str(agent.prompt)
 

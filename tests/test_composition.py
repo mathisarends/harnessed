@@ -8,19 +8,20 @@ from harnessed import (
     Agent,
     Context,
     Inject,
+    Instructions,
     Kit,
     Plugin,
+    PluginInstructions,
     Session,
     SystemPrompt,
-    SystemSection,
+    instructions,
     plugin,
-    system_section,
     tool,
 )
 from harnessed.errors import ConfigError, PluginConflict
 from harnessed.events import DurableEvent
 from harnessed.models import Model
-from harnessed.plugins import Filesystem, Instructions, Service, Shell
+from harnessed.plugins import Filesystem, PromptRenderer, Service, Shell
 from harnessed.testing import ScriptedModel, call
 
 
@@ -48,7 +49,7 @@ async def test_explicit_project_composition_adds_only_the_requested_tools(tmp_pa
         model=model,
         system_prompt=SystemPrompt(
             sections=(
-                SystemSection.from_file(path=tmp_path / "AGENTS.md"),
+                Instructions.from_file(path=tmp_path / "AGENTS.md"),
                 filesystem.usage,
                 *(p.usage for p in commands),
             )
@@ -107,7 +108,7 @@ async def test_only_survivors_contribute_prompts_events_tools_and_lifetimes(remo
     class Original(Plugin, slot="example.capability"):
         events = (OriginalEvent,)
 
-        @system_section()
+        @instructions()
         def usage(self) -> str:
             pytest.fail("Discarded prompt providers must not run")
 
@@ -124,7 +125,7 @@ async def test_only_survivors_contribute_prompts_events_tools_and_lifetimes(remo
 
     class Replacement(Plugin, slot="example.capability"):
         events = (ReplacementEvent,)
-        usage = SystemSection(text="Use the selected capability.")
+        usage = Instructions(text="Use the selected capability.")
 
         async def setup(self) -> None:
             started.append(self)
@@ -137,7 +138,11 @@ async def test_only_survivors_contribute_prompts_events_tools_and_lifetimes(remo
     if remove:
         kit = kit.without(Original)
     model = ScriptedModel([call("answer"), "done", call("answer"), "done"])
-    agent = Agent(model=model, plugins=[kit, Replacement()])
+    agent = Agent(
+        model=model,
+        plugins=[kit, Replacement()],
+        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+    )
     assert started == []
     for _ in range(2):
         async with agent.session() as session:
@@ -152,7 +157,7 @@ async def test_only_survivors_contribute_prompts_events_tools_and_lifetimes(remo
 
 def test_prompt_references_to_replaced_recipes_fail_before_provider_evaluation():
     class Feature(Plugin, slot="example.feature"):
-        @system_section()
+        @instructions()
         def usage(self) -> str:
             pytest.fail("An uninstalled reference must fail before evaluation")
 
@@ -171,7 +176,7 @@ async def test_model_and_system_prompt_keywords_override_kit_defaults():
         model=model,
         system_prompt="Application instructions.",
         plugins=[
-            Kit("library", [Service(Model, library_model), Instructions("Library instructions.")])
+            Kit("library", [Service(Model, library_model), PromptRenderer("Library instructions.")])
         ],
     )
     result = await agent.run("Go")
@@ -187,18 +192,21 @@ async def test_model_and_system_prompt_keywords_override_kit_defaults():
 async def test_instructions_and_models_can_be_supplied_entirely_by_a_kit():
     model = ScriptedModel(["library"])
     result = await Agent(
-        plugins=[Kit("library", [Service(Model, model), Instructions("Library instructions.")])]
+        plugins=[Kit("library", [Service(Model, model), PromptRenderer("Library instructions.")])]
     ).run("Go")
     assert result.text == "library"
     assert model.requests[0].messages[0].text == "Library instructions."
 
 
-async def test_automatic_prompt_sections_follow_the_resolved_slot_positions():
+async def test_explicit_rest_group_follows_the_resolved_slot_positions():
     class LoopGuidance(Plugin, slot="loop"):
-        usage = SystemSection(text="Loop guidance.")
+        usage = Instructions(text="Loop guidance.")
 
     class Feature(Plugin):
-        usage = SystemSection(text="Feature guidance.")
+        usage = Instructions(text="Feature guidance.")
 
-    agent = Agent(plugins=[Feature(), LoopGuidance()])
+    agent = Agent(
+        plugins=[Feature(), LoopGuidance()],
+        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+    )
     assert await agent.prompt.render() == "Loop guidance.\n\nFeature guidance."

@@ -56,6 +56,16 @@ summarize through the session model; installing the testing package changes no p
 
 ## Replace feature backends
 
+For one plugin activation, `mount_plugin(recipe, services=(Service(Contract, fake),))`
+is an async context manager yielding the concrete typed active instance. It supplies
+a tool registry and owns cleanup on success, errors and cancellation, without an
+agent, model or prompt-provider evaluation. See the
+[plugin example](plugins.md#test-one-activation-without-an-agent). Test direct tool
+calls on this instance: recipes expose declarations, while their runtime values
+and tool execution are unavailable.
+
+## Observable backend fakes
+
 `InMemoryFS` and `FakeShell` are real plugins in the `filesystem` and `shell` slots.
 They use the normal tool schemas, injection, approvals, execution and log paths.
 
@@ -102,9 +112,9 @@ async def test_workspace(harnessed_session):
 ```
 
 The fixture also accepts an existing `Agent` as its first argument. When replacing
-plugins declaring system sections, automatic placement includes the replacement
-recipes. If composing individual references, update `system_prompt=` to refer to
-those replacement recipes. Provider SDKs
+plugins declaring instructions, update `system_prompt=` to place or exclude the
+replacement recipes. An explicit `PluginInstructions()` rest group accepts their
+declarations automatically. Provider SDKs
 and credentials are unnecessary for these tests. Configure pytest-asyncio as you
 normally would for asynchronous tests; Harnessed does not change its settings.
 

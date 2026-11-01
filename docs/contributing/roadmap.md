@@ -45,8 +45,8 @@ Concrete consumers should establish their requirements before adding framework A
 
 ## Instruction factory callbacks
 
-`SystemSection.from_factory` requires an asynchronous callback returning text.
-Configuration-only synchronous providers are implemented through `@system_section`.
+`Instructions.from_factory` requires an asynchronous callback returning text.
+Configuration-only synchronous providers are implemented through `@instructions`.
 The proposal to also accept synchronous session-context factories remains
 undecided. Supporting both would be a small convenience addition; it should retain
 explicit typing and the existing once-per-session rendering semantics.

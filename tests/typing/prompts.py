@@ -2,34 +2,34 @@ from typing import assert_type
 
 from harnessed import (
     Agent,
+    Instructions,
     Plugin,
-    PluginSections,
+    PluginInstructions,
     PromptFormat,
     SectionDelivery,
     Session,
     SystemPrompt,
-    SystemSection,
     Unplaced,
-    system_section,
+    instructions,
 )
-from harnessed.core.prompt.values import BoundSystemSection, SystemSectionProvider
+from harnessed.core.prompt.values import InstructionProvider, InstructionRef
 from harnessed.kernel import Context
 
 
 class PromptFeature(Plugin):
-    usage = SystemSection(title="Usage", text="Use this feature.")
+    usage = Instructions(title="Usage", text="Use this feature.")
 
-    @system_section(title="Configuration")
+    @instructions(title="Configuration")
     def configuration(self) -> str | None:
         return "Configured."
 
 
 feature = PromptFeature()
-assert_type(PromptFeature.usage, SystemSection)
-assert_type(feature.usage, BoundSystemSection)
-assert_type(PromptFeature.configuration, SystemSectionProvider[PromptFeature])
-assert_type(feature.configuration, BoundSystemSection)
-assert_type(feature.system_sections(), tuple[BoundSystemSection, ...])
+assert_type(PromptFeature.usage, Instructions)
+assert_type(feature.usage, InstructionRef)
+assert_type(PromptFeature.configuration, InstructionProvider[PromptFeature])
+assert_type(feature.configuration, InstructionRef)
+assert_type(feature.instruction_refs(), tuple[InstructionRef, ...])
 Agent(
     plugins=[feature],
     system_prompt=SystemPrompt(
@@ -43,11 +43,12 @@ async def catalog(ctx: Context) -> str:
     return "Catalog."
 
 
-SystemSection.from_factory(factory=catalog, title="Catalog")
-SystemSection.from_file(path="AGENTS.md", missing_ok=True)
-SystemSection(text=42)  # ty: ignore[invalid-argument-type]
+Instructions.from_factory(factory=catalog, title="Catalog")
+Instructions.from_file(path="AGENTS.md", missing_ok=True)
+Instructions(text=42)  # ty: ignore[invalid-argument-type]
 SystemPrompt(
-    sections=("raw text", PluginSections(feature), PluginSections()), unplaced=Unplaced.ERROR
+    sections=("raw text", PluginInstructions(feature), PluginInstructions()),
+    unplaced=Unplaced.ERROR,
 )
 SystemPrompt(sections=(42,))  # ty: ignore[invalid-argument-type]
 Agent(system_prompt=42)  # ty: ignore[invalid-argument-type]

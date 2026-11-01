@@ -2,7 +2,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from harnessed.kernel import Dependency, binding_plan
+from harnessed.kernel import Dependency, PluginBase, binding_plan
 
 from .arguments import ToolArguments
 from .context import ToolContext
@@ -22,7 +22,8 @@ class ToolReference:
         return declaration is self.declaration and (
             self.owner is None
             or self.owner is owner
-            or getattr(owner, "_recipe", None) is self.owner
+            or isinstance(owner, PluginBase)
+            and owner.recipe is self.owner
         )
 
 

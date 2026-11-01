@@ -9,7 +9,7 @@ from harnessed import Agent, Plugin, PolicyDecision, Role, SystemPrompt, ToolCal
 from harnessed.events import ToolCallFinishedEvent
 from harnessed.kernel import Inject
 from harnessed.models import ModelChunk
-from harnessed.plugins import AgentLoop, Approvals, Filesystem, Instructions
+from harnessed.plugins import AgentLoop, Approvals, Filesystem, PromptRenderer
 from harnessed.plugins.filesystem import FileSystemBackend
 from harnessed.testing import ScriptedModel
 
@@ -82,7 +82,7 @@ async def writes_with_resource_keys(root: Path):
         plugins=[
             Approvals(default=PolicyDecision.ALLOW),
             filesystem,
-            Instructions(SystemPrompt(sections=(filesystem.usage,))),
+            PromptRenderer(SystemPrompt(sections=(filesystem.usage,))),
             tools,
         ],
     ).session() as session:

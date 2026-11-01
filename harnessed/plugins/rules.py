@@ -5,7 +5,7 @@ import json
 from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import replace
-from typing import Annotated
+from typing import Annotated, Self
 
 from pydantic import AfterValidator, ConfigDict, Field, StringConstraints, TypeAdapter
 from pydantic.dataclasses import dataclass
@@ -120,6 +120,12 @@ class Rules(Plugin, needs=(SessionLog, DynamicContext, TokenCounter, SessionInbo
         self.rules = tuple(rules)
         if any(not isinstance(rule, Rule) or not rule.actions for rule in self.rules):
             raise ValueError("Each rule needs at least one note, context or steer action")
+
+    def create_instance(self) -> Self:
+        """Retain the validated immutable rule tuple, including one-shot source iterables."""
+        instance = super().create_instance()
+        instance.rules = self.rules
+        return instance
 
     def _count(
         self,

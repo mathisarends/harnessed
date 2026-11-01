@@ -1,7 +1,7 @@
 # Plugin composition and lifecycle
 
 An Agent is a resolved plugin list. `model=` supplies `Service(Model, model)`;
-`system_prompt=` supplies `Instructions`. The default runtime plugins are
+`system_prompt=` configures the `PromptRenderer` plugin. The default runtime plugins are
 `AgentLoop`, `ToolOutputLimit`, `Approvals` and `NoopTracer`.
 Use their public imports from `harnessed.plugins`. The tool registry, system prompt,
 token counter and context budget come from an internal plugin without a slot that
@@ -41,7 +41,7 @@ ordinary application configuration; the kit only captures its name and recipes.
 ```python
 from pathlib import Path
 
-from harnessed import Agent, Kit
+from harnessed import Agent, Kit, SystemPrompt
 from harnessed.plugins import AgentLoop, Compaction, Filesystem, Shell
 from harnessed.testing import ScriptedModel
 
@@ -58,10 +58,12 @@ def project_kit(root: str | Path = ".") -> Kit:
     )
 
 
+project = project_kit().without(Shell)
 agent = Agent(
     model=ScriptedModel(["done"]),
+    system_prompt=SystemPrompt(sections=(project.instructions,)),
     plugins=[
-        project_kit().without(Shell),
+        project,
         AgentLoop(max_steps=10),
         Compaction(keep_steps=8),
     ],
@@ -73,7 +75,7 @@ The supplied `AgentLoop` and `Compaction` replace the kit recipes in their slots
 The excluded Shell never mounts. Library defaults also replace Harnessed's
 built-in defaults; explicit agent inputs replace either. `model=` and
 `system_prompt=` are direct inputs, so they override kit-provided
-`Service(Model, ...)` and `Instructions(...)`. Supplying the same slot twice
+`Service(Model, ...)` and `PromptRenderer(...)`. Supplying the same slot twice
 directly, including through a keyword and `plugins`, remains an error.
 
 ### Local precedence and ordering
@@ -89,6 +91,7 @@ research = Kit("research", [project_kit(), Compaction(keep_steps=6)])
 agent = Agent(
     model=model,
     plugins=[research, Compaction(keep_steps=10)],
+    system_prompt=SystemPrompt(sections=(research.instructions,)),
 )
 ```
 
@@ -135,7 +138,7 @@ factories. Its fields are:
 | `removed` | Tuple of exclusions, each with a `plugin` description and `removed_by` kit path |
 
 Every plugin description exposes `name`, `kit_path`, `origin`, `slot`, `needs`,
-`provides` and `replaces`. The latter is a tuple of replaced plugin descriptions,
+`observes`, `provides` and `replaces`. The latter is a tuple of replaced plugin descriptions,
 preserving earlier replacement histories. Direct agent inputs have an empty
 `kit_path`; built-ins use `("harnessed",)`. Service declarations reflect the
 recipe's metadata, not services dynamically published during setup.
@@ -156,11 +159,13 @@ of waiting plugins and missing services.
 
 Composition completes before prompt contributions and event declarations are
 collected. Excluded and replaced recipes contribute no guidance, context metadata,
-events, hooks or tools. Automatic prompt sections follow the resolved plugin
-order. Explicit section references remain tied to their original recipe: a
+events, hooks or tools. Explicit `PluginInstructions()` groups follow the resolved
+plugin order. Every instruction needs placement or exclusion; kits expose
+`kit.instructions` and named fragments for explicit delegation of internal order.
+See [kit fragments](context.md#delegate-a-kits-internal-ordering). Explicit section references remain tied to their original recipe: a
 reference to an excluded or replaced recipe raises `ConfigError` instead of
 silently following its replacement. Reference the selected recipe or use a
-`PluginSections()` rest slot when appropriate.
+`PluginInstructions()` rest slot when appropriate.
 
 Kits are accepted by `Agent(plugins=...)` and other kits, not by kernel
 `Context.plugin()` / `install()` or live `session.use()`. Runtime dependency
@@ -193,13 +198,21 @@ available throughout `teardown` and owned cleanup, then its references are relea
 It is per-mount memory: import conversation facts through explicit SessionState
 in `setup`, as the built-in `Rules` plugin does.
 
-Constructor attributes remain shared inputs by default, including caller-owned
-clients and locks. Ordinary mutable attributes created in a constructor are also
-shared: use `PluginState` or initialize them in `setup` for isolation. The default
-`create_instance() -> Self` makes a shallow copy. Override it to reconstruct custom
-instances, preserving recipe configuration and returning a fresh, unmounted object
-of the same class. Tools and hooks then bind to that instance; bound tool references
-on the original recipe remain valid.
+Custom constructors must call `super().__init__()` to validate plugin configuration.
+The default `create_instance() -> Self` replays the original constructor with its
+explicit positional and keyword inputs. A constructor must only validate and
+describe capabilities; it may run again for every session and dependency restart.
+Values created inside it are fresh. Explicitly passed objects, such as clients and
+locks, retain their identity; Harnessed never deep-copies resources. Pass reusable
+collections rather than one-shot iterators as constructor inputs.
+
+Use `PluginState` for lifecycle-bound mutable data. Override `create_instance` only
+when an application needs another explicit construction/sharing contract; return a
+fresh, unmounted instance of exactly the same class. Assignments to arbitrary
+recipe attributes after construction are not replayed. Bound tool and instruction
+references on the original recipe remain declarative references. Direct tool calls
+on recipes or disposed activations raise `RuntimeError`; use the active instance.
+`PluginConfig` models are frozen, and `plugin.config` cannot be replaced.
 
 Allocate asynchronous resources in `setup` and register cleanup immediately with
 `ctx.effect(resource.aclose)`, or enter an async context manager with
@@ -215,27 +228,38 @@ the [tool guide](tools.md).
 
 ## Dependencies and provided services
 
-Declare the plugin's service requirements explicitly with `needs`, and use
-`Inject` to bind those services to attributes or method parameters:
+Declare stable service bindings with `dependency` from the public kernel facade:
 
 ```python
-from harnessed import Inject, Plugin, SessionLog
+from harnessed import Plugin, SessionLog
+from harnessed.kernel import dependency
 
 
-class Activity(Plugin, provides=True, needs=(SessionLog,)):
-    log: Inject[SessionLog]
-    label: Inject[str | None]
+class Activity(Plugin, provides=True):
+    log = dependency(SessionLog)
+    label = dependency(str, optional=True)
 
     async def setup(self) -> None:
         self.session_id = self.log.id
 ```
 
-Class `Inject[T]` attributes resolve on the mount before `setup`. Injection does
-not add `needs`: the explicit declaration defines the plugin's lifetime and makes
-its composition requirements visible. Optional attributes receive `None` when the
-service is absent. Their values are captured for that mount. Access on a recipe or
-after disposal raises `RuntimeError`. Forward references resolve when the recipe
-is first compiled for mounting.
+`dependency(T)` is a typed, read-only descriptor. It both binds the service before
+setup and adds its key to the normalized lifetime requirements. A missing required
+service leaves the plugin waiting; provider loss or replacement ends the activation
+and creates a fresh instance, bindings and state. Access on a recipe or after
+cleanup raises `RuntimeError`. No class is instantiated or globally searched for.
+Ordinary annotations create no dependencies. Class-level `Inject[T]` fields have
+been removed; `Inject` remains available on callable parameters.
+
+`dependency(T, optional=True)` does not block activation. It captures the visible
+service or `None` for that activation. Appearance, disappearance or replacement
+restarts the activation and resets its state. Optional keys appear under `observes`
+in `agent.describe()` and `PluginSpec`; they are distinct from hard `needs`.
+Additional `needs=(Readiness,)` requirements remain continuous lifetime
+requirements without an attribute value. Instance `needs=` replaces the extra
+requirements, while field and registration requirements always remain included.
+Duplicate keys normalize once; hard requirements take precedence over observations.
+Use `dependency(Key[T]("name"))` with a shared key to distinguish providers.
 
 `provides=True` registers the mounted instance under the declaring class before
 setup. Subclasses inherit that key: a subclass of Activity still provides Activity.
@@ -245,8 +269,8 @@ the service automatically. Strict composition detects closed declared dependency
 cycles before mounting; manual providers retain the runtime dependency check.
 
 Use ordinary `self.x = ...` assignments in setup for values computed once per
-mount, and `PluginState` for mutable runtime state. Keep constructor attributes as
-shared recipe inputs; mutable containers belong in state or setup.
+mount, and `PluginState` for mutable runtime state. Keep explicit constructor inputs reusable; lifecycle-bound containers belong in
+state or setup.
 
 ```python
 from typing import Protocol
@@ -289,11 +313,31 @@ system sections are rejected before setup by default. Explicitly select
 closing its handle removes its value and temporal restarts refresh it.
 See [system prompt composition](context.md) for explicit ordering and rendering.
 
+## Test one activation without an agent
+
+```python
+from harnessed.plugins import Service
+from harnessed.testing import mount_plugin
+
+async with mount_plugin(Activity(), services=(Service(SessionLog, fake_log),)) as active:
+    assert active.log is fake_log
+    assert active.session_id == fake_log.id
+```
+
+`mount_plugin(recipe, services=...)` yields the concrete typed instance, supplies a
+tool registry, checks required services, and guarantees cleanup even if the body
+raises or is cancelled. It needs no model or agent and does not render instruction
+providers. `PluginHandle.instance` also exposes the current activation, or `None`
+while waiting or after disposal. Runtime fields remain available during teardown
+and registered cleanup; they become invalid afterward.
+
 ## Session startup validation
 
 `Agent` requires its configured plugins to be active when opening a session.
-Validation checks the lifetime requirements declared through `needs`; `Inject`
-continues to bind values without adding requirements.
+Validation checks the same normalized hard requirements used by activation and
+inspection: dependency fields, extra `needs` and registration requirements.
+Optional observations never block startup. Callable `Inject` parameters do not
+add lifetime requirements.
 After publishing `Session`, `SessionLog` and the other session services, it waits
 for dependency-driven setup to settle and checks the full service scope, including
 nested plugin installs. A waiting plugin raises `PluginDependencyError` before

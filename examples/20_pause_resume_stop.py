@@ -6,7 +6,7 @@ from harnessed import Agent, Plugin, SessionStatus, StopReason, tool
 from harnessed.testing import ScriptedModel, call
 
 
-class Work(Plugin):
+class Work(Plugin, provides=True):
     def __init__(self):
         super().__init__()
         self.started = asyncio.Event()
@@ -25,12 +25,13 @@ async def pause_and_resume():
     work = Work()
     model = ScriptedModel([call("process", item="a"), "First complete.", "Second complete."])
     async with Agent(model=model, plugins=[work]).session() as session:
+        active = session.ctx[Work]
         first = await session.submit("Process a.")
-        await work.started.wait()
+        await asyncio.wait_for(active.started.wait(), 3)
         second = await session.submit("Then summarize.")
         await session.pause()  # Wait for the current step to commit.
         assert session.status is SessionStatus.PAUSED and not first.done()
-        print("Paused after committing tool results:", work.finished)
+        print("Paused after committing tool results:", active.finished)
         await session.context.set("ci", "The latest checks passed.")  # Quiet, durable context.
         await session.resume()
         print((await first.result()).text, (await second.result()).text)
@@ -41,8 +42,9 @@ async def end_a_turn(*, immediate: bool):
     work = Work()
     model = ScriptedModel([call("process", item="a"), "Fresh work complete."])
     async with Agent(model=model, plugins=[work]).session() as session:
+        active = session.ctx[Work]
         running = await session.submit("Start work.")
-        await work.started.wait()
+        await asyncio.wait_for(active.started.wait(), 3)
         queued = await session.submit("Queued work.")
         await asyncio.sleep(0)
         if immediate:
@@ -53,7 +55,7 @@ async def end_a_turn(*, immediate: bool):
         assert result.stop_reason is (StopReason.ABORTED if immediate else StopReason.STOPPED)
         assert (await queued.result()).stop_reason is StopReason.DISCARDED
         assert session.status is SessionStatus.IDLE
-        print("Turn ended:", result.stop_reason, "; completed work:", work.finished)
+        print("Turn ended:", result.stop_reason, "; completed work:", active.finished)
         print((await session.run("Start a fresh task.")).text)
 
 

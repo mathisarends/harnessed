@@ -4,7 +4,7 @@ import sys
 import pytest
 from pydantic import ValidationError
 
-from harnessed import Agent, SystemPrompt, ToolCall
+from harnessed import Agent, PluginInstructions, SystemPrompt, ToolCall
 from harnessed.core.tools.registry import ToolRegistry
 from harnessed.plugins import AgentLoop
 from harnessed.plugins.shell import LocalShell, ProcResult, Shell, ShellBackend, ShellTools
@@ -21,7 +21,11 @@ def test_shell_tools_reject_backend_configuration(options):
 
 async def test_owned_shell_configures_its_local_backend(tmp_path):
     shell = Shell(tmp_path, env={"EXPLICIT": "yes"}, max_output_bytes=256)
-    async with Agent(model=ScriptedModel([]), plugins=[shell]).session() as session:
+    async with Agent(
+        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+        model=ScriptedModel([]),
+        plugins=[shell],
+    ).session() as session:
         backend = session.ctx[ShellBackend]
         assert isinstance(backend, LocalShell)
         assert backend.options.env == {"EXPLICIT": "yes"}

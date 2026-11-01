@@ -16,7 +16,7 @@ from harnessed.testing import ScriptedModel
 from tests._audit import Audit
 
 
-class Recorder(Plugin):
+class Recorder(Plugin, provides=True):
     def __init__(self) -> None:
         super().__init__()
         self.events: list[TransientEvent] = []
@@ -54,13 +54,13 @@ async def test_compaction_lifecycle_is_live_and_correlates_with_the_committed_pr
     ).session() as session:
         session_audit = Audit(session)
         assert await session.compact() is None
-        assert not recorder.events
+        assert not session.ctx[Recorder].events
         await session.run("x" * 4000)
         if automatic:
             stream = [event async for event in session.stream("current")]
         else:
             await session.compact()
-            stream = recorder.events
+            stream = session.ctx[Recorder].events
         started = [e for e in stream if isinstance(e, CompactionStartedEvent)]
         finished = [e for e in stream if isinstance(e, CompactionFinishedEvent)]
         assert len(started) == len(finished) == 1
@@ -105,8 +105,10 @@ async def test_compaction_failure_and_cancellation_always_close_the_started_life
             task.cancel()
         with pytest.raises(asyncio.CancelledError if cancel else ValueError):
             await asyncio.wait_for(task, timeout=5)
-        started = [e for e in recorder.events if isinstance(e, CompactionStartedEvent)]
-        finished = [e for e in recorder.events if isinstance(e, CompactionFinishedEvent)]
+        started = [e for e in session.ctx[Recorder].events if isinstance(e, CompactionStartedEvent)]
+        finished = [
+            e for e in session.ctx[Recorder].events if isinstance(e, CompactionFinishedEvent)
+        ]
         assert len(started) == len(finished) == 1
         assert finished[0].compaction_id == started[0].compaction_id
         assert finished[0].outcome is (
@@ -130,6 +132,8 @@ async def test_failure_after_durable_apply_still_reports_applied():
         await session.run("x" * 4000)
         with pytest.raises(ValueError, match="observer failed"):
             await session.compact()
-        finished = [e for e in recorder.events if isinstance(e, CompactionFinishedEvent)]
+        finished = [
+            e for e in session.ctx[Recorder].events if isinstance(e, CompactionFinishedEvent)
+        ]
         assert len(finished) == 1 and finished[0].outcome is CompactionOutcome.APPLIED
         assert session.last(CompactionAppliedEvent).id == finished[0].compaction_id

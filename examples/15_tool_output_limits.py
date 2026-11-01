@@ -4,7 +4,17 @@ import asyncio
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from harnessed import Agent, Plugin, PolicyDecision, Role, ToolResult, ToolStatus, tool
+from harnessed import (
+    Agent,
+    Plugin,
+    PluginInstructions,
+    PolicyDecision,
+    Role,
+    SystemPrompt,
+    ToolResult,
+    ToolStatus,
+    tool,
+)
 from harnessed.events import ToolCallFinishedEvent
 from harnessed.hooks import ExecuteTool
 from harnessed.kernel import Inject, hook
@@ -49,6 +59,7 @@ async def main():
             ]
         )
         agent = Agent(
+            system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
             model=model,
             plugins=[
                 Approvals(default=PolicyDecision.ALLOW),

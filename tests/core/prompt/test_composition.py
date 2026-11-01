@@ -2,14 +2,14 @@ import pytest
 
 from harnessed import (
     Agent,
+    Instructions,
     Plugin,
     PluginConfig,
-    PluginSections,
+    PluginInstructions,
     PromptFormat,
     SystemPrompt,
-    SystemSection,
     Unplaced,
-    system_section,
+    instructions,
 )
 from harnessed.core.errors import ConfigError
 from harnessed.testing import ScriptedModel
@@ -23,15 +23,15 @@ class Observe(Plugin):
     Config = ObserveConfig
     config: ObserveConfig
 
-    @system_section(title="Page state")
+    @instructions(title="Page state")
     def state(self) -> str:
         return "Canvas image." if self.config.canvas else "DOM snapshot."
 
-    freshness = SystemSection(title="Freshness", text="Use the latest observation.")
+    freshness = Instructions(title="Freshness", text="Use the latest observation.")
 
 
 class Interaction(Plugin):
-    refs = SystemSection(title="References", text="Use current refs.")
+    refs = Instructions(title="References", text="Use current refs.")
 
 
 @pytest.mark.parametrize("format", PromptFormat)
@@ -45,7 +45,7 @@ async def test_explicit_order_across_plugins_and_groups_reaches_model_unchanged(
         plugins=[observe, interaction],
         system_prompt=SystemPrompt(
             format=format,
-            sections=(SystemSection(text="Role."), group, observe.freshness),
+            sections=(Instructions(text="Role."), group, observe.freshness),
         ),
     )
     assert [entry.origin for entry in agent.prompt.entries] == [
@@ -79,9 +79,9 @@ async def test_renderers_preserve_text_and_escape_xml_metadata_and_content(forma
         system_prompt=SystemPrompt(
             format=format,
             sections=(
-                SystemSection(title='A & "B"', text='a < b & "c"'),
-                SystemSection(title="Empty", text=""),
-                SystemSection(text="Untitled."),
+                Instructions(title='A & "B"', text='a < b & "c"'),
+                Instructions(title="Empty", text=""),
+                Instructions(text="Untitled."),
             ),
         )
     )
@@ -92,7 +92,7 @@ def test_unplaced_duplicate_excluded_and_foreign_references_fail_before_provider
     calls = []
 
     class Feature(Plugin):
-        @system_section()
+        @instructions()
         def state(self) -> str:
             calls.append(self)
             return "State."
@@ -113,7 +113,7 @@ def test_unplaced_duplicate_excluded_and_foreign_references_fail_before_provider
 
 async def test_exclusion_does_not_evaluate_provider_and_is_visible_in_inspection():
     class Feature(Plugin):
-        @system_section()
+        @instructions()
         def unused(self) -> str:
             pytest.fail("An excluded provider was evaluated")
 
@@ -143,7 +143,7 @@ async def test_configuration_provider_is_evaluated_once_per_agent_not_per_sessio
     calls = []
 
     class Feature(Plugin):
-        @system_section()
+        @instructions()
         def state(self) -> str:
             calls.append(self)
             return str(len(calls))
@@ -166,7 +166,7 @@ async def test_none_configuration_provider_omits_section_in_every_format(
     format: PromptFormat,
 ) -> None:
     class Feature(Plugin):
-        @system_section(title="Optional")
+        @instructions(title="Optional")
         def optional(self) -> str | None:
             return None
 
@@ -180,13 +180,13 @@ async def test_none_configuration_provider_omits_section_in_every_format(
 
 def test_sections_are_keyword_only_and_invalid_inputs_fail_early():
     with pytest.raises(TypeError):
-        SystemSection("text")
+        Instructions("text")
     with pytest.raises(TypeError):
         SystemPrompt(())
     with pytest.raises(TypeError):
-        SystemSection(text=42)
+        Instructions(text=42)
     with pytest.raises(ValueError):
-        SystemSection(title="Two\nlines")
+        Instructions(title="Two\nlines")
     with pytest.raises(ValueError):
         SystemPrompt(format="yaml")
     with pytest.raises(TypeError, match="section references"):
@@ -196,7 +196,7 @@ def test_sections_are_keyword_only_and_invalid_inputs_fail_early():
 def test_async_configuration_provider_is_rejected_at_declaration():
     with pytest.raises(TypeError, match="synchronous"):
 
-        @system_section()
+        @instructions()
         async def state(self: Observe) -> str:
             return "async"
 
@@ -205,7 +205,7 @@ async def test_runtime_system_plugin_is_rejected_before_setup_or_event_registrat
     calls = []
 
     class Feature(Plugin):
-        usage = SystemSection(text="SystemMessage rules.")
+        usage = Instructions(text="SystemMessage rules.")
 
         async def setup(self) -> None:
             calls.append(self)
@@ -219,14 +219,14 @@ async def test_runtime_system_plugin_is_rejected_before_setup_or_event_registrat
 
 
 async def test_nested_format_is_inherited_from_outermost_document():
-    section = SystemSection(title="Nested", text="Text.")
+    section = Instructions(title="Nested", text="Text.")
     inner = SystemPrompt(format=PromptFormat.XML, sections=(section,))
     agent = Agent(system_prompt=SystemPrompt(format=PromptFormat.MARKDOWN, sections=(inner,)))
     assert await agent.prompt.render() == "## Nested\n\nText."
 
 
 def test_duplicate_standalone_section_and_unknown_exclusion_are_rejected():
-    section = SystemSection(text="Same.")
+    section = Instructions(text="Same.")
     with pytest.raises(ConfigError, match="twice"):
         Agent(system_prompt=SystemPrompt(sections=(section, section)))
     with pytest.raises(ConfigError, match="does not belong"):
@@ -234,9 +234,15 @@ def test_duplicate_standalone_section_and_unknown_exclusion_are_rejected():
 
 
 @pytest.mark.parametrize("prompt", [None, "Role.", SystemPrompt(sections=("Role.",))])
-async def test_defaults_append_plugin_sections_in_configured_and_declaration_order(prompt):
+def test_unplaced_instructions_fail_for_every_default_prompt_form(prompt):
     one, two = Observe(name="one"), Observe(name="two")
-    agent = Agent(plugins=[two, one], system_prompt=prompt)
+    with pytest.raises(ConfigError, match="two.state.*Place each explicitly or exclude"):
+        Agent(plugins=[two, one], system_prompt=prompt)
+
+
+async def test_explicit_append_policy_keeps_configured_and_declaration_order():
+    one, two = Observe(name="one"), Observe(name="two")
+    agent = Agent(plugins=[two, one], system_prompt=SystemPrompt(unplaced=Unplaced.APPEND))
     assert [entry.origin for entry in agent.prompt.entries][-4:] == [
         "two.state",
         "two.freshness",
@@ -251,7 +257,7 @@ async def test_plugin_groups_expand_in_place_and_respect_global_exclusions():
     agent = Agent(
         plugins=[observe, interaction],
         system_prompt=SystemPrompt(
-            sections=(PluginSections(interaction), "Middle.", PluginSections(observe)),
+            sections=(PluginInstructions(interaction), "Middle.", PluginInstructions(observe)),
             exclude=(observe.freshness,),
             unplaced=Unplaced.ERROR,
         ),
@@ -267,7 +273,7 @@ async def test_rest_slot_resolves_globally_before_later_nested_placements_and_ex
         system_prompt=SystemPrompt(
             sections=(
                 "Start.",
-                PluginSections(),
+                PluginInstructions(),
                 "Middle.",
                 SystemPrompt(sections=(interaction.refs,), exclude=(observe.freshness,)),
             ),
@@ -284,7 +290,7 @@ async def test_rest_slot_reserves_later_plugin_groups():
     agent = Agent(
         plugins=[observe, interaction],
         system_prompt=SystemPrompt(
-            sections=(PluginSections(), "Middle.", PluginSections(observe)),
+            sections=(PluginInstructions(), "Middle.", PluginInstructions(observe)),
         ),
     )
     assert await agent.prompt.render() == (
@@ -295,13 +301,13 @@ async def test_rest_slot_reserves_later_plugin_groups():
 @pytest.mark.parametrize(
     ("sections", "message"),
     [
-        ((PluginSections(), SystemPrompt(sections=(PluginSections(),))), "Only one"),
-        ((PluginSections(Observe()),), "uninstalled"),
+        ((PluginInstructions(), SystemPrompt(sections=(PluginInstructions(),))), "Only one"),
+        ((PluginInstructions(Observe()),), "uninstalled"),
     ],
 )
 def test_invalid_groups_fail_before_any_provider_runs(sections, message):
     class Feature(Plugin):
-        @system_section()
+        @instructions()
         def state(self) -> str:
             pytest.fail("Placement validation must run before providers")
 
@@ -312,8 +318,8 @@ def test_invalid_groups_fail_before_any_provider_runs(sections, message):
 def test_overlapping_groups_and_individual_placements_are_rejected():
     feature = Observe()
     for sections in [
-        (PluginSections(feature), feature.state),
-        (PluginSections(feature), PluginSections(feature)),
+        (PluginInstructions(feature), feature.state),
+        (PluginInstructions(feature), PluginInstructions(feature)),
     ]:
         with pytest.raises(ConfigError, match="twice"):
             Agent(plugins=[feature], system_prompt=SystemPrompt(sections=sections))
@@ -321,7 +327,7 @@ def test_overlapping_groups_and_individual_placements_are_rejected():
 
 async def test_strict_mode_checks_coverage_but_open_groups_accept_new_declarations():
     class Extended(Interaction):
-        extra = SystemSection(text="New guidance.")
+        extra = Instructions(text="New guidance.")
 
     feature = Extended()
     with pytest.raises(ConfigError, match="Extended.extra"):
@@ -329,7 +335,7 @@ async def test_strict_mode_checks_coverage_but_open_groups_accept_new_declaratio
             plugins=[feature],
             system_prompt=SystemPrompt(sections=(feature.refs,), unplaced=Unplaced.ERROR),
         )
-    for group in [PluginSections(feature), PluginSections()]:
+    for group in [PluginInstructions(feature), PluginInstructions()]:
         agent = Agent(
             plugins=[feature],
             system_prompt=SystemPrompt(sections=(group,), unplaced=Unplaced.ERROR),
@@ -346,19 +352,23 @@ async def test_prompt_order_does_not_follow_dependency_setup_order():
     setup = []
 
     class Consumer(Plugin, needs=(Backend,)):
-        usage = SystemSection(text="Consumer first.")
+        usage = Instructions(text="Consumer first.")
 
         async def setup(self) -> None:
             setup.append("consumer")
 
     class Provider(Plugin):
-        usage = SystemSection(text="Provider second.")
+        usage = Instructions(text="Provider second.")
 
         async def setup(self, ctx: Context) -> None:
             setup.append("provider")
             ctx.provide(Backend, Backend())
 
-    agent = Agent(model=ScriptedModel([]), plugins=[Consumer(), Provider()])
+    agent = Agent(
+        model=ScriptedModel([]),
+        plugins=[Consumer(), Provider()],
+        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+    )
     async with agent.session() as session:
         assert setup == ["provider", "consumer"]
         assert await session.prompt.render() == "Consumer first.\n\nProvider second."

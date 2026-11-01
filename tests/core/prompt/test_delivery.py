@@ -6,10 +6,10 @@ from harnessed import (
     Agent,
     Context,
     Inject,
+    Instructions,
     Plugin,
     SectionDelivery,
-    SystemSection,
-    system_section,
+    instructions,
     tool,
 )
 from harnessed.core.prompt.context import DynamicContext
@@ -20,7 +20,7 @@ from tests._audit import Audit
 
 
 class Feature(Plugin):
-    usage = SystemSection(text="Runtime guidance.")
+    usage = Instructions(text="Runtime guidance.")
 
     @tool
     async def inspect(self) -> str:
@@ -55,7 +55,7 @@ async def test_context_delivery_suspends_and_restarts_with_the_plugin():
     calls = []
 
     class Temporal(Plugin, needs=(Backend,)):
-        @system_section()
+        @instructions()
         def usage(self) -> str:
             calls.append(self)
             return f"Activation {len(calls)}."
@@ -87,12 +87,12 @@ async def test_ignore_does_not_execute_providers_or_factories_or_read_files(tmp_
         pytest.fail("Ignored factories must not run")
 
     class Ignored(Feature):
-        @system_section()
+        @instructions()
         def configuration(self) -> str:
             pytest.fail("Ignored configuration providers must not run")
 
-        session_section = SystemSection.from_factory(factory=factory)
-        missing = SystemSection.from_file(path=tmp_path / "missing.txt")
+        session_section = Instructions.from_factory(factory=factory)
+        missing = Instructions.from_file(path=tmp_path / "missing.txt")
 
     async with Agent(model=ScriptedModel(["done"])).session() as session:
         handle = await session.use(Ignored(), section_delivery=SectionDelivery.IGNORE)
@@ -115,9 +115,9 @@ async def test_delivery_failures_roll_back_tools_context_and_owned_effects(failu
         return "Session rules."
 
     class Broken(Feature):
-        session_section = SystemSection.from_factory(factory=factory)
+        session_section = Instructions.from_factory(factory=factory)
         if failure == "file":
-            missing = SystemSection.from_file(path=tmp_path / "missing.txt")
+            missing = Instructions.from_file(path=tmp_path / "missing.txt")
 
         async def setup(self, ctx: Context) -> None:
             ctx.effect(lambda: effects.append("setup cleaned"))
@@ -127,7 +127,7 @@ async def test_delivery_failures_roll_back_tools_context_and_owned_effects(failu
         async def teardown(self) -> None:
             effects.append("teardown")
 
-        @system_section()
+        @instructions()
         def broken(self) -> str:
             if failure == "provider":
                 raise ValueError("provider failed")
@@ -165,7 +165,7 @@ async def test_factory_runs_once_per_mount_activation_and_cleanup_belongs_to_mou
         return "Factory guidance."
 
     class Factory(Plugin):
-        usage = SystemSection.from_factory(factory=factory)
+        usage = Instructions.from_factory(factory=factory)
 
     async with Agent(model=ScriptedModel(["one", "two"])).session() as session:
         handle = await session.use(Factory(), section_delivery=SectionDelivery.CONTEXT)
@@ -178,7 +178,7 @@ async def test_factory_runs_once_per_mount_activation_and_cleanup_belongs_to_mou
 
 async def test_duplicate_plugin_names_have_independent_mount_context():
     class Guidance(Plugin):
-        usage = SystemSection(text="Runtime guidance.")
+        usage = Instructions(text="Runtime guidance.")
 
     async with Agent(model=ScriptedModel([])).session() as session:
         one = await session.use(Guidance(), section_delivery=SectionDelivery.CONTEXT)

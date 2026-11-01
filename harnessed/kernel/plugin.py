@@ -50,12 +50,18 @@ class PluginHandle:
         self._starting_signature = None
         self._start_task: asyncio.Task | None = None
         self._dependents: set[PluginHandle] = set()
+        self._instance: PluginBase | None = None
 
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, *exc) -> None:
         await self.aclose()
+
+    @property
+    def instance(self) -> PluginBase | None:
+        """The current class-plugin activation, or None while waiting or disposed."""
+        return self._instance
 
     @property
     def missing_services(self) -> tuple[ServiceKey[Any], ...]:
@@ -95,7 +101,13 @@ class PluginHandle:
             for binding in bindings
         ):
             return None
-        return bindings
+        observed = []
+        for key in self.spec.observes:
+            try:
+                observed.append(self._mount._binding(key, exclude=self))
+            except MissingService:
+                observed.append(None)
+        return (*bindings, *observed)
 
     def _cycle(self, signature):
         def visit(handle, path):
@@ -104,12 +116,16 @@ class PluginHandle:
             if handle in path:
                 return None
             for binding in handle._active_signature or ():
+                if binding is None:
+                    continue
                 provider = binding.owner._handle
                 if provider is not None and (cycle := visit(provider, [*path, handle])):
                     return cycle
             return None
 
         for binding in signature or ():
+            if binding is None:
+                continue
             provider = binding.owner._handle
             if provider is not None and (cycle := visit(provider, [])):
                 return cycle
@@ -157,6 +173,8 @@ class PluginHandle:
             self.ctx = child = self._mount._child(self._mount._scope)
             child._handle = self
             for binding in signature:
+                if binding is None:
+                    continue
                 provider = binding.owner._handle
                 if provider is not None:
                     provider._dependents.add(self)
@@ -171,7 +189,8 @@ class PluginHandle:
                             f"Plugin {spec.name} must be an async generator yielding once"
                         )
                     try:
-                        await anext(generator)
+                        instance = await anext(generator)
+                        self._instance = instance if isinstance(instance, PluginBase) else None
                     except StopAsyncIteration as exc:
                         raise RuntimeError(f"Plugin {spec.name} did not yield") from exc
 
@@ -203,7 +222,10 @@ class PluginHandle:
                         await self._mount.dispatch(PluginFailed(self.name, self.error))
                     except Exception:
                         logger.exception("PluginFailed observer failed for %s", self.name)
-                await child.aclose()
+                try:
+                    await child.aclose()
+                finally:
+                    self._instance = None
                 raise
 
     async def _suspend(self, visited: set | None = None) -> None:
@@ -229,6 +251,7 @@ class PluginHandle:
             finally:
                 self.status = PluginStatus.WAITING
                 self._active_signature = None
+                self._instance = None
                 self._mount._scope.runtime.changed()
 
 

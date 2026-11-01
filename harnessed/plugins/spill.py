@@ -12,7 +12,7 @@ from harnessed.core.budget import truncate
 from harnessed.core.hooks import Next, ReviewToolResult, SessionAppended
 from harnessed.core.messages import SpillRef, ToolResult
 from harnessed.core.plugin import Plugin, PluginConfig
-from harnessed.core.prompt.values import SystemSection
+from harnessed.core.prompt.values import Instructions
 from harnessed.core.session.events import (
     SpillCreatedEvent,
     SpillExpirationReason,
@@ -131,7 +131,7 @@ class SpillConfig(PluginConfig):
 class Spill(Plugin, slot="spill", needs=(SessionLog, SessionFiles, TokenCounter)):
     """Spill large text, preserve images, and expire oldest files within a hard quota."""
 
-    usage = SystemSection(
+    usage = Instructions(
         text=(
             "Large tool outputs may be stored by name. "
             "Use read_spill with offset and limit for ranges."

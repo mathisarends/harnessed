@@ -7,10 +7,10 @@ import pytest
 from harnessed import (
     Agent,
     ApprovalAnswer,
+    Instructions,
     Plugin,
     PluginConflict,
     SystemPrompt,
-    SystemSection,
     ToolCall,
     tool,
 )
@@ -26,13 +26,13 @@ from harnessed.core.session.events import (
 from harnessed.core.session.session import SessionLog
 from harnessed.kernel import PluginStatus
 from harnessed.models import Model
-from harnessed.plugins import Approvals, ContextValue, Instructions, Service
+from harnessed.plugins import Approvals, ContextValue, PromptRenderer, Service
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit
 
 
 class Calculator(Plugin):
-    usage = SystemSection(text="Use add for arithmetic.")
+    usage = Instructions(text="Use add for arithmetic.")
 
     @tool(readonly=True)
     async def add(self, a: int, b: int) -> int:
@@ -51,8 +51,8 @@ async def test_application_facade_composes_plugins_and_fixed_ordered_guidance(tm
         model=model,
         system_prompt=SystemPrompt(
             sections=(
-                SystemSection(text="Be concise."),
-                SystemSection.from_file(path=path),
+                Instructions(text="Be concise."),
+                Instructions.from_file(path=path),
                 calculator.usage,
             )
         ),
@@ -82,7 +82,7 @@ async def test_facade_parameters_are_equivalent_to_public_plugins():
         model=one,
         system_prompt=SystemPrompt(
             sections=(
-                SystemSection(text="Rules."),
+                Instructions(text="Rules."),
                 calculator.usage,
             )
         ),
@@ -92,10 +92,10 @@ async def test_facade_parameters_are_equivalent_to_public_plugins():
     await Agent(
         plugins=[
             Service(Model, two),
-            Instructions(
+            PromptRenderer(
                 SystemPrompt(
                     sections=(
-                        SystemSection(text="Rules."),
+                        Instructions(text="Rules."),
                         calculator_4.usage,
                     )
                 )
@@ -115,7 +115,7 @@ async def test_system_sections_can_be_replaced_or_omitted_explicitly():
         model=ScriptedModel([]),
         plugins=[calculator],
         system_prompt=SystemPrompt(
-            sections=(SystemSection(text="Replacement guidance."),),
+            sections=(Instructions(text="Replacement guidance."),),
             exclude=(calculator.usage,),
         ),
     )

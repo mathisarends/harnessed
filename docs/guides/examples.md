@@ -92,3 +92,10 @@ See [system prompts and changing context](context.md).
 in a project kit, excludes optional tools and replaces a library capability by
 slot. It prints static provenance and runs the selected tool with a scripted model.
 See [library composition](plugins.md#publish-library-defaults-with-kit).
+
+## Plugin recipes and dependencies
+
+`uv run python -m examples.37_plugin_recipes` declares stable required and optional
+dependencies, frozen configuration and activation-owned state. It places a kit's
+instruction fragment explicitly, runs a tool through a scripted model, and tests
+the same recipe with `mount_plugin` and fake services without an agent.

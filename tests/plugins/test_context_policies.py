@@ -302,6 +302,7 @@ async def test_latest_observation_policy_keeps_one_unchanged_snapshot_and_unwind
 
     class Observer(Plugin, needs=(Session,)):
         def __init__(self):
+            super().__init__()
             self.index = 0
 
         @hook(PreStep)

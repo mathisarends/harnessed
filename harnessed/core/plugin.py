@@ -1,17 +1,19 @@
 from collections.abc import Callable, Iterable
 from contextlib import AbstractAsyncContextManager
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict
 
 from harnessed.core.prompt.values import (
-    BoundSystemSection,
+    InstructionProvider,
+    InstructionRef,
+    Instructions,
     PromptContribution,
-    SystemSection,
-    SystemSectionProvider,
 )
 from harnessed.core.session.events import SessionEvent
 from harnessed.core.stream import TransientEvent
+from harnessed.core.tools import ToolSpec
+from harnessed.core.tools.decorator import _activation_tool
 from harnessed.kernel import Bundle as KernelBundle
 from harnessed.kernel import (
     Context,
@@ -41,14 +43,11 @@ class PluginConfig(BaseModel):
 
 
 class Plugin(KernelPlugin):
-    """A recipe with shared constructor inputs and explicit per-mount PluginState.
+    """A configured recipe reconstructed for each activation.
 
-    Allocate resources in setup and own their cleanup through Context effects.
-    Class annotations name: Inject[T] resolve before setup; Inject[T | None]
-    receives None if absent. provides=True publishes this mount as a service.
-    Declare lifetime dependencies with needs; Inject only binds their values.
-    Ordinary assignments in setup are per-mount; constructor inputs are shared.
-    create_instance may customize construction without changing registration.
+    Declare lifetime service bindings with dependency() and mutable runtime data
+    with PluginState. Constructors describe capabilities; setup acquires resources
+    and registers cleanup on its Context. Instructions require explicit placement.
     """
 
     Config: ClassVar[type[BaseModel]] = PluginConfig
@@ -65,19 +64,40 @@ class Plugin(KernelPlugin):
         **configuration: Any,
     ) -> None:
         super().__init__(name=name, hooks=hooks, needs=needs, registrations=registrations)
+        if not type(self).Config.model_config.get("frozen"):
+            raise TypeError("Plugin Config models must be frozen; inherit PluginConfig")
         self.config = type(self).Config.model_validate(configuration)
 
-    def system_sections(self) -> tuple[BoundSystemSection, ...]:
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        for name, member in tuple(vars(cls).items()):
+            if callable(member) and isinstance(getattr(member, "_harnessed_tool", None), ToolSpec):
+                setattr(cls, name, _activation_tool(member))
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "config" and "config" in vars(self):
+            raise AttributeError("Plugin configuration cannot be replaced after construction")
+        super().__setattr__(name, value)
+
+    def create_instance(self) -> Self:
+        """Reconstruct runtime attributes while retaining the validated frozen configuration."""
+        if "config" not in vars(self):
+            raise TypeError("Plugin constructors must call super().__init__()")
+        instance = super().create_instance()
+        object.__setattr__(instance, "config", self.config)
+        return instance
+
+    def instruction_refs(self) -> tuple[InstructionRef, ...]:
         """Declared system sections, bound to this recipe without evaluating providers."""
         members: dict[str, object] = {}
         for base in reversed(type(self).__mro__):
             members.update(vars(base))
         members.update(vars(self))
-        sections: list[BoundSystemSection] = []
+        sections: list[InstructionRef] = []
         for name, member in members.items():
-            if isinstance(member, SystemSection):
+            if isinstance(member, Instructions):
                 sections.append(member.bind(self, name))
-            elif isinstance(member, SystemSectionProvider):
+            elif isinstance(member, InstructionProvider):
                 sections.append(member.__get__(self, type(self)))
         return tuple(sections)
 
@@ -95,7 +115,7 @@ def plugin_events(value: PluginLike) -> tuple[type[SessionEvent | TransientEvent
 def plugin_contribution(value: PluginLike) -> PromptContribution:
     """Normalize a plugin's prompt metadata once at the agent boundary."""
     spec = as_plugin_spec(value)
-    sections = value.system_sections() if isinstance(value, Plugin) else ()
+    sections = value.instruction_refs() if isinstance(value, Plugin) else ()
     description = value.context_description if isinstance(value, Plugin) else None
     if description is not None and (
         not isinstance(description, tuple)

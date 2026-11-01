@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from harnessed import Agent, PolicyDecision, SystemPrompt, SystemSection
+from harnessed import Agent, Instructions, PolicyDecision, SystemPrompt
 from harnessed.plugins import Approvals, Filesystem, Shell
 from harnessed.plugins.filesystem import FileSystemBackend, LocalFileSystem
 from harnessed.testing import FakeShell, InMemoryFS, ScriptedModel, assert_tool_called, call, reply
@@ -59,7 +59,7 @@ async def test_pytest_fixture_replaces_feature_slots_without_duplicate_configura
     configured = Agent(
         system_prompt=SystemPrompt(
             sections=(
-                SystemSection(text="Fixed."),
+                Instructions(text="Fixed."),
                 filesystem.usage,
                 shell.usage,
             )
@@ -71,7 +71,7 @@ async def test_pytest_fixture_replaces_feature_slots_without_duplicate_configura
     async with harnessed_session(
         configured,
         system_prompt=SystemPrompt(
-            sections=(SystemSection(text="Fixed."), virtual_files.usage, virtual_shell.usage)
+            sections=(Instructions(text="Fixed."), virtual_files.usage, virtual_shell.usage)
         ),
         script=[call("read_file", path="note.txt"), reply("done")],
         plugins=[virtual_files, virtual_shell],

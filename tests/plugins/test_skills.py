@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from harnessed import Agent, SystemPrompt, SystemSection, ToolCall
+from harnessed import Agent, Instructions, SystemPrompt, ToolCall
 from harnessed.core.errors import ConfigError
 from harnessed.core.messages import ToolStatus
 from harnessed.core.tools.registry import ToolRegistry
@@ -74,7 +74,7 @@ async def test_catalog_reads_only_frontmatter_once_per_session_and_loads_body_fr
         model=ScriptedModel([]),
         system_prompt=SystemPrompt(
             sections=(
-                SystemSection.from_file(path=instructions),
+                Instructions.from_file(path=instructions),
                 recipe.catalog,
             )
         ),

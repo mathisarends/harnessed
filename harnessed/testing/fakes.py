@@ -2,6 +2,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
+from typing import Self
 
 from harnessed.core.tools import ToolError
 from harnessed.plugins.filesystem import FileStat, Filesystem, SearchResult, search_files
@@ -121,6 +122,13 @@ class InMemoryFS(Filesystem):
         self.files = {_path(path): text for path, text in (files or {}).items()}
         super().__init__(implementation=_MemoryFiles(self.files), **options)
 
+    def create_instance(self) -> Self:
+        """Share the fake's observable store explicitly across its activations."""
+        instance = super().create_instance()
+        instance.files = self.files
+        instance.implementation = _MemoryFiles(self.files)
+        return instance
+
 
 @dataclass(frozen=True, slots=True)
 class CommandCall:
@@ -150,3 +158,11 @@ class FakeShell(Shell):
         self.responses = dict(responses or {})
         self.calls: list[CommandCall] = []
         super().__init__(implementation=_FakeCommands(self.responses, self.calls), **options)
+
+    def create_instance(self) -> Self:
+        """Keep command observations on the caller-owned fake recipe."""
+        instance = super().create_instance()
+        instance.responses = self.responses
+        instance.calls = self.calls
+        instance.implementation = _FakeCommands(self.responses, self.calls)
+        return instance

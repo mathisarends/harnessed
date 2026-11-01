@@ -9,7 +9,7 @@ from pathlib import Path, PurePosixPath
 import pytest
 from pydantic import ValidationError
 
-from harnessed import Agent, ApprovalAnswer, ToolCall
+from harnessed import Agent, ApprovalAnswer, PluginInstructions, SystemPrompt, ToolCall
 from harnessed.core.tools.registry import ToolRegistry
 from harnessed.integrations.sandbox import (
     Sandbox,
@@ -131,6 +131,7 @@ class MemoryBackend:
 
 def app(sandbox):
     return Agent(
+        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
         model=ScriptedModel([]),
         plugins=[
             sandbox,

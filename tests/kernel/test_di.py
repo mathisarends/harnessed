@@ -26,8 +26,6 @@ async def test_injection_binds_values_without_creating_lifetime_dependencies():
     seen = []
 
     class Feature(PluginBase, provides=True):
-        value: Inject[str]
-
         async def setup(self, value: Inject[str]) -> None:
             self.initial = value
 
@@ -40,12 +38,12 @@ async def test_injection_binds_values_without_creating_lifetime_dependencies():
         handle = await ctx.plugin(Feature())
         assert handle.spec.needs == ()
         mounted = ctx[Feature]
-        assert mounted.value == mounted.initial == "first"
+        assert mounted.initial == "first"
         await ctx.dispatch(Changed())
         restore = ctx.provide(str, "second")
         await ctx.settle()
         assert ctx[Feature] is mounted
-        assert mounted.value == mounted.initial == "first"
+        assert mounted.initial == "first"
         await ctx.dispatch(Changed())
         await restore()
         await ctx.settle()
@@ -53,19 +51,14 @@ async def test_injection_binds_values_without_creating_lifetime_dependencies():
         assert seen == ["first", "second", "first"]
 
 
-@pytest.mark.parametrize("site", ["attribute", "setup"])
-async def test_missing_required_injection_without_needs_fails_at_resolution(site):
-    class Attribute(PluginBase):
-        value: Inject[str]
-
+async def test_missing_required_setup_injection_without_needs_fails_at_resolution():
     class Setup(PluginBase):
         async def setup(self, value: Inject[str]) -> None:
             pass
 
-    recipe = Attribute() if site == "attribute" else Setup()
     async with Context() as ctx:
         with pytest.raises(MissingService, match="str"):
-            await ctx.plugin(recipe)
+            await ctx.plugin(Setup())
 
 
 def test_bundle_configured_hooks_and_function_injections_do_not_add_needs():

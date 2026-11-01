@@ -81,13 +81,13 @@ class Sandbox(Plugin, slot="sandbox"):
                 pass
             raise
         services = SandboxServices(backend.shell, backend.file_system)
-        ctx.provide(self._services_key, services)
+        ctx.provide(self.recipe._services_key, services)
         ctx.provide(ShellBackend, services.shell)
         ctx.provide(FileSystemBackend, services.file_system)
 
     def services(self, session: Session) -> SandboxServices:
         """Resolve this recipe's ready shell and file_system in the selected live session."""
-        return session.ctx[self._services_key]
+        return session.ctx[self.recipe._services_key]
 
     async def export(self, session: Session, *, source: str, destination: str | Path) -> None:
         """Export one bounded binary file through this recipe's live session mount."""
