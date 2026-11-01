@@ -203,7 +203,7 @@ async def test_builtin_writes_are_barriers_between_read_groups_and_same_file_ali
     async with Application(
         model=model,
         plugins=[Approvals(default=PolicyDecision.ALLOW), filesystem(), FilesystemTools()],
-        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+        system_prompt=SystemPrompt(PluginInstructions()),
     ).session() as agent:
         agent_audit = Audit(agent)
         running = asyncio.create_task(agent.run("go"))

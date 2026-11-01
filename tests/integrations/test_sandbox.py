@@ -131,7 +131,7 @@ class MemoryBackend:
 
 def app(sandbox):
     return Agent(
-        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+        system_prompt=SystemPrompt(PluginInstructions()),
         model=ScriptedModel([]),
         plugins=[
             sandbox,

@@ -59,7 +59,7 @@ async def main():
             ]
         )
         agent = Agent(
-            system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+            system_prompt=SystemPrompt(PluginInstructions()),
             model=model,
             plugins=[
                 Approvals(default=PolicyDecision.ALLOW),

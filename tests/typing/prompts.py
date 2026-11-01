@@ -12,7 +12,7 @@ from harnessed import (
     Unplaced,
     instructions,
 )
-from harnessed.core.prompt.values import InstructionProvider, InstructionRef
+from harnessed.core.prompt.values import InstructionProvider, InstructionRef, PromptPart
 from harnessed.kernel import Context
 
 
@@ -33,8 +33,7 @@ assert_type(feature.instruction_refs(), tuple[InstructionRef, ...])
 Agent(
     plugins=[feature],
     system_prompt=SystemPrompt(
-        format=PromptFormat.MARKDOWN,
-        sections=(feature.configuration, SystemPrompt(sections=(feature.usage,))),
+        feature.configuration, SystemPrompt(feature.usage), format=PromptFormat.MARKDOWN
     ),
 )
 
@@ -46,11 +45,12 @@ async def catalog(ctx: Context) -> str:
 Instructions.from_factory(factory=catalog, title="Catalog")
 Instructions.from_file(path="AGENTS.md", missing_ok=True)
 Instructions(text=42)  # ty: ignore[invalid-argument-type]
-SystemPrompt(
-    sections=("raw text", PluginInstructions(feature), PluginInstructions()),
-    unplaced=Unplaced.ERROR,
-)
-SystemPrompt(sections=(42,))  # ty: ignore[invalid-argument-type]
+SystemPrompt("raw text", PluginInstructions(feature), PluginInstructions(), unplaced=Unplaced.ERROR)
+SystemPrompt(42)  # ty: ignore[invalid-argument-type]
+SystemPrompt(("raw text",))  # ty: ignore[invalid-argument-type]
+SystemPrompt(sections=("raw text",))  # ty: ignore[unknown-argument]
+parts: list[PromptPart] = ["Role.", feature.usage]
+assert_type(SystemPrompt(*parts).sections, tuple[PromptPart, ...])
 Agent(system_prompt=42)  # ty: ignore[invalid-argument-type]
 
 

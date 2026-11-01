@@ -425,7 +425,7 @@ async def exercise_live_sandbox(sandbox, tmp_path):
     agent = Agent(
         model=ScriptedModel([]),
         plugins=[sandbox, FilesystemTools(), ShellTools()],
-        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+        system_prompt=SystemPrompt(PluginInstructions()),
     )
     async with agent.session() as session:
         services = sandbox.services(session)

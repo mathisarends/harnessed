@@ -156,7 +156,7 @@ async def test_spill_retains_full_output_before_the_final_limit_is_applied(tmp_p
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("large"))], "done"])
     spill = Spill(threshold_tokens=100)
     async with Application(
-        system_prompt=SystemPrompt(sections=(spill.usage,)),
+        system_prompt=SystemPrompt(spill.usage),
         model=model,
         plugins=[Approvals(default=PolicyDecision.ALLOW), ToolOutputLimit(4096), features, spill],
     ).session() as agent:
@@ -177,7 +177,7 @@ async def test_read_file_supports_bounded_unicode_character_ranges_and_continuat
     original = "ä😀abc" * 3000
     (tmp_path / "large.txt").write_text(original, encoding="utf-8")
     async with Application(
-        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+        system_prompt=SystemPrompt(PluginInstructions()),
         model=ScriptedModel([]),
         plugins=[
             Approvals(default=PolicyDecision.ALLOW),
@@ -226,7 +226,7 @@ async def test_large_shell_stdout_stderr_and_exit_code_remain_bounded(tmp_path):
         ]
     )
     async with Application(
-        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+        system_prompt=SystemPrompt(PluginInstructions()),
         model=model,
         plugins=[
             Approvals(default=PolicyDecision.ALLOW),

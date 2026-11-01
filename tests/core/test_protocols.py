@@ -82,7 +82,7 @@ async def test_foreign_fs_and_model_work_through_di_without_framework_inheritanc
     assert ForeignFiles.__bases__ == (object,)
     assert ForeignModel.__bases__ == (object,)
     async with Application(
-        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+        system_prompt=SystemPrompt(PluginInstructions()),
         model=model,
         plugins=[Approvals(default=PolicyDecision.ALLOW), foreign_files(), FilesystemTools()],
     ).session() as agent:

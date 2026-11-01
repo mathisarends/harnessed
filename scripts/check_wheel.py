@@ -73,7 +73,7 @@ async def main():
     defaults = Kit('library', [Guidance()])
     selected = Guidance()
     configured = Agent(plugins=[defaults, selected],
-                       system_prompt=SystemPrompt(sections=(selected.usage,)))
+                       system_prompt=SystemPrompt(selected.usage))
     description = configured.describe()
     assert isinstance(description, CompositionDescription)
     assert configured.plugins[-1] is selected
@@ -105,11 +105,11 @@ async def main():
             assert 'Guidance.usage' in str(error)
         else:
             raise AssertionError('Plugin instructions require explicit placement or exclusion')
-    simple = Agent(system_prompt=SystemPrompt(sections=('Role.', guidance.usage)),
+    simple = Agent(system_prompt=SystemPrompt('Role.', guidance.usage),
                    plugins=[guidance])
     assert await simple.prompt.render() == 'Role.\n\nPlugin guidance.'
     ordered = Agent(plugins=[guidance], system_prompt=SystemPrompt(
-        sections=(PluginInstructions(), 'Tail.'), unplaced=Unplaced.ERROR))
+        PluginInstructions(), 'Tail.', unplaced=Unplaced.ERROR))
     assert await ordered.prompt.render() == 'Plugin guidance.\n\nTail.'
     async with Agent(model=ScriptedModel([reply('Ready')]),
                      system_prompt='Fixed.').session() as session:
@@ -121,8 +121,8 @@ async def main():
         assert await session.prompt.render() == 'Fixed.'
     agent = Agent(model=ScriptedModel([call(Calculator.add, a=19, b=23), reply('42')]),
                   plugins=[Calculator(config=CalculatorConfig())], system_prompt=SystemPrompt(
-                      format=PromptFormat.MARKDOWN,
-                      sections=(Instructions(title='Role', text='Fixed instructions.'),)))
+                      Instructions(title='Role', text='Fixed instructions.'),
+                      format=PromptFormat.MARKDOWN))
     async with agent.session() as session:
         result = await session.run('Add')
         assert result.text == '42'
@@ -143,8 +143,8 @@ async def main():
     inline = Skill(name='notes', description='Write notes.', instructions='Keep notes concise.')
     skills = Skills(inline)
     async with Agent(model=ScriptedModel([call('load_skill', name='notes'), reply('Loaded')]),
-                     plugins=[skills], system_prompt=SystemPrompt(
-                         sections=(skills.catalog,))).session() as session:
+                     plugins=[skills], system_prompt=SystemPrompt(skills.catalog)
+                     ).session() as session:
         result = await session.run('Load notes')
         assert 'Keep notes concise.' in result.tool_calls[0][1].text
     assert not any(name.startswith('pydantic_ai') for name in sys.modules)

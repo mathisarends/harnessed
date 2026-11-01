@@ -30,12 +30,7 @@ async def main():
         plugins=[
             Service(Model, model),
             PromptRenderer(
-                SystemPrompt(
-                    sections=(
-                        Instructions(text="Keep answers concise."),
-                        calculator.usage,
-                    )
-                )
+                SystemPrompt(Instructions(text="Keep answers concise."), calculator.usage)
             ),
             calculator,
         ]

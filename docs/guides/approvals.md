@@ -22,7 +22,7 @@ async def approve(request: ApprovalRequestedEvent) -> ApprovalAnswer:
 
 filesystem = Filesystem(root=".")
 agent = Agent(
-    system_prompt=SystemPrompt(sections=(filesystem.usage,)),
+    system_prompt=SystemPrompt(filesystem.usage),
     model=ScriptedModel([call(WorkspaceTools.count_lines, path="README.md"), "done"]),
     plugins=[
         filesystem,

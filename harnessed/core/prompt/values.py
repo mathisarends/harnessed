@@ -233,6 +233,8 @@ type PromptPart = (
 class SystemPrompt:
     """An ordered document requiring explicit placement or exclusion of instructions.
 
+    Pass content in order as positional arguments; unpack iterables with ``*parts``.
+    Rendering, exclusions and the unplaced policy are keyword-only options.
     Nested documents inherit the outermost format and unplaced policy.
     """
 
@@ -243,13 +245,12 @@ class SystemPrompt:
 
     def __init__(
         self,
-        *,
-        sections: Iterable[PromptPart] = (),
+        *sections: PromptPart,
         format: PromptFormat = PromptFormat.PLAIN,
         exclude: Iterable[InstructionRef | Instructions | InstructionFragment] = (),
         unplaced: Unplaced = Unplaced.ERROR,
     ) -> None:
-        object.__setattr__(self, "sections", tuple(sections))
+        object.__setattr__(self, "sections", sections)
         object.__setattr__(self, "format", PromptFormat(format))
         object.__setattr__(self, "exclude", tuple(exclude))
         object.__setattr__(self, "unplaced", Unplaced(unplaced))
@@ -281,7 +282,7 @@ class PromptComposition:
     ) -> None:
         contributions = tuple(contributions)
         if isinstance(prompt, str):
-            prompt = SystemPrompt(sections=(prompt,))
+            prompt = SystemPrompt(prompt)
         if prompt is None:
             prompt = SystemPrompt()
         if not isinstance(prompt, SystemPrompt):

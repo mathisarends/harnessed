@@ -48,6 +48,11 @@ The canonical content name is `Instructions`; related names are `InstructionRef`
 `InstructionProvider`, `@instructions` and `PluginInstructions`. The renderer
 plugin is `PromptRenderer`. No transitional aliases are retained.
 
+`SystemPrompt("Help with documents.", workspace.instructions, "Answer concisely.")`
+takes ordered positional content. Iterables use `SystemPrompt(*parts)`; `format`,
+`exclude` and `unplaced` stay keyword-only. The old `sections=` constructor keyword
+is removed.
+
 Every selected declaration must be explicitly placed or excluded, even when its
 rendered text is empty, the prompt is a plain string, or no prompt was supplied.
 Coverage, foreign references, overlaps and exclusions are checked before content

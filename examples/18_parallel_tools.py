@@ -82,7 +82,7 @@ async def writes_with_resource_keys(root: Path):
         plugins=[
             Approvals(default=PolicyDecision.ALLOW),
             filesystem,
-            PromptRenderer(SystemPrompt(sections=(filesystem.usage,))),
+            PromptRenderer(SystemPrompt(filesystem.usage)),
             tools,
         ],
     ).session() as session:

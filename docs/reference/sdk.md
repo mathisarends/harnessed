@@ -163,8 +163,12 @@ these settings once, and `ModelRequestedEvent.model` records the selected
 
 ## System prompt composition
 
-`SystemPrompt(*, sections=(), format=PromptFormat.PLAIN, exclude=(),
-unplaced=Unplaced.ERROR)` is an immutable document. Sections are strings,
+`SystemPrompt(*sections, format=PromptFormat.PLAIN, exclude=(),
+unplaced=Unplaced.ERROR)` is an immutable document. Pass content as positional
+arguments in the intended order, such as
+`SystemPrompt("Help with documents.", workspace.instructions, "Answer concisely.")`.
+For an iterable, use `SystemPrompt(*parts)`. Rendering and placement policies
+remain keyword-only options. Sections are strings,
 keyword-only `Instructions(text="", title=None, description="")` values,
 plugin-bound references, `PluginInstructions(plugin)` groups, a `PluginInstructions()`
 rest slot, kit-owned `InstructionFragment` values, or nested SystemPrompt documents.

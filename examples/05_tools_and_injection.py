@@ -24,7 +24,7 @@ async def main():
     )
     filesystem = Filesystem(root=".")
     agent = Agent(
-        system_prompt=SystemPrompt(sections=(filesystem.usage,)),
+        system_prompt=SystemPrompt(filesystem.usage),
         model=model,
         plugins=[
             filesystem,

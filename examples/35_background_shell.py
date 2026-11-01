@@ -69,7 +69,7 @@ async def main() -> None:
     with TemporaryDirectory() as temporary:
         workspace = Path(temporary)
         agent = Agent(
-            system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+            system_prompt=SystemPrompt(PluginInstructions()),
             model=CallbackModel(respond),
             plugins=[
                 Shell(workspace),

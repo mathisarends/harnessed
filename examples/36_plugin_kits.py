@@ -36,7 +36,7 @@ async def main() -> None:
     agent = Agent(
         model=ScriptedModel([call("label", text="Hello"), "Application: Hello"]),
         plugins=[project, TextTools(prefix="Application")],
-        system_prompt=SystemPrompt(sections=(project.instructions,)),
+        system_prompt=SystemPrompt(project.instructions),
     )
     print(agent.describe())
     print((await agent.run("Label Hello")).text)

@@ -21,7 +21,7 @@ from harnessed.plugins import Spill, ToolOutputLimit
 spill = Spill(threshold_tokens=8_000, preview_tokens=256, max_files=128, max_bytes=32 * 1024 * 1024)
 agent = Agent(
     model="deepseek:deepseek-chat",
-    system_prompt=SystemPrompt(sections=(spill.usage,)),
+    system_prompt=SystemPrompt(spill.usage),
     plugins=[
         spill,
         ToolOutputLimit(max_chars=16_000),

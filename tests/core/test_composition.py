@@ -173,9 +173,7 @@ def test_callable_plugin_instances_keep_their_prompt_metadata():
             pass
 
     recipe = CallablePlugin()
-    agent = Agent(
-        plugins=[Kit("library", [recipe])], system_prompt=SystemPrompt(sections=(recipe.usage,))
-    )
+    agent = Agent(plugins=[Kit("library", [recipe])], system_prompt=SystemPrompt(recipe.usage))
     assert recipe in agent.plugins
     assert "Keep this contribution." in str(agent.prompt)
 

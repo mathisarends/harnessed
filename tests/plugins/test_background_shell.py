@@ -21,7 +21,7 @@ async def execute(session, name, **arguments):
 
 def agent(tmp_path, **options):
     return Agent(
-        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+        system_prompt=SystemPrompt(PluginInstructions()),
         model=ScriptedModel([]),
         plugins=[
             Shell(tmp_path, implementation=options.pop("implementation", None)),
@@ -53,7 +53,7 @@ async def eventually(predicate):
 @pytest.mark.parametrize("shell_enabled", [False, True])
 async def test_background_tools_require_explicit_opt_in(tmp_path, shell_enabled):
     app = Agent(
-        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+        system_prompt=SystemPrompt(PluginInstructions()),
         model=ScriptedModel([]),
         plugins=[Shell(tmp_path)] if shell_enabled else [],
     )
@@ -76,7 +76,7 @@ async def test_background_tools_require_explicit_opt_in(tmp_path, shell_enabled)
 
 async def test_background_plugin_can_use_an_explicit_backend_without_foreground_tools(tmp_path):
     app = Agent(
-        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+        system_prompt=SystemPrompt(PluginInstructions()),
         model=ScriptedModel([]),
         plugins=[Service(ShellBackend, LocalShell()), BackgroundShell(tmp_path)],
     )
@@ -141,7 +141,7 @@ async def test_completion_wakes_idle_agent_once_and_does_not_leak_raw_output(tmp
         yield ModelChunk(text="Acknowledged completion")
 
     app = Agent(
-        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+        system_prompt=SystemPrompt(PluginInstructions()),
         model=CallbackModel(respond),
         plugins=[Shell(tmp_path), BackgroundShell(tmp_path)],
     )
@@ -190,7 +190,7 @@ async def test_completion_arrives_in_next_step_while_agent_keeps_working(tmp_pat
         yield ModelChunk(text="continued")
 
     app = Agent(
-        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+        system_prompt=SystemPrompt(PluginInstructions()),
         model=CallbackModel(respond),
         plugins=[
             Shell(tmp_path),
@@ -281,13 +281,13 @@ async def test_background_process_tree_cleanup_and_retry(tmp_path, end):
         f"subprocess.Popen([sys.executable, '-c', {child!r}]); time.sleep(30)"
     )
     app = Agent(
-        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+        system_prompt=SystemPrompt(PluginInstructions()),
         model=ScriptedModel([]),
         plugins=[Service(ShellBackend, LocalShell()), BackgroundShell(tmp_path)],
     )
     if end == "unmount":
         app = Agent(
-            system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+            system_prompt=SystemPrompt(PluginInstructions()),
             model=ScriptedModel([]),
             plugins=[Shell(tmp_path)],
         )

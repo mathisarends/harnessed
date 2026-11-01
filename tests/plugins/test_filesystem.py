@@ -80,7 +80,7 @@ async def test_filesystem_plugin_schema_bounds_search_notices_and_safe_approvals
     (tmp_path / "other.txt").write_text("match", encoding="utf-8")
     filesystem = Filesystem(tmp_path)
     app = Agent(
-        system_prompt=SystemPrompt(sections=(filesystem.usage,)),
+        system_prompt=SystemPrompt(filesystem.usage),
         model=ScriptedModel([]),
         plugins=[filesystem],
     )
@@ -108,7 +108,7 @@ async def test_filesystem_plugin_schema_bounds_search_notices_and_safe_approvals
     )
     filesystem_2 = Filesystem(tmp_path)
     result = await Agent(
-        system_prompt=SystemPrompt(sections=(filesystem_2.usage,)),
+        system_prompt=SystemPrompt(filesystem_2.usage),
         model=model,
         plugins=[filesystem_2],
     ).run("Write")

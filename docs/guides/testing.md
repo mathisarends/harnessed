@@ -77,7 +77,7 @@ from harnessed.testing import InMemoryFS, FakeShell
 files = InMemoryFS({"project/notes.txt": "Remember this."})
 commands = FakeShell({"pytest": "1 passed"})
 agent = Agent(
-    system_prompt=SystemPrompt(sections=(files.usage, commands.usage)),
+    system_prompt=SystemPrompt(files.usage, commands.usage),
     model=ScriptedModel([call("run_command", argv=["pytest"]), reply("Tests pass")]),
     plugins=[files, commands, Approvals(default=PolicyDecision.ALLOW)],
 )
@@ -103,7 +103,7 @@ matching slots in an existing agent configuration:
 async def test_workspace(harnessed_session):
     files = InMemoryFS({"note.txt": "virtual"})
     async with harnessed_session(
-        system_prompt=SystemPrompt(sections=(files.usage,)),
+        system_prompt=SystemPrompt(files.usage),
         script=[call("read_file", path="note.txt"), reply("done")],
         plugins=[files],
     ) as session:

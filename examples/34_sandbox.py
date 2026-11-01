@@ -22,7 +22,7 @@ async def exercise(sandbox: Sandbox, directory: Path) -> None:
         ]
     )
     agent = Agent(
-        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+        system_prompt=SystemPrompt(PluginInstructions()),
         model=model,
         plugins=[
             sandbox,

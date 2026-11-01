@@ -38,12 +38,7 @@ async def main():
         )
         spill = Spill(threshold_tokens=1)
         agent = Agent(
-            system_prompt=SystemPrompt(
-                sections=(
-                    skills.catalog,
-                    spill.usage,
-                )
-            ),
+            system_prompt=SystemPrompt(skills.catalog, spill.usage),
             model=model,
             plugins=[
                 skills,

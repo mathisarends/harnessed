@@ -15,13 +15,9 @@ async def main():
     agent = Agent(
         model=f"deepseek:{os.environ.get('DEEPSEEK_MODEL', 'deepseek-chat')}",
         system_prompt=SystemPrompt(
-            sections=(
-                Instructions(
-                    text="Help the user understand this Python project. Answer in English."
-                ),
-                Instructions.from_file(path=workspace / "AGENTS.md", missing_ok=True),
-                filesystem.usage,
-            )
+            Instructions(text="Help the user understand this Python project. Answer in English."),
+            Instructions.from_file(path=workspace / "AGENTS.md", missing_ok=True),
+            filesystem.usage,
         ),
         plugins=[filesystem, AgentLoop(max_steps=8)],
     )

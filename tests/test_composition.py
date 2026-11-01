@@ -48,11 +48,9 @@ async def test_explicit_project_composition_adds_only_the_requested_tools(tmp_pa
     app = Agent(
         model=model,
         system_prompt=SystemPrompt(
-            sections=(
-                Instructions.from_file(path=tmp_path / "AGENTS.md"),
-                filesystem.usage,
-                *(p.usage for p in commands),
-            )
+            Instructions.from_file(path=tmp_path / "AGENTS.md"),
+            filesystem.usage,
+            *(p.usage for p in commands),
         ),
         plugins=[filesystem, *commands],
     )
@@ -141,7 +139,7 @@ async def test_only_survivors_contribute_prompts_events_tools_and_lifetimes(remo
     agent = Agent(
         model=model,
         plugins=[kit, Replacement()],
-        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+        system_prompt=SystemPrompt(PluginInstructions()),
     )
     assert started == []
     for _ in range(2):
@@ -165,7 +163,7 @@ def test_prompt_references_to_replaced_recipes_fail_before_provider_evaluation()
     with pytest.raises(ConfigError, match="uninstalled"):
         Agent(
             plugins=[Kit("library", [original]), Feature()],
-            system_prompt=SystemPrompt(sections=(original.usage,)),
+            system_prompt=SystemPrompt(original.usage),
         )
 
 
@@ -207,6 +205,6 @@ async def test_explicit_rest_group_follows_the_resolved_slot_positions():
 
     agent = Agent(
         plugins=[Feature(), LoopGuidance()],
-        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+        system_prompt=SystemPrompt(PluginInstructions()),
     )
     assert await agent.prompt.render() == "Loop guidance.\n\nFeature guidance."

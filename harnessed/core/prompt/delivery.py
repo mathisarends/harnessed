@@ -37,7 +37,7 @@ def runtime_sections(
     async def mount(ctx: Context, *args: Any, **kwargs: Any) -> AsyncGenerator[object, None]:
         async with asynccontextmanager(spec.factory)(ctx, *args, **kwargs) as instance:
             composition = PromptComposition(
-                SystemPrompt(sections=(PluginInstructions(),)), contributions=(contribution,)
+                SystemPrompt(PluginInstructions()), contributions=(contribution,)
             )
             text = await composition.render(ctx)
             if text:

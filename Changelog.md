@@ -48,6 +48,11 @@
 
 ### Breaking changes
 
+- Pass prompt content directly as positional arguments:
+  `SystemPrompt("Help with documents.", workspace.instructions, "Answer concisely.")`.
+  Replace `SystemPrompt(sections=parts)` with `SystemPrompt(*parts)`; `format`,
+  `exclude` and `unplaced` remain keyword-only options. The `sections=` constructor
+  keyword is removed.
 - Remove `Config = MyConfig`, the repeated `config: MyConfig` declaration and
   arbitrary configuration keyword forwarding from the Plugin base constructor.
   Use `class Files(Plugin[FilesConfig])` and
@@ -93,7 +98,7 @@
    Custom constructors use `super().__init__(config=MyConfig(...))`; plain
    configurationless plugins continue to call `super().__init__()`.
 2. Rename instruction declarations and decorators to `Instructions` and
-   `@instructions`. Use explicit `SystemPrompt(sections=(files.usage, ...))` or
+   `@instructions`. Use explicit `SystemPrompt(files.usage, ...)` or
    `kit.instructions`; omit contributions with `exclude=(files.usage,)`.
 3. Replace service attributes `backend: Inject[Backend]` and duplicate `needs`
    entries with `backend = dependency(Backend)`. Use `optional=True` for stable

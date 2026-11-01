@@ -17,7 +17,7 @@ from harnessed.testing import ScriptedModel
 
 filesystem = Filesystem(root=".")
 agent = Agent(
-    system_prompt=SystemPrompt(sections=(filesystem.usage,)),
+    system_prompt=SystemPrompt(filesystem.usage),
     model=ScriptedModel(["done"]),
     plugins=[
         AgentLoop(max_steps=50, max_parallel_tools=4),
@@ -61,7 +61,7 @@ def project_kit(root: str | Path = ".") -> Kit:
 project = project_kit().without(Shell)
 agent = Agent(
     model=ScriptedModel(["done"]),
-    system_prompt=SystemPrompt(sections=(project.instructions,)),
+    system_prompt=SystemPrompt(project.instructions),
     plugins=[
         project,
         AgentLoop(max_steps=10),
@@ -91,7 +91,7 @@ research = Kit("research", [project_kit(), Compaction(keep_steps=6)])
 agent = Agent(
     model=model,
     plugins=[research, Compaction(keep_steps=10)],
-    system_prompt=SystemPrompt(sections=(research.instructions,)),
+    system_prompt=SystemPrompt(research.instructions),
 )
 ```
 

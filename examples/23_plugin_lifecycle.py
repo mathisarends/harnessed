@@ -78,7 +78,7 @@ async def trace(ctx: Context):
 async def main():
     notes = NotesTools(NotesConfig())
     harness = Agent(
-        system_prompt=SystemPrompt(sections=(notes.usage,)),
+        system_prompt=SystemPrompt(notes.usage),
         model=ScriptedModel(
             [
                 [ModelChunk(tool_call=ToolCall("save_note", {"text": "Try Harnessed"}))],

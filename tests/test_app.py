@@ -50,11 +50,7 @@ async def test_application_facade_composes_plugins_and_fixed_ordered_guidance(tm
     app = Agent(
         model=model,
         system_prompt=SystemPrompt(
-            sections=(
-                Instructions(text="Be concise."),
-                Instructions.from_file(path=path),
-                calculator.usage,
-            )
+            Instructions(text="Be concise."), Instructions.from_file(path=path), calculator.usage
         ),
         plugins=[calculator],
     )
@@ -80,26 +76,14 @@ async def test_facade_parameters_are_equivalent_to_public_plugins():
     calculator = Calculator()
     await Agent(
         model=one,
-        system_prompt=SystemPrompt(
-            sections=(
-                Instructions(text="Rules."),
-                calculator.usage,
-            )
-        ),
+        system_prompt=SystemPrompt(Instructions(text="Rules."), calculator.usage),
         plugins=[calculator],
     ).run("Go")
     calculator_4 = Calculator()
     await Agent(
         plugins=[
             Service(Model, two),
-            PromptRenderer(
-                SystemPrompt(
-                    sections=(
-                        Instructions(text="Rules."),
-                        calculator_4.usage,
-                    )
-                )
-            ),
+            PromptRenderer(SystemPrompt(Instructions(text="Rules."), calculator_4.usage)),
             calculator_4,
         ]
     ).run("Go")
@@ -115,8 +99,7 @@ async def test_system_sections_can_be_replaced_or_omitted_explicitly():
         model=ScriptedModel([]),
         plugins=[calculator],
         system_prompt=SystemPrompt(
-            sections=(Instructions(text="Replacement guidance."),),
-            exclude=(calculator.usage,),
+            Instructions(text="Replacement guidance."), exclude=(calculator.usage,)
         ),
     )
     async with app.session() as session:

@@ -86,7 +86,9 @@ async def main() -> None:
         model=ScriptedModel([call(files.read_document, name="README.md"), "Read the document."]),
         plugins=(workspace, ReadObserver()),
         system_prompt=SystemPrompt(
-            sections=("Help the user with documents.", workspace.instructions, "Answer concisely.")
+            "Help with documents.",
+            workspace.instructions,
+            "Answer concisely.",
         ),
     )
     print(agent.describe())

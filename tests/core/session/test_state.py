@@ -142,7 +142,7 @@ async def test_spill_contents_survive_compaction_json_and_session_close():
             return text
 
     agent = Agent(
-        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+        system_prompt=SystemPrompt(PluginInstructions()),
         model=ScriptedModel([call(Source.source), "stored", "continued"]),
         plugins=[
             Source(),
@@ -221,7 +221,7 @@ async def test_default_state_images_and_spill_need_no_filesystem_writes(monkeypa
     monkeypatch.setattr(Path, "write_bytes", denied)
     monkeypatch.setattr(Path, "write_text", denied)
     agent = Agent(
-        system_prompt=SystemPrompt(sections=(PluginInstructions(),)),
+        system_prompt=SystemPrompt(PluginInstructions()),
         model=ScriptedModel([call(Source.source), "done"]),
         plugins=[Source(), Spill(threshold_tokens=32)],
     )

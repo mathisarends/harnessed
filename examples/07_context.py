@@ -82,10 +82,8 @@ async def main():
         harness = Agent(
             model=model,
             system_prompt=SystemPrompt(
-                sections=(
-                    Instructions(text="You are a code reviewer."),
-                    Instructions.from_file(path=root / "AGENTS.md"),
-                )
+                Instructions(text="You are a code reviewer."),
+                Instructions.from_file(path=root / "AGENTS.md"),
             ),
             plugins=[
                 ContextValue("ci", "Authentication tests are available."),

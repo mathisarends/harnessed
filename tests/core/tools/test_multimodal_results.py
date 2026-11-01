@@ -45,9 +45,7 @@ async def test_multimodal_tool_loop_retains_images_and_metadata_through_replay(t
     async with Agent(
         model=model,
         plugins=plugins,
-        system_prompt=SystemPrompt(
-            sections=tuple(p.usage for p in plugins if isinstance(p, Spill))
-        ),
+        system_prompt=SystemPrompt(*(p.usage for p in plugins if isinstance(p, Spill))),
     ).session() as session:
         session_audit = Audit(session)
         result = await session.run("Look at the screenshot.")
