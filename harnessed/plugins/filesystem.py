@@ -11,8 +11,7 @@ from pydantic import Field
 
 from harnessed.core.plugin import Plugin, PluginConfig
 from harnessed.core.prompt.values import SystemSection
-from harnessed.core.tools.decorator import tool
-from harnessed.core.tools.registry import ToolError, ToolRegistry
+from harnessed.core.tools import ToolError, ToolRegistry, tool
 from harnessed.kernel import Context, Inject, run_sync
 
 
@@ -109,12 +108,6 @@ class LocalFileSystem:
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root).resolve()
 
-    def _path(self, path: PurePath) -> Path:
-        resolved = (self.root / path).resolve()
-        if not resolved.is_relative_to(self.root):
-            raise ValueError(f"Path is outside the workspace: {path}")
-        return resolved
-
     async def read(self, path: PurePath, *, offset: int = 0, limit: int | None = None) -> str:
         if offset < 0 or (limit is not None and limit < 0):
             raise ValueError("File ranges must be non-negative")
@@ -142,6 +135,18 @@ class LocalFileSystem:
 
         return await run_sync(read)
 
+    async def write(self, path: PurePath, text: str) -> None:
+        await run_sync(partial(self._write, path, text))
+
+    async def stat(self, path: PurePath) -> FileStat:
+        return await run_sync(lambda: self._stat(self._path(path)))
+
+    def _path(self, path: PurePath) -> Path:
+        resolved = (self.root / path).resolve()
+        if not resolved.is_relative_to(self.root):
+            raise ValueError(f"Path is outside the workspace: {path}")
+        return resolved
+
     def _write(self, path: PurePath, text: str) -> None:
         resolved = self._path(path)
         resolved.parent.mkdir(parents=True, exist_ok=True)
@@ -159,17 +164,11 @@ class LocalFileSystem:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
 
-    async def write(self, path: PurePath, text: str) -> None:
-        await run_sync(partial(self._write, path, text))
-
     def _stat(self, path: Path) -> FileStat:
         info = path.stat()
         return FileStat(
             path.relative_to(self.root).as_posix(), info.st_size, path.is_dir(), info.st_mtime
         )
-
-    async def stat(self, path: PurePath) -> FileStat:
-        return await run_sync(lambda: self._stat(self._path(path)))
 
     async def list(self, path: PurePath = Path(".")) -> tuple[FileStat, ...]:
         def entries() -> tuple[FileStat, ...]:

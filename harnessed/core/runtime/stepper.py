@@ -43,18 +43,11 @@ from harnessed.core.session.events import (
 )
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import TokenCounter
-from harnessed.core.tools.registry import ToolRegistry
+from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import Context
 
 if TYPE_CHECKING:
     from harnessed.core.runtime.session import Session
-
-
-_FINAL_STEP_INSTRUCTION = (
-    "This is the final available step. End this turn with a text summary of the results, "
-    "uncertainties and unfinished work based on the information already available. "
-    "Do not call tools or claim unfinished work is complete."
-)
 
 
 class StepRunner:
@@ -294,3 +287,10 @@ class StepRunner:
                 )
                 await self.log.append(ModelRequestFailedEvent(request_id, outcome, str(error)))
             raise
+
+
+_FINAL_STEP_INSTRUCTION = (
+    "This is the final available step. End this turn with a text summary of the results, "
+    "uncertainties and unfinished work based on the information already available. "
+    "Do not call tools or claim unfinished work is complete."
+)

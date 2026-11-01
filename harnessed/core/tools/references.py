@@ -2,7 +2,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from harnessed.kernel.di import Dependency, binding_plan
+from harnessed.kernel import Dependency, binding_plan
 
 from .arguments import ToolArguments
 from .context import ToolContext

@@ -24,7 +24,7 @@ from harnessed.core.session.events import (
     TurnStartedEvent,
 )
 from harnessed.core.session.session import SessionLog
-from harnessed.kernel.plugin import PluginStatus
+from harnessed.kernel import PluginStatus
 from harnessed.models import Model
 from harnessed.plugins import Approvals, ContextValue, Instructions, Service
 from harnessed.testing import ScriptedModel

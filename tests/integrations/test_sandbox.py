@@ -1,5 +1,6 @@
 import asyncio
 import io
+import json
 import os
 import sys
 import tarfile
@@ -16,10 +17,11 @@ from harnessed.integrations.sandbox import (
     SandboxError,
     SandboxLimits,
     Workspace,
+    worker,
 )
 from harnessed.integrations.sandbox.process import run_process
 from harnessed.integrations.sandbox.types import environment, workspace_path
-from harnessed.integrations.sandbox.worker import Operation, Request, match_path
+from harnessed.integrations.sandbox.worker import Operation, Request
 from harnessed.integrations.sandbox.workspace import seed_archive
 from harnessed.kernel import MissingService
 from harnessed.plugins import Approvals, FilesystemTools, ShellTools
@@ -227,7 +229,7 @@ async def test_cancelled_startup_drains_and_cleans_partial_resources(tmp_path):
     await backend.block.wait()
     opening.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await opening
+        await asyncio.wait_for(opening, timeout=5)
     assert backend.closed
 
 
@@ -271,7 +273,7 @@ async def test_interrupted_commands_close_sandbox(tmp_path, end):
             await backend.block.wait()
             pending.cancel()
             with pytest.raises(asyncio.CancelledError):
-                await pending
+                await asyncio.wait_for(pending, timeout=5)
         assert backend.closed
         with pytest.raises(SandboxError, match="closed"):
             await shell.run(["test"], cwd=Path("."), timeout=1)
@@ -348,8 +350,22 @@ def test_config_and_environment_are_explicit(tmp_path, monkeypatch):
         ("nested/a.bin", "**/*.txt", False),
     ],
 )
-def test_recursive_globs_match_whole_relative_paths(path, pattern, expected):
-    assert match_path(PurePosixPath(path).parts, PurePosixPath(pattern).parts) is expected
+@pytest.mark.skipif(os.name == "nt", reason="Worker glob uses POSIX descriptor-relative traversal")
+def test_recursive_globs_match_whole_relative_paths(tmp_path, monkeypatch, path, pattern, expected):
+    target = tmp_path / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("content")
+    original_open = os.open
+
+    def open_workspace(path, flags, *args, **kwargs):
+        return original_open(tmp_path if path == "/workspace" else path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(worker.os, "open", open_workspace)
+    reply = json.loads(
+        worker.response(json.dumps({"operation": "glob", "path": pattern, "limit": 100}))
+    )
+    assert reply["error"] is None
+    assert (path in reply["value"]) is expected
 
 
 async def test_host_launcher_bounds_output_and_deadline():
@@ -374,14 +390,21 @@ async def test_worker_file_paths_and_shell_descendants(tmp_path, monkeypatch):
         return original_open(tmp_path if path == "/workspace" else path, flags, *args, **kwargs)
 
     monkeypatch.setattr(worker.os, "open", open_workspace)
-    worker.dispatch(Request(Operation.WRITE, path="nested/test.txt", text="ä😀value"))
+
+    def response(operation: Operation, **arguments: object) -> dict[str, object]:
+        return json.loads(worker.response(json.dumps({"operation": operation, **arguments})))
+
     assert (
-        worker.dispatch(Request(Operation.READ, path="nested/test.txt", offset=1, limit=1)) == "😀"
+        response(Operation.WRITE, path="nested/test.txt", text="\u00e4\U0001f600value")["error"]
+        is None
     )
+    assert response(Operation.READ, path="nested/test.txt", offset=1, limit=1) == {
+        "value": "\U0001f600",
+        "error": None,
+        "error_type": None,
+    }
     (tmp_path / "outside").symlink_to(tmp_path.parent, target_is_directory=True)
-    with pytest.raises(OSError):
-        worker.dispatch(Request(Operation.READ, path="outside/secret"))
+    assert response(Operation.READ, path="outside/secret")["error"] is not None
     (tmp_path / "file-link").symlink_to(tmp_path / "nested/test.txt")
-    with pytest.raises(OSError):
-        worker.dispatch(Request(Operation.READ, path="file-link"))
+    assert response(Operation.READ, path="file-link")["error"] is not None
     assert not (tmp_path.parent / "secret").exists()

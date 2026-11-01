@@ -7,7 +7,7 @@ from uuid import uuid4
 from harnessed.core.errors import SessionClosed
 from harnessed.core.messages import ToolResult, ToolStatus, result_content, to_dict
 from harnessed.core.runtime.inbox import SessionInbox
-from harnessed.core.tools.registry import ToolError
+from harnessed.core.tools import ToolError
 
 from .process import BackgroundShellBackend, ProcessState, ShellProcess
 
@@ -109,6 +109,16 @@ class BackgroundCommands:
             for snapshot in (command.process.snapshot(),)
         )
 
+    async def close(self) -> None:
+        self._closing = True
+        cleanup = asyncio.create_task(self._close())
+        while not cleanup.done():
+            try:
+                await asyncio.shield(cleanup)
+            except asyncio.CancelledError:
+                continue
+        cleanup.result()
+
     async def _notify(self, command: _Command, inbox: SessionInbox) -> None:
         try:
             snapshot = await command.process.wait()
@@ -129,16 +139,6 @@ class BackgroundCommands:
             pass
         except Exception:
             logger.exception("Could not deliver shell completion for %s", command.id)
-
-    async def close(self) -> None:
-        self._closing = True
-        cleanup = asyncio.create_task(self._close())
-        while not cleanup.done():
-            try:
-                await asyncio.shield(cleanup)
-            except asyncio.CancelledError:
-                continue
-        cleanup.result()
 
     async def _close(self) -> None:
         async with self._starting:

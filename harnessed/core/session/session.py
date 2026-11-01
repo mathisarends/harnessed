@@ -60,7 +60,7 @@ from harnessed.core.session.inbox import Inbox
 from harnessed.core.session.state import HistoryTurn, SessionState, image_refs
 from harnessed.core.session.turns import Turn, TurnProjection
 from harnessed.core.stream import SessionPublished, TransientEvent, coalesce_deltas
-from harnessed.kernel.context import Context
+from harnessed.kernel import Context
 
 
 class SessionLog:
@@ -202,7 +202,11 @@ class SessionLog:
             files=self._files.snapshot(keys),
         )
 
-    def release_turn(self) -> None:
+    @property
+    def usage(self) -> ModelUsage:
+        return self._usage if self._usage is not None else ModelUsage(0)
+
+    def _release_turn(self) -> None:
         """Release execution buffers after publishing the terminal result."""
         self._events.clear()
         self._snapshot = None
@@ -236,14 +240,6 @@ class SessionLog:
         self._files.retain({ref.path for entry in entries for ref in entry.resources})
         self._images.clear()
 
-    def last_offset(self, kind: type[SessionEvent]) -> int | None:
-        record = self._last.get(kind)
-        return record[0] if record is not None else None
-
-    @property
-    def usage(self) -> ModelUsage:
-        return self._usage if self._usage is not None else ModelUsage(0)
-
     async def subscribe(
         self, *, transient: bool = False, buffer_size: int = 256
     ) -> AsyncIterator[SessionEvent | TransientEvent]:
@@ -266,6 +262,9 @@ class SessionLog:
                 if not queue.put(event):
                     self._observers.pop(queue, None)
 
+    def __len__(self) -> int:
+        return self._sequence
+
     def finish_subscriptions(self) -> None:
         """Finish audit subscriptions after dependent plugins have torn down."""
         self._subscriptions_closed = True
@@ -275,9 +274,6 @@ class SessionLog:
     @property
     def uncompacted_turn_count(self) -> int:
         return self._uncompacted_turns
-
-    def __len__(self) -> int:
-        return self._sequence
 
     def last[E: SessionEvent](self, kind: type[E]) -> E | None:
         """Return the last event of an exact registered kind in constant time."""
@@ -409,7 +405,7 @@ class SessionLog:
                 await self.ctx.dispatch(event)
         finally:
             if isinstance(event, TurnEndedEvent):
-                self.release_turn()
+                self._release_turn()
         if cancelled:
             raise asyncio.CancelledError
 

@@ -10,8 +10,7 @@ from harnessed import Context, Plugin, PolicyDecision, Session, ToolCall, hook, 
 from harnessed.core.prompt.system_prompt import SystemPromptStore
 from harnessed.core.runtime.services import RuntimeServices
 from harnessed.core.tools.registry import ToolRegistry
-from harnessed.kernel import ContextClosed, Emit, Inject
-from harnessed.kernel.plugin import PluginStatus
+from harnessed.kernel import ContextClosed, Emit, Inject, PluginStatus
 from harnessed.plugins import Approvals
 from harnessed.testing import ScriptedModel
 
@@ -109,20 +108,20 @@ async def test_registrations_are_hidden_during_setup_and_before_async_teardown_f
         ctx[SystemPromptStore].fixed("base")
         mounting = asyncio.create_task(ctx.plugin(feature()))
         try:
-            await starting.wait()
+            await asyncio.wait_for(starting.wait(), timeout=5)
             assert (await ctx[ToolRegistry].execute(ToolCall("read"))).content == "base"
             assert await ctx[SystemPromptStore].render() == "base"
             await ctx.dispatch(Ping())
             assert seen == []
         finally:
             ready.set()
-            handle = await mounting
+            handle = await asyncio.wait_for(mounting, timeout=5)
         assert (await ctx[ToolRegistry].execute(ToolCall("read"))).content == "override"
         assert await ctx[SystemPromptStore].render() == "override"
         await ctx.dispatch(Ping())
         closing = asyncio.create_task(handle.aclose())
         try:
-            await stopping.wait()
+            await asyncio.wait_for(stopping.wait(), timeout=5)
             assert not closing.done()
             assert (await ctx[ToolRegistry].execute(ToolCall("read"))).content == "base"
             assert await ctx[SystemPromptStore].render() == "base"
@@ -130,7 +129,7 @@ async def test_registrations_are_hidden_during_setup_and_before_async_teardown_f
             assert seen == ["override"]
         finally:
             release.set()
-            await closing
+            await asyncio.wait_for(closing, timeout=5)
 
 
 async def test_transitive_needs_rebuild_all_registrations_without_duplicates():

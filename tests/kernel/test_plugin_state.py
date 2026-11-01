@@ -109,7 +109,7 @@ async def test_failed_or_cancelled_lifecycle_keeps_state_for_cleanup_then_releas
             await asyncio.wait_for(entered.wait(), 3)
             mounting.cancel()
             with pytest.raises(asyncio.CancelledError):
-                await mounting
+                await asyncio.wait_for(mounting, timeout=5)
         elif failure == "setup":
             with pytest.raises(ValueError, match="setup failed"):
                 await ctx.plugin(Feature())

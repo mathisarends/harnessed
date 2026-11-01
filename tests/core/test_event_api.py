@@ -31,6 +31,7 @@ def test_public_event_exports_cover_every_builtin_with_one_canonical_class_name(
         get_origin(kind) or kind for kind in get_args(get_args(StreamEvent.__value__)[0])
     }
     kinds = set(SESSION_EVENT_TYPES.values()) | stream_types
+    assert kinds
     for kind in kinds:
         assert kind.__name__.endswith("Event")
         assert getattr(events, kind.__name__) is kind

@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -67,7 +68,7 @@ async def test_edits_are_unambiguous_and_failed_atomic_replace_preserves_origina
     def fail_replace(*args):
         raise OSError("Disk rejected replace")
 
-    monkeypatch.setattr("harnessed.plugins.filesystem.os.replace", fail_replace)
+    monkeypatch.setattr(os, "replace", fail_replace)
     with pytest.raises(OSError, match="Disk rejected"):
         await fs.write(path, "lost")
     assert await fs.read(path) == "one one"

@@ -20,7 +20,7 @@ from harnessed.core.model import Model
 from harnessed.core.plugin import Plugin
 from harnessed.core.tokens import TokenCounter
 from harnessed.kernel import Context
-from harnessed.models.pydantic_ai import PydanticAIModel
+from harnessed.models import PydanticAIModel
 
 if TYPE_CHECKING:
     from harnessed.models.pydantic_ai import NativeModel

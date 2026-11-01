@@ -279,7 +279,7 @@ async def test_abort_closes_spans_and_preserves_partial_usage(telemetry):
         model=CallbackModel(wait), plugins=[OpenTelemetryTracer(tracer_provider=provider)]
     ).session() as session:
         await session.submit("go")
-        await started.wait()
+        await asyncio.wait_for(started.wait(), timeout=5)
         await session.abort()
     spans = exporter.get_finished_spans()
     assert len(spans) == 3
@@ -301,7 +301,7 @@ async def test_graceful_stop_is_not_recorded_as_an_exception(telemetry):
         model=CallbackModel(respond), plugins=[OpenTelemetryTracer(tracer_provider=provider)]
     ).session() as session:
         await session.submit("go")
-        await started.wait()
+        await asyncio.wait_for(started.wait(), timeout=5)
 
         def release_on_stop(event: SessionAppended) -> None:
             if (
@@ -511,7 +511,7 @@ async def test_otlp_provider_shuts_down_after_task_cancellation(
     await asyncio.wait_for(ready.wait(), timeout=5)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await task
+        await asyncio.wait_for(task, timeout=5)
     assert len(shutdown_threads) == 1
     assert shutdown_threads[0] != main_thread
     assert requests

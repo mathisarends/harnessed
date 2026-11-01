@@ -107,7 +107,7 @@ class RunResult[T]:
         )
 
 
-def result_from_events(
+def _result_from_events(
     events: tuple[SessionEvent, ...], *, output: Any = None, state: SessionState | None = None
 ) -> RunResult[Any]:
     """Build a turn-scoped result, giving explicit termination precedence."""
@@ -177,4 +177,4 @@ class RunResults:
                 value = self.values.pop(proof.id)
             else:
                 value, _ = self.outputs.resolve(schema).parse(dict(proof.data))
-        return result_from_events(events, output=value, state=state)
+        return _result_from_events(events, output=value, state=state)

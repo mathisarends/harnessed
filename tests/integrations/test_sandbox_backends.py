@@ -3,7 +3,6 @@ import json
 import os
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -157,10 +156,10 @@ async def test_docker_transport_cancellation_destroys_container(tmp_path, monkey
     task = asyncio.create_task(
         backend.start(SandboxConfig(workspace=Workspace.copy_from(tmp_path)))
     )
-    await started.wait()
+    await asyncio.wait_for(started.wait(), timeout=5)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await task
+        await asyncio.wait_for(task, timeout=5)
     assert "rm" in calls[-1]
 
 
@@ -226,7 +225,7 @@ async def test_docker_publishes_services_after_readiness_and_cannot_reopen_after
     starting = asyncio.create_task(
         backend.start(SandboxConfig(workspace=Workspace.copy_from(tmp_path)))
     )
-    await reached_worker.wait()
+    await asyncio.wait_for(reached_worker.wait(), timeout=5)
     with pytest.raises(SandboxError, match="not ready"):
         _ = backend.shell
     with pytest.raises(SandboxError, match="not ready"):
@@ -236,15 +235,16 @@ async def test_docker_publishes_services_after_readiness_and_cannot_reopen_after
     ready.set()
     if close_during_start:
         with pytest.raises(SandboxError, match="stopped during startup"):
-            await starting
+            await asyncio.wait_for(starting, timeout=5)
         with pytest.raises(SandboxError, match="closed"):
             _ = backend.file_system
     else:
-        await starting
+        await asyncio.wait_for(starting, timeout=5)
         assert backend.shell is backend.file_system
         await backend.aclose()
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Bubblewrap command composition requires Linux")
 @pytest.mark.parametrize("disconnect", [False, True])
 async def test_bubblewrap_command_uses_namespaces_and_verified_resource_controls(
     tmp_path, monkeypatch, disconnect
@@ -268,10 +268,9 @@ async def test_bubblewrap_command_uses_namespaces_and_verified_resource_controls
         calls.append(argv)
         return ProcessOutput(0, b"/user.slice/test.scope\n", b"")
 
-    monkeypatch.setattr(bubblewrap, "sys", SimpleNamespace(platform="linux"))
     monkeypatch.setattr(bubblewrap, "WorkerProcess", Channel)
     monkeypatch.setattr(bubblewrap, "run_process", run)
-    monkeypatch.setattr(bubblewrap, "verify_limits", lambda group, limits: verified.append(group))
+    monkeypatch.setattr(bubblewrap, "_verify_limits", lambda group, limits: verified.append(group))
     backend = bubblewrap.BubblewrapBackend(rootfs=tmp_path)
     await backend.start(SandboxConfig(workspace=Workspace.copy_from(tmp_path)))
     argv = calls[0]
@@ -313,17 +312,25 @@ def test_bubblewrap_cgroup_limits_must_actually_be_effective(tmp_path):
         "cpu.max": "100000 100000",
     }.items():
         (group / name).write_text(value)
-    bubblewrap.verify_limits("/user.slice/test.scope", SandboxLimits(), cgroup_root=tmp_path)
+    bubblewrap._verify_limits(  # smelt: ignore[SMT420] -- Cgroup enforcement.
+        "/user.slice/test.scope",
+        SandboxLimits(),
+        cgroup_root=tmp_path,
+    )
     for name in ("memory.max", "memory.swap.max", "pids.max", "cpu.max"):
         original = (group / name).read_text()
         (group / name).write_text("max 100000" if name == "cpu.max" else "max")
         with pytest.raises(SandboxError, match="enforced"):
-            bubblewrap.verify_limits(
+            bubblewrap._verify_limits(  # smelt: ignore[SMT420] -- Cgroup enforcement.
                 "/user.slice/test.scope", SandboxLimits(), cgroup_root=tmp_path
             )
         (group / name).write_text(original)
     with pytest.raises(SandboxError, match="control group"):
-        bubblewrap.verify_limits("/", SandboxLimits(), cgroup_root=tmp_path)
+        bubblewrap._verify_limits(  # smelt: ignore[SMT420] -- Cgroup enforcement.
+            "/",
+            SandboxLimits(),
+            cgroup_root=tmp_path,
+        )
 
 
 @pytest.mark.skipif(sys.platform == "linux", reason="Non-Linux platform check")
@@ -346,6 +353,7 @@ async def test_live_docker_shell_and_filesystem_share_isolation(tmp_path):
         ),
         tmp_path,
     )
+    assert (tmp_path / "export.bin").read_bytes() == b"\x00\xff"
 
 
 @pytest.mark.skipif(
@@ -409,6 +417,7 @@ async def test_live_bubblewrap_shell_and_filesystem_share_isolation(tmp_path):
         ),
         tmp_path,
     )
+    assert (tmp_path / "export.bin").read_bytes() == b"\x00\xff"
 
 
 async def exercise_live_sandbox(sandbox, tmp_path):

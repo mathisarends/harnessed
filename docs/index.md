@@ -30,6 +30,6 @@ public APIs or persisted session formats.
 
 [Immutable values and the codec](concepts/values.md) explain the source-of-truth
 contract behind replay. Contributors should follow the repository's
-[architecture constraints](https://github.com/mathisarends/harnessed/blob/main/structure-target.md).
+[executable architecture policy](contributing/smelt.md).
 The [roadmap](contributing/roadmap.md) records possible future additions separately
 from the implemented SDK reference and guides.

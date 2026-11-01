@@ -25,9 +25,15 @@ from harnessed.core.tools.scheduling import (
     ToolScheduling,
     resource_spec,
 )
-from harnessed.kernel import Context, RegistrationState
-from harnessed.kernel.di import BindingPlan, Dependency, binding_plan
-from harnessed.kernel.effects import Disposer, run_sync
+from harnessed.kernel import (
+    BindingPlan,
+    Context,
+    Dependency,
+    Disposer,
+    RegistrationState,
+    binding_plan,
+    run_sync,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -329,8 +335,8 @@ class ToolRegistry:
         if existing and not override:
             previous = existing[-1].owner
             raise ToolNameConflict(
-                f"Tool {tool_name!r} is already registered by {self._owner_name(previous)}; "
-                f"{self._owner_name(owner)} must declare override=True"
+                f"Tool {tool_name!r} is already registered by {previous.owner_name}; "
+                f"{owner.owner_name} must declare override=True"
             )
         arguments = ToolArguments.from_signature(
             tool_name,
@@ -408,10 +414,6 @@ class ToolRegistry:
             return remove
 
         return owner.register(install)
-
-    @staticmethod
-    def _owner_name(owner: Context) -> str:
-        return owner.owner_name
 
     def is_readonly(self, name: str) -> bool:
         tool = self._visible(self._tools.get(name, []))

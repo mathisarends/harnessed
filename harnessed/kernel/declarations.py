@@ -75,39 +75,6 @@ class Bundle:
         return PluginSpec(self.name, mount, tuple(dict.fromkeys(needs)), (), {})
 
 
-class _InjectedAttribute:
-    def __init__(self, name: str) -> None:
-        self.name = name
-
-    def __get__(self, instance: PluginBase | None, owner: type | None = None) -> Any:
-        if instance is None:
-            return self
-        if instance._mount_injections is None:
-            raise RuntimeError("Inject is available only on a mounted plugin, not its recipe")
-        return instance._mount_injections[self.name]
-
-    def __set__(self, instance: PluginBase, value: Any) -> None:
-        if instance._mount_injections is None:
-            raise RuntimeError("Inject is available only on a mounted plugin, not its recipe")
-        instance._mount_injections[self.name] = value
-
-
-def _class_dependencies(cls: type[PluginBase]) -> dict[str, Dependency]:
-    compiled = cls.__dict__.get("_compiled_injections")
-    if compiled is not None:
-        return compiled
-    dependencies = {
-        name: dependency
-        for name, annotation in get_type_hints(cls, include_extras=True).items()
-        if (dependency := _dependency(annotation)) is not None
-    }
-    for name in dependencies:
-        if not isinstance(inspect.getattr_static(cls, name, None), _InjectedAttribute):
-            setattr(cls, name, _InjectedAttribute(name))
-    cls._compiled_injections = dependencies
-    return dependencies
-
-
 class PluginBase:
     """Reusable recipe with per-mount Inject attributes and PluginState values.
 
@@ -118,12 +85,31 @@ class PluginBase:
     """
 
     needs: tuple[ServiceKey[Any], ...] = ()
+
     _recipe: Self
+
     slot: str | None = None
+
     _mount_state: dict[PluginState[Any], Any] | None = None
+
     _mount_injections: dict[str, Any] | None = None
+
     _provides: ServiceKey[Any] | None = None
+
     _compiled_injections: ClassVar[dict[str, Dependency] | None] = None
+
+    def __init__(
+        self,
+        *,
+        name: str | None = None,
+        hooks: Iterable[HookEntry] = (),
+        needs: Iterable[ServiceKey[Any]] | None = None,
+        registrations: Iterable[tuple[Registration, Callable]] = (),
+    ) -> None:
+        self.name = name or type(self).__name__
+        self.hooks = tuple(hooks)
+        self.needs = tuple(self.needs if needs is None else needs)
+        self.registrations = tuple(registrations)
 
     def __init_subclass__(
         cls,
@@ -155,19 +141,6 @@ class PluginBase:
         if not name.startswith("__") and name in _class_dependencies(type(self)):
             return getattr(self, name)
         raise AttributeError(name)
-
-    def __init__(
-        self,
-        *,
-        name: str | None = None,
-        hooks: Iterable[HookEntry] = (),
-        needs: Iterable[ServiceKey[Any]] | None = None,
-        registrations: Iterable[tuple[Registration, Callable]] = (),
-    ) -> None:
-        self.name = name or type(self).__name__
-        self.hooks = tuple(hooks)
-        self.needs = tuple(self.needs if needs is None else needs)
-        self.registrations = tuple(registrations)
 
     async def setup(self, *args: Any, **kwargs: Any) -> None:
         pass
@@ -254,6 +227,39 @@ class PluginBase:
             self.slot,
             () if self._provides is None else (self._provides,),
         )
+
+
+class _InjectedAttribute:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def __get__(self, instance: PluginBase | None, owner: type | None = None) -> Any:
+        if instance is None:
+            return self
+        if instance._mount_injections is None:
+            raise RuntimeError("Inject is available only on a mounted plugin, not its recipe")
+        return instance._mount_injections[self.name]
+
+    def __set__(self, instance: PluginBase, value: Any) -> None:
+        if instance._mount_injections is None:
+            raise RuntimeError("Inject is available only on a mounted plugin, not its recipe")
+        instance._mount_injections[self.name] = value
+
+
+def _class_dependencies(cls: type[PluginBase]) -> dict[str, Dependency]:
+    compiled = cls.__dict__.get("_compiled_injections")
+    if compiled is not None:
+        return compiled
+    dependencies = {
+        name: dependency
+        for name, annotation in get_type_hints(cls, include_extras=True).items()
+        if (dependency := _dependency(annotation)) is not None
+    }
+    for name in dependencies:
+        if not isinstance(inspect.getattr_static(cls, name, None), _InjectedAttribute):
+            setattr(cls, name, _InjectedAttribute(name))
+    cls._compiled_injections = dependencies
+    return dependencies
 
 
 def _lifecycle_arguments(callback, ctx):

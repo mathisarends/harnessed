@@ -32,21 +32,21 @@ async def test_slow_subscription_disconnects_without_affecting_other_consumers_o
         for index in range(4):
             event = UserMessageEvent(UserMessage(str(index)))
             await session.append(event)
-            assert await fast_next == event
+            assert await asyncio.wait_for(fast_next, timeout=5) == event
             if index == 0:
-                assert await slow_first == event
+                assert await asyncio.wait_for(slow_first, timeout=5) == event
             if index < 3:
                 fast_next = asyncio.create_task(anext(fast))
                 await asyncio.sleep(0)
         with pytest.raises(StreamOverflow):
             await anext(slow)
         assert len(session.events) == 4
-        assert len(session._observers) == 1
+        assert len(session._observers) == 1  # smelt: ignore[SMT420] -- Ownership invariant.
         assert [message.text for message in session.messages] == ["0", "1", "2", "3"]
     finally:
         await slow.aclose()
         await fast.aclose()
-    assert not session._observers
+    assert not session._observers  # smelt: ignore[SMT420] -- Ownership invariant.
 
 
 async def test_user_message_atomically_claims_its_inbox_identity():

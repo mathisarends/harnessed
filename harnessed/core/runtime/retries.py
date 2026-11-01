@@ -52,6 +52,18 @@ class RequestRetries:
             max_retries=self._limit(prior, kind),
         )
 
+    async def started(self, request: ModelRequestedEvent) -> None:
+        if request.retry_kind is not None and request.retry_group_id is not None:
+            await self.log.publish(
+                ModelAttemptStartedEvent(
+                    request.request_id,
+                    request.retry_group_id,
+                    retry_kind=request.retry_kind,
+                    attempt=request.attempt,
+                    max_retries=request.max_retries,
+                )
+            )
+
     def _limit(self, request: ModelRequestedEvent, kind: RetryKind) -> int:
         if kind == RetryKind.CONTEXT_RECOVERY:
             return 1
@@ -65,18 +77,6 @@ class RequestRetries:
         # A new correction group receives only the turn's remaining retry budget.
         prior_failures = failures[-1].attempt - 1 if failures else 0
         return max(0, self.options.output_retries - prior_failures)
-
-    async def started(self, request: ModelRequestedEvent) -> None:
-        if request.retry_kind is not None and request.retry_group_id is not None:
-            await self.log.publish(
-                ModelAttemptStartedEvent(
-                    request.request_id,
-                    request.retry_group_id,
-                    retry_kind=request.retry_kind,
-                    attempt=request.attempt,
-                    max_retries=request.max_retries,
-                )
-            )
 
     async def finished(
         self,

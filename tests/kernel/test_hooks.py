@@ -1,8 +1,17 @@
 import pytest
 
 from harnessed.core.plugin import Plugin
-from harnessed.kernel import Bail, Context, Emit, Inject, Parallel, PluginBase, Waterfall, hook
-from harnessed.kernel.hooks import Next
+from harnessed.kernel import (
+    Bail,
+    Context,
+    Emit,
+    Inject,
+    Next,
+    Parallel,
+    PluginBase,
+    Waterfall,
+    hook,
+)
 
 
 class Ping(Emit):

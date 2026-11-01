@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 
-from harnessed.core.tools.registry import ToolError
+from harnessed.core.tools import ToolError
 from harnessed.plugins.filesystem import FileStat, Filesystem, SearchResult, search_files
 from harnessed.plugins.shell import ProcResult, Shell
 

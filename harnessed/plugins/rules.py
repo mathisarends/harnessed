@@ -51,16 +51,20 @@ def _condition(callback, *args) -> bool:
 @dataclass(frozen=True, config=_CONFIG)
 class Rule:
     __hash__ = None
-    tools: tuple[RuleText, ...] = ()
-    command_contains: str | None = None
-    exit_code: int | ExitCondition | None = None
-    repeated: Annotated[int, Field(ge=1)] = 1
-    result_tokens_over: Annotated[int, Field(ge=0)] | None = None
-    predicate: ResultCondition | None = None
-    actions: tuple[tuple[RuleAction, RuleText], ...] = ()
 
-    def _action(self, kind: RuleAction, text: str) -> Rule:
-        return replace(self, actions=(*self.actions, (kind, text)))
+    tools: tuple[RuleText, ...] = ()
+
+    command_contains: str | None = None
+
+    exit_code: int | ExitCondition | None = None
+
+    repeated: Annotated[int, Field(ge=1)] = 1
+
+    result_tokens_over: Annotated[int, Field(ge=0)] | None = None
+
+    predicate: ResultCondition | None = None
+
+    actions: tuple[tuple[RuleAction, RuleText], ...] = ()
 
     def note(self, text: str) -> Rule:
         return self._action(RuleAction.NOTE, text)
@@ -89,6 +93,9 @@ class Rule:
         ):
             return False
         return self.predicate is None or _condition(self.predicate, call, result)
+
+    def _action(self, kind: RuleAction, text: str) -> Rule:
+        return replace(self, actions=(*self.actions, (kind, text)))
 
 
 def when(

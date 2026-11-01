@@ -1,9 +1,10 @@
 import pytest
 
 from harnessed.core.errors import SessionFormatError
+from harnessed.core.event_registry import EventRegistry
 from harnessed.core.messages import ToolCall, UserMessage
 from harnessed.core.model import ModelRequest
-from harnessed.core.session.codec import decode_event, encode_event, event_schema
+from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.core.session.events import (
     SESSION_EVENT_TYPES,
     ModelRequestedEvent,
@@ -14,7 +15,7 @@ from harnessed.models import ModelInfo
 
 
 def test_canonical_tags_roundtrip_with_discriminated_schema():
-    assert set(event_schema()["discriminator"]["mapping"]) == set(SESSION_EVENT_TYPES)
+    assert set(EventRegistry().schema()["discriminator"]["mapping"]) == set(SESSION_EVENT_TYPES)
     event = TurnStartedEvent("one")
     assert encode_event(event) == {
         "version": 3,

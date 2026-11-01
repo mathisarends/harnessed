@@ -11,7 +11,7 @@ from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue
 
 from harnessed.core.messages import result_content, to_dict
-from harnessed.kernel.di import Dependency
+from harnessed.kernel import Dependency
 
 _CONFIG = ConfigDict(
     strict=True,

@@ -1,4 +1,6 @@
 import json
+from contextlib import contextmanager
+from pathlib import Path
 
 import pytest
 
@@ -35,18 +37,36 @@ async def execute(session, tool_name, **arguments):
 async def test_catalog_reads_only_frontmatter_once_per_session_and_loads_body_fresh(
     tmp_path, monkeypatch
 ):
-    import harnessed.plugins.skills as implementation
-
     root = folder(tmp_path)
     (root / "reference.md").write_text("Use field names.", encoding="utf-8")
     phases = []
-    original = implementation._read
+    original_open = Path.open
 
-    def read(path, *, body=False):
-        phases.append(body)
-        return original(path, body=body)
+    class ReadProbe:
+        def __init__(self, stream):
+            self.stream = stream
 
-    monkeypatch.setattr(implementation, "_read", read)
+        def __iter__(self):
+            return iter(self.stream)
+
+        def readline(self):
+            return self.stream.readline()
+
+        def read(self):
+            phases[-1] = True
+            return self.stream.read()
+
+    @contextmanager
+    def tracked_open(path, *args, **kwargs):
+        with original_open(path, *args, **kwargs) as stream:
+            mode = kwargs.get("mode", args[0] if args else "r")
+            if path == root / "SKILL.md" and "r" in mode:
+                phases.append(False)
+                yield ReadProbe(stream)
+            else:
+                yield stream
+
+    monkeypatch.setattr(Path, "open", tracked_open)
     recipe = Skills(tmp_path)
     instructions = tmp_path / "instructions.md"
     instructions.write_text("Fixed project rules.", encoding="utf-8")

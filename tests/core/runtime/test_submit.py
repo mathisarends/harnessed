@@ -53,7 +53,7 @@ async def test_reusing_a_consumed_message_does_not_overwrite_a_running_submissio
     async with Agent(model=model, plugins=[Work()]).session() as session:
         message = UserMessage("reused input")
         first = await session.submit(message)
-        await started.wait()
+        await asyncio.wait_for(started.wait(), timeout=5)
         second = await session.submit(message)
         assert first is not second and not first.done() and not second.done()
         if discard_second:
@@ -94,7 +94,7 @@ async def test_stop_and_abort_complete_handles_and_discard_queued_runs(immediate
 
     async with Agent(model=ScriptedModel([call(Work.work)]), plugins=[Work()]).session() as session:
         running = await session.submit("start")
-        await started.wait()
+        await asyncio.wait_for(started.wait(), timeout=5)
         queued = await session.submit("queued")
         if immediate:
             await session.abort()

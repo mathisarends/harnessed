@@ -7,8 +7,15 @@ from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import Any, Self
 
-from harnessed.kernel import Bundle, Context, PluginBase, PluginLike, PluginSpec, ServiceKey
-from harnessed.kernel.plugin import as_plugin_spec
+from harnessed.kernel import (
+    Bundle,
+    Context,
+    PluginBase,
+    PluginLike,
+    PluginSpec,
+    ServiceKey,
+    as_plugin_spec,
+)
 
 from .errors import PluginConflict, PluginDependencyError, PluginDependencyWarning
 
@@ -164,6 +171,19 @@ class ResolvedComposition:
         )
 
 
+def compose_plugins(
+    plugins: Iterable[PluginInput], *, defaults: Iterable[PluginLike] = ()
+) -> ResolvedComposition:
+    """Resolve user scopes first, then override the agent's fallback recipes."""
+    supplied = _resolve(plugins, ())
+    fallback = _resolve(defaults, ("harnessed",))
+    entries = _merge(
+        [(entry, False) for entry in fallback.entries]
+        + [(entry, True) for entry in supplied.entries]
+    )
+    return ResolvedComposition(entries, supplied.removed)
+
+
 def _describe(spec: PluginSpec, path: tuple[str, ...]) -> PluginDescription:
     return PluginDescription(spec.name, path, spec.slot, spec.needs, spec.provides)
 
@@ -220,19 +240,6 @@ def _resolve(plugins: Iterable[PluginInput], path: tuple[str, ...]) -> ResolvedC
             recipe = value if isinstance(value, PluginSpec | Bundle | PluginBase) else spec
             candidates.append((_Entry(recipe, _describe(spec, path)), True))
     return ResolvedComposition(_merge(candidates), tuple(removed))
-
-
-def compose_plugins(
-    plugins: Iterable[PluginInput], *, defaults: Iterable[PluginLike] = ()
-) -> ResolvedComposition:
-    """Resolve user scopes first, then override the agent's fallback recipes."""
-    supplied = _resolve(plugins, ())
-    fallback = _resolve(defaults, ("harnessed",))
-    entries = _merge(
-        [(entry, False) for entry in fallback.entries]
-        + [(entry, True) for entry in supplied.entries]
-    )
-    return ResolvedComposition(entries, supplied.removed)
 
 
 class PluginValidation(StrEnum):

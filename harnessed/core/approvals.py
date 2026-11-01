@@ -15,8 +15,8 @@ from harnessed.core.session.events import (
     ApprovalStatus,
     SessionEvent,
 )
+from harnessed.core.tools import ToolRegistry
 from harnessed.core.tools.references import ToolReference, ToolSelector, tool_selector
-from harnessed.core.tools.registry import ToolRegistry
 from harnessed.kernel import Context, Inject, Next, Priority, hook
 
 from .messages import ToolCall

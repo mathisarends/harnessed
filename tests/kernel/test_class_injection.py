@@ -1,7 +1,6 @@
 import pytest
 
-from harnessed.kernel import Context, Inject, Key, PluginBase, PluginStatus
-from harnessed.kernel.plugin import as_plugin_spec
+from harnessed.kernel import Context, Inject, Key, PluginBase, PluginStatus, as_plugin_spec
 
 
 class Feature(PluginBase, provides=True, needs=(str,)):

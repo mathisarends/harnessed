@@ -5,9 +5,9 @@ import pytest
 from harnessed import Agent as Application
 from harnessed import Context, Plugin, PolicyDecision, hook
 from harnessed.core.plugin import Bundle
+from harnessed.kernel import Bundle as KernelBundle
 from harnessed.kernel import Emit, Waterfall
 from harnessed.kernel import PluginBase as KernelPlugin
-from harnessed.kernel.declarations import Bundle as KernelBundle
 from harnessed.plugins import Approvals
 from harnessed.testing import ScriptedModel
 

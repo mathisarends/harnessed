@@ -28,11 +28,11 @@ _KEY = TypeAdapter(FileKey, config=_CONFIG)
 _RANGE = TypeAdapter(tuple[FileOffset, ReadLimit], config=_CONFIG)
 
 
-def validate_file_key(key: str) -> str:
+def _validate_file_key(key: str) -> str:
     return _KEY.validate_python(key)
 
 
-def validate_file_range(offset: int, limit: int) -> tuple[int, int]:
+def _validate_file_range(offset: int, limit: int) -> tuple[int, int]:
     return _RANGE.validate_python((offset, limit))
 
 
@@ -50,7 +50,7 @@ class TextValue:
     modified_ns: int
 
     def __post_init__(self) -> None:
-        validate_file_key(self.key)
+        _validate_file_key(self.key)
         if (
             not isinstance(self.text, str)
             or type(self.modified_ns) is not int
@@ -85,21 +85,21 @@ class MemoryFiles:
         self._values = {key: value for key, value in self._values.items() if key in keys}
 
     async def put(self, key: str, text: str) -> None:
-        key = validate_file_key(key)
+        key = _validate_file_key(key)
         if not isinstance(text, str):
             raise TypeError("Session file content must be text")
         self._values[key] = text, time_ns()
 
     async def read(self, key: str, *, offset: int = 0, limit: int = 4000) -> str:
-        key = validate_file_key(key)
-        offset, limit = validate_file_range(offset, limit)
+        key = _validate_file_key(key)
+        offset, limit = _validate_file_range(offset, limit)
         try:
             return self._values[key][0][offset : offset + limit]
         except KeyError:
             raise FileNotFoundError(key) from None
 
     async def remove(self, key: str) -> None:
-        self._values.pop(validate_file_key(key), None)
+        self._values.pop(_validate_file_key(key), None)
 
     def clear(self) -> None:
         """Release the live session's text resources."""

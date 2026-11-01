@@ -59,15 +59,24 @@ class StreamApprovals:
         self.input_id: str | None = None
         self.pending: dict[str, LiveApproval] = {}
 
-    def prepared(self, item: InboxAddedEvent) -> None:
-        self.input_id = item.message.id
-
     async def __aenter__(self) -> Self:
         self._remove_answer = self.session.ctx.on(
             RequestApproval, self._answer, priority=Priority.OBSERVE
         )
         self._remove_ack = self.session.ctx.on(SessionAppended, self._ack)
         return self
+
+    async def __aexit__(self, *exc) -> None:
+        await self._remove_answer()
+        await self._remove_ack()
+        for request in self.pending.values():
+            self.live.close(
+                request.request_id, ApprovalUnavailable("The approval stream was closed")
+            )
+        self.pending.clear()
+
+    def prepared(self, item: InboxAddedEvent) -> None:
+        self.input_id = item.message.id
 
     async def _answer(self, event: RequestApproval) -> ApprovalAnswer | None:
         turn = self.session.log.open_turn
@@ -105,27 +114,6 @@ class StreamApprovals:
                 if record.status == ApprovalStatus.ANSWERED
                 else ApprovalUnavailable(record.reason or "The approval was interrupted"),
             )
-
-    async def __aexit__(self, *exc) -> None:
-        await self._remove_answer()
-        await self._remove_ack()
-        for request in self.pending.values():
-            self.live.close(
-                request.request_id, ApprovalUnavailable("The approval stream was closed")
-            )
-        self.pending.clear()
-
-
-def _stream_status(event: TurnStartedEvent | AgentControlChangedEvent) -> SessionStatus:
-    match event:
-        case AgentControlChangedEvent(state=ControlState.PAUSED):
-            return SessionStatus.PAUSED
-        case AgentControlChangedEvent(
-            state=ControlState.STOPPING | ControlState.ABORTING | ControlState.STOPPED
-        ):
-            return SessionStatus.STOPPING
-        case _:
-            return SessionStatus.RUNNING
 
 
 async def project_stream_events(
@@ -182,3 +170,15 @@ async def project_stream_events(
         yield TurnFinishedEvent(await completion())
     finally:
         await raw.aclose()
+
+
+def _stream_status(event: TurnStartedEvent | AgentControlChangedEvent) -> SessionStatus:
+    match event:
+        case AgentControlChangedEvent(state=ControlState.PAUSED):
+            return SessionStatus.PAUSED
+        case AgentControlChangedEvent(
+            state=ControlState.STOPPING | ControlState.ABORTING | ControlState.STOPPED
+        ):
+            return SessionStatus.STOPPING
+        case _:
+            return SessionStatus.RUNNING

@@ -196,7 +196,7 @@ async def test_cancellation_closes_an_unanswered_approval_and_does_not_execute_t
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.submit("task")
-        await asked.wait()
+        await asyncio.wait_for(asked.wait(), timeout=5)
         assert len(agent.log.approvals.pending) == 1
         await agent.abort()
         assert not agent.log.approvals.pending and (not agent.log.approvals.grants)

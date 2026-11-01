@@ -161,19 +161,21 @@ async def test_configuration_provider_is_evaluated_once_per_agent_not_per_sessio
     assert calls == [feature]
 
 
-async def test_none_configuration_provider_omits_section_in_every_format():
+@pytest.mark.parametrize("format", tuple(PromptFormat))
+async def test_none_configuration_provider_omits_section_in_every_format(
+    format: PromptFormat,
+) -> None:
     class Feature(Plugin):
         @system_section(title="Optional")
         def optional(self) -> str | None:
             return None
 
     feature = Feature()
-    for format in PromptFormat:
-        agent = Agent(
-            plugins=[feature],
-            system_prompt=SystemPrompt(format=format, sections=(feature.optional,)),
-        )
-        assert await agent.prompt.render() == ""
+    agent = Agent(
+        plugins=[feature],
+        system_prompt=SystemPrompt(format=format, sections=(feature.optional,)),
+    )
+    assert await agent.prompt.render() == ""
 
 
 def test_sections_are_keyword_only_and_invalid_inputs_fail_early():

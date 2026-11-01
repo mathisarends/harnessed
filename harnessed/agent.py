@@ -26,7 +26,7 @@ from harnessed.core.session.state import SessionState
 from harnessed.core.tools.output_limit import ToolOutputLimit
 from harnessed.core.tracing import NoopTracer
 from harnessed.kernel import Context, PluginLike
-from harnessed.models.pydantic_ai import PydanticAIModel
+from harnessed.models import PydanticAIModel
 
 
 class Agent:

@@ -28,7 +28,7 @@ from harnessed.integrations.sandbox.workspace import seed_archive, source_root
 from harnessed.kernel import run_sync
 
 
-def verify_limits(
+def _verify_limits(
     group: str, limits: SandboxLimits, *, cgroup_root: Path = Path("/sys/fs/cgroup")
 ) -> None:
     root = cgroup_root.resolve(strict=True)
@@ -163,25 +163,11 @@ class BubblewrapBackend(WorkerRuntime):
         if group.returncode:
             raise SandboxError("Cannot inspect bubblewrap resource controls")
         try:
-            await run_sync(partial(verify_limits, group.stdout.decode().strip(), limits))
+            await run_sync(partial(_verify_limits, group.stdout.decode().strip(), limits))
         except (OSError, ValueError) as error:
             raise SandboxError("Bubblewrap requires enforced cgroup-v2 resource limits") from error
         await client.initialize(seed)
         self._mark_ready()
-
-    async def _request(
-        self, payload: bytes, *, timeout: float, max_output_bytes: int
-    ) -> ProcessOutput:
-        if self._state not in (RuntimeState.STARTING, RuntimeState.READY):
-            raise SandboxError(f"Bubblewrap sandbox is not available: {self._state}")
-        try:
-            return await self.channel.request(payload, timeout=timeout, maximum=max_output_bytes)
-        except OSError as error:
-            await finish(self.aclose())
-            raise SandboxError("Bubblewrap worker connection was lost") from error
-        except BaseException:
-            await finish(self.aclose())
-            raise
 
     async def aclose(self) -> None:
         self._state = RuntimeState.CLOSED
@@ -203,6 +189,20 @@ class BubblewrapBackend(WorkerRuntime):
         finally:
             await finish(self.channel.aclose())
         self._removed = True
+
+    async def _request(
+        self, payload: bytes, *, timeout: float, max_output_bytes: int
+    ) -> ProcessOutput:
+        if self._state not in (RuntimeState.STARTING, RuntimeState.READY):
+            raise SandboxError(f"Bubblewrap sandbox is not available: {self._state}")
+        try:
+            return await self.channel.request(payload, timeout=timeout, maximum=max_output_bytes)
+        except OSError as error:
+            await finish(self.aclose())
+            raise SandboxError("Bubblewrap worker connection was lost") from error
+        except BaseException:
+            await finish(self.aclose())
+            raise
 
 
 class BubblewrapSandbox(Sandbox):

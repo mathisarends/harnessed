@@ -1,5 +1,6 @@
 import asyncio
 import json
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import replace
 
@@ -12,11 +13,12 @@ from harnessed.core.messages import (
     ToolMessage,
     UserMessage,
 )
-from harnessed.models import GenerationSettings, ModelInfo
+from harnessed.models import GenerationSettings
 from tests._audit import Audit, AuditProjection
 
 pytest.importorskip("pydantic_ai")
 
+from pydantic_ai import direct
 from pydantic_ai import messages as native
 from pydantic_ai.models.function import DeltaThinkingPart, DeltaToolCall, FunctionModel
 
@@ -36,6 +38,15 @@ from harnessed.core.session.events import ModelUsageRecordedEvent
 from harnessed.core.tools.decorator import tool
 from harnessed.models import PydanticAIModel
 from harnessed.plugins import AgentLoop
+
+
+def _stream_model(monkeypatch: pytest.MonkeyPatch, stream: object) -> PydanticAIModel:
+    @asynccontextmanager
+    async def open_stream(*args: object, **kwargs: object) -> AsyncIterator[object]:
+        yield stream
+
+    monkeypatch.setattr(direct, "model_request_stream", open_stream)
+    return PydanticAIModel(FunctionModel(lambda messages, info: native.ModelResponse([])))
 
 
 @pytest.mark.parametrize("native_output", [True, False])
@@ -178,8 +189,7 @@ async def test_interleaved_native_calls_keep_part_indices_names_and_updated_ids(
     assert [c.tool_call for c in chunks if c.tool_call] == list(response.message.tool_calls)
 
 
-async def test_native_object_argument_patches_and_part_replacements_emit_snapshots():
-    from harnessed.models.pydantic_ai import _Stream
+async def test_native_object_argument_patches_and_part_replacements_emit_snapshots(monkeypatch):
 
     native_events = [
         native.PartStartEvent(index=0, part=native.ToolCallPart("work", {"a": 1}, "early")),
@@ -203,8 +213,9 @@ async def test_native_object_argument_patches_and_part_replacements_emit_snapsho
         def get(self):
             return native.ModelResponse(self.parts)
 
-    stream = _Stream(NativeStream(), ModelInfo("test", provider="test"))
-    chunks = [chunk async for chunk in stream]
+    model = _stream_model(monkeypatch, NativeStream())
+    async with model.stream(ModelRequest((UserMessage("work"),))) as stream:
+        chunks = [chunk async for chunk in stream]
     deltas = [c.tool_call_delta for c in chunks if c.tool_call_delta]
     assert [json.loads(d.arguments) for d in deltas] == [
         {"a": 1},
@@ -230,8 +241,7 @@ def _web_search_response(text: str = "It is sunny.") -> native.ModelResponse:
     )
 
 
-async def test_provider_native_tool_deltas_are_not_previewed_or_executed():
-    from harnessed.models.pydantic_ai import _Stream
+async def test_provider_native_tool_deltas_are_not_previewed_or_executed(monkeypatch):
 
     search = native.NativeToolCallPart("web_search", None, "srv", provider_name="anthropic")
     native_events = [
@@ -248,8 +258,9 @@ async def test_provider_native_tool_deltas_are_not_previewed_or_executed():
         def get(self):
             return _web_search_response()
 
-    stream = _Stream(NativeStream(), ModelInfo("test", provider="test"))
-    chunks = [chunk async for chunk in stream]
+    model = _stream_model(monkeypatch, NativeStream())
+    async with model.stream(ModelRequest((UserMessage("work"),))) as stream:
+        chunks = [chunk async for chunk in stream]
     assert [c.tool_call_start.name for c in chunks if c.tool_call_start] == ["add"]
     assert not [c for c in chunks if c.tool_call_delta or c.tool_call]
     response = stream.response()
@@ -306,10 +317,16 @@ async def test_invalid_native_argument_preview_remains_a_malformed_completed_cal
     assert call.malformed.text == arguments
 
 
-def test_native_object_arguments_that_are_not_json_remain_malformed():
-    from harnessed.models.pydantic_ai import _tool_call
-
-    call = _tool_call(native.ToolCallPart("add", {"a": {1, 2}}, "set"))
+async def test_native_object_arguments_that_are_not_json_remain_malformed():
+    model = PydanticAIModel(
+        FunctionModel(
+            lambda messages, info: native.ModelResponse(
+                [native.ToolCallPart("add", {"a": {1, 2}}, "set")]
+            )
+        )
+    )
+    response = await model.request(ModelRequest((UserMessage("add"),)))
+    call = response.message.tool_calls[0]
     assert call.malformed is not None and call.arguments == {}
     assert call.malformed.text == repr({"a": {1, 2}})
 
@@ -659,7 +676,7 @@ async def test_aborting_a_native_stream_closes_its_generator():
     await asyncio.wait_for(started.wait(), 2)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await task
+        await asyncio.wait_for(task, timeout=5)
     assert closed.is_set()
     assert depth[0] == 0
     assert errors == [asyncio.CancelledError]

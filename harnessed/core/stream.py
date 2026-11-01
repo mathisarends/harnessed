@@ -28,7 +28,7 @@ from harnessed.core.session.events import (
     ToolCallRequestedEvent,
     ToolProgressEvent,
 )
-from harnessed.kernel.events import Emit
+from harnessed.kernel import Emit
 
 if TYPE_CHECKING:
     from harnessed.core.session.session import SessionLog

@@ -22,6 +22,14 @@ class WorkerRuntime(ABC):
         self._state = RuntimeState.NEW
         self._client: WorkerClient | None = None
 
+    @property
+    def shell(self) -> ShellBackend:
+        return self._services()
+
+    @property
+    def file_system(self) -> FileSystemBackend:
+        return self._services()
+
     def _begin_start(self, config: SandboxConfig) -> WorkerClient:
         if self._state is not RuntimeState.NEW:
             raise SandboxError(f"Sandbox cannot start from state {self._state}")
@@ -38,14 +46,6 @@ class WorkerRuntime(ABC):
         if self._state is not RuntimeState.STARTING:
             raise SandboxError(f"Sandbox stopped during startup: {self._state}")
         self._state = RuntimeState.READY
-
-    @property
-    def shell(self) -> ShellBackend:
-        return self._services()
-
-    @property
-    def file_system(self) -> FileSystemBackend:
-        return self._services()
 
     @abstractmethod
     async def start(self, config: SandboxConfig) -> None: ...

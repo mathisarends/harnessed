@@ -30,7 +30,7 @@ from harnessed.core.model import (
     StopReason,
     UsagePurpose,
 )
-from harnessed.kernel.events import Emit
+from harnessed.kernel import Emit
 
 
 class InboxMode(StrEnum):

@@ -164,7 +164,7 @@ async def test_http_shutdown_does_not_wait_forever_for_delete(serve_http, monkey
                 done, _ = await asyncio.wait([closing], timeout=0.3)
             finally:
                 release.set()
-                await closing
+                await asyncio.wait_for(closing, timeout=5)
             assert done, "Closing the mount waited indefinitely for the server's DELETE response"
 
 
@@ -267,7 +267,7 @@ async def test_http_startup_timeout_cleans_up_pending_request(serve_http):
         finally:
             release.set()
         with pytest.raises(TimeoutError):
-            await opening
+            await asyncio.wait_for(opening, timeout=5)
         assert done and model.requests == []
 
 

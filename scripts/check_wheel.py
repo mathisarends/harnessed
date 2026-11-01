@@ -44,7 +44,7 @@ requirements = {
     for requirement in installed.requires or ()
 }
 assert not requirements & {
-    'mkdocs', 'pre-commit', 'pytest', 'pytest-asyncio', 'ruff', 'twine', 'ty',
+    'mkdocs', 'pre-commit', 'pytest', 'pytest-asyncio', 'ruff', 'smelt-cli', 'twine', 'ty',
 }
 assert not any(str(file).startswith(('docs/', 'build/', 'site/')) for file in installed.files or ())
 

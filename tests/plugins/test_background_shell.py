@@ -247,7 +247,7 @@ async def test_cancelled_or_expired_reads_do_not_cancel_command(tmp_path):
         await asyncio.sleep(0)
         waiter.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await waiter
+            await asyncio.wait_for(waiter, timeout=5)
         assert process.snapshot().state == ProcessState.RUNNING
         with pytest.raises(TimeoutError):
             await asyncio.wait_for(process.wait(), 0.01)

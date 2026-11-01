@@ -64,12 +64,16 @@ from harnessed.core.stream import (
     TransientEvent,
     coalesce_deltas,
 )
+from harnessed.core.tools import ToolRegistry
 from harnessed.core.tools.context import BoundToolContexts, ToolContexts
-from harnessed.core.tools.registry import ToolRegistry
-from harnessed.kernel.context import Context
-from harnessed.kernel.effects import Disposer
-from harnessed.kernel.hooks import HookFactory, ListenerFactory
-from harnessed.kernel.plugin import PluginHandle, PluginLike
+from harnessed.kernel import (
+    Context,
+    Disposer,
+    HookFactory,
+    ListenerFactory,
+    PluginHandle,
+    PluginLike,
+)
 
 type AgentEvent = SessionEvent | TransientEvent
 _driving: ContextVar[Session | None] = ContextVar("harnessed_driving", default=None)
@@ -230,6 +234,48 @@ class Session:
     def start(self) -> None:
         self.control.start()
 
+    async def steer(
+        self, content: str | Message, *, attachments: Iterable[Attachment] = ()
+    ) -> InboxItem:
+        """Add input to the running turn's next step, or start a turn while idle."""
+        return await self.inbox.steer(content, attachments=attachments)
+
+    def observe(self, observation: Observation) -> None:
+        """Buffer a text/image snapshot per source for the next step.
+
+        A newer pending snapshot replaces the same source before recording.
+        Recorded snapshots remain unchanged until compaction or an explicit
+        observation retention policy removes them from model history.
+        """
+        self.control.check_open()
+        self._steps.observe(observation)
+
+    async def pause(self) -> None:
+        """Wait until the current model call and all its tools are committed."""
+        await self.control.pause()
+
+    async def resume(self) -> None:
+        """Resume a paused conversation; safe to call repeatedly."""
+        await self.control.resume()
+
+    async def wait_until_idle(self) -> None:
+        """Wait for the session to become idle with an empty inbox."""
+        await self.control.wait_until_idle()
+
+    async def compact(self) -> CompactionAppliedEvent | None:
+        """Summarize completed history while idle or paused; return its log record."""
+        async with self.control.maintenance():
+            model = self.ctx[Model]
+            request = ModelRequest(
+                (*self.log.messages, *self.context.owned_messages),
+                self.ctx[ToolRegistry].visible_definitions(self.ctx),
+            )
+            request = resolve_request_settings(request, model.settings)
+            applied, _ = await self._compaction.compact(request, model=model)
+            if self.log.open_turn is None:
+                self._boundary_state = self.log.snapshot()
+            return applied
+
     def _wake(self) -> None:
         self.control.wake()
 
@@ -308,48 +354,6 @@ class Session:
     def _stream_event(self, event: SessionPublished) -> None:
         if event.log is self.log:
             self._publish(event.event)
-
-    async def steer(
-        self, content: str | Message, *, attachments: Iterable[Attachment] = ()
-    ) -> InboxItem:
-        """Add input to the running turn's next step, or start a turn while idle."""
-        return await self.inbox.steer(content, attachments=attachments)
-
-    def observe(self, observation: Observation) -> None:
-        """Buffer a text/image snapshot per source for the next step.
-
-        A newer pending snapshot replaces the same source before recording.
-        Recorded snapshots remain unchanged until compaction or an explicit
-        observation retention policy removes them from model history.
-        """
-        self.control.check_open()
-        self._steps.observe(observation)
-
-    async def pause(self) -> None:
-        """Wait until the current model call and all its tools are committed."""
-        await self.control.pause()
-
-    async def resume(self) -> None:
-        """Resume a paused conversation; safe to call repeatedly."""
-        await self.control.resume()
-
-    async def wait_until_idle(self) -> None:
-        """Wait for the session to become idle with an empty inbox."""
-        await self.control.wait_until_idle()
-
-    async def compact(self) -> CompactionAppliedEvent | None:
-        """Summarize completed history while idle or paused; return its log record."""
-        async with self.control.maintenance():
-            model = self.ctx[Model]
-            request = ModelRequest(
-                (*self.log.messages, *self.context.owned_messages),
-                self.ctx[ToolRegistry].visible_definitions(self.ctx),
-            )
-            request = resolve_request_settings(request, model.settings)
-            applied, _ = await self._compaction.compact(request, model=model)
-            if self.log.open_turn is None:
-                self._boundary_state = self.log.snapshot()
-            return applied
 
     @overload
     async def run[T](

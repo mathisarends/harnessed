@@ -80,12 +80,6 @@ _resume = _function("ResumeThread", wintypes.DWORD, wintypes.HANDLE)
 _close = _function("CloseHandle", wintypes.BOOL, wintypes.HANDLE)
 
 
-def _checked(value):
-    if not value:
-        raise ctypes.WinError(ctypes.get_last_error())
-    return value
-
-
 class WindowsJob:
     """Assign a suspended child to a kill-on-close job, then resume its thread."""
 
@@ -130,3 +124,9 @@ class WindowsJob:
         if self.handle:
             _close(self.handle)
             self.handle = None
+
+
+def _checked(value):
+    if not value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    return value

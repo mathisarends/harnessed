@@ -4,7 +4,7 @@ import pytest
 
 from harnessed.agent import Agent
 from harnessed.core.prompt.values import SystemPrompt
-from harnessed.kernel.plugin import as_plugin_spec
+from harnessed.kernel import as_plugin_spec
 
 from .models import ScriptedModel
 

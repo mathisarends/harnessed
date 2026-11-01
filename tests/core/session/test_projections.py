@@ -29,8 +29,8 @@ from harnessed.core.session.events import (
 )
 from harnessed.core.session.inbox import Inbox
 from harnessed.core.session.session import SessionLog, derive_messages, derive_requests
-from harnessed.core.session.turns import derive_turns
 from harnessed.models import ModelInfo
+from tests._audit import derive_turns
 
 
 @pytest.mark.parametrize("seed", range(12))

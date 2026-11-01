@@ -34,7 +34,8 @@ core, kernel and their own extras; features never import another plugin.
 Only `models/pydantic_ai.py` imports PydanticAI; only `plugins/skills.py` imports
 YAML. Internal modules import their owning layer, not the root facade.
 
-Follow `docs/reference/sdk.md`, the topic guides and `structure-target.md`.
+Follow `docs/reference/sdk.md`, the topic guides and the executable `smelt.yaml`
+policy. Its rationale lives in `docs/contributing/smelt.md`.
 Future scope belongs in `docs/contributing/roadmap.md`; those proposals are not
 implemented API contracts. Subagents remain deferred until requested. MCP and
 OTel are explicit optional integrations with their own dependency extras.
@@ -105,3 +106,22 @@ with its type stub checked against the runtime export table.
 Output restoration matches a registered validator identity and its schema, never
 JSON Schema alone. Use versioned `OutputContract` keys for persisted application
 workflows and bump the key when Python validation behavior changes.
+
+## Architecture and convention checks
+
+`smelt.yaml` is the executable policy; `uv.lock` pins Smelt CLI 0.3.0.
+Before editing, run `uv run smelt context <module-or-path>` to inspect its role.
+After editing, run `uv run smelt check --changed --base origin/main --format json`.
+Before finishing, run the full `uv run smelt check --show-hints`, Ruff, ty and
+the relevant tests. Pre-commit and CI run the full architecture check.
+
+Fix errors in code; do not introduce a debt baseline. Review warnings in context,
+especially public APIs that static usage analysis cannot see. Preserve the lazy
+root SDK and the standalone standard-library kernel. A necessary exception must
+name its specific invariant beside the code (`# smelt: ignore[SMT420] -- reason`)
+or in a narrowly scoped, reasoned config entry. Do not expose helpers just to
+satisfy tests. Keep independent test oracles in test support, and use local
+deadlines for async coordination. `tests.layout: none` permits the existing topic
+groups and consumer typing contracts; it does not require moving tests.
+
+See `docs/contributing/smelt.md` for rule selection, limitations and adoption feedback.

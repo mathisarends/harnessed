@@ -6,6 +6,7 @@ Python versions use managed interpreters and isolated runs instead of permanent
 
 ```bash
 uv sync --locked --all-extras
+uv run smelt check --show-hints
 uv run ruff check .
 uv run ruff format --check .
 uv run ty check --error-on-warning
@@ -17,13 +18,14 @@ uv run python scripts/check_wheel.py
 uv run twine check --strict dist/*
 ```
 
-`uv.lock` pins development and optional provider dependencies. Install the commit
+`uv.lock` pins development tools, including Smelt CLI 0.3.0, and optional provider
+dependencies. Install the commit
 hooks with `uv run pre-commit install`. Ruff enforces modern syntax and absolute
 imports across package boundaries. Ty checks production code, examples, scripts
 and positive/negative consumer contracts. Expected failures must remain real
 errors; unused ignore comments are errors too.
 
-Tests mirror the owning package where features have migrated. Pytest uses its
+Tests use topic groups without enforcing source mirroring. Pytest uses its
 importlib mode so modules such as `core/test_compaction.py` and
 `plugins/test_compaction.py` can share a basename without import collisions.
 
@@ -31,7 +33,7 @@ importlib mode so modules such as `core/test_compaction.py` and
 
 | Check | Coverage |
 | --- | --- |
-| Quality | Ruff, ty and repository pre-commit hooks |
+| Quality | Smelt, Ruff, ty and repository pre-commit hooks |
 | Documentation | Strict MkDocs build, navigation, local links and anchors |
 | Runtime | Linux, Windows and macOS x Python 3.12, 3.13 and 3.14 |
 | Platform types | ty with the matching Python version and OS in each cell |
@@ -46,12 +48,18 @@ integrations have isolated missing-extra tests.
 
 ## Test layout
 
-The test tree mirrors the library: `tests/kernel/`, `tests/core/` (including
+The test tree groups topics under `tests/kernel/`, `tests/core/` (including
 runtime, prompt, session and tools), `tests/plugins/`, `tests/models/` and
 `tests/testing/`. Application composition, architecture and executable-example
 checks stay at the test root; consumer typing contracts live in `tests/typing/`.
 The architecture suite checks layer direction, feature independence (including
 package and relative imports), and the provider-SDK/YAML boundaries.
+
+Smelt checks strict architecture coverage, direct and transitive dependencies,
+kernel facade imports, source conventions and test quality. Its full check runs
+through pre-commit and CI; the changed check is for the edit loop. See the
+[Smelt policy and adoption feedback](smelt.md) for the configuration rationale,
+reviewed exceptions and analysis limits.
 
 ## Maintain the docs
 

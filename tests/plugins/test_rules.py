@@ -12,7 +12,7 @@ from harnessed.core.session.events import (
     ToolCallFinishedEvent,
 )
 from harnessed.core.session.session import SessionLog
-from harnessed.kernel.plugin import PluginStatus
+from harnessed.kernel import PluginStatus
 from harnessed.plugins import Approvals
 from harnessed.plugins.rules import Rules, when
 from harnessed.plugins.shell import ProcResult
@@ -354,4 +354,5 @@ async def test_rule_and_observation_policies_mount_with_narrow_services_without_
         handles = await ctx.install(
             [Rules([when(tool="test").context("fact")]), LatestObservationOnly()], settle=True
         )
+        assert len(handles) == 2
         assert all(handle.status == PluginStatus.ACTIVE for handle in handles)

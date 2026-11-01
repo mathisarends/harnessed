@@ -12,12 +12,18 @@ from harnessed.core.prompt.values import (
 )
 from harnessed.core.session.events import SessionEvent
 from harnessed.core.stream import TransientEvent
-from harnessed.kernel import Context, Key, ServiceKey
-from harnessed.kernel.declarations import Bundle as KernelBundle
-from harnessed.kernel.declarations import HookEntry, Registration
-from harnessed.kernel.declarations import PluginBase as KernelPlugin
-from harnessed.kernel.events import on as hook
-from harnessed.kernel.plugin import PluginLike, as_plugin_spec
+from harnessed.kernel import Bundle as KernelBundle
+from harnessed.kernel import (
+    Context,
+    HookEntry,
+    Key,
+    PluginLike,
+    Registration,
+    ServiceKey,
+    as_plugin_spec,
+    hook,
+)
+from harnessed.kernel import PluginBase as KernelPlugin
 
 from .model import Model
 

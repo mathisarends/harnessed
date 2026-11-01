@@ -13,10 +13,10 @@ from harnessed.core.messages import (
 )
 from harnessed.core.model import ModelRequest
 from harnessed.core.session.events import ApprovalRequestedEvent, SessionEvent, UserMessageEvent
-from harnessed.core.tools.info import ToolInfo
+from harnessed.core.tools import ToolInfo
 from harnessed.core.tools.policy import OutputLimit, OutputLimitSetting
-from harnessed.kernel.events import Bail, Emit, Waterfall
-from harnessed.kernel.hooks import Next as Next
+from harnessed.kernel import Bail, Emit, Waterfall
+from harnessed.kernel import Next as Next
 
 if TYPE_CHECKING:
     from harnessed.core.runtime.session import Session

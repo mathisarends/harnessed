@@ -29,14 +29,6 @@ from harnessed.core.session.events import (
 from .state import HistoryEntry, SessionState
 
 
-def _observation_message(event: ObservationRecordedEvent) -> UserMessage:
-    observation = event.observation
-    return UserMessage(
-        observation.content,
-        id=f"observation:{event.turn_id}:{event.step}:{observation.source}",
-    )
-
-
 class WorkingHistory:
     """Retained conversation values, independent of execution-event storage."""
 
@@ -48,9 +40,6 @@ class WorkingHistory:
         self._snapshot: tuple[Message, ...] | None = None
         self._turn: str | None = None
         self.max_observations = state.observation_limit if state is not None else None
-
-    def _put(self, seq: int, message: Message, **metadata: Unpack[_EntryMetadata]) -> None:
-        self._items[seq] = HistoryEntry(seq, message, self._turn, **metadata)
 
     def apply(self, event: SessionEvent, seq: int) -> None:
         self._snapshot = None
@@ -123,18 +112,6 @@ class WorkingHistory:
                 )
                 for pos, item in self._items.items()
             }
-
-    def _limit_observations(self) -> None:
-        if self.max_observations is None:
-            return
-        seen: dict[str, int] = {}
-        for pos, item in reversed(tuple(self._items.items())):
-            if item.observation is None:
-                continue
-            source = item.observation.source
-            seen[source] = seen.get(source, 0) + 1
-            if seen[source] > self.max_observations:
-                del self._items[pos]
 
     def compacted(self, applied: CompactionAppliedEvent, seq: int) -> tuple[HistoryEntry, ...]:
         preserved = (*applied.preserve_turns, *applied.retained_turns)
@@ -209,6 +186,29 @@ class WorkingHistory:
             if item.observation is not None and selected.get(item.message.id) == item.message
         )
 
+    def _put(self, seq: int, message: Message, **metadata: Unpack[_EntryMetadata]) -> None:
+        self._items[seq] = HistoryEntry(seq, message, self._turn, **metadata)
+
+    def _limit_observations(self) -> None:
+        if self.max_observations is None:
+            return
+        seen: dict[str, int] = {}
+        for pos, item in reversed(tuple(self._items.items())):
+            if item.observation is None:
+                continue
+            source = item.observation.source
+            seen[source] = seen.get(source, 0) + 1
+            if seen[source] > self.max_observations:
+                del self._items[pos]
+
+
+def _observation_message(event: ObservationRecordedEvent) -> UserMessage:
+    observation = event.observation
+    return UserMessage(
+        observation.content,
+        id=f"observation:{event.turn_id}:{event.step}:{observation.source}",
+    )
+
 
 class _EntryMetadata(TypedDict, total=False):
     lifetime: ContextLifetime
@@ -219,6 +219,10 @@ class _EntryMetadata(TypedDict, total=False):
 
 def derive_requests(events: Iterable[SessionEvent]) -> tuple[ModelRequest, ...]:
     return tuple(event.request for event in events if isinstance(event, ModelRequestedEvent))
+
+
+def derive_messages(events: Iterable[SessionEvent]) -> tuple[Message, ...]:
+    return tuple(message for _, message in _derive_message_entries(events))
 
 
 def _derive_message_entries(events: Iterable[SessionEvent]) -> tuple[tuple[int, Message], ...]:
@@ -338,7 +342,3 @@ def _derive_message_entries(events: Iterable[SessionEvent]) -> tuple[tuple[int, 
                     ),
                 )
     return tuple(entries)
-
-
-def derive_messages(events: Iterable[SessionEvent]) -> tuple[Message, ...]:
-    return tuple(message for _, message in _derive_message_entries(events))

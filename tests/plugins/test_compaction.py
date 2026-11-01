@@ -298,7 +298,7 @@ async def test_running_compaction_requires_an_explicit_pause():
         with pytest.raises(SessionStateError, match="Pause the session"):
             await session.compact()
         await session.abort()
-        await running
+        await asyncio.wait_for(running, timeout=5)
 
 
 @pytest.mark.parametrize("operation", ["run", "close"])

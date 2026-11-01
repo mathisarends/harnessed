@@ -28,8 +28,7 @@ from harnessed.core.session.events import (
     ToolCallRequestedEvent,
 )
 from harnessed.core.session.session import SessionLog
-from harnessed.core.tools.decorator import tool
-from harnessed.core.tools.registry import ToolError
+from harnessed.core.tools import ToolError, tool
 from harnessed.kernel import Context, Inject, Key, hook
 
 type SkillName = Annotated[
