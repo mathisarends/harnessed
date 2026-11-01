@@ -312,10 +312,10 @@ class InboxAddedEvent(SessionEvent):
             _INBOX_ROUTES[mode],
             mode,
             context,
-            settings or GenerationSettings(),
+            settings if settings is not None else GenerationSettings(),
             created_at=time(),
             output_schema=output_schema,
-            limits=limits or TurnLimits(),
+            limits=limits if limits is not None else TurnLimits(),
         )
 
 

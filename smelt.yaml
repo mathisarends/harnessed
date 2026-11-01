@@ -58,9 +58,10 @@ architecture:
   imports:
     type_checking: include
     transitive: true
-    # Sibling scopes collapse entire subpackages, conflating contracts and their
-    # consumers (including TYPE_CHECKING edges). Enforce architectural cycles.
-    cycles: [layers]
+    # Exact module cycles catch runtime coupling without conflating subpackages.
+    # Annotation dependencies still participate in every boundary check.
+    cycles: [layers, modules]
+    type_checking_cycles: ignore
 
 structure:
   forbidden_names: [utils, helpers]
@@ -84,7 +85,7 @@ ignore:
     paths: [tests/core/session/test_image_cache.py]
     reason: Cache unit tests measure private byte/entry bounds and eviction; SDK behavior is tested separately in test_image_assets.py.
 
-# Errors are adopted conventions; warnings need contextual review of the public API.
+# Adopted conventions fail checks; design review suggestions remain hints.
 rules:
   import-cycle: error
   public-definitions-first: error
@@ -93,15 +94,18 @@ rules:
   prefer-package-import: error
   internal-public-member: error
   internal-static-helper: error
-  internal-public-module-symbol: warning
-  unnecessary-future-annotations: warning
-  prefer-match-type-dispatch: warning
+  internal-public-module-symbol: error
+  unnecessary-future-annotations: error
+  prefer-match-type-dispatch: error
+  implicit-optional-default: error
+  deep-object-navigation: hint
+  no-base-class-prefix: error
   private-test-access: error
   string-patch-target: error
   test-only-public-function: error
-  test-only-public-attribute: warning
-  test-without-outcome-check: warning
-  test-only-checks-possibly-empty-data: warning
-  unbounded-test-wait: warning
-  async-mock-without-await-check: warning
+  test-only-public-attribute: error
+  test-without-outcome-check: error
+  test-only-checks-possibly-empty-data: error
+  unbounded-test-wait: error
+  async-mock-without-await-check: error
   independent-test-case-loop: hint

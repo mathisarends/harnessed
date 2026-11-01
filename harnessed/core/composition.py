@@ -120,7 +120,10 @@ class Kit:
         object.__setattr__(self, "plugins", tuple(plugins))
         object.__setattr__(self, "_excluded", ())
         object.__setattr__(self, "_selector", object())
-        declarations = {key: tuple(values) for key, values in (fragments or {}).items()}
+        declarations = {
+            key: tuple(values)
+            for key, values in (fragments if fragments is not None else {}).items()
+        }
         members: set[int] = set()
 
         def collect(values: tuple[PluginInput, ...]) -> None:

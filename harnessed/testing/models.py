@@ -31,8 +31,8 @@ class ScriptedModel:
         info: ModelInfo | None = None,
         settings: GenerationSettings | None = None,
     ) -> None:
-        self.info = info or ModelInfo("scripted", context_window=128_000)
-        self.settings = settings or GenerationSettings()
+        self.info = info if info is not None else ModelInfo("scripted", context_window=128_000)
+        self.settings = settings if settings is not None else GenerationSettings()
         self.responses = deque(responses)
         self.requests: list[ModelRequest] = []
 
@@ -67,8 +67,8 @@ class CallbackModel:
         settings: GenerationSettings | None = None,
     ) -> None:
         self.callback = callback
-        self.info = info or ModelInfo("callback", context_window=128_000)
-        self.settings = settings or GenerationSettings()
+        self.info = info if info is not None else ModelInfo("callback", context_window=128_000)
+        self.settings = settings if settings is not None else GenerationSettings()
         self.requests: list[ModelRequest] = []
 
     @asynccontextmanager
@@ -163,7 +163,10 @@ class _Stream:
 
 def reply(text: str, *, reasoning: str = "", usage: ModelUsage | None = None) -> ModelResponse:
     """Script a completed assistant response."""
-    return ModelResponse(AssistantMessage(text, reasoning=reasoning), usage or ModelUsage(0))
+    return ModelResponse(
+        AssistantMessage(text, reasoning=reasoning),
+        usage if usage is not None else ModelUsage(0),
+    )
 
 
 def call(name: ToolSelector, /, **arguments) -> ModelResponse:

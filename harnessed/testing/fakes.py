@@ -119,7 +119,9 @@ class InMemoryFS(Filesystem):
     """Replace Filesystem's slot and tools with an observable virtual workspace."""
 
     def __init__(self, files: Mapping[str, str] | None = None, **options) -> None:
-        self.files = {_path(path): text for path, text in (files or {}).items()}
+        self.files = {
+            _path(path): text for path, text in (files if files is not None else {}).items()
+        }
         super().__init__(implementation=_MemoryFiles(self.files), **options)
 
     def create_instance(self) -> Self:
@@ -155,7 +157,7 @@ class FakeShell(Shell):
     """Replace Shell's slot; unexpected commands fail without launching a process."""
 
     def __init__(self, responses: Mapping[str, str | ProcResult] | None = None, **options) -> None:
-        self.responses = dict(responses or {})
+        self.responses = dict(responses if responses is not None else {})
         self.calls: list[CommandCall] = []
         super().__init__(implementation=_FakeCommands(self.responses, self.calls), **options)
 
