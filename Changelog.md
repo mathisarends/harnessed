@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Check waterfall terminal results in `Context.dispatch` and `EventBus.dispatch`.
+  Synchronous and asynchronous terminals must match the event's result contract;
+  mismatches are rejected instead of escaping through `Any` or widening the result.
+
 ## 0.9.0 (2026-11-01)
 
 This minor release adds typed plugin recipes, explicit instruction placement,

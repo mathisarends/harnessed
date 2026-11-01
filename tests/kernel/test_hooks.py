@@ -117,6 +117,30 @@ async def test_multi_event_bail_and_waterfall_keep_their_dispatch_semantics() ->
             assert await ctx.dispatch(wrap, default=lambda: "core") == "[core]"
 
 
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_waterfall_terminal_supports_sync_and_async_results(asynchronous: bool) -> None:
+    seen: list[str] = []
+
+    def terminal() -> str:
+        seen.append("terminal")
+        return "core"
+
+    async def async_terminal() -> str:
+        return terminal()
+
+    async with Context() as ctx:
+
+        @ctx.hook(FirstWrap)
+        async def wrap(event: FirstWrap, next_: Next[str]) -> str:
+            result = await next_()
+            seen.append(result)
+            return f"[{result}]"
+
+        default = async_terminal if asynchronous else terminal
+        assert await ctx.dispatch(FirstWrap(), default=default) == "[core]"
+    assert seen == ["terminal", "core"]
+
+
 def test_multi_event_decorator_preserves_function_identity_and_can_be_reused() -> None:
     def observe(event: Ping | Pong) -> None:
         pass

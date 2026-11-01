@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from contextlib import AbstractAsyncContextManager, AsyncExitStack, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -239,7 +239,9 @@ class Context:
     def _listeners(self, event):
         return self._scope.event_bus.matching(event)
 
-    async def dispatch[R](self, event: Event[R], *, default: Callable[[], Any] | None = None) -> R:
+    async def dispatch[R](
+        self, event: Event[R], *, default: Callable[[], R | Awaitable[R]] | None = None
+    ) -> R:
         return await self._scope.event_bus.dispatch(self, event, default=default)
 
     async def __aenter__(self):

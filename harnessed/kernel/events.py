@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import TYPE_CHECKING, Any, Self, cast, overload
+from typing import TYPE_CHECKING, Any, Generic, Self, TypeVar, cast, overload
 
 from .di import BindingPlan, binding_plan
 from .effects import Disposer, resolve
@@ -19,6 +19,8 @@ from .hooks import (
     WaterfallHook,
 )
 
+_Result = TypeVar("_Result")
+
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -26,7 +28,7 @@ if TYPE_CHECKING:
     from .plugin import PluginHandle
 
 
-class Event[R]:
+class Event(Generic[_Result]):  # noqa: UP046 -- Invariance keeps the result contract fixed.
     @classmethod
     def _callback(cls, callback: Any) -> Any:
         return callback
@@ -159,7 +161,13 @@ class EventBus:
             key=lambda listener: listener.priority,
         )
 
-    async def dispatch[R](self, ctx: Context, event: Event[R], *, default=None) -> R:
+    async def dispatch[R](
+        self,
+        ctx: Context,
+        event: Event[R],
+        *,
+        default: Callable[[], R | Awaitable[R]] | None = None,
+    ) -> R:
         listeners = self.matching(event)
 
         async def invoke(listener, *args):
