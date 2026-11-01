@@ -25,6 +25,18 @@ class HookFactory[H](Protocol):
     ) -> H: ...
 
 
+class ObserverFactory[E, R](Protocol):
+    """Input-only validation lets several event types infer a shared event union."""
+
+    def _callback(self, callback: Callable[[E], R | Awaitable[R]]) -> object: ...
+
+
+class WaterfallFactory[E, R](Protocol):
+    """A shared waterfall also requires compatible result and continuation types."""
+
+    def _callback(self, callback: Callable[[E, Next[R]], R | Awaitable[R]]) -> object: ...
+
+
 class _Declaration:
     def __init__(
         self, event: type[Event[Any]], owner: Context | None, prepend: bool, priority: int

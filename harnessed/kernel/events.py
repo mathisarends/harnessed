@@ -2,13 +2,22 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import TYPE_CHECKING, Any, Self, cast
+from typing import TYPE_CHECKING, Any, Self, cast, overload
 
 from .di import BindingPlan, binding_plan
 from .effects import Disposer, resolve
-from .hooks import HookFactory, ObserverCallback, ObserverHook, WaterfallCallback, WaterfallHook
+from .hooks import (
+    HookFactory,
+    ObserverCallback,
+    ObserverFactory,
+    ObserverHook,
+    WaterfallCallback,
+    WaterfallFactory,
+    WaterfallHook,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -196,11 +205,59 @@ class EventBus:
         return cast(R, None)
 
 
-def on[H](event: HookFactory[H], *, prepend: bool = False, priority: int = 0) -> H:
-    """Declare a hook. Lower priorities run first; equal priorities retain order."""
+@overload
+def on[H](event: HookFactory[H], *, prepend: bool = False, priority: int = 0) -> H: ...
+
+
+@overload
+def on[E, R](
+    event: ObserverFactory[E, R],
+    other: ObserverFactory[E, R],
+    *events: ObserverFactory[E, R],
+    prepend: bool = False,
+    priority: int = 0,
+) -> ObserverHook[E, R]: ...
+
+
+@overload
+def on[E, R](
+    event: WaterfallFactory[E, R],
+    other: WaterfallFactory[E, R],
+    *events: WaterfallFactory[E, R],
+    prepend: bool = False,
+    priority: int = 0,
+) -> WaterfallHook[E, R]: ...
+
+
+def on(
+    event: object,
+    *events: object,
+    prepend: bool = False,
+    priority: int = 0,
+) -> object:
+    """Declare a callback for each event, like stacked single-event decorators.
+
+    Lower priorities run first; equal priorities retain registration order.
+    Each key creates an independent listener, including repeated or overlapping keys.
+    """
     if not isinstance(priority, int) or isinstance(priority, bool):
         raise TypeError("Listener priority must be an integer")
 
-    if not isinstance(event, type) or not issubclass(event, Event):
-        raise TypeError("Hook keys must be Event classes")
-    return event._hook(prepend=prepend, priority=priority)
+    hooks: list[Callable[[Callable[..., object]], object]] = []
+    for key in (event, *events):
+        if not isinstance(key, type) or not issubclass(key, Event):
+            raise TypeError("Hook keys must be Event classes")
+        hooks.append(key._hook(prepend=prepend, priority=priority))
+    if any(isinstance(declaration, WaterfallHook) for declaration in hooks) and not all(
+        isinstance(declaration, WaterfallHook) for declaration in hooks
+    ):
+        raise TypeError("Shared hooks cannot mix observer and waterfall events")
+    if not events:
+        return hooks[0]
+
+    def decorate[C: Callable[..., object]](callback: C) -> C:
+        for declaration in hooks:
+            declaration(callback)
+        return callback
+
+    return decorate
