@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Support `@hook(EventA, EventB, ...)` to forward several event types to one
+  sync or async handler. The handler accepts every listed event, usually through
+  a union annotation, while retaining event, result and continuation type checks.
+  Shared handlers support injected dependencies; `priority` and `prepend` apply
+  to every listener, and plugin disposal removes all of them. Observer and
+  waterfall events cannot share a decorator. See the
+  [hook guide](docs/guides/tools.md#hook-signatures) for examples and the behavior
+  of repeated or overlapping event keys.
+
 ## 0.8.0 (2026-10-30)
 
 This minor release replaces automatic session archives with explicit conversation

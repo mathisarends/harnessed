@@ -286,6 +286,31 @@ Async callbacks return those values after awaiting. Additional parameters use
 `Inject[T]`. Class-based plugin methods follow the same signatures after `self`.
 `Next[R]` is a zero-argument async continuation and may be called once.
 
+Pass several event classes to `@hook(...)` to share one handler:
+
+```python
+from harnessed import Plugin
+from harnessed.events import CompactionFinishedEvent, CompactionStartedEvent
+from harnessed.kernel import hook
+
+
+class CompactionLog(Plugin):
+    @hook(CompactionStartedEvent, CompactionFinishedEvent)
+    def forward(self, event: CompactionStartedEvent | CompactionFinishedEvent) -> None:
+        print(event.type)
+```
+
+The handler must accept every listed event, usually through a union annotation,
+and return a value compatible with every event's callback contract. Shared
+waterfall handlers also need compatible `Next[R]` continuations. Observer and
+waterfall events cannot share a decorator. Sync and async handlers support
+`Inject[T]` parameters as usual.
+
+Each event key creates a separate listener, equivalent to stacked `@hook(Event)`
+decorators. `priority` and `prepend` apply to every listener, and plugin disposal
+removes them all. Repeated keys or overlapping base/subclass keys can call the
+handler more than once for a dispatched event.
+
 Ty checks wrong event types, wrong callback results and incompatible continuations
 for decorators and direct `ctx.on(Event, callback)` registrations. The CI consumer
 fixtures include expected failures and reject unused suppressions, so weakening
