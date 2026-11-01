@@ -9,7 +9,7 @@ from harnessed.core.errors import PluginConflict
 from harnessed.core.model import ModelChunk, ModelInfo, ModelUsage
 from harnessed.core.runtime.services import RuntimeServices
 from harnessed.core.session.events import ModelRequestedEvent
-from harnessed.core.tokens import ApproximateTokenCounter, TokenCounter
+from harnessed.core.tokens import ApproximateTokenCounter, CalibratedTokenCounter, TokenCounter
 from harnessed.plugins import (
     AgentLoop,
     Approvals,
@@ -108,3 +108,15 @@ async def test_default_token_counter_calibrates_against_reported_input_tokens():
         estimate = ApproximateTokenCounter().count_request(request)
         assert counter.count_request(request) == min(1_000, estimate * 4)
         assert counter.count_text(text) > ApproximateTokenCounter().count_text(text)
+
+
+def test_calibrated_token_counter_uses_a_supplied_falsy_estimator() -> None:
+    class FalsyEstimator(ApproximateTokenCounter):
+        def __bool__(self) -> bool:
+            return False
+
+        def count_text(self, text: str) -> int:
+            return 23
+
+    counter = CalibratedTokenCounter(FalsyEstimator())
+    assert counter.count_text("custom estimate") == 23

@@ -44,10 +44,11 @@ otel = [
 dev = [
     "mkdocs>=1.6,<2",
     "prek>=0.5.9,<0.6",
+    "pylint>=4.1.3,<5",
     "pytest>=8,<10",
     "pytest-asyncio>=1,<2",
     "ruff>=0.17.3,<1",
-    "smelt-cli==0.3.0",
+    "smelt-cli==0.4.0",
     "twine>=6.2,<7",
     "ty>=0.0.93,<0.1",
 ]
@@ -95,3 +96,31 @@ include = ["harnessed", "examples", "scripts", "tests/typing"]
 
 [tool.ty.rules]
 unused-ignore-comment = "error"
+
+[tool.pylint.main]
+py-version = "3.12"
+recursive = true
+prefer-stubs = true
+persistent = false
+
+[tool.pylint.messages_control]
+# Ruff owns syntax/style, ty owns types, and Smelt owns architecture.
+# Pylint adds control-flow, iteration-mutation and override checks. Generic
+# call/type inference cannot model the lazy SDK or dependency-injected lifecycle.
+disable = ["all"]
+enable = [
+    "F",
+    "possibly-used-before-assignment",
+    "used-before-assignment",
+    "modified-iterating-list",
+    "modified-iterating-dict",
+    "modified-iterating-set",
+    "arguments-renamed",
+    "invalid-overridden-method",
+    "overridden-final-method",
+    "subclassed-final-class",
+]
+
+[tool.pylint.reports]
+reports = false
+score = false

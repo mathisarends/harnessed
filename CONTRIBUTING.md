@@ -34,6 +34,36 @@ Duplicate tool or prompt-section names require `override=True`.
 ## Verification
 
 Run `uv run prek run --all-files` and `uv run pytest` before submitting.
+The hooks use the versions in `uv.lock`:
+
+| Check | Responsibility |
+| --- | --- |
+| Ruff lint and format | Import sorting, indentation, whitespace, syntax and selected Python/async rules |
+| Pylint | Control flow, collection mutation while iterating, renamed override parameters and final/async overrides |
+| ty | Type checking, including the Python/platform matrix in CI |
+| Smelt 0.4.0 | Layer/facade boundaries, runtime module cycles, definition ordering, necessary future imports, explicit optional defaults and test conventions |
+
+Run the checks individually when investigating a failure:
+
+```bash
+uv run ruff check . --fix
+uv run ruff format .
+uv run pylint harnessed examples scripts
+uv run ty check --error-on-warning
+uv run smelt check --show-hints --fail-on warning
+```
+
+Ruff applies safe lint fixes and formatting. Smelt's optional-default rewrite
+requires `--select SMT321 --fix --unsafe-fixes`: review whether each fallback
+should apply only to `None` before using it. Do not remove future imports needed
+for Python 3.12 forward references or `TYPE_CHECKING` imports.
+
+Pylint deliberately complements the other tools with selected checks. Its general
+call/type inference does not model the lazy SDK or injected lifecycle signatures;
+ty checks those contracts. The intentional invalid calls in `tests/typing` belong
+to ty rather than Pylint. Smelt warnings fail hooks and CI; design review hints
+remain advisory and require contextual review, without a debt baseline.
+
 The static consumer contracts in `tests/typing` run in ty alongside the library,
 examples and scripts. CI checks all supported Python versions on Linux, Windows
 and macOS, then builds and smoke-tests the installed wheel outside the checkout.

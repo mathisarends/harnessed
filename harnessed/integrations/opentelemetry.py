@@ -59,7 +59,12 @@ async def otlp_provider(
     if not service_name.strip():
         raise ValueError("service_name must not be empty")
     provider = TracerProvider(
-        resource=Resource.create({**(resource_attributes or {}), "service.name": service_name}),
+        resource=Resource.create(
+            {
+                **(resource_attributes if resource_attributes is not None else {}),
+                "service.name": service_name,
+            }
+        ),
         shutdown_on_exit=False,
     )
     try:

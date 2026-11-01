@@ -9,7 +9,7 @@ class ExtractiveSummarizer:
     """Offline fallback: budgeted message excerpts, without an extra model request."""
 
     def __init__(self, counter: TokenCounter | None = None) -> None:
-        self.counter = counter or ApproximateTokenCounter()
+        self.counter = counter if counter is not None else ApproximateTokenCounter()
 
     async def summarize(self, messages: tuple[Message, ...], *, max_tokens: int) -> str:
         if not messages:

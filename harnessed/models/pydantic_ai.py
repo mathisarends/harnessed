@@ -126,7 +126,9 @@ class PydanticAIModel:
         self._info = ModelInfo(
             name=self._native.model_name,
             provider=self._native.system,
-            context_window=context_window or profile.get("context_window"),
+            context_window=(
+                context_window if context_window is not None else profile.get("context_window")
+            ),
             supports_images=bool(profile.get("supports_image_input")),
             supports_structured_output=bool(profile.get("supports_json_schema_output")),
         )

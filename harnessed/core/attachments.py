@@ -83,7 +83,7 @@ async def _prepare_input(
             )
         message = UserMessage(tuple(parts), id=message.id)
     contributions = []
-    for name, value in (context or {}).items():
+    for name, value in (context if context is not None else {}).items():
         if not isinstance(name, str):
             raise TypeError("Context keys must be strings")
         text = (

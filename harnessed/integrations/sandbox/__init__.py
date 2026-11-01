@@ -56,8 +56,8 @@ class Sandbox(Plugin[SandboxConfig], slot="sandbox"):
             config=SandboxConfig(
                 workspace=workspace,
                 network=network,
-                env=dict(env or {}),
-                limits=limits or SandboxLimits(),
+                env=dict(env if env is not None else {}),
+                limits=limits if limits is not None else SandboxLimits(),
                 max_output_bytes=max_output_bytes,
                 startup_timeout=startup_timeout,
             )

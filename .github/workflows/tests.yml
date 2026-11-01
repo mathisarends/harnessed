@@ -19,7 +19,7 @@ env:
 
 jobs:
   quality:
-    name: Smelt, Ruff, ty, docs, and prek
+    name: Smelt, Ruff, Pylint, ty, docs, and prek
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

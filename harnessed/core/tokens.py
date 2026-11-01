@@ -72,7 +72,7 @@ class CalibratedTokenCounter:
     MAX_RATIO = 4.0
 
     def __init__(self, estimator: ApproximateTokenCounter | None = None) -> None:
-        self.estimator = estimator or ApproximateTokenCounter()
+        self.estimator = estimator if estimator is not None else ApproximateTokenCounter()
         self.ratio = 1.0
 
     def calibrate(self, request: ModelRequest, input_tokens: int) -> None:

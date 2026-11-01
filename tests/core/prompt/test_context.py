@@ -14,7 +14,7 @@ from harnessed import (
     tool,
 )
 from harnessed.core.hooks import PreStep
-from harnessed.core.messages import ImageDetail, ImagePart, Role, UserMessage, user
+from harnessed.core.messages import ImageDetail, ImagePart, Role, TextPart, UserMessage, user
 from harnessed.core.model import ModelChunk
 from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.session.codec import decode_event, encode_event
@@ -199,7 +199,15 @@ async def test_observations_remain_unchanged_in_later_steps():
 
 
 async def test_remote_images_are_references_without_download():
-    parts = await Image("https://example.com/screenshot.png", detail=ImageDetail.LOW)._parts()
-    assert parts == (ImagePart("https://example.com/screenshot.png", ImageDetail.LOW),)
-    message = UserMessage(list(parts))
-    assert isinstance(message.content, tuple)
+    model = ScriptedModel(["done"])
+    async with Application(model=model).session() as agent:
+        await agent.run(
+            "Describe this image",
+            attachments=[Image("https://example.com/screenshot.png", detail=ImageDetail.LOW)],
+        )
+    message = model.requests[0].messages[-1]
+    assert isinstance(message, UserMessage)
+    assert message.content == (
+        TextPart("Describe this image"),
+        ImagePart("https://example.com/screenshot.png", ImageDetail.LOW),
+    )

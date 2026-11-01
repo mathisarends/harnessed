@@ -192,7 +192,7 @@ class InstructionProvider[T: PromptOwner]:
         )
 
 
-def instructions[T: PromptOwner](  # smelt: ignore[SMT316] -- Lazy SDK export.
+def instructions[T: PromptOwner](  # smelt: ignore[SMT429] -- Lazy harnessed.instructions export.
     *, title: str | None = None
 ) -> Callable[[Callable[[T], str | None]], InstructionProvider[T]]:
     """Declare pure, synchronous system instructions derived from recipe configuration."""

@@ -76,9 +76,11 @@ class SessionLog:
         registry: EventRegistry | None = None,
         assets: _MemoryAssets | None = None,
     ) -> None:
-        self.registry = registry or (
-            ctx[EventRegistry] if ctx is not None and EventRegistry in ctx else EventRegistry()
-        )
+        if registry is None:
+            registry = (
+                ctx[EventRegistry] if ctx is not None and EventRegistry in ctx else EventRegistry()
+            )
+        self.registry = registry
         self.id = session_id
         self.ctx = ctx
         self._events: list[SessionEvent] = []

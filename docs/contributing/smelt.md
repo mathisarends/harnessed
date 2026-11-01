@@ -1,6 +1,6 @@
 # Smelt policy and adoption feedback
 
-Harnessed pins [`smelt-cli` 0.3.0](https://github.com/mathisarends/smelt)
+Harnessed pins [`smelt-cli` 0.4.0](https://github.com/mathisarends/smelt)
 in the development group. The executable policy is
 [`smelt.yaml`](https://github.com/mathisarends/harnessed/blob/main/smelt.yaml).
 It complements Ruff, ty, runtime tests and the architecture suite.
@@ -29,13 +29,12 @@ does not express: plugin independence and the individual modules permitted to
 import provider SDKs, YAML, MCP clients and telemetry. The root SDK remains lazy
 so a standalone kernel import never loads Pydantic or optional SDKs.
 
-Cycle detection is an error at the **layer** scope. Smelt's sibling scope groups
-entire child packages into graph nodes. Here, a package containing both contracts
-and consumers can participate in a reported cycle even when its concrete runtime
-modules do not form that cycle. `TYPE_CHECKING` back references also occur in the
-kernel and typed runtime components. Do not enable sibling-scope failures until
-those findings can distinguish the relevant concrete module edges. Layer and
-transitive dependency checks still apply to those modules and annotations.
+Cycle detection is an error at both **layer** and concrete **module** scope.
+Smelt 0.4.0 follows resolved module edges instead of conflating entire child
+packages. `type_checking_cycles: ignore` excludes annotation-only edges from cycle
+graphs; `type_checking: include` still checks them against all layer and dependency
+boundaries. Deferred runtime imports remain part of the module graph. Sibling
+aggregation stays disabled because it does not prove a concrete module cycle.
 
 ## Source and test conventions
 
@@ -43,10 +42,16 @@ The requested checks are explicit in the config:
 
 | Severity | Rules |
 | --- | --- |
-| Error | `import-cycle`, `public-definitions-first`, `bundled-instance-assignment`, `redundant-str-enum-value`, `prefer-package-import`, `internal-public-member`, `internal-static-helper` |
-| Error | `private-test-access`, `string-patch-target`, `test-only-public-function`; at most three patches per test |
-| Warning | `internal-public-module-symbol`, `unnecessary-future-annotations`, `prefer-match-type-dispatch`, `test-only-public-attribute`, `test-without-outcome-check`, `test-only-checks-possibly-empty-data`, `unbounded-test-wait`, `async-mock-without-await-check` |
-| Hint | `independent-test-case-loop` |
+| Error | `import-cycle`, `public-definitions-first`, `bundled-instance-assignment`, `redundant-str-enum-value`, `prefer-package-import`, `internal-public-member`, `internal-static-helper`, `internal-public-module-symbol` |
+| Error | `unnecessary-future-annotations`, `prefer-match-type-dispatch`, `implicit-optional-default`, `no-base-class-prefix` |
+| Error | `private-test-access`, `string-patch-target`, `test-only-public-function`, `test-only-public-attribute`; at most three patches per test |
+| Error | `test-without-outcome-check`, `test-only-checks-possibly-empty-data`, `unbounded-test-wait`, `async-mock-without-await-check` |
+| Hint | `independent-test-case-loop`, `deep-object-navigation` |
+
+Hooks and CI use `--fail-on warning`, so metadata warnings such as unused
+suppressions fail too. Optional defaults select a fallback only for `None`;
+intentional empty-value behavior must be explicit. Future annotations remain
+necessary for deferred names under the supported Python 3.12 minimum.
 
 Public definitions precede implementation helpers. Module dunder assignments
 follow those definitions, preserving the repository's `__all__`-at-the-bottom
@@ -74,18 +79,17 @@ The configuration deliberately leaves these optional policies unselected:
 
 ## Reviewed exceptions
 
-There is no debt baseline. The full adoption check covers 116 governed modules
-with no errors, warnings or hints. Nine individual inline findings are suppressed
-with reasons. One config exception permits private access only in
+There is no debt baseline. The full check covers 118 governed modules with no
+errors or warnings. Nine individual inline findings are suppressed with reasons. One config exception permits private access only in
 `tests/core/session/test_image_cache.py`, whose purpose is to measure byte and
 entry limits, eviction and reuse. Public asset behavior remains in separate tests.
 
 The inline exceptions cover the decorator exported by the lazy SDK, subscription
 buffer ownership, deterministic lock contention, cgroup enforcement and private
 worker transport tests. They preserve important invariants without publishing
-implementation details as supported APIs. The cold-cache asset regression also
-documents why it clears the private cache; Smelt does not currently resolve that
-chained attribute access. New exceptions need equally specific evidence.
+implementation details as supported APIs. The remote-image regression exercises
+attachments through `Agent.run` and checks the model request instead of calling the private image conversion method. New
+exceptions need equally specific evidence.
 
 Use stable codes for inline suppressions, on the reported statement or its
 multiline header, for example:
@@ -103,7 +107,7 @@ codes; a preceding standalone comment does not suppress the following statement.
 ```bash
 uv run smelt context harnessed.core.runtime.session
 uv run smelt check --changed --base origin/main --format json
-uv run smelt check --show-hints
+uv run smelt check --show-hints --fail-on warning
 uv run prek run --all-files
 ```
 
@@ -139,28 +143,29 @@ uv run smelt config schema > .smelt.schema.json
 - Strict coverage and transitive paths make the intended architecture reviewable
   before edits and repeatable in CI, without adding Smelt to runtime dependencies.
 
-### What would help more
+### Review after the 0.4.0 upgrade
 
-1. Offer concrete-module runtime cycle detection alongside aggregated sibling
-   cycles, with separately configurable treatment of annotation-only cycles.
-   Preserve each edge and its import phase in the diagnostic witness.
-2. Recognize static lazy-export tables paired with `__getattr__` and the SDK
-   type stub. `instructions` is a documented public export, but currently needs
-   a reasoned exception to internal-member analysis.
-3. Diagnose unknown suppression identifiers. During adoption, readable rule names
-   in `ignore[...]` comments were silently unrecognized, whereas unused valid
-   SMT-code suppressions were diagnosed. Supporting names consistently would
-   also remove this syntax difference between YAML, CLI and comments.
-4. Explain why a directly awaited shared assertion helper supplies no recognized
-   evidence. The live-sandbox helper performs assertions throughout its lifecycle;
-   its callers initially received missing-outcome warnings. Caller-side exported
-   file checks are useful, but the diagnostic should expose the analysis limit.
-5. Allow an import convention that prefers relative imports only within the
-   exact same package, while retaining absolute imports into child packages.
-6. Distinguish reflection on another object's namespace from inspection of the
-   definitions being ordered. Current `vars`, `globals` and `nonlocal` barriers
-   appropriately protect semantics but leave several manually reviewable cases.
+The upgrade enables exact module cycle detection and rejects implicit truthiness
+defaults. Each optional-default finding is reviewed before rewriting; the model adapter
+continues to reject a supplied zero context window before choosing its profile
+default. Empty plugin names deliberately retain the class
+name fallback through an explicit condition.
 
-These observations concern this repository and Smelt 0.3.0. They are feedback,
+`deep-object-navigation` is an advisory design review, not a correctness proof.
+The initial 19 findings cover session-owned log/approval/registry/image services,
+shared kernel scope/runtime state, subprocess pipes and process-protocol buffers.
+These paths preserve the owning object's lifecycle and current state. Creating
+forwarding methods or cached aliases solely to silence them would not establish a
+better boundary. Keep these hints visible for changes that alter those ownership
+contracts, and review new findings on their merits.
+
+Smelt 0.4.0 recognizes the guarded lazy SDK export table for member analysis.
+The test-only-function review still needs a reasoned `SMT429` exception for the
+public `harnessed.instructions` decorator, whose consumer examples are excluded
+from architecture analysis. General import-style enforcement also still prefers
+relative imports into child packages; Ruff retains the exact parent-relative ban
+without changing cross-package ownership conventions.
+
+These observations concern this repository and Smelt 0.4.0. They are feedback,
 not new requirements imposed on downstream SDK users. Reports are local tooling
-artifacts; no upstream issue or external message is created by this adoption.
+artifacts; no upstream issue or external message is created by these checks.

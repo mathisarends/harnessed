@@ -378,7 +378,7 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
             raise ValueError("MCP HTTP URL must have an http(s) scheme and host")
         return cls(
             name,
-            transport=_HTTP(url, dict(headers or {}), auth),
+            transport=_HTTP(url, dict(headers if headers is not None else {}), auth),
             include_tools=include_tools,
             readonly_tools=readonly_tools,
             startup_timeout=startup_timeout,

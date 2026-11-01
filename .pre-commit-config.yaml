@@ -34,6 +34,12 @@ repos:
         language: system
         require_serial: true
         types_or: [python, pyi]
+      - id: pylint
+        name: Pylint control flow and contracts
+        entry: uv run --locked --no-sync pylint harnessed examples scripts
+        language: system
+        pass_filenames: false
+        always_run: true
       - id: ty
         name: ty type check
         entry: uv run --locked --no-sync ty check --error-on-warning
@@ -42,7 +48,7 @@ repos:
         always_run: true
       - id: smelt
         name: Smelt architecture and conventions
-        entry: uv run --locked --no-sync smelt check --format concise
+        entry: uv run --locked --no-sync smelt check --fail-on warning --format concise
         language: system
         pass_filenames: false
         always_run: true

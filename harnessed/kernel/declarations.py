@@ -114,7 +114,7 @@ class PluginBase:
             )
             hooks = self._constructor_kwargs["hooks"]
             registrations = self._constructor_kwargs["registrations"]
-        self.name = name or type(self).__name__
+        self.name = type(self).__name__ if name is None or name == "" else name
         self.hooks = tuple(hooks)
         self.needs = tuple(self.needs if needs is None else needs)
         self.registrations = tuple(registrations)
