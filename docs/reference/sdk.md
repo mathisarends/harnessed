@@ -276,6 +276,7 @@ unhashable. See [values and record versions](../concepts/values.md).
 | @plugin | Kernel services and hooks in an async generator |
 | class Capability(Plugin, needs=(Backend,)) / Inject[T] | Temporal lifetime / per-call service resolution |
 | @hook / Context.hook | Typed observer, bail or waterfall extension |
+| @hook(EventA, EventB, ...) | One handler accepting every listed event; shared priority and prepend options |
 | ToolContext | Call, log, signal, cancelled, progress, emit and approve(reason) |
 | ctx.register(install) / RegistrationState.active | Owned registration and lifecycle visibility |
 | ctx.effect(cleanup) | Owned idempotent sync/async cleanup |
