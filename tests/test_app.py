@@ -10,6 +10,7 @@ from harnessed import (
     Instructions,
     Plugin,
     PluginConflict,
+    PluginOrder,
     SystemPrompt,
     ToolCall,
     tool,
@@ -32,7 +33,8 @@ from tests._audit import Audit
 
 
 class Calculator(Plugin):
-    usage = Instructions(text="Use add for arithmetic.")
+    def instructions(self) -> SystemPrompt:
+        return SystemPrompt(Instructions(text="Use add for arithmetic."))
 
     @tool(readonly=True)
     async def add(self, a: int, b: int) -> int:
@@ -49,12 +51,14 @@ async def test_application_facade_composes_plugins_and_fixed_ordered_guidance(tm
     calculator = Calculator()
     app = Agent(
         model=model,
-        system_prompt=SystemPrompt(
-            Instructions(text="Be concise."), Instructions.from_file(path=path), calculator.usage
+        prompt=SystemPrompt.from_plugins(
+            Instructions(text="Be concise."),
+            Instructions.from_file(path=path),
+            order=PluginOrder.AS_LISTED,
         ),
         plugins=[calculator],
     )
-    assert "Calculator.usage" in str(app.prompt)
+    assert "Calculator.instructions" in str(app.prompt)
     async with app.session() as session:
         result = await session.run("Add")
         assert result.text == "42" and result.tool_calls[0][1].content == "42"
@@ -76,14 +80,16 @@ async def test_facade_parameters_are_equivalent_to_public_plugins():
     calculator = Calculator()
     await Agent(
         model=one,
-        system_prompt=SystemPrompt(Instructions(text="Rules."), calculator.usage),
+        prompt=SystemPrompt.from_plugins(Instructions(text="Rules."), order=PluginOrder.AS_LISTED),
         plugins=[calculator],
     ).run("Go")
     calculator_4 = Calculator()
     await Agent(
         plugins=[
             Service(Model, two),
-            PromptRenderer(SystemPrompt(Instructions(text="Rules."), calculator_4.usage)),
+            PromptRenderer(
+                SystemPrompt.from_plugins(Instructions(text="Rules."), order=PluginOrder.AS_LISTED)
+            ),
             calculator_4,
         ]
     ).run("Go")
@@ -93,30 +99,33 @@ async def test_facade_parameters_are_equivalent_to_public_plugins():
     assert one.requests[0].tools == two.requests[0].tools
 
 
-async def test_system_sections_can_be_replaced_or_omitted_explicitly():
-    calculator = Calculator()
-    app = Agent(
-        model=ScriptedModel([]),
-        plugins=[calculator],
-        system_prompt=SystemPrompt(
-            Instructions(text="Replacement guidance."), exclude=(calculator.usage,)
-        ),
-    )
-    async with app.session() as session:
-        assert await session.prompt.render() == "Replacement guidance."
-    async with Agent(
-        model=ScriptedModel([]),
-        plugins=[calculator],
-        system_prompt=SystemPrompt(exclude=(calculator.usage,)),
-    ).session() as session:
-        assert await session.prompt.render() == ""
+async def test_plugin_instruction_block_can_be_overridden_or_omitted():
+    class CustomCalculator(Calculator):
+        def instructions(self) -> SystemPrompt:
+            return SystemPrompt("Replacement guidance.")
+
+    class QuietCalculator(Calculator):
+        def instructions(self) -> SystemPrompt:
+            return SystemPrompt()
+
+    for recipe, expected in [
+        (CustomCalculator(), "Replacement guidance."),
+        (QuietCalculator(), ""),
+    ]:
+        app = Agent(
+            model=ScriptedModel([]),
+            plugins=[recipe],
+            prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+        )
+        async with app.session() as session:
+            assert await session.prompt.render() == expected
 
 
 async def test_dynamic_context_is_durable_changes_only_and_does_not_change_system_prompt():
     current = ["one"]
     app = Agent(
         model=ScriptedModel(["first", "second", "third"]),
-        system_prompt="Fixed rules.",
+        instructions="Fixed rules.",
         plugins=[ContextValue("user", lambda: current[0])],
     )
     async with app.session() as session:
@@ -134,7 +143,7 @@ async def test_dynamic_context_is_durable_changes_only_and_does_not_change_syste
 
 
 async def test_runtime_context_is_explicit_and_disposes_with_its_plugin():
-    async with Agent(model=ScriptedModel(["done"]), system_prompt="Fixed.").session() as session:
+    async with Agent(model=ScriptedModel(["done"]), instructions="Fixed.").session() as session:
         handle = await session.use(ContextValue(key="runtime.help", value="Runtime help."))
         await session.run("Refresh context")
         assert list(session.context.values.values()) == ["Runtime help."]

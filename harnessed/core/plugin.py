@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable, Iterable
 from contextlib import AbstractAsyncContextManager
 from types import get_original_bases
@@ -7,12 +8,7 @@ from typing import Any, ClassVar, Self, TypeVar, cast, get_args, get_origin, ove
 
 from pydantic import BaseModel, ConfigDict
 
-from harnessed.core.prompt.values import (
-    InstructionProvider,
-    InstructionRef,
-    Instructions,
-    PromptContribution,
-)
+from harnessed.core.prompt.values import PromptContribution, SystemPrompt
 from harnessed.core.session.events import SessionEvent
 from harnessed.core.stream import TransientEvent
 from harnessed.core.tools import ToolSpec
@@ -50,7 +46,8 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
 
     Declare lifetime service bindings with dependency() and mutable runtime data
     with PluginState. Constructors describe capabilities; setup acquires resources
-    and registers cleanup on its Context. Instructions require explicit placement.
+    and registers cleanup on its Context. Plugin instruction collection requires
+    an explicit prompt strategy.
     """
 
     config: ConfigT
@@ -108,8 +105,19 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         if "Config" in vars(cls):
             raise TypeError("Config aliases were removed; declare Plugin[YourConfig] instead")
         cls._configuration_type = cls._configuration_schema()
+        members = vars(cls)
+        if "instructions" in members:
+            provider = members["instructions"]
+            if (
+                not callable(provider)
+                or inspect.iscoroutinefunction(provider)
+                or inspect.isasyncgenfunction(provider)
+            ):
+                raise TypeError("instructions() must be a synchronous content provider")
         for name, member in tuple(vars(cls).items()):
             if callable(member) and isinstance(getattr(member, "_harnessed_tool", None), ToolSpec):
+                if name == "instructions":
+                    raise TypeError("instructions() is reserved for prompt content, not a tool")
                 setattr(cls, name, _activation_tool(member))
 
     def __setattr__(self, name: str, value: Any) -> None:
@@ -125,19 +133,13 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         object.__setattr__(instance, "config", self.config)
         return instance
 
-    def instruction_refs(self) -> tuple[InstructionRef, ...]:
-        """Declared system sections, bound to this recipe without evaluating providers."""
-        members: dict[str, object] = {}
-        for base in reversed(type(self).__mro__):
-            members.update(vars(base))
-        members.update(vars(self))
-        sections: list[InstructionRef] = []
-        for name, member in members.items():
-            if isinstance(member, Instructions):
-                sections.append(member.bind(self, name))
-            elif isinstance(member, InstructionProvider):
-                sections.append(member.__get__(self, type(self)))
-        return tuple(sections)
+    def instructions(self) -> SystemPrompt:
+        """Return pure configuration-derived content, collected once per selected recipe.
+
+        Override this single method to provide a complete instruction block.
+        Session-owned files and factories may be returned as Instructions values.
+        """
+        return SystemPrompt()
 
     @property
     def context_description(self) -> tuple[str, str] | None:
@@ -199,7 +201,11 @@ def plugin_events(value: PluginLike) -> tuple[type[SessionEvent | TransientEvent
 def plugin_contribution(value: PluginLike) -> PromptContribution:
     """Normalize a plugin's prompt metadata once at the agent boundary."""
     spec = as_plugin_spec(value)
-    sections = value.instruction_refs() if isinstance(value, Plugin) else ()
+    provider = (
+        value.instructions
+        if isinstance(value, Plugin) and type(value).instructions is not Plugin.instructions
+        else None
+    )
     description = value.context_description if isinstance(value, Plugin) else None
     if description is not None and (
         not isinstance(description, tuple)
@@ -207,9 +213,7 @@ def plugin_contribution(value: PluginLike) -> PromptContribution:
         or not all(isinstance(part, str) for part in description)
     ):
         raise TypeError("Context descriptions must contain a name and text")
-    return PromptContribution(
-        spec.name, sections, description, value if isinstance(value, Plugin) else None
-    )
+    return PromptContribution(spec.name, provider, description)
 
 
 class Service[T](Plugin):

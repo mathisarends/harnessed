@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import copy
 import warnings
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
-from types import MappingProxyType
 from typing import Any, Self
 
 from harnessed.kernel import (
@@ -19,7 +18,8 @@ from harnessed.kernel import (
 )
 
 from .errors import PluginConflict, PluginDependencyError, PluginDependencyWarning
-from .prompt.values import InstructionFragment, PromptOwner
+from .prompt.instructions import PromptRenderer
+from .prompt.values import SystemPrompt
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,59 +102,25 @@ class Kit:
     name: str
     plugins: tuple[PluginInput, ...]
     _excluded: tuple[_Exclusion, ...] = field(default=(), repr=False)
-    _fragments: Mapping[str, tuple[PluginInput, ...]] = field(default_factory=dict, repr=False)
-    _selector: object = field(default_factory=object, repr=False)
+    prompt: SystemPrompt | None
 
     def __init__(
         self,
         name: str,
-        plugins: Iterable[PluginInput],
+        plugins: Iterable[PluginInput | None],
         *,
-        fragments: Mapping[str, Iterable[PluginInput]] | None = None,
+        prompt: SystemPrompt | None = None,
     ) -> None:
         if not isinstance(name, str):
             raise TypeError("Kit name must be a string")
         if not name.strip():
             raise ValueError("Kit name must not be empty")
         object.__setattr__(self, "name", name)
-        object.__setattr__(self, "plugins", tuple(plugins))
+        if prompt is not None and not isinstance(prompt, SystemPrompt):
+            raise TypeError("Kit prompt must be a SystemPrompt")
+        object.__setattr__(self, "plugins", tuple(value for value in plugins if value is not None))
+        object.__setattr__(self, "prompt", prompt)
         object.__setattr__(self, "_excluded", ())
-        object.__setattr__(self, "_selector", object())
-        declarations = {
-            key: tuple(values)
-            for key, values in (fragments if fragments is not None else {}).items()
-        }
-        members: set[int] = set()
-
-        def collect(values: tuple[PluginInput, ...]) -> None:
-            for value in values:
-                members.add(id(value))
-                if isinstance(value, Kit):
-                    collect(value.plugins)
-
-        collect(self.plugins)
-        for key, values in declarations.items():
-            if not isinstance(key, str) or not key.strip():
-                raise ValueError("Fragment names must be nonempty strings")
-            if any(id(value) not in members for value in values):
-                raise ValueError(f"Fragment {key!r} refers to a recipe outside this kit")
-        object.__setattr__(self, "_fragments", MappingProxyType(declarations))
-
-    @property
-    def instructions(self) -> InstructionFragment:
-        """Place all selected kit instructions, or its named instructions fragment."""
-        return self.fragment("instructions")
-
-    def fragment(self, name: str) -> InstructionFragment:
-        """Bind an ordered fragment without evaluating any instruction providers.
-
-        Selectors are recipes or nested kits belonging to this kit. Removed
-        selectors contribute nothing; a slot replacement contributes in their
-        place. Individual instruction references never follow replacements.
-        """
-        if name != "instructions" and name not in self._fragments:
-            raise KeyError(f"Kit {self.name!r} has no fragment {name!r}")
-        return InstructionFragment(self, name)
 
     def without(self, *types: type[object]) -> Self:
         """Return a new kit excluding matching recipe types and their subclasses.
@@ -202,8 +168,6 @@ type PluginInput = PluginLike | Kit
 class _Entry:
     plugin: PluginLike
     description: PluginDescription
-    sources: tuple[PluginLike, ...] = ()
-    kits: tuple[Kit, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,7 +176,6 @@ class ResolvedComposition:
 
     entries: tuple[_Entry, ...]
     removed: tuple[PluginRemoval, ...]
-    kits: tuple[Kit, ...] = ()
 
     @property
     def plugins(self) -> tuple[PluginLike, ...]:
@@ -224,33 +187,9 @@ class ResolvedComposition:
             tuple(entry.description for entry in self.entries), self.removed
         )
 
-    def instruction_fragments(
-        self, owners: Mapping[int, PromptOwner]
-    ) -> dict[tuple[int, str], tuple[PromptOwner, ...]]:
-        """Resolve kit selectors using the same winners and replacement provenance."""
-        fragments: dict[tuple[int, str], tuple[PromptOwner, ...]] = {}
-        for kit in self.kits:
-            entries = [entry for entry in self.entries if any(value is kit for value in entry.kits)]
-            fragments[id(kit), "instructions"] = tuple(
-                owners[id(entry.plugin)] for entry in entries if id(entry.plugin) in owners
-            )
-            for name, selectors in kit._fragments.items():
-                fragments[id(kit), name] = tuple(
-                    owners[id(entry.plugin)]
-                    for selector in selectors
-                    for entry in entries
-                    if id(entry.plugin) in owners
-                    and (
-                        any(value is selector for value in entry.sources)
-                        or isinstance(selector, Kit)
-                        and any(value._selector is selector._selector for value in entry.kits)
-                    )
-                )
-        return fragments
-
 
 def compose_plugins(
-    plugins: Iterable[PluginInput], *, defaults: Iterable[PluginLike] = ()
+    plugins: Iterable[PluginInput | None], *, defaults: Iterable[PluginLike] = ()
 ) -> ResolvedComposition:
     """Resolve user scopes first, then override the agent's fallback recipes."""
     supplied = _resolve(plugins, ())
@@ -259,7 +198,7 @@ def compose_plugins(
         [(entry, False) for entry in fallback.entries]
         + [(entry, True) for entry in supplied.entries]
     )
-    return ResolvedComposition(entries, supplied.removed, supplied.kits)
+    return ResolvedComposition(entries, supplied.removed)
 
 
 def _describe(spec: PluginSpec, path: tuple[str, ...]) -> PluginDescription:
@@ -289,8 +228,6 @@ def _merge(candidates: list[tuple[_Entry, bool]]) -> tuple[_Entry, ...]:
         selected[anchor] = _Entry(
             entry.plugin,
             replace(entry.description, replaces=(*entry.description.replaces, *previous)),
-            tuple(source for index in indices for source in candidates[index][0].sources),
-            tuple(kit for index in indices for kit in candidates[index][0].kits),
         )
     return tuple(
         selected[index] if entry.description.slot is not None else entry
@@ -299,18 +236,21 @@ def _merge(candidates: list[tuple[_Entry, bool]]) -> tuple[_Entry, ...]:
     )
 
 
-def _resolve(plugins: Iterable[PluginInput], path: tuple[str, ...]) -> ResolvedComposition:
+def _resolve(plugins: Iterable[PluginInput | None], path: tuple[str, ...]) -> ResolvedComposition:
     candidates: list[tuple[_Entry, bool]] = []
     removed: list[PluginRemoval] = []
-    kits: list[Kit] = []
     for value in plugins:
+        if value is None:
+            continue
         if isinstance(value, Kit):
             child_path = (*path, value.name)
-            child = _resolve(value.plugins, child_path)
-            candidates.extend(
-                (replace(entry, kits=(*entry.kits, value)), False) for entry in child.entries
+            children = (
+                (*value.plugins, PromptRenderer(value.prompt))
+                if value.prompt is not None
+                else value.plugins
             )
-            kits.extend((value, *child.kits))
+            child = _resolve(children, child_path)
+            candidates.extend((entry, False) for entry in child.entries)
             removed.extend(child.removed)
             removed.extend(
                 PluginRemoval(
@@ -324,8 +264,8 @@ def _resolve(plugins: Iterable[PluginInput], path: tuple[str, ...]) -> ResolvedC
             # Function factories are configured once; kernel install must receive
             # exactly the recipe whose declarations were used for composition.
             recipe = value if isinstance(value, PluginSpec | Bundle | PluginBase) else spec
-            candidates.append((_Entry(recipe, _describe(spec, path), (value,)), True))
-    return ResolvedComposition(_merge(candidates), tuple(removed), tuple(kits))
+            candidates.append((_Entry(recipe, _describe(spec, path)), True))
+    return ResolvedComposition(_merge(candidates), tuple(removed))
 
 
 class PluginValidation(StrEnum):

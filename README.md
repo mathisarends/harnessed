@@ -26,13 +26,14 @@ uv add "harnessed[openai]"
 ```python
 import asyncio
 
-from harnessed import Agent, Instructions, Plugin, SystemPrompt, tool
+from harnessed import Agent, Instructions, Plugin, PluginOrder, SystemPrompt, tool
 from harnessed.events import ToolCallFinishedEvent
 from harnessed.kernel import hook
 
 
 class Calculator(Plugin):
-    usage = Instructions(text="Use add for arithmetic instead of calculating mentally.")
+    def instructions(self) -> SystemPrompt:
+        return SystemPrompt("Use add for arithmetic instead of calculating mentally.")
 
     @tool(readonly=True)
     async def add(self, a: int, b: int) -> int:
@@ -48,11 +49,8 @@ calculator = Calculator()
 agent = Agent(
     model="deepseek:deepseek-chat",  # DEEPSEEK_API_KEY
     plugins=[calculator],
-    system_prompt=SystemPrompt(
-        "You are a helpful assistant.",
-        calculator.usage,
-        "Keep answers concise.",
-    ),
+    instructions="You are a helpful assistant. Keep answers concise.",
+    prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
 )
 
 
@@ -67,7 +65,8 @@ asyncio.run(main())
 One plugin colocates the tool, its model-facing instructions and its event hook.
 `@tool` derives the input schema from Python types; the method docstring describes
 the tool. `@hook` observes the selected event type across the session.
-`SystemPrompt` places sections in the order you write them.
+`SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)` explicitly collects
+complete instruction blocks in resolved plugin-list order.
 
 `Agent` is reusable configuration. `agent.run()` opens a session for one turn;
 use `agent.session()` when several turns should share a conversation.
@@ -133,7 +132,7 @@ Bundle library defaults, nest kits, and replace individual policies at the
 application boundary:
 
 ```python
-from harnessed import Agent, Kit, SystemPrompt
+from harnessed import Agent, Kit, PluginOrder, SystemPrompt
 from harnessed.plugins import AgentLoop, Compaction, Filesystem, Shell
 
 
@@ -146,6 +145,7 @@ def workspace_kit(root: str) -> Kit:
             AgentLoop(max_steps=30),
             Compaction(keep_steps=4),
         ],
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
 
 
@@ -153,11 +153,7 @@ workspace = workspace_kit(".").without(Shell)
 agent = Agent(
     model="deepseek:deepseek-chat",
     plugins=[workspace, AgentLoop(max_steps=10)],
-    system_prompt=SystemPrompt(
-        "Help the user understand this codebase.",
-        workspace.instructions,
-        "Cite file paths in your answer.",
-    ),
+    instructions="Help the user understand this codebase. Cite file paths in your answer.",
 )
 
 print(agent.describe())
@@ -166,8 +162,8 @@ print(agent.describe())
 `without(Shell)` removes that capability from the kit. The direct `AgentLoop`
 replaces the kit's loop through its `loop` slot; custom plugins can declare slots
 with `class MyPolicy(Plugin, slot="my.policy")`. Unslotted plugins are additive.
-`workspace.instructions` follows the selected plugins, and `agent.describe()`
-shows their origins, replacements and exclusions before any session starts.
+`SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)` follows the selected
+plugins, and `agent.describe()` shows their origins, replacements and exclusions before any session starts.
 
 Tools, approvals, output limits, compaction and tracing all compose through
 plugins. See [plugin composition](https://github.com/mathisarends/harnessed/blob/main/docs/guides/plugins.md) for nested-kit precedence and lifecycle rules.

@@ -44,38 +44,29 @@ composition descriptions, diagnostics and activation consume that description.
 
 ## Instruction declaration and placement
 
-The canonical content name is `Instructions`; related names are `InstructionRef`,
-`InstructionProvider`, `@instructions` and `PluginInstructions`. The renderer
-plugin is `PromptRenderer`. No transitional aliases are retained.
+Plugins return one complete content document through
+`instructions(self) -> SystemPrompt`. Static text may live in module constants;
+configuration helpers return actual content. Methods are pure and synchronous.
+`Instructions` holds literal text or session-owned file/factory sources.
 
-`SystemPrompt("Help with documents.", workspace.instructions, "Answer concisely.")`
-takes ordered positional content. Iterables use `SystemPrompt(*parts)`; `format`,
-`exclude` and `unplaced` stay keyword-only. The old `sections=` constructor keyword
-is removed.
+Applications and kits explicitly select collection with
+`SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED, format=...)`. The order
+argument is required. Resolve kit nesting, removals and slot replacements before
+calling selected providers once at the agent boundary. Preserve whole plugin
+blocks in resolved list order, independently of setup order. `None` parts and
+plugin-list entries are normalized away.
 
-Every selected declaration must be explicitly placed or excluded, even when its
-rendered text is empty, the prompt is a plain string, or no prompt was supplied.
-Coverage, foreign references, overlaps and exclusions are checked before content
-providers or file reads. `Unplaced.ERROR` is the default; `PluginInstructions()`
-and `Unplaced.APPEND` remain explicit delegation choices. Class docstrings never
-become model instructions. Normalized `PromptContribution` values remain the
-agent boundary and `PromptComposition` owns validation and rendering.
+`Kit(prompt=...)` provides a default in the existing instructions slot. Parent
+prompts override child defaults, and explicit `Agent(prompt=...)` overrides kit
+defaults. `Agent(instructions="...")` prepends caller text without replacing the
+strategy. Selected instruction overrides without explicit collection fail before
+provider calls. Providers cannot return another collection strategy.
 
-## Kit fragments
-
-`Kit(name, plugins, fragments={name: (recipe_or_child_kit, ...)})` defines optional
-named groups without a new kit inheritance API. `kit.instructions` selects its
-named `instructions` group or all resolved descendants by default. Other names
-use `kit.fragment(name)`. Selector order owns internal ordering; the application
-places the fragment as a unit.
-
-Fragments use the composition resolver's winner and replacement provenance.
-Removed selectors contribute nothing; slot overrides contribute the final winner,
-including in nested kits. A fragment from the result of `without` belongs to that
-new kit. References from an uninstalled kit fail. Individual instruction references
-keep exact recipe identity and never follow replacements. Fragments accept future
-declarations of selected recipes; individual references expose additions as
-coverage errors. Fragment exclusions skip content providers too.
+Content documents use strings, `Instructions` and nested `SystemPrompt` values.
+The outer format controls all nested content. There are no descriptors, section
+references, fragments, rest slots, exclusion registries or unplaced policies.
+Override the complete plugin method to replace or omit its block. Runtime
+`SectionDelivery` retains explicit ERROR, CONTEXT and IGNORE policies.
 
 ## Runtime mounts and tests
 

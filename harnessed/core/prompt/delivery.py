@@ -10,7 +10,7 @@ from harnessed.kernel import Context, PluginLike, PluginSpec, as_plugin_spec
 
 from .context import DynamicContext
 from .values import (
-    PluginInstructions,
+    PluginOrder,
     PromptComposition,
     PromptContribution,
     SectionDelivery,
@@ -23,7 +23,7 @@ def runtime_sections(
 ) -> PluginSpec:
     """Attach section delivery to the capability's own activation and rollback."""
     spec = as_plugin_spec(plugin)
-    if not contribution.sections or delivery is SectionDelivery.IGNORE:
+    if contribution.instructions is None or delivery is SectionDelivery.IGNORE:
         return spec
     if delivery is SectionDelivery.ERROR:
         raise ConfigError(
@@ -37,7 +37,8 @@ def runtime_sections(
     async def mount(ctx: Context, *args: Any, **kwargs: Any) -> AsyncGenerator[object, None]:
         async with asynccontextmanager(spec.factory)(ctx, *args, **kwargs) as instance:
             composition = PromptComposition(
-                SystemPrompt(PluginInstructions()), contributions=(contribution,)
+                SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+                contributions=(contribution,),
             )
             text = await composition.render(ctx)
             if text:

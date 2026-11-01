@@ -2,7 +2,15 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from harnessed import Agent, CompositionDescription, Instructions, Kit, Plugin, SystemPrompt
+from harnessed import (
+    Agent,
+    CompositionDescription,
+    Instructions,
+    Kit,
+    Plugin,
+    PluginOrder,
+    SystemPrompt,
+)
 from harnessed.core.composition import compose_plugins
 from harnessed.errors import PluginConflict, PluginDependencyError
 from harnessed.kernel import Bundle, Context, PluginLike, plugin
@@ -145,7 +153,7 @@ def test_kit_captures_iterables_and_keeps_its_structure_immutable():
         Kit(42, [])
 
 
-@pytest.mark.parametrize("invalid", [None, False, 42, [Extra()]])
+@pytest.mark.parametrize("invalid", [False, 42, [Extra()]])
 def test_composition_inputs_require_plugins_or_explicit_kits(invalid):
     with pytest.raises(TypeError, match="Expected a configured plugin"):
         Agent(plugins=[Kit("library", [invalid])])
@@ -167,13 +175,17 @@ def test_function_factories_are_configured_once_and_kernel_bundles_remain_recipe
 
 def test_callable_plugin_instances_keep_their_prompt_metadata():
     class CallablePlugin(Plugin):
-        usage = Instructions(text="Keep this contribution.")
+        def instructions(self) -> SystemPrompt:
+            return SystemPrompt(Instructions(text="Keep this contribution."))
 
         def __call__(self):
             pass
 
     recipe = CallablePlugin()
-    agent = Agent(plugins=[Kit("library", [recipe])], system_prompt=SystemPrompt(recipe.usage))
+    agent = Agent(
+        plugins=[Kit("library", [recipe])],
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+    )
     assert recipe in agent.plugins
     assert "Keep this contribution." in str(agent.prompt)
 

@@ -11,14 +11,13 @@ from harnessed import (
     Instructions,
     Kit,
     Plugin,
-    PluginInstructions,
+    PluginOrder,
     Session,
     SystemPrompt,
-    instructions,
     plugin,
     tool,
 )
-from harnessed.errors import ConfigError, PluginConflict
+from harnessed.errors import PluginConflict
 from harnessed.events import DurableEvent
 from harnessed.models import Model
 from harnessed.plugins import Filesystem, PromptRenderer, Service, Shell
@@ -47,10 +46,8 @@ async def test_explicit_project_composition_adds_only_the_requested_tools(tmp_pa
     commands = [Shell(tmp_path)] if shell else []
     app = Agent(
         model=model,
-        system_prompt=SystemPrompt(
-            Instructions.from_file(path=tmp_path / "AGENTS.md"),
-            filesystem.usage,
-            *(p.usage for p in commands),
+        prompt=SystemPrompt.from_plugins(
+            Instructions.from_file(path=tmp_path / "AGENTS.md"), order=PluginOrder.AS_LISTED
         ),
         plugins=[filesystem, *commands],
     )
@@ -106,8 +103,10 @@ async def test_only_survivors_contribute_prompts_events_tools_and_lifetimes(remo
     class Original(Plugin, slot="example.capability"):
         events = (OriginalEvent,)
 
-        @instructions()
-        def usage(self) -> str:
+        def instructions(self) -> SystemPrompt:
+            return SystemPrompt(self._usage_instructions())
+
+        def _usage_instructions(self) -> str:
             pytest.fail("Discarded prompt providers must not run")
 
         @property
@@ -123,7 +122,9 @@ async def test_only_survivors_contribute_prompts_events_tools_and_lifetimes(remo
 
     class Replacement(Plugin, slot="example.capability"):
         events = (ReplacementEvent,)
-        usage = Instructions(text="Use the selected capability.")
+
+        def instructions(self) -> SystemPrompt:
+            return SystemPrompt(Instructions(text="Use the selected capability."))
 
         async def setup(self) -> None:
             started.append(self)
@@ -139,7 +140,7 @@ async def test_only_survivors_contribute_prompts_events_tools_and_lifetimes(remo
     agent = Agent(
         model=model,
         plugins=[kit, Replacement()],
-        system_prompt=SystemPrompt(PluginInstructions()),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
     assert started == []
     for _ in range(2):
@@ -153,18 +154,20 @@ async def test_only_survivors_contribute_prompts_events_tools_and_lifetimes(remo
     assert len(started) == 2 and started[0] is not started[1]
 
 
-def test_prompt_references_to_replaced_recipes_fail_before_provider_evaluation():
+def test_replaced_recipe_providers_are_never_evaluated():
     class Feature(Plugin, slot="example.feature"):
-        @instructions()
-        def usage(self) -> str:
-            pytest.fail("An uninstalled reference must fail before evaluation")
+        def instructions(self) -> SystemPrompt:
+            pytest.fail("Discarded instructions must not be evaluated")
 
-    original = Feature()
-    with pytest.raises(ConfigError, match="uninstalled"):
-        Agent(
-            plugins=[Kit("library", [original]), Feature()],
-            system_prompt=SystemPrompt(original.usage),
-        )
+    class Replacement(Feature):
+        def instructions(self) -> SystemPrompt:
+            return SystemPrompt("Replacement.")
+
+    agent = Agent(
+        plugins=[Kit("library", [Feature()]), Replacement()],
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+    )
+    assert [entry.section.text for entry in agent.prompt.entries] == ["Replacement."]
 
 
 async def test_model_and_system_prompt_keywords_override_kit_defaults():
@@ -172,9 +175,15 @@ async def test_model_and_system_prompt_keywords_override_kit_defaults():
     model = ScriptedModel(["application"])
     agent = Agent(
         model=model,
-        system_prompt="Application instructions.",
+        prompt=SystemPrompt("Application instructions."),
         plugins=[
-            Kit("library", [Service(Model, library_model), PromptRenderer("Library instructions.")])
+            Kit(
+                "library",
+                [
+                    Service(Model, library_model),
+                    PromptRenderer(SystemPrompt("Library instructions.")),
+                ],
+            )
         ],
     )
     result = await agent.run("Go")
@@ -190,7 +199,12 @@ async def test_model_and_system_prompt_keywords_override_kit_defaults():
 async def test_instructions_and_models_can_be_supplied_entirely_by_a_kit():
     model = ScriptedModel(["library"])
     result = await Agent(
-        plugins=[Kit("library", [Service(Model, model), PromptRenderer("Library instructions.")])]
+        plugins=[
+            Kit(
+                "library",
+                [Service(Model, model), PromptRenderer(SystemPrompt("Library instructions."))],
+            )
+        ]
     ).run("Go")
     assert result.text == "library"
     assert model.requests[0].messages[0].text == "Library instructions."
@@ -198,13 +212,15 @@ async def test_instructions_and_models_can_be_supplied_entirely_by_a_kit():
 
 async def test_explicit_rest_group_follows_the_resolved_slot_positions():
     class LoopGuidance(Plugin, slot="loop"):
-        usage = Instructions(text="Loop guidance.")
+        def instructions(self) -> SystemPrompt:
+            return SystemPrompt(Instructions(text="Loop guidance."))
 
     class Feature(Plugin):
-        usage = Instructions(text="Feature guidance.")
+        def instructions(self) -> SystemPrompt:
+            return SystemPrompt(Instructions(text="Feature guidance."))
 
     agent = Agent(
         plugins=[Feature(), LoopGuidance()],
-        system_prompt=SystemPrompt(PluginInstructions()),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
     assert await agent.prompt.render() == "Loop guidance.\n\nFeature guidance."

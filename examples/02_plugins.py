@@ -2,14 +2,23 @@
 
 import asyncio
 
-from harnessed import Agent, Instructions, Plugin, SystemPrompt, ToolCall, tool
+from harnessed import (
+    Agent,
+    Instructions,
+    Plugin,
+    PluginOrder,
+    SystemPrompt,
+    ToolCall,
+    tool,
+)
 from harnessed.models import Model, ModelChunk
 from harnessed.plugins import PromptRenderer, Service
 from harnessed.testing import ScriptedModel
 
 
 class Calculator(Plugin):
-    usage = Instructions(text="Use add for arithmetic.")
+    def instructions(self) -> SystemPrompt:
+        return SystemPrompt(Instructions(text="Use add for arithmetic."))
 
     @tool(readonly=True)
     async def add(self, a: int, b: int) -> int:
@@ -24,13 +33,15 @@ async def main():
             "The result is 42.",
         ]
     )
-    # Equivalent to supplying model=... and system_prompt=... on Agent.
+    # Equivalent to supplying model=... and prompt=... on Agent.
     calculator = Calculator()
     agent = Agent(
         plugins=[
             Service(Model, model),
             PromptRenderer(
-                SystemPrompt(Instructions(text="Keep answers concise."), calculator.usage)
+                SystemPrompt.from_plugins(
+                    Instructions(text="Keep answers concise."), order=PluginOrder.AS_LISTED
+                )
             ),
             calculator,
         ]

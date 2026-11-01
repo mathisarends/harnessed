@@ -3,7 +3,12 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from harnessed import Agent, Plugin, SystemPrompt
+from harnessed import (
+    Agent,
+    Plugin,
+    PluginOrder,
+    SystemPrompt,
+)
 from harnessed.core.messages import ImagePart, TextPart, ToolCall, ToolResult, ToolStatus
 from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.core.session.events import (
@@ -34,7 +39,7 @@ def configure(model, *, plugins=()):
     return Agent(
         model=model,
         plugins=[Source(), *plugins],
-        system_prompt=SystemPrompt(*(p.usage for p in plugins if isinstance(p, Spill))),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
 
 

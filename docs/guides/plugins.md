@@ -1,7 +1,7 @@
 # Plugin composition and lifecycle
 
 An Agent is a resolved plugin list. `model=` supplies `Service(Model, model)`;
-`system_prompt=` configures the `PromptRenderer` plugin. The default runtime plugins are
+`prompt=` configures the `PromptRenderer` plugin; `instructions=` prepends caller text. The default runtime plugins are
 `AgentLoop`, `ToolOutputLimit`, `Approvals` and `NoopTracer`.
 Use their public imports from `harnessed.plugins`. The tool registry, system prompt,
 token counter and context budget come from an internal plugin without a slot that
@@ -11,13 +11,13 @@ replace a single service with `Service(TokenCounter, counter)`.
 ## Replace a default
 
 ```python
-from harnessed import Agent, SystemPrompt
+from harnessed import Agent, PluginOrder, SystemPrompt
 from harnessed.plugins import AgentLoop, Filesystem, ToolOutputLimit
 from harnessed.testing import ScriptedModel
 
 filesystem = Filesystem(root=".")
 agent = Agent(
-    system_prompt=SystemPrompt(filesystem.usage),
+    prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     model=ScriptedModel(["done"]),
     plugins=[
         AgentLoop(max_steps=50, max_parallel_tools=4),
@@ -35,13 +35,14 @@ the same slot raise `PluginConflict`. A custom plugin declares its slot with
 ## Publish library defaults with Kit
 
 Import `Kit` from `harnessed` to offer an ordered bundle of defaults. A kit has
-no setup, teardown, hooks, tools or prompt of its own. Its factory may accept
-ordinary application configuration; the kit only captures its name and recipes.
+no setup, teardown, hooks or tools of its own. Its factory may accept ordinary
+application configuration. A kit captures its name, recipes and an optional
+explicit prompt strategy.
 
 ```python
 from pathlib import Path
 
-from harnessed import Agent, Kit, SystemPrompt
+from harnessed import Agent, Kit, PluginOrder, SystemPrompt
 from harnessed.plugins import AgentLoop, Compaction, Filesystem, Shell
 from harnessed.testing import ScriptedModel
 
@@ -55,13 +56,14 @@ def project_kit(root: str | Path = ".") -> Kit:
             AgentLoop(max_steps=30),
             Compaction(keep_steps=4),
         ],
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
 
 
 project = project_kit().without(Shell)
 agent = Agent(
     model=ScriptedModel(["done"]),
-    system_prompt=SystemPrompt(project.instructions),
+    instructions="Help with the workspace.",
     plugins=[
         project,
         AgentLoop(max_steps=10),
@@ -74,7 +76,7 @@ print(agent.describe())
 The supplied `AgentLoop` and `Compaction` replace the kit recipes in their slots.
 The excluded Shell never mounts. Library defaults also replace Harnessed's
 built-in defaults; explicit agent inputs replace either. `model=` and
-`system_prompt=` are direct inputs, so they override kit-provided
+`prompt=` are direct inputs, so they override kit-provided
 `Service(Model, ...)` and `PromptRenderer(...)`. Supplying the same slot twice
 directly, including through a keyword and `plugins`, remains an error.
 
@@ -87,11 +89,13 @@ that boundary supplies a direct recipe to decide it. Messages identify the slot
 and competing kit paths.
 
 ```python
+from harnessed import PluginOrder
+
 research = Kit("research", [project_kit(), Compaction(keep_steps=6)])
 agent = Agent(
     model=model,
     plugins=[research, Compaction(keep_steps=10)],
-    system_prompt=SystemPrompt(research.instructions),
+    prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
 )
 ```
 
@@ -159,13 +163,12 @@ of waiting plugins and missing services.
 
 Composition completes before prompt contributions and event declarations are
 collected. Excluded and replaced recipes contribute no guidance, context metadata,
-events, hooks or tools. Explicit `PluginInstructions()` groups follow the resolved
-plugin order. Every instruction needs placement or exclusion; kits expose
-`kit.instructions` and named fragments for explicit delegation of internal order.
-See [kit fragments](context.md#delegate-a-kits-internal-ordering). Explicit section references remain tied to their original recipe: a
-reference to an excluded or replaced recipe raises `ConfigError` instead of
-silently following its replacement. Reference the selected recipe or use a
-`PluginInstructions()` rest slot when appropriate.
+events, hooks or tools. `SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)`
+explicitly collects complete instruction blocks in that final order. A kit may
+publish this strategy with `prompt=`. Caller `instructions=` are prepended;
+explicit agent `prompt=` overrides kit defaults. A selected instruction override
+without a collection strategy raises `ConfigError` before providers run.
+See [ordered plugin instructions](context.md#select-plugin-order-explicitly).
 
 Kits are accepted by `Agent(plugins=...)` and other kits, not by kernel
 `Context.plugin()` / `install()` or live `session.use()`. Runtime dependency
@@ -274,6 +277,7 @@ state or setup.
 
 ```python
 from typing import Protocol
+
 from harnessed import Inject, Plugin, tool
 from harnessed.plugins import Service
 
@@ -408,6 +412,7 @@ Declare a module-level frozen model and use it once as the plugin's type argumen
 
 ```python
 from pydantic import Field
+
 from harnessed import Plugin, PluginConfig
 
 

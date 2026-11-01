@@ -3,7 +3,13 @@
 import asyncio
 
 from examples.features.workspace import FailureNudge, WorkspaceTools
-from harnessed import Agent, ApprovalAnswer, PolicyDecision, SystemPrompt
+from harnessed import (
+    Agent,
+    ApprovalAnswer,
+    PluginOrder,
+    PolicyDecision,
+    SystemPrompt,
+)
 from harnessed.events import ToolCallFinishedEvent, ToolProgressEvent
 from harnessed.plugins import Approvals, Filesystem
 from harnessed.testing import ScriptedModel, call
@@ -24,7 +30,7 @@ async def main():
     )
     filesystem = Filesystem(root=".")
     agent = Agent(
-        system_prompt=SystemPrompt(filesystem.usage),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
         plugins=[
             filesystem,

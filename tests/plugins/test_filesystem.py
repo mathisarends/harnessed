@@ -4,7 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from harnessed import Agent, SystemPrompt, ToolCall
+from harnessed import (
+    Agent,
+    PluginOrder,
+    SystemPrompt,
+    ToolCall,
+)
 from harnessed.core.messages import ToolStatus
 from harnessed.core.model import ModelChunk
 from harnessed.core.tools.registry import ToolError, ToolRegistry
@@ -80,7 +85,7 @@ async def test_filesystem_plugin_schema_bounds_search_notices_and_safe_approvals
     (tmp_path / "other.txt").write_text("match", encoding="utf-8")
     filesystem = Filesystem(tmp_path)
     app = Agent(
-        system_prompt=SystemPrompt(filesystem.usage),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([]),
         plugins=[filesystem],
     )
@@ -108,7 +113,7 @@ async def test_filesystem_plugin_schema_bounds_search_notices_and_safe_approvals
     )
     filesystem_2 = Filesystem(tmp_path)
     result = await Agent(
-        system_prompt=SystemPrompt(filesystem_2.usage),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
         plugins=[filesystem_2],
     ).run("Write")

@@ -46,7 +46,7 @@ Concrete consumers should establish their requirements before adding framework A
 ## Instruction factory callbacks
 
 `Instructions.from_factory` requires an asynchronous callback returning text.
-Configuration-only synchronous providers are implemented through `@instructions`.
+Configuration-only synchronous content is returned by `Plugin.instructions()`.
 The proposal to also accept synchronous session-context factories remains
 undecided. Supporting both would be a small convenience addition; it should retain
 explicit typing and the existing once-per-session rendering semantics.

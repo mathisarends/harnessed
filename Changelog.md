@@ -2,6 +2,68 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- Replace instruction descriptors, `@instructions`, `instruction_refs()`,
+  `InstructionRef` / `InstructionProvider`, `PluginInstructions`, `Unplaced`,
+  `SystemPrompt(exclude=..., unplaced=...)` and kit fragments with one plugin
+  contract: override synchronous `Plugin.instructions() -> SystemPrompt`.
+  Return actual content; use module constants for static text. The base method
+  returns an empty document. No transitional aliases are retained.
+- Reserve the Python method name `instructions` for synchronous prompt content.
+  Rename tool implementation methods using that name; `@tool(name=...)` can
+  preserve their model-facing tool name. Async providers and tool-decorated
+  instruction methods are rejected at class definition.
+- Rename `Agent(system_prompt=...)` to separate `instructions="..."` caller text
+  and `prompt=SystemPrompt(...)` configuration. Caller text is prepended and
+  does not replace a kit's prompt strategy.
+- Collect plugin instructions explicitly with
+  `SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED, format=...)`.
+  The keyword-only `order` argument is required. Complete instruction blocks
+  follow final configured plugin-list order; nested kits expand at their list
+  position, removals contribute nothing, and slot replacements retain the
+  inherited position. Setup order does not affect prompt order. Selected
+  providers run once per agent, after composition. Missing collection raises
+  `ConfigError` before providers run; plugin providers cannot request collection.
+- Replace `Kit(fragments=...)`, `kit.instructions` and `kit.fragment(...)` with
+  `Kit(prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED))`.
+  Kit prompts use normal slot precedence. Parent defaults override child kits;
+  explicit agent prompts override kit defaults. Conflicting siblings require a
+  direct choice. Order policy and completion components explicitly in the list.
+- Built-in Filesystem, Shell, BackgroundShell, Spill and Skills now implement
+  `instructions()`; their `usage` / `catalog` attributes are removed. To change
+  or omit guidance, override the complete method. Runtime `SectionDelivery`
+  remains explicit and evaluates the new method once per mount activation.
+
+### Added
+
+- Accept `None` content parts in `SystemPrompt` and `None` plugins in Agent and
+  Kit lists. Other unsupported values remain errors. `Instructions` remains a
+  plain text/file/session-factory value, with outer-document formatting and
+  session-owned effects. Repeated content is retained without identity checks.
+
+### Migration example
+
+```python
+from harnessed import Agent, Kit, Plugin, PluginOrder, PromptFormat, SystemPrompt
+
+
+class Guidance(Plugin):
+    def instructions(self) -> SystemPrompt:
+        return SystemPrompt("Use focused changes.")
+
+
+workspace = Kit(
+    "workspace",
+    plugins=[Guidance()],
+    prompt=SystemPrompt.from_plugins(
+        order=PluginOrder.AS_LISTED,
+        format=PromptFormat.MARKDOWN,
+    ),
+)
+agent = Agent(instructions="Help with the workspace.", plugins=[workspace])
+```
+
 ### Fixed
 
 - Check waterfall terminal results in `Context.dispatch` and `EventBus.dispatch`.

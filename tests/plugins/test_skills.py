@@ -4,7 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from harnessed import Agent, Instructions, SystemPrompt, ToolCall
+from harnessed import (
+    Agent,
+    Instructions,
+    PluginOrder,
+    SystemPrompt,
+    ToolCall,
+)
 from harnessed.core.errors import ConfigError
 from harnessed.core.messages import ToolStatus
 from harnessed.core.tools.registry import ToolRegistry
@@ -72,7 +78,9 @@ async def test_catalog_reads_only_frontmatter_once_per_session_and_loads_body_fr
     instructions.write_text("Fixed project rules.", encoding="utf-8")
     app = Agent(
         model=ScriptedModel([]),
-        system_prompt=SystemPrompt(Instructions.from_file(path=instructions), recipe.catalog),
+        prompt=SystemPrompt.from_plugins(
+            Instructions.from_file(path=instructions), order=PluginOrder.AS_LISTED
+        ),
         plugins=[recipe],
     )
     assert phases == []
@@ -101,7 +109,7 @@ async def test_earlier_sources_win_and_catalog_metadata_and_shadows_are_inspecta
     )
     skills = Skills(inline, Skill.from_dir(root))
     app = Agent(
-        system_prompt=SystemPrompt(skills.catalog),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([]),
         plugins=[skills],
     )
@@ -117,7 +125,7 @@ async def test_earlier_sources_win_and_catalog_metadata_and_shadows_are_inspecta
         )
     skills_4 = Skills(root.parent)
     async with Agent(
-        system_prompt=SystemPrompt(skills_4.catalog),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([]),
         plugins=[skills_4],
     ).session() as session:
@@ -146,7 +154,7 @@ async def test_inline_skills_work_without_yaml_and_directory_sources_name_the_ex
     inline = Skill(name="notes", description="Write notes.", instructions="Keep notes concise.")
     skills_5 = Skills(inline)
     async with Agent(
-        system_prompt=SystemPrompt(skills_5.catalog),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([]),
         plugins=[skills_5],
     ).session() as session:
@@ -167,7 +175,7 @@ async def test_resource_paths_cannot_escape_the_selected_skill(tmp_path, path):
     (tmp_path / "secret.txt").write_text("private", encoding="utf-8")
     skills = Skills(Skill.from_dir(root))
     async with Agent(
-        system_prompt=SystemPrompt(skills.catalog),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([]),
         plugins=[skills],
     ).session() as session:
@@ -190,7 +198,7 @@ async def test_resource_symlinks_cannot_escape_and_scripts_are_only_read(tmp_pat
         pytest.skip("Creating file symlinks is unavailable on this host")
     skills = Skills(Skill.from_dir(root))
     async with Agent(
-        system_prompt=SystemPrompt(skills.catalog),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([]),
         plugins=[skills],
     ).session() as session:
@@ -227,7 +235,7 @@ async def test_invalid_frontmatter_fails_at_session_open_with_its_path(tmp_path,
     (root / "SKILL.md").write_text(f"---\n{header}---\nInstructions.", encoding="utf-8")
     skills = Skills(tmp_path)
     app = Agent(
-        system_prompt=SystemPrompt(skills.catalog),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([]),
         plugins=[skills],
     )
@@ -239,7 +247,7 @@ async def test_invalid_frontmatter_fails_at_session_open_with_its_path(tmp_path,
 async def test_missing_sources_are_checked_at_session_open_not_at_construction(tmp_path):
     skills = Skills(tmp_path / "missing")
     app = Agent(
-        system_prompt=SystemPrompt(skills.catalog),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([]),
         plugins=[skills],
     )
@@ -257,7 +265,7 @@ async def test_complete_skill_output_is_never_truncated_or_spilled_and_needs_no_
     skills = Skills(Skill(name="notes", description="Write notes.", instructions=instructions))
     spill_9 = Spill(threshold_tokens=1)
     async with Agent(
-        system_prompt=SystemPrompt(skills.catalog, spill_9.usage),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
         plugins=[
             skills,
@@ -281,7 +289,7 @@ async def test_loaded_instructions_survive_compaction_and_restart_from_the_log(t
     app = Agent(
         model=ScriptedModel([call("load_skill", name="testing"), "noise " * 1000]),
         plugins=policies,
-        system_prompt=SystemPrompt(policies[0].catalog),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
     async with app.session() as session:
         await session.run("Run tests")
@@ -293,7 +301,7 @@ async def test_loaded_instructions_survive_compaction_and_restart_from_the_log(t
     )
     skills_10 = Skills(changed)
     async with Agent(
-        system_prompt=SystemPrompt(skills_10.catalog),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([]),
         plugins=[skills_10],
     ).session(state=state) as restored:
@@ -302,7 +310,7 @@ async def test_loaded_instructions_survive_compaction_and_restart_from_the_log(t
 
 
 async def test_runtime_mount_rejects_system_catalog_before_installing_tools():
-    async with Agent(model=ScriptedModel([]), system_prompt="Fixed rules.").session() as session:
+    async with Agent(model=ScriptedModel([]), instructions="Fixed rules.").session() as session:
         with pytest.raises(ConfigError, match="system sections"):
             await session.use(
                 Skills(Skill(name="notes", description="Write notes.", instructions="Be concise."))
@@ -319,7 +327,7 @@ async def test_discovery_is_not_recursive_and_resource_output_is_complete(tmp_pa
     (root / "reference.md").write_text(text, encoding="utf-8", newline="")
     skills = Skills(tmp_path)
     async with Agent(
-        system_prompt=SystemPrompt(skills.catalog),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([]),
         plugins=[skills],
     ).session() as session:
@@ -328,7 +336,7 @@ async def test_discovery_is_not_recursive_and_resource_output_is_complete(tmp_pa
     skills_12 = Skills(Skill.from_dir(root))
     spill_13 = Spill(threshold_tokens=1)
     async with Agent(
-        system_prompt=SystemPrompt(skills_12.catalog, spill_13.usage),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
         plugins=[skills_12, ToolOutputLimit(256), spill_13],
     ).session() as session:
@@ -343,7 +351,7 @@ async def test_reloading_after_compaction_updates_the_retained_body_even_with_re
     model = ScriptedModel([call("load_skill", name="pdf-forms"), "noise " * 1000])
     skills = Skills(Skill.from_dir(root))
     async with Agent(
-        system_prompt=SystemPrompt(skills.catalog),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
         plugins=[
             skills,
@@ -367,7 +375,7 @@ async def test_yaml_python_tags_are_rejected_as_configuration_errors(tmp_path):
     with pytest.raises(ConfigError, match="SKILL.md"):
         skills = Skills(Skill.from_dir(root))
         async with Agent(
-            system_prompt=SystemPrompt(skills.catalog),
+            prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
             model=ScriptedModel([]),
             plugins=[skills],
         ).session():
@@ -378,7 +386,7 @@ async def test_multiline_yaml_scalars_do_not_close_frontmatter_at_an_indented_se
     root = folder(tmp_path, description="|\n  Before\n  ---\n  After", body="Instructions.")
     skills = Skills(Skill.from_dir(root))
     async with Agent(
-        system_prompt=SystemPrompt(skills.catalog),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([]),
         plugins=[skills],
     ).session() as session:

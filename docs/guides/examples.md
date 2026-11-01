@@ -82,8 +82,9 @@ console mode remains offline.
 ## System prompt composition
 
 `uv run python -m examples.32_system_prompts` declares literal and
-configuration-dependent plugin sections, explicitly orders them across plugins
-and nested groups, and renders the same document as plain text, XML and Markdown.
+configuration-dependent plugin blocks, explicitly selects
+`PluginOrder.AS_LISTED` through a kit, and renders the same document as plain
+text, XML and Markdown.
 See [system prompts and changing context](context.md).
 
 ## Plugin kits

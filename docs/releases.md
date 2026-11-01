@@ -28,6 +28,20 @@ integrations are optional extras; the standalone kernel uses only the standard
 library. Harnessed is distributed under the
 [MIT License](https://github.com/mathisarends/harnessed/blob/main/LICENSE).
 
+## Unreleased: ordered plugin instruction blocks
+
+Plugins now override `instructions() -> SystemPrompt`. Applications explicitly
+collect their complete blocks with
+`SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)`, optionally supplied as a
+kit's `prompt=` default. `order` is required. Agent caller text is passed through
+`instructions=`, while `prompt=` selects the document or collection strategy.
+
+This removes instruction descriptors, decorators, section references, kit
+fragments and unplaced/exclusion policies. Built-in `usage` / `catalog` attributes
+are replaced by the same method contract. See the
+[context guide](guides/context.md) and the repository
+[Unreleased migration](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#unreleased).
+
 ## 0.9.0 (2026-11-01)
 
 This minor release adds typed plugin recipes, explicit instruction placement,
@@ -60,7 +74,7 @@ default; `PluginInstructions()` and `Unplaced.APPEND` opt into remaining content
 Compose prompts as `SystemPrompt("Help with documents.", workspace.instructions,
 "Answer concisely.")`. Content is positional; `format`, `exclude` and `unplaced`
 remain keyword-only options. See the
-[prompt composition guide](guides/context.md#compose-the-exact-order).
+[prompt composition guide](guides/context.md#select-plugin-order-explicitly).
 
 ### Library composition
 

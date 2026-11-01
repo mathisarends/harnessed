@@ -3,7 +3,12 @@ import asyncio
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from harnessed import Agent, ApprovalAnswer, PluginInstructions, SystemPrompt
+from harnessed import (
+    Agent,
+    ApprovalAnswer,
+    PluginOrder,
+    SystemPrompt,
+)
 from harnessed.integrations.bubblewrap import BubblewrapSandbox
 from harnessed.integrations.docker import DockerSandbox
 from harnessed.integrations.sandbox import Sandbox, Workspace
@@ -22,7 +27,7 @@ async def exercise(sandbox: Sandbox, directory: Path) -> None:
         ]
     )
     agent = Agent(
-        system_prompt=SystemPrompt(PluginInstructions()),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
         plugins=[
             sandbox,

@@ -2,7 +2,15 @@
 
 import asyncio
 
-from harnessed import Agent, Observation, Plugin, Session, SystemPrompt, tool
+from harnessed import (
+    Agent,
+    Observation,
+    Plugin,
+    PluginOrder,
+    Session,
+    SystemPrompt,
+    tool,
+)
 from harnessed.events import CompactionAppliedEvent, SpillCreatedEvent
 from harnessed.hooks import PreStep
 from harnessed.kernel import Inject, hook
@@ -45,7 +53,7 @@ async def main():
     )
     spill = Spill(threshold_tokens=100, preview_tokens=8)
     agent = Agent(
-        system_prompt=SystemPrompt(spill.usage),
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
         plugins=[
             AgentLoop(context_window=2000),

@@ -1,7 +1,14 @@
 import pytest
 from pydantic import ValidationError
 
-from harnessed import Instructions, Plugin, PluginConfig, ToolCall, tool
+from harnessed import (
+    Instructions,
+    Plugin,
+    PluginConfig,
+    SystemPrompt,
+    ToolCall,
+    tool,
+)
 from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import Context, PluginState, dependency
 from harnessed.plugins import Service
@@ -15,7 +22,9 @@ class FeatureConfig(PluginConfig):
 class Feature(Plugin[FeatureConfig]):
     backend = dependency(str)
     values = PluginState(list[str])
-    usage = Instructions(text="Explicit placement is required only in an agent.")
+
+    def instructions(self) -> SystemPrompt:
+        return SystemPrompt(Instructions(text="Explicit placement is required only in an agent."))
 
     async def setup(self, ctx: Context) -> None:
         ctx.effect(lambda: self.values.append("closed"))

@@ -16,9 +16,9 @@ from harnessed.kernel import Context, Key, dependency
 assert 'pydantic' not in sys.modules
 from harnessed import (
     Agent, CompositionDescription, Kit, SessionState, OutputContract, Plugin, PluginConfig,
-    PluginInstructions,
+    PluginOrder,
     PromptFormat, SectionDelivery,
-    SystemPrompt, Instructions, Unplaced, tool,
+    SystemPrompt, Instructions, tool,
 )
 from harnessed.errors import ConfigError
 from harnessed.events import TextDeltaEvent, TurnFinishedEvent
@@ -67,13 +67,14 @@ class Answer(BaseModel):
     value: int
 
 class Guidance(Plugin, slot='wheel.guidance'):
-    usage = Instructions(text='Plugin guidance.')
+    def instructions(self) -> SystemPrompt:
+        return SystemPrompt('Plugin guidance.')
 
 async def main():
     defaults = Kit('library', [Guidance()])
     selected = Guidance()
     configured = Agent(plugins=[defaults, selected],
-                       system_prompt=SystemPrompt(selected.usage))
+                       prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED))
     description = configured.describe()
     assert isinstance(description, CompositionDescription)
     assert configured.plugins[-1] is selected
@@ -100,19 +101,26 @@ async def main():
     guidance = Guidance()
     for unplaced in (None, 'Role.'):
         try:
-            Agent(system_prompt=unplaced, plugins=[guidance])
+            Agent(instructions=unplaced, plugins=[guidance])
         except ConfigError as error:
-            assert 'Guidance.usage' in str(error)
+            assert 'Guidance' in str(error) and 'from_plugins' in str(error)
         else:
-            raise AssertionError('Plugin instructions require explicit placement or exclusion')
-    simple = Agent(system_prompt=SystemPrompt('Role.', guidance.usage),
+            raise AssertionError('Plugin instructions require explicit collection order')
+    simple = Agent(instructions='Role.',
+                   prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
                    plugins=[guidance])
     assert await simple.prompt.render() == 'Role.\n\nPlugin guidance.'
-    ordered = Agent(plugins=[guidance], system_prompt=SystemPrompt(
-        PluginInstructions(), 'Tail.', unplaced=Unplaced.ERROR))
-    assert await ordered.prompt.render() == 'Plugin guidance.\n\nTail.'
+    ordered = Agent(plugins=[guidance], prompt=SystemPrompt.from_plugins(
+        'Prefix.', order=PluginOrder.AS_LISTED))
+    assert await ordered.prompt.render() == 'Prefix.\n\nPlugin guidance.'
+    try:
+        SystemPrompt.from_plugins()
+    except TypeError:
+        pass
+    else:
+        raise AssertionError('Plugin order must be explicit')
     async with Agent(model=ScriptedModel([reply('Ready')]),
-                     system_prompt='Fixed.').session() as session:
+                     instructions='Fixed.').session() as session:
         handle = await session.use(guidance, section_delivery=SectionDelivery.CONTEXT)
         assert list(session.context.values.values()) == ['Plugin guidance.']
         await session.run('Mounted')
@@ -120,7 +128,7 @@ async def main():
         assert not session.context.values
         assert await session.prompt.render() == 'Fixed.'
     agent = Agent(model=ScriptedModel([call(Calculator.add, a=19, b=23), reply('42')]),
-                  plugins=[Calculator(config=CalculatorConfig())], system_prompt=SystemPrompt(
+                  plugins=[Calculator(config=CalculatorConfig())], prompt=SystemPrompt(
                       Instructions(title='Role', text='Fixed instructions.'),
                       format=PromptFormat.MARKDOWN))
     async with agent.session() as session:
@@ -143,7 +151,7 @@ async def main():
     inline = Skill(name='notes', description='Write notes.', instructions='Keep notes concise.')
     skills = Skills(inline)
     async with Agent(model=ScriptedModel([call('load_skill', name='notes'), reply('Loaded')]),
-                     plugins=[skills], system_prompt=SystemPrompt(skills.catalog)
+                     plugins=[skills], prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)
                      ).session() as session:
         result = await session.run('Load notes')
         assert 'Keep notes concise.' in result.tool_calls[0][1].text

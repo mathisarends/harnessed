@@ -160,9 +160,7 @@ better boundary. Keep these hints visible for changes that alter those ownership
 contracts, and review new findings on their merits.
 
 Smelt 0.4.0 recognizes the guarded lazy SDK export table for member analysis.
-The test-only-function review still needs a reasoned `SMT429` exception for the
-public `harnessed.instructions` decorator, whose consumer examples are excluded
-from architecture analysis. General import-style enforcement also still prefers
+General import-style enforcement still prefers
 relative imports into child packages; Ruff retains the exact parent-relative ban
 without changing cross-package ownership conventions.
 

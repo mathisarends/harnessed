@@ -9,7 +9,7 @@ from harnessed import (
     Instructions,
     Plugin,
     SectionDelivery,
-    instructions,
+    SystemPrompt,
     tool,
 )
 from harnessed.core.prompt.context import DynamicContext
@@ -20,7 +20,8 @@ from tests._audit import Audit
 
 
 class Feature(Plugin):
-    usage = Instructions(text="Runtime guidance.")
+    def instructions(self) -> SystemPrompt:
+        return SystemPrompt("Runtime guidance.")
 
     @tool
     async def inspect(self) -> str:
@@ -29,7 +30,7 @@ class Feature(Plugin):
 
 async def test_context_delivery_is_mount_owned_and_leaves_system_text_fixed():
     model = ScriptedModel(["one", "two"])
-    async with Agent(model=model, system_prompt="Fixed.").session() as session:
+    async with Agent(model=model, instructions="Fixed.").session() as session:
         session_audit = Audit(session)
         handle = await session.use(Feature(), section_delivery=SectionDelivery.CONTEXT)
         assert list(session.context.values.values()) == ["Runtime guidance."]
@@ -55,10 +56,9 @@ async def test_context_delivery_suspends_and_restarts_with_the_plugin():
     calls = []
 
     class Temporal(Plugin, needs=(Backend,)):
-        @instructions()
-        def usage(self) -> str:
+        def instructions(self) -> SystemPrompt:
             calls.append(self)
-            return f"Activation {len(calls)}."
+            return SystemPrompt(f"Activation {len(calls)}.")
 
     model = ScriptedModel(["one", "two", "three"])
     async with Agent(model=model).session() as session:
@@ -87,12 +87,12 @@ async def test_ignore_does_not_execute_providers_or_factories_or_read_files(tmp_
         pytest.fail("Ignored factories must not run")
 
     class Ignored(Feature):
-        @instructions()
-        def configuration(self) -> str:
+        def instructions(self) -> SystemPrompt:
             pytest.fail("Ignored configuration providers must not run")
-
-        session_section = Instructions.from_factory(factory=factory)
-        missing = Instructions.from_file(path=tmp_path / "missing.txt")
+            return SystemPrompt(
+                Instructions.from_factory(factory=factory),
+                Instructions.from_file(path=tmp_path / "missing.txt"),
+            )
 
     async with Agent(model=ScriptedModel(["done"])).session() as session:
         handle = await session.use(Ignored(), section_delivery=SectionDelivery.IGNORE)
@@ -115,10 +115,6 @@ async def test_delivery_failures_roll_back_tools_context_and_owned_effects(failu
         return "Session rules."
 
     class Broken(Feature):
-        session_section = Instructions.from_factory(factory=factory)
-        if failure == "file":
-            missing = Instructions.from_file(path=tmp_path / "missing.txt")
-
         async def setup(self, ctx: Context) -> None:
             ctx.effect(lambda: effects.append("setup cleaned"))
             if failure == "setup":
@@ -127,11 +123,17 @@ async def test_delivery_failures_roll_back_tools_context_and_owned_effects(failu
         async def teardown(self) -> None:
             effects.append("teardown")
 
-        @instructions()
-        def broken(self) -> str:
+        def instructions(self) -> SystemPrompt:
             if failure == "provider":
                 raise ValueError("provider failed")
-            return "Configured rules."
+            return SystemPrompt(
+                super().instructions(),
+                Instructions.from_factory(factory=factory),
+                Instructions.from_file(path=tmp_path / "missing.txt")
+                if failure == "file"
+                else None,
+                "Configured rules.",
+            )
 
     model = ScriptedModel(["after failure"])
     async with Agent(model=model).session() as session:
@@ -165,7 +167,8 @@ async def test_factory_runs_once_per_mount_activation_and_cleanup_belongs_to_mou
         return "Factory guidance."
 
     class Factory(Plugin):
-        usage = Instructions.from_factory(factory=factory)
+        def instructions(self) -> SystemPrompt:
+            return SystemPrompt(Instructions.from_factory(factory=factory))
 
     async with Agent(model=ScriptedModel(["one", "two"])).session() as session:
         handle = await session.use(Factory(), section_delivery=SectionDelivery.CONTEXT)
@@ -178,7 +181,8 @@ async def test_factory_runs_once_per_mount_activation_and_cleanup_belongs_to_mou
 
 async def test_duplicate_plugin_names_have_independent_mount_context():
     class Guidance(Plugin):
-        usage = Instructions(text="Runtime guidance.")
+        def instructions(self) -> SystemPrompt:
+            return SystemPrompt("Runtime guidance.")
 
     async with Agent(model=ScriptedModel([])).session() as session:
         one = await session.use(Guidance(), section_delivery=SectionDelivery.CONTEXT)

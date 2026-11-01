@@ -21,7 +21,7 @@ from harnessed.core.hooks import SessionAppended
 from harnessed.core.messages import AssistantMessage, ToolMessage, ToolStatus, freeze, to_dict
 from harnessed.core.plugin import Plugin
 from harnessed.core.prompt.context import DynamicContext
-from harnessed.core.prompt.values import Instructions
+from harnessed.core.prompt.values import Instructions, SystemPrompt
 from harnessed.core.session.events import (
     CompactionAppliedEvent,
     ToolCallFinishedEvent,
@@ -286,18 +286,22 @@ class Skills(Plugin, slot="skills", needs=(SessionLog, DynamicContext)):
             _yaml()
         self.sources = tuple(sources)
         self._key = Key[_Catalog]("skill catalog")
+
+    def instructions(self) -> SystemPrompt:
         description = "; ".join(
             source.name
             if isinstance(source, Skill)
             else str(source.path)
             if isinstance(source, _DirectorySkill)
             else str(source)
-            for source in sources
+            for source in self.sources
         )
-        self.catalog = Instructions.from_factory(
-            factory=self._render_catalog,
-            title="Skills",
-            description=f"Skills: {description}; earlier sources win; read at session startup",
+        return SystemPrompt(
+            Instructions.from_factory(
+                factory=self._render_catalog,
+                title="Skills",
+                description=f"Skills: {description}; earlier sources win; read at session startup",
+            )
         )
 
     async def _catalog(self, ctx: Context) -> _Catalog:

@@ -24,7 +24,7 @@ assert_type(agent.describe().plugins, tuple[PluginDescription, ...])
 assert_type(agent.describe().plugins[0].replaces, tuple[PluginDescription, ...])
 assert_type(agent.describe().removed, tuple[PluginRemoval, ...])
 Kit("invalid", [False])  # ty: ignore[invalid-argument-type]
-Kit("invalid", [None])  # ty: ignore[invalid-argument-type]
+Kit("optional", [None])
 kit.without(OptionalFeature())  # ty: ignore[invalid-argument-type]
 
 

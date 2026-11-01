@@ -1,6 +1,11 @@
 import pytest
 
-from harnessed import Agent, Instructions, SystemPrompt
+from harnessed import (
+    Agent,
+    Instructions,
+    PluginOrder,
+    SystemPrompt,
+)
 from harnessed.core.prompt.system_prompt import SystemPromptStore
 from harnessed.kernel import Context, plugin
 from harnessed.testing import ScriptedModel
@@ -21,7 +26,9 @@ async def test_session_section_factories_render_once_and_own_their_registrations
     )
     app = Agent(
         model=ScriptedModel(["one", "two"]),
-        system_prompt=SystemPrompt(Instructions.from_file(path=instructions), section),
+        prompt=SystemPrompt.from_plugins(
+            Instructions.from_file(path=instructions), section, order=PluginOrder.AS_LISTED
+        ),
     )
     async with app.session() as first:
         await first.run("One")
