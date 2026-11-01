@@ -128,7 +128,7 @@ class SpillConfig(PluginConfig):
     max_bytes: Annotated[int, Field(ge=1)] = 32 * 1024 * 1024
 
 
-class Spill(Plugin, slot="spill", needs=(SessionLog, SessionFiles, TokenCounter)):
+class Spill(Plugin[SpillConfig], slot="spill", needs=(SessionLog, SessionFiles, TokenCounter)):
     """Spill large text, preserve images, and expire oldest files within a hard quota."""
 
     usage = Instructions(
@@ -137,10 +137,6 @@ class Spill(Plugin, slot="spill", needs=(SessionLog, SessionFiles, TokenCounter)
             "Use read_spill with offset and limit for ranges."
         )
     )
-
-    Config = SpillConfig
-
-    config: SpillConfig
 
     def __init__(
         self,
@@ -151,10 +147,12 @@ class Spill(Plugin, slot="spill", needs=(SessionLog, SessionFiles, TokenCounter)
         max_bytes: int = 32 * 1024 * 1024,
     ) -> None:
         super().__init__(
-            threshold_tokens=threshold_tokens,
-            preview_tokens=preview_tokens,
-            max_files=max_files,
-            max_bytes=max_bytes,
+            config=SpillConfig(
+                threshold_tokens=threshold_tokens,
+                preview_tokens=preview_tokens,
+                max_files=max_files,
+                max_bytes=max_bytes,
+            )
         )
 
     async def setup(

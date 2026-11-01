@@ -262,3 +262,17 @@ Request IDs and approval payloads are data; answer them through
 
 Run `uv run python -m examples.28_custom_events` for streaming, schema generation
 and replay in one offline example.
+
+
+## Events on a configured plugin recipe
+
+A configured plugin declares `events = FILE_EVENTS` just like a plain plugin.
+Event types remain module-level contracts. `@hook(DocumentReadEvent)` subscribes
+to the type without adding a dependency on a producer; the observer may start
+without one and receive events from multiple producers. Producers declare codecs,
+while hooks belong to individual activations. Disposal removes listeners and
+retains registered codecs for later audit decoding.
+
+Run `uv run python -m examples.37_plugin_recipes` for one complete example of
+`Plugin[FileToolsConfig]`, explicit `config=FileToolsConfig(...)`, `FILE_EVENTS`,
+`ToolContext.emit(...)`, an independent observer and explicit kit instructions.

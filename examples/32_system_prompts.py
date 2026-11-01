@@ -27,10 +27,7 @@ class ObserveConfig(PluginConfig):
     mode: BrowserMode = BrowserMode.DOM
 
 
-class Observe(Plugin):
-    Config = ObserveConfig
-    config: ObserveConfig
-
+class Observe(Plugin[ObserveConfig]):
     @instructions(title="Page state")
     def state(self) -> str:
         if self.config.mode is BrowserMode.CANVAS:
@@ -51,7 +48,7 @@ class InteractionTools(Plugin):
 
 
 async def main() -> None:
-    observe = Observe(name="browser.observe", mode=BrowserMode.DOM)
+    observe = Observe(name="browser.observe", config=ObserveConfig(mode=BrowserMode.DOM))
     interaction = InteractionTools(name="browser.interaction")
     simple = Agent(
         plugins=[observe, interaction],

@@ -15,6 +15,13 @@ and `PluginState` values are fresh for every activation. Custom factories can
 define explicit sharing, as the observable testing fakes do. Configuration models
 must be frozen; configuration replacement is rejected.
 
+`Plugin[MyConfig]` declares the runtime schema and typed `self.config` once.
+The base constructor requires `config=MyConfig(...)` for configured plugins;
+configurationless plugins keep plain `Plugin`. No `Config` alias, repeated
+annotation or arbitrary keyword-forwarding API remains. Runtime schema resolution
+uses generic base declarations, including inherited substitutions. Typed feature
+constructors may build and pass their own explicit model internally.
+
 State and dependencies remain available through teardown and Context-owned
 cleanup, including partial setup failure and cancellation, then become invalid.
 Prepared tool calls still retain the original registration; they never follow a

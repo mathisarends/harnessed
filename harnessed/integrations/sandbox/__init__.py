@@ -33,16 +33,13 @@ class SandboxServices(NamedTuple):
     file_system: FileSystemBackend
 
 
-class Sandbox(Plugin, slot="sandbox"):
+class Sandbox(Plugin[SandboxConfig], slot="sandbox"):
     """Own a fresh backend and publish filesystem/shell services for each mount.
 
     backend is a synchronous factory, never a running shared resource. It is
     invoked once per mount and again for a dependency restart. No tool is exposed
     until the application explicitly installs its tool plugins.
     """
-
-    Config = SandboxConfig
-    config: SandboxConfig
 
     def __init__(
         self,
@@ -56,12 +53,14 @@ class Sandbox(Plugin, slot="sandbox"):
         startup_timeout: float = 60.0,
     ) -> None:
         super().__init__(
-            workspace=workspace,
-            network=network,
-            env=dict(env or {}),
-            limits=limits or SandboxLimits(),
-            max_output_bytes=max_output_bytes,
-            startup_timeout=startup_timeout,
+            config=SandboxConfig(
+                workspace=workspace,
+                network=network,
+                env=dict(env or {}),
+                limits=limits or SandboxLimits(),
+                max_output_bytes=max_output_bytes,
+                startup_timeout=startup_timeout,
+            )
         )
         self.backend_factory = backend
         self._services_key = Key[SandboxServices]("sandbox services")

@@ -96,6 +96,9 @@ See [library composition](plugins.md#publish-library-defaults-with-kit).
 ## Plugin recipes and dependencies
 
 `uv run python -m examples.37_plugin_recipes` declares stable required and optional
-dependencies, frozen configuration and activation-owned state. It places a kit's
-instruction fragment explicitly, runs a tool through a scripted model, and tests
-the same recipe with `mount_plugin` and fake services without an agent.
+dependencies, `Plugin[FileToolsConfig]` with an explicit frozen config object and
+activation-owned state. It declares `FILE_EVENTS`, emits a `DocumentReadEvent`
+through `ToolContext.emit`, and handles it in an independent observer with `@hook`.
+The kit places its default `instructions` group without a `fragments` declaration.
+It also tests the same recipe's configuration and fake dependencies with
+`mount_plugin`, without an agent.

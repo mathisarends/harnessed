@@ -4,6 +4,12 @@
 
 ### Added
 
+- Add `Plugin[MyConfig]` with an explicit `config=MyConfig(...)` object. The type
+  argument declares runtime schema selection and typed `self.config` once,
+  including through generic inheritance. Configurationless plugins keep plain
+  `Plugin`. The recipe and its activations retain the same frozen config object.
+  The complete recipe example now also declares `FILE_EVENTS`, emits a typed
+  event through `ToolContext.emit` and observes it with an independent `@hook`.
 - Add typed `dependency(Service)` fields from `harnessed.kernel`: each field
   declares both a stable activation binding and its lifetime requirement.
   `dependency(key, optional=True)` captures a service or `None` without blocking
@@ -39,6 +45,12 @@
 
 ### Breaking changes
 
+- Remove `Config = MyConfig`, the repeated `config: MyConfig` declaration and
+  arbitrary configuration keyword forwarding from the Plugin base constructor.
+  Use `class Files(Plugin[FilesConfig])` and
+  `Files(config=FilesConfig(max_read_bytes=100_000))`. Missing, wrong-model and
+  mutable configurations fail before activation. Existing typed feature
+  constructors retain their signatures and build explicit models internally.
 - Rename prompt content `SystemSection` to `Instructions`, `@system_section` to
   `@instructions`, bound/provider types to `InstructionRef` / `InstructionProvider`,
   and `PluginSections` to `PluginInstructions`. The renderer plugin formerly
@@ -73,13 +85,17 @@
 
 ### Upgrade from 0.8.0
 
-1. Rename instruction declarations and decorators to `Instructions` and
+1. Replace Config aliases and repeated annotations with `Plugin[MyConfig]`.
+   Pass `config=MyConfig(...)` to plugins inheriting the base constructor.
+   Custom constructors use `super().__init__(config=MyConfig(...))`; plain
+   configurationless plugins continue to call `super().__init__()`.
+2. Rename instruction declarations and decorators to `Instructions` and
    `@instructions`. Use explicit `SystemPrompt(sections=(files.usage, ...))` or
    `kit.instructions`; omit contributions with `exclude=(files.usage,)`.
-2. Replace service attributes `backend: Inject[Backend]` and duplicate `needs`
+3. Replace service attributes `backend: Inject[Backend]` and duplicate `needs`
    entries with `backend = dependency(Backend)`. Use `optional=True` for stable
    optional bindings, and keep extra `needs` for requirements without an attribute.
-3. Make constructors repeatable, keep models frozen, and move acquisition into
+4. Make constructors repeatable, keep models frozen, and move acquisition into
    setup with Context cleanup. Use the active instance for direct tool tests via
    `mount_plugin`. Review deliberate sharing in custom `create_instance` methods.
 

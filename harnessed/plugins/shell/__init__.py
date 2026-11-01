@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 from collections.abc import Mapping
 from pathlib import Path
@@ -48,24 +50,18 @@ class ShellToolsConfig(PluginConfig):
         return self
 
 
-class ShellTools(Plugin, needs=(ShellBackend, ToolRegistry)):
+class ShellTools[ConfigT: ShellToolsConfig](Plugin[ConfigT], needs=(ShellBackend, ToolRegistry)):
     """Expose commands through a separately owned, replaceable ShellBackend."""
 
-    Config = ShellToolsConfig
-
-    config: ShellToolsConfig
-
     def __init__(
-        self,
+        self: ShellTools[ShellToolsConfig],
         cwd: str | Path = ".",
         *,
         timeout: float = 30.0,
         max_timeout: float = 600.0,
     ) -> None:
         super().__init__(
-            cwd=Path(cwd),
-            timeout=timeout,
-            max_timeout=max_timeout,
+            config=ShellToolsConfig(cwd=Path(cwd), timeout=timeout, max_timeout=max_timeout)
         )
 
     async def setup(self, ctx: Context) -> None:
@@ -95,11 +91,10 @@ class ShellConfig(ShellToolsConfig):
     env: dict[str, str] | None = None
 
 
-class Shell(ShellTools, slot="shell"):
+class Shell(ShellTools[ShellConfig], slot="shell"):
     """Expose argv-based commands with safe approval defaults and bounded output."""
 
     needs = (ToolRegistry,)
-    Config = ShellConfig
     usage = Instructions(
         text=(
             "Run executables with argv. Filter large output and check exit codes before continuing."
@@ -120,11 +115,13 @@ class Shell(ShellTools, slot="shell"):
             raise ValueError("Configure env and max_output_bytes on the supplied ShellBackend")
         Plugin.__init__(
             self,
-            cwd=Path(cwd),
-            timeout=timeout,
-            max_timeout=max_timeout,
-            max_output_bytes=max_output_bytes if max_output_bytes is not None else 1_048_576,
-            env=env,
+            config=ShellConfig(
+                cwd=Path(cwd),
+                timeout=timeout,
+                max_timeout=max_timeout,
+                max_output_bytes=max_output_bytes if max_output_bytes is not None else 1_048_576,
+                env=env,
+            ),
         )
         self.implementation = implementation
 
@@ -146,11 +143,11 @@ class BackgroundShellConfig(ShellToolsConfig):
     max_background_commands: Annotated[int, Field(ge=1)] = 32
 
 
-class BackgroundShell(Plugin, needs=(ShellBackend, ToolRegistry, SessionInbox)):
+class BackgroundShell(
+    Plugin[BackgroundShellConfig], needs=(ShellBackend, ToolRegistry, SessionInbox)
+):
     """Opt in to session-owned background commands on an interactive ShellBackend."""
 
-    Config = BackgroundShellConfig
-    config: BackgroundShellConfig
     usage = Instructions(
         text=(
             "Use start_command for long shell work, then continue other tasks. "
@@ -169,10 +166,12 @@ class BackgroundShell(Plugin, needs=(ShellBackend, ToolRegistry, SessionInbox)):
         max_background_commands: int = 32,
     ) -> None:
         super().__init__(
-            cwd=Path(cwd),
-            timeout=timeout,
-            max_timeout=max_timeout,
-            max_background_commands=max_background_commands,
+            config=BackgroundShellConfig(
+                cwd=Path(cwd),
+                timeout=timeout,
+                max_timeout=max_timeout,
+                max_background_commands=max_background_commands,
+            )
         )
 
     async def setup(self, ctx: Context) -> None:

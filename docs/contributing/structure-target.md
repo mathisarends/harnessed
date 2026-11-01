@@ -8,7 +8,7 @@ The plugin-recipe design is implemented. Future API proposals belong in
 | `kernel.dependencies` | Typed stable dependency descriptors |
 | `kernel.declarations` / `spec` | Repeatable recipe construction; normalized requirements and observations |
 | `kernel.plugin` / `context` | Scoped binding visibility, activation replacement and owned cleanup |
-| `core.plugin` | Frozen configuration, independent event declarations, normalized prompt contributions |
+| `core.plugin` | Generic typed configuration and frozen instances, independent event declarations, normalized prompt contributions |
 | `core.composition` | Kit selection, override provenance and named fragment membership |
 | `core.prompt` | Explicit instruction coverage, placement, rendering and runtime context delivery |
 | `core.tools` | Declarative recipe references and activation-bound prepared calls |

@@ -31,9 +31,7 @@ class ObserveConfig(PluginConfig):
     canvas: bool = False
 
 
-class Observe(Plugin):
-    Config = ObserveConfig
-    config: ObserveConfig
+class Observe(Plugin[ObserveConfig]):
 
     @instructions(title="Page state")
     def state(self) -> str:
@@ -64,7 +62,7 @@ Returning `None` omits the rendered content.
 ```python
 from harnessed import Agent, PromptFormat, SystemPrompt
 
-observe = Observe(name="browser.observe", canvas=False)
+observe = Observe(name="browser.observe", config=ObserveConfig(canvas=False))
 interaction = InteractionTools(name="browser.interaction")
 
 browser_prompt = SystemPrompt(
@@ -141,12 +139,11 @@ explicit exclusions.
 ```python
 from harnessed import Agent, Kit, SystemPrompt
 
-browser = Observe()
+browser = Observe(config=ObserveConfig())
 interaction = InteractionTools()
 workspace = Kit(
     "workspace",
     (browser, interaction),
-    fragments={"instructions": (interaction, browser), "observation": (browser,)},
 )
 agent = Agent(
     plugins=(workspace,),
@@ -155,6 +152,18 @@ agent = Agent(
 ```
 
 `kit.instructions` includes all selected descendants in resolved order by default.
+The simple case needs no `fragments` argument. Use optional named fragments when
+publishing subsets or a different internal order:
+
+```python
+workspace = Kit(
+    "workspace",
+    (browser, interaction),
+    fragments={"instructions": (interaction, browser), "observation": (browser,)},
+)
+observation = workspace.fragment("observation")
+```
+
 The optional `fragments` mapping names ordered groups of recipes or nested kits
 belonging to that kit. An `"instructions"` entry customizes its default fragment;
 `kit.fragment("observation")` selects another named fragment. A selector includes

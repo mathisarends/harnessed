@@ -19,10 +19,7 @@ class ObserveConfig(PluginConfig):
     canvas: bool = False
 
 
-class Observe(Plugin):
-    Config = ObserveConfig
-    config: ObserveConfig
-
+class Observe(Plugin[ObserveConfig]):
     @instructions(title="Page state")
     def state(self) -> str:
         return "Canvas image." if self.config.canvas else "DOM snapshot."
@@ -36,7 +33,7 @@ class Interaction(Plugin):
 
 @pytest.mark.parametrize("format", PromptFormat)
 async def test_explicit_order_across_plugins_and_groups_reaches_model_unchanged(format):
-    observe = Observe(name="browser.observe", canvas=True)
+    observe = Observe(name="browser.observe", config=ObserveConfig(canvas=True))
     interaction = Interaction(name="browser.interaction")
     group = SystemPrompt(sections=(interaction.refs, observe.state))
     model = ScriptedModel(["done"])
@@ -127,7 +124,10 @@ async def test_exclusion_does_not_evaluate_provider_and_is_visible_in_inspection
 
 
 async def test_same_plugin_class_has_independent_references_and_no_content_deduplication():
-    one, two = Observe(name="one"), Observe(name="two")
+    one, two = (
+        Observe(config=ObserveConfig(), name="one"),
+        Observe(config=ObserveConfig(), name="two"),
+    )
     agent = Agent(
         plugins=[one, two],
         system_prompt=SystemPrompt(
@@ -235,13 +235,19 @@ def test_duplicate_standalone_section_and_unknown_exclusion_are_rejected():
 
 @pytest.mark.parametrize("prompt", [None, "Role.", SystemPrompt(sections=("Role.",))])
 def test_unplaced_instructions_fail_for_every_default_prompt_form(prompt):
-    one, two = Observe(name="one"), Observe(name="two")
+    one, two = (
+        Observe(config=ObserveConfig(), name="one"),
+        Observe(config=ObserveConfig(), name="two"),
+    )
     with pytest.raises(ConfigError, match="two.state.*Place each explicitly or exclude"):
         Agent(plugins=[two, one], system_prompt=prompt)
 
 
 async def test_explicit_append_policy_keeps_configured_and_declaration_order():
-    one, two = Observe(name="one"), Observe(name="two")
+    one, two = (
+        Observe(config=ObserveConfig(), name="one"),
+        Observe(config=ObserveConfig(), name="two"),
+    )
     agent = Agent(plugins=[two, one], system_prompt=SystemPrompt(unplaced=Unplaced.APPEND))
     assert [entry.origin for entry in agent.prompt.entries][-4:] == [
         "two.state",
@@ -253,7 +259,7 @@ async def test_explicit_append_policy_keeps_configured_and_declaration_order():
 
 
 async def test_plugin_groups_expand_in_place_and_respect_global_exclusions():
-    observe, interaction = Observe(), Interaction()
+    observe, interaction = Observe(config=ObserveConfig()), Interaction()
     agent = Agent(
         plugins=[observe, interaction],
         system_prompt=SystemPrompt(
@@ -267,7 +273,7 @@ async def test_plugin_groups_expand_in_place_and_respect_global_exclusions():
 
 
 async def test_rest_slot_resolves_globally_before_later_nested_placements_and_exclusions():
-    observe, interaction = Observe(), Interaction()
+    observe, interaction = Observe(config=ObserveConfig()), Interaction()
     agent = Agent(
         plugins=[observe, interaction],
         system_prompt=SystemPrompt(
@@ -286,7 +292,7 @@ async def test_rest_slot_resolves_globally_before_later_nested_placements_and_ex
 
 
 async def test_rest_slot_reserves_later_plugin_groups():
-    observe, interaction = Observe(), Interaction()
+    observe, interaction = Observe(config=ObserveConfig()), Interaction()
     agent = Agent(
         plugins=[observe, interaction],
         system_prompt=SystemPrompt(
@@ -302,7 +308,7 @@ async def test_rest_slot_reserves_later_plugin_groups():
     ("sections", "message"),
     [
         ((PluginInstructions(), SystemPrompt(sections=(PluginInstructions(),))), "Only one"),
-        ((PluginInstructions(Observe()),), "uninstalled"),
+        ((PluginInstructions(Observe(config=ObserveConfig())),), "uninstalled"),
     ],
 )
 def test_invalid_groups_fail_before_any_provider_runs(sections, message):
@@ -316,7 +322,7 @@ def test_invalid_groups_fail_before_any_provider_runs(sections, message):
 
 
 def test_overlapping_groups_and_individual_placements_are_rejected():
-    feature = Observe()
+    feature = Observe(config=ObserveConfig())
     for sections in [
         (PluginInstructions(feature), feature.state),
         (PluginInstructions(feature), PluginInstructions(feature)),

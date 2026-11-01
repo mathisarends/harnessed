@@ -12,9 +12,7 @@ class FeatureConfig(PluginConfig):
     prefix: str = "result"
 
 
-class Feature(Plugin):
-    Config = FeatureConfig
-    config: FeatureConfig
+class Feature(Plugin[FeatureConfig]):
     backend = dependency(str)
     values = PluginState(list[str])
     usage = Instructions(text="Explicit placement is required only in an agent.")
@@ -32,7 +30,7 @@ class Feature(Plugin):
 
 
 async def test_mount_helper_exposes_typed_instance_and_guarantees_cleanup_on_error():
-    recipe = Feature(prefix="fake")
+    recipe = Feature(config=FeatureConfig(prefix="fake"))
     with pytest.raises(RuntimeError, match="active plugin instance"):
         await recipe.read()
     with pytest.raises(RuntimeError, match="active plugin instance"):
@@ -53,7 +51,7 @@ async def test_mount_helper_exposes_typed_instance_and_guarantees_cleanup_on_err
 
 
 def test_recipe_config_is_frozen_and_cannot_be_replaced():
-    recipe = Feature()
+    recipe = Feature(config=FeatureConfig())
     with pytest.raises(ValidationError, match="frozen"):
         recipe.config.prefix = "changed"
     with pytest.raises(AttributeError, match="cannot be replaced"):
@@ -62,13 +60,13 @@ def test_recipe_config_is_frozen_and_cannot_be_replaced():
 
 async def test_missing_field_has_waiting_diagnostic_without_a_model():
     with pytest.raises(RuntimeError, match="Unresolved plugin dependencies.*Feature.*str"):
-        async with mount_plugin(Feature()):
+        async with mount_plugin(Feature(config=FeatureConfig())):
             pytest.fail("Missing dependencies must not expose an instance")
 
 
 async def test_keyword_self_does_not_bypass_recipe_guard():
     with pytest.raises(RuntimeError, match="active plugin instance"):
-        await Feature.read(self=Feature())
+        await Feature.read(self=Feature(config=FeatureConfig()))
 
 
 async def test_method_guard_does_not_depend_on_the_instance_parameter_name():

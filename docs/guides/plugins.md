@@ -402,7 +402,9 @@ configure these options for its owned local backend; when passing an explicit
 batch searches. `harnessed.plugins.filesystem.search_files` provides a fallback
 for backends using separate glob, stat and read operations.
 
-## Configuration models stay outside plugin classes
+## Typed configuration without duplicate declarations
+
+Declare a module-level frozen model and use it once as the plugin's type argument:
 
 ```python
 from pydantic import Field
@@ -413,20 +415,47 @@ class FailureNudgeConfig(PluginConfig):
     threshold: int = Field(default=2, ge=1)
 
 
-class FailureNudge(Plugin):
-    Config = FailureNudgeConfig
-    config: FailureNudgeConfig
+class FailureNudge(Plugin[FailureNudgeConfig]):
+    def reached(self, failures: int) -> bool:
+        return failures >= self.config.threshold
 
-    def __init__(self, threshold: int = 2) -> None:
-        super().__init__(threshold=threshold)
+
+nudge = FailureNudge(config=FailureNudgeConfig(threshold=3))
 ```
 
-The Config alias selects validation; the annotation types `self.config`. The
-explicit constructor gives callers ordinary Python signatures and IDE completion.
-All built-in configuration models follow this module-level pattern. Small plugins
-can use a normal constructor without a separate configuration model. Allocate
-mutable per-mount state with `PluginState` or in setup; constructors describe
-reusable recipes.
+`Plugin[FailureNudgeConfig]` declares both the runtime configuration model and the
+type of `self.config`. There is no `Config = ...` alias or repeated attribute
+annotation. Construct the validated model explicitly and pass it with `config=`;
+unknown fields, invalid values, missing configuration and the wrong model fail
+before activation. Static type checking sees the model's fields and rejects
+missing or mismatched config arguments. `Plugin` accepts no arbitrary configuration
+keywords. Generic intermediate bases and inherited specializations preserve the
+selected model. Configuration is immutable and the same validated object is retained
+across activations.
+
+Plugins without application configuration remain plain:
+
+```python
+class Observer(Plugin):
+    pass
+
+observer = Observer()
+```
+
+A feature may expose its own typed convenience constructor. It builds one explicit
+config object and passes it to the base; no second configuration path is added:
+
+```python
+class FailureNudge(Plugin[FailureNudgeConfig]):
+    def __init__(self, threshold: int = 2) -> None:
+        super().__init__(config=FailureNudgeConfig(threshold=threshold))
+```
+
+Built-in features retain their typed constructors, such as
+`AgentLoop(max_steps=20)` and `Shell(root)`, and use this pattern internally.
+Callers of a custom constructor follow that class's explicit signature.
+Allocate mutable per-mount state with `PluginState` or in setup; constructors
+describe reusable recipes and acquire no resources.
 
 Closed loop choices use enums, including `harnessed.models.TokenLimitBehavior`:
 

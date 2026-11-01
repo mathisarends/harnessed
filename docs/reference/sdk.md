@@ -308,7 +308,7 @@ unhashable. See [values and record versions](../concepts/values.md).
 | @tool(metadata=(value, ...)) | Immutable application annotations keyed by exact type; no automatic model or persistence effect |
 | @tool(chain=ToolChain.STOP_AFTER) | Run this tool, then skip remaining calls from the same model response; default CONTINUE |
 | ToolResult(..., break_chain=True) | Request the same boundary dynamically; already-started parallel calls finish |
-| PluginConfig / Config = MyConfig | Frozen module-level validated configuration model |
+| Plugin[MyConfig] / config=MyConfig(...) | One frozen module-level model supplies runtime validation and the type of self.config |
 | PluginState(factory) | Typed state freshly created before each mount's setup; available through cleanup |
 | name = dependency(T) | Stable typed service binding and lifetime requirement; no duplicate needs entry |
 | name = dependency(T, optional=True) | Nonblocking service-or-None binding; provider changes restart the activation |
@@ -324,6 +324,14 @@ unhashable. See [values and record versions](../concepts/values.md).
 | await ctx.enter(manager) | Async context manager exited when the scope closes |
 | Service(T, implementation) | Structural dependency registration |
 | mount_plugin(recipe, services=...) | Typed test activation with cleanup; exported by harnessed.testing |
+
+`class Files(Plugin[FilesConfig]): ...` inherits a typed constructor requiring
+`config=FilesConfig(...)`; the model is validated when it is constructed. Missing,
+non-model, mutable or mismatched configurations fail before activation. The
+`Config = ...` alias and arbitrary keyword forwarding were removed. Plain
+`class Observer(Plugin): ...` needs no config argument. Explicit feature constructors
+may build the model internally while preserving their own typed signatures.
+See [typed configuration](../guides/plugins.md#typed-configuration-without-duplicate-declarations).
 
 A keyword-only ToolContext is implicit; ordinary dependencies use Inject.
 Declare stable service bindings with `dependency` from `harnessed.kernel`; add
