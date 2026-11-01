@@ -110,6 +110,10 @@ Run `uv run python -m examples.36_plugin_kits` and
 [complete changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 records the full API changes and upgrade details.
 
+Contributor checks now use `uv run prek run --all-files` with the existing
+`.pre-commit-config.yaml`. Replace installed pre-commit hooks once with
+`uv run prek install --force`. See [development and CI](contributing/development.md).
+
 ## 0.8.0 (2026-10-30)
 
 This minor release replaces automatic session archives with explicit

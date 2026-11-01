@@ -61,8 +61,12 @@ version **3**.
 
 ### Development
 
+- Replace the development dependency `pre-commit` with `prek`. Run
+  `uv run prek run --all-files`; existing contributors replace installed Git
+  hooks once with `uv run prek install --force`. Hook definitions remain in
+  `.pre-commit-config.yaml`.
 - Adopt the locked Smelt CLI 0.3.0 architecture and convention checks in
-  pre-commit and CI. The executable policy is `smelt.yaml`; see the
+  prek and CI. The executable policy is `smelt.yaml`; see the
   [contributor guide](docs/contributing/smelt.md) for its invariants and scope.
 
 ### Breaking changes
