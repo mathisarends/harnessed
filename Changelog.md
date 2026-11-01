@@ -1,9 +1,22 @@
 # Changelog
 
-## Unreleased
+## 0.9.0 (2026-11-01)
+
+This minor release adds typed plugin recipes, explicit instruction placement,
+plugin kits, Pydantic tool parameter objects and multi-event hooks. It includes
+breaking plugin, dependency and prompt APIs from 0.8.0. Conversation snapshots
+remain state format **1** and the standalone audit-event envelope remains
+version **3**.
 
 ### Added
 
+- Add `@tool(params=MyParams)` for a Pydantic `BaseModel` whose fields form the
+  top-level tool argument schema. The method receives one validated model object;
+  injected services and `ToolContext` stay separate. Preserve aliases, constraints,
+  validators and default factories while enforcing strict input validation and
+  rejecting extra fields. `RootModel` and combining `params` with `parameter_fields`
+  are rejected. Existing per-parameter schemas remain unchanged. See
+  [Pydantic parameter objects](docs/guides/tools.md#pydantic-parameter-objects).
 - Extend installed-wheel verification to typed configuration objects, activation
   dependency fields and mandatory instruction placement. The distribution smoke
   test uses the current API on every supported CI platform and Python version.
@@ -45,6 +58,12 @@
   waterfall events cannot share a decorator. See the
   [hook guide](docs/guides/tools.md#hook-signatures) for examples and the behavior
   of repeated or overlapping event keys.
+
+### Development
+
+- Adopt the locked Smelt CLI 0.3.0 architecture and convention checks in
+  pre-commit and CI. The executable policy is `smelt.yaml`; see the
+  [contributor guide](docs/contributing/smelt.md) for its invariants and scope.
 
 ### Breaking changes
 
@@ -100,6 +119,8 @@
 2. Rename instruction declarations and decorators to `Instructions` and
    `@instructions`. Use explicit `SystemPrompt(files.usage, ...)` or
    `kit.instructions`; omit contributions with `exclude=(files.usage,)`.
+   Replace `SystemPrompt(sections=parts)` with `SystemPrompt(*parts)` and rename
+   the built-in renderer plugin to `PromptRenderer`.
 3. Replace service attributes `backend: Inject[Backend]` and duplicate `needs`
    entries with `backend = dependency(Backend)`. Use `optional=True` for stable
    optional bindings, and keep extra `needs` for requirements without an attribute.

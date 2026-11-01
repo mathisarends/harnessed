@@ -12,7 +12,7 @@ Detailed breaking changes and upgrade instructions are recorded in the repositor
   notes identify these changes and any required upgrade steps.
 - Patch releases within a minor line are intended for compatible fixes. Pin the
   exact package version for reproducible deployments and persisted workflows.
-- Conversation snapshots use an explicit state format, version **1** in 0.8.0.
+- Conversation snapshots use an explicit state format, version **1** since 0.8.0.
   Unsupported versions fail explicitly. Earlier releases used JSONL session
   archives: version 1 in 0.1.0, version 2 in 0.2.0 through 0.6.0 and version 3
   in 0.7.0. These archives are not conversation snapshots and are not automatically
@@ -28,33 +28,87 @@ integrations are optional extras; the standalone kernel uses only the standard
 library. Harnessed is distributed under the
 [MIT License](https://github.com/mathisarends/harnessed/blob/main/LICENSE).
 
-## Unreleased
+## 0.9.0 (2026-11-01)
+
+This minor release adds typed plugin recipes, explicit instruction placement,
+plugin kits, Pydantic tool parameter objects and multi-event hooks. It includes
+breaking plugin, dependency and prompt APIs from 0.8.0. Conversation snapshots
+remain state format **1** and the standalone audit-event envelope remains
+version **3**.
+
+### Plugin recipes and instructions (breaking)
+
+Declare configuration once with `Plugin[MyConfig]` and pass a frozen model as
+`config=MyConfig(...)`. Replace class-level `Inject[T]` attributes with
+`name = dependency(T)` from `harnessed.kernel`. Required fields declare lifetime
+requirements; optional fields capture a service or `None` and restart the
+activation when its provider changes. Call-scoped `Inject` remains available.
+
+Each activation reconstructs its recipe's explicit constructor arguments.
+Constructors must be repeatable configuration code; acquire resources in setup
+and register cleanup through Context. Direct tool calls require an active
+instance. Use `harnessed.testing.mount_plugin()` to test a recipe with fake
+services without an agent or model.
+
+Prompt content is now `Instructions` / `@instructions`, with `InstructionRef`,
+`InstructionProvider` and `PluginInstructions` replacing the previous section
+types. The built-in renderer plugin is named `PromptRenderer`. Every selected
+plugin instruction requires explicit placement or exclusion, including when
+the application supplies a string prompt or no prompt. `Unplaced.ERROR` is the
+default; `PluginInstructions()` and `Unplaced.APPEND` opt into remaining content.
 
 Compose prompts as `SystemPrompt("Help with documents.", workspace.instructions,
 "Answer concisely.")`. Content is positional; `format`, `exclude` and `unplaced`
-remain keyword-only options. Replace `SystemPrompt(sections=parts)` with
-`SystemPrompt(*parts)` when migrating from 0.8.0. See the
+remain keyword-only options. See the
 [prompt composition guide](guides/context.md#compose-the-exact-order).
 
-Library defaults can be published as `Kit(name, plugins)` and customized with
-`kit.without(*types)` and direct slot overrides. Composition uses local boundaries:
-direct entries override child-kit exports, sibling kits have equal precedence
-regardless of nesting, and built-in agent plugins are the final fallback.
-`agent.describe()` exposes immutable static order, origins, replacement history
-and exclusions. Kits do not change kernel injection or lifecycle contracts.
+### Library composition
 
-**Breaking:** prompts and event declarations are collected only after resolving
-the selected recipes. Replaced and excluded plugins contribute no metadata.
-Automatic prompt sections follow resolved order, including inherited replacement
-positions. Explicit references to discarded recipes raise a configuration error.
+Publish defaults with `Kit(name, plugins)` and customize them with
+`kit.without(*types)` and direct slot overrides. Direct entries override
+child-kit exports; conflicting sibling kits require a direct decision at their
+shared boundary. Built-in agent plugins remain the final fallback.
+`agent.describe()` exposes immutable resolved order, origins, replacements,
+dependencies and exclusions.
 
-To upgrade from 0.8.0, review order-sensitive prompts and reference the selected
-recipes in explicit `SystemPrompt` documents. Libraries can replace manual merge
-helpers with Kit factories and namespaced slots. Resolve sibling conflicts with
-a direct entry at their shared boundary; fix internal kit conflicts inside that
-kit. See [plugin composition](guides/plugins.md#publish-library-defaults-with-kit)
-and run `uv run python -m examples.36_plugin_kits` for an offline example.
-Conversation state and audit-event formats remain unchanged.
+Place `kit.instructions` or named kit fragments to preserve library-owned
+instruction ordering through nesting and slot replacement. Prompts and event
+declarations are collected after recipe selection: discarded recipes contribute
+no metadata, and explicit references to them raise a configuration error.
+See [plugin composition](guides/plugins.md#publish-library-defaults-with-kit).
+
+### Tools and hooks
+
+- Use `@tool(params=MyParams)` to expose a Pydantic model's fields as top-level
+  tool arguments and receive one validated object. Aliases, constraints,
+  validators and default factories are preserved; input validation is strict
+  and rejects extra fields. Injected services and `ToolContext` remain separate.
+  See [parameter objects](guides/tools.md#pydantic-parameter-objects).
+- Use `@hook(EventA, EventB, ...)` for a shared sync or async handler accepting
+  every declared event. Dependency injection, ordering and owned cleanup apply
+  to each listener. Observer and waterfall events cannot share a decorator.
+  See [hook signatures](guides/tools.md#hook-signatures).
+
+### Upgrade from 0.8.0
+
+1. Replace `Config = MyConfig`, repeated config annotations and forwarded config
+   keywords with `Plugin[MyConfig]` and `config=MyConfig(...)`. Keep models frozen.
+2. Replace class-level `Inject` attributes with `dependency(Service)` fields.
+   Keep call-scoped `Inject` and explicit `needs` for other lifetime requirements.
+3. Rename section declarations to `Instructions` / `@instructions`, groups to
+   `PluginInstructions` and the renderer plugin to `PromptRenderer`. Replace
+   `SystemPrompt(sections=parts)` with `SystemPrompt(*parts)`. Place every selected
+   instruction explicitly or omit it with `exclude=(recipe.usage,)`.
+4. Move resource acquisition into setup and review deliberate sharing in custom
+   `create_instance()` methods. Use `mount_plugin` for direct tool tests.
+5. Review order-sensitive prompts and discarded recipe references. Resolve
+   sibling-kit conflicts at their shared boundary and internal conflicts inside
+   the owning kit. Inspect `agent.describe()` before opening a session.
+
+Run `uv run python -m examples.36_plugin_kits` and
+`uv run python -m examples.37_plugin_recipes` for offline examples. The
+[complete changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
+records the full API changes and upgrade details.
 
 ## 0.8.0 (2026-10-30)
 
