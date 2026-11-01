@@ -2,7 +2,9 @@
 
 Use Python 3.12–3.14 and the root-level `harnessed` package. Read `AGENTS.md`
 for layer and import rules. Install the locked environment with
-`uv sync --locked --all-extras` and hooks with `uv run pre-commit install`.
+`uv sync --locked --all-extras` and hooks with `uv run prek install`.
+If you previously installed pre-commit hooks, replace them once with
+`uv run prek install --force`.
 
 ## Validation boundaries
 
@@ -31,7 +33,7 @@ Duplicate tool or prompt-section names require `override=True`.
 
 ## Verification
 
-Run `uv run pre-commit run --all-files` and `uv run pytest` before submitting.
+Run `uv run prek run --all-files` and `uv run pytest` before submitting.
 The static consumer contracts in `tests/typing` run in ty alongside the library,
 examples and scripts. CI checks all supported Python versions on Linux, Windows
 and macOS, then builds and smoke-tests the installed wheel outside the checkout.
