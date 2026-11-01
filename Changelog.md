@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.10.0 (2026-11-01)
+
+This minor release replaces instruction descriptors and placement policies with
+complete plugin instruction blocks collected in explicit plugin-list order. It
+includes breaking prompt and kit APIs from 0.9.0. Conversation snapshots remain
+state format **1** and the standalone audit-event envelope remains version **3**.
 
 ### Breaking changes
 
@@ -42,7 +47,58 @@
   plain text/file/session-factory value, with outer-document formatting and
   session-owned effects. Repeated content is retained without identity checks.
 
-### Migration example
+### Fixed
+
+- Preserve the waterfall event's result type in `Context.dispatch` and
+  `EventBus.dispatch`, including generic hooks. Static checking now rejects
+  synchronous and asynchronous `default=` terminals with incompatible results
+  instead of accepting `Any` or widening the event's result contract. This does
+  not add runtime validation of callback return values.
+
+### Development
+
+- Upgrade the locked Smelt CLI to 0.4.0 and enforce module cycles, definition
+  ordering, necessary future imports, explicit optional defaults and test
+  conventions in prek and CI. Design review hints remain advisory; warnings
+  fail checks without a debt baseline. See the
+  [Smelt policy](docs/contributing/smelt.md).
+- Add Pylint to the locked development tools, prek and CI for control flow,
+  collection mutation during iteration and override contracts. Ruff retains
+  lint/format ownership and ty checks consumer typing contracts. Run
+  `uv run pylint harnessed examples scripts` alongside the other
+  [contributor checks](docs/contributing/development.md).
+
+### Upgrade from 0.9.0
+
+1. Replace `Instructions` descriptors and `@instructions` methods with one
+   synchronous `instructions(self) -> SystemPrompt` method per plugin. Return
+   strings, plain `Instructions` values or nested content documents inside it.
+   Keep the method pure and configuration-only; use `Instructions.from_factory`
+   for session-owned effects and async content. The `Instructions` value remains
+   public; its descriptor behavior and the decorator are removed.
+2. Replace `Agent(system_prompt="...")` with `Agent(instructions="...")` for
+   caller text. Pass document configuration through `prompt=SystemPrompt(...)`
+   or `prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)`.
+3. Remove `PluginInstructions`, instruction references, `exclude=` and
+   `unplaced=`. Select `from_plugins(order=PluginOrder.AS_LISTED)` whenever a
+   selected plugin overrides `instructions()`, even if it returns an empty
+   document. Override that method to change or omit the plugin's whole block.
+4. Replace kit fragments with `Kit(prompt=SystemPrompt.from_plugins(...))`.
+   Review the final plugin list, including slot replacements; place policy and
+   completion plugins where their complete blocks should appear. Agent caller
+   text precedes fixed document content, followed by collected plugin blocks.
+5. Replace built-in `.usage` / `.catalog` references and `instruction_refs()`
+   inspection with the method contract and `agent.prompt` inspection. Rename
+   tools whose Python method is named `instructions`; preserve the model-facing
+   name with `@tool(name="instructions")` if needed.
+6. Review `default=` terminals passed to kernel dispatch against the event's
+   declared result type. Keep runtime mount delivery explicit with
+   `SectionDelivery.CONTEXT` or `SectionDelivery.IGNORE`.
+7. Keep existing state-format **1** conversation snapshots and version **3**
+   standalone audit envelopes; this release requires no storage migration.
+
+The kit can own the collection strategy while the application supplies caller
+text:
 
 ```python
 from harnessed import Agent, Kit, Plugin, PluginOrder, PromptFormat, SystemPrompt
@@ -64,11 +120,9 @@ workspace = Kit(
 agent = Agent(instructions="Help with the workspace.", plugins=[workspace])
 ```
 
-### Fixed
-
-- Check waterfall terminal results in `Context.dispatch` and `EventBus.dispatch`.
-  Synchronous and asynchronous terminals must match the event's result contract;
-  mismatches are rejected instead of escaping through `Any` or widening the result.
+See [prompt composition](docs/guides/context.md) and
+[kit composition](docs/guides/plugins.md#publish-library-defaults-with-kit) for
+provider timing, ordering and slot precedence.
 
 ## 0.9.0 (2026-11-01)
 
