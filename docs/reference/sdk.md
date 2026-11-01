@@ -286,7 +286,11 @@ A keyword-only ToolContext is implicit; ordinary dependencies use Inject.
 Declare service requirements explicitly with `needs=(...)` for composition and
 temporal restarts. `Inject` binds values without adding lifetime dependencies.
 Model-filled parameters become a strict Pydantic form; unknown fields and invalid
-values fail before invocation. See [tools and hooks](../guides/tools.md) and
+values fail before invocation. `@tool(params=MyParams)` uses a Pydantic `BaseModel`
+subclass as the top-level argument schema and passes its validated instance to the
+method's single non-injected parameter. Injected parameters remain separate.
+See [parameter objects](../guides/tools.md#pydantic-parameter-objects),
+[tools and hooks](../guides/tools.md) and
 [composition](../guides/plugins.md).
 
 `ToolPolicy`, `ExecuteTool` and `ReviewToolResult` expose the captured

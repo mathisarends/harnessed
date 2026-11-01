@@ -47,6 +47,51 @@ a `ToolContext`, validates its external schema and returns `ToolResult`. Core
 owns registrations and uses the same availability, scheduling, approval and
 execution pipeline as Python tools; it has no MCP or JSON Schema dependency.
 
+## Pydantic parameter objects
+
+Use `@tool(params=SearchParams)` to receive all model-supplied arguments as one
+validated Pydantic object. Its fields form the tool's top-level JSON schema:
+
+```python
+from pydantic import BaseModel, Field
+
+from harnessed import Plugin, tool
+from harnessed.kernel import Inject
+from my_application import CatalogClient
+
+
+class SearchParams(BaseModel):
+    query: str = Field(description="Text to search for")
+    limit: int = Field(default=5, ge=1, le=20)
+
+
+class CatalogTools(Plugin):
+    @tool(description="Search the catalog", params=SearchParams, readonly=True)
+    async def search(self, params: SearchParams, *, client: Inject[CatalogClient]) -> str:
+        return await client.search(params.query, limit=params.limit)
+```
+
+The model sends `{"query": "keyboard"}`; the method receives
+`SearchParams(query="keyboard", limit=5)`. Field descriptions, constraints,
+aliases, default factories and model validators come from `SearchParams`.
+Validation is strict and rejects unknown inputs before invocation, including when
+the parameter model's configuration would otherwise ignore or allow extra fields.
+Other validation settings, including validation of field defaults, follow the model.
+
+The method must declare exactly one non-injected parameter, annotated with the
+same model class; its Python name is arbitrary and it may be keyword-only. Put
+defaults on the model's fields rather than on that method parameter. Injected
+services and a keyword-only `ToolContext` remain separate and hidden from the
+schema. `params` requires a `BaseModel` subclass and does not accept `RootModel`.
+It cannot be combined with `parameter_fields`; declare field metadata on the
+parameter model instead.
+
+Without `params=...`, each non-injected Python parameter still forms its own
+schema property. For example, `search(self, params: SearchParams)` with plain
+`@tool` expects `{"params": {"query": "keyboard"}}`.
+Scripted calls use the same top-level arguments:
+`call(CatalogTools.search, query="keyboard")`.
+
 ## Conditional tools
 
 `@tool(enabled=False)` hides a tool from model requests and prevents its execution.

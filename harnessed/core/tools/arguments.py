@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from copy import copy
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Annotated, Any, Self, get_args, get_origin
+from typing import Annotated, Any, Self, TypeAliasType, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, create_model
 from pydantic.fields import FieldInfo
@@ -27,6 +27,7 @@ _SERIALIZER = TypeAdapter(Any, config=ConfigDict(ser_json_inf_nan="constants"))
 class ToolArguments:
     model: type[BaseModel]
     names: dict[str, str]
+    model_parameter: str | None = None
 
     @classmethod
     def from_signature(
@@ -36,14 +37,16 @@ class ToolArguments:
         hints: Mapping[str, Any],
         injected: Mapping[str, Dependency],
         parameter_fields: Mapping[str, FieldInfo] | None = None,
+        *,
+        params: type[BaseModel] | None = None,
     ) -> Self:
+        if params is not None and parameter_fields is not None:
+            raise ValueError("params cannot be combined with parameter_fields; use model fields")
         parameter_fields = parameter_fields or {}
         unknown = parameter_fields.keys() - (signature.parameters.keys() - injected.keys())
         if unknown:
             raise ValueError(f"Unknown model parameters in parameter_fields: {sorted(unknown)}")
-        # Pydantic accepts runtime type expressions as field definitions.
-        fields: dict[str, Any] = {}
-        names: dict[str, str] = {}
+        parameters: list[inspect.Parameter] = []
         for parameter in signature.parameters.values():
             if parameter.kind not in (
                 inspect.Parameter.POSITIONAL_OR_KEYWORD,
@@ -54,6 +57,29 @@ class ToolArguments:
                 )
             if parameter.name in injected:
                 continue
+            parameters.append(parameter)
+        if params is not None:
+            if len(parameters) != 1:
+                raise TypeError("params requires exactly one non-injected tool parameter")
+            parameter = parameters[0]
+            annotation = hints.get(parameter.name, parameter.annotation)
+            while isinstance(annotation, TypeAliasType) or get_origin(annotation) is Annotated:
+                annotation = (
+                    annotation.__value__
+                    if isinstance(annotation, TypeAliasType)
+                    else get_args(annotation)[0]
+                )
+            if annotation is not params:
+                raise TypeError(f"Tool parameter {parameter.name!r} must be annotated with params")
+            if parameter.default is not inspect.Parameter.empty:
+                raise TypeError("The params parameter must not have a default; use model fields")
+            arguments = cls(params, {}, parameter.name)
+            _ = arguments.schema  # Reject models without an object JSON schema at registration.
+            return arguments
+        # Pydantic accepts runtime type expressions as field definitions.
+        fields: dict[str, Any] = {}
+        names: dict[str, str] = {}
+        for parameter in parameters:
             annotation = hints.get(parameter.name, parameter.annotation)
             if annotation is inspect.Parameter.empty:
                 raise TypeError(f"Tool parameter {parameter.name} requires a type annotation")
@@ -82,13 +108,25 @@ class ToolArguments:
 
     @cached_property
     def schema(self) -> JsonSchemaValue:
-        return self.model.model_json_schema(by_alias=True)
+        schema = self.model.model_json_schema(by_alias=True)
+        if self.model_parameter is not None:
+            # Recursive models put their root object in $defs instead of at the root.
+            if "$ref" in schema:
+                root = schema["$defs"][schema.pop("$ref").removeprefix("#/$defs/")]
+                schema.update(root)
+            if schema.get("type") != "object":
+                raise TypeError("params must define an object JSON schema")
+            schema["additionalProperties"] = False
+        return schema
 
     def parse(self, arguments: Mapping[str, object]) -> dict[str, object]:
         parsed = self.model.model_validate_json(
             json.dumps(to_dict(arguments), allow_nan=False),
             strict=True,
+            extra="forbid" if self.model_parameter is not None else None,
         )
+        if self.model_parameter is not None:
+            return {self.model_parameter: parsed}
         return {name: getattr(parsed, internal) for internal, name in self.names.items()}
 
 

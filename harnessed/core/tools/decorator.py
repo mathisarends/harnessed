@@ -1,6 +1,8 @@
 from collections.abc import Callable
 from typing import Any, overload
 
+from pydantic import BaseModel
+
 from harnessed.core.tools.enabled import ToolEnabled
 from harnessed.core.tools.info import ToolChain
 from harnessed.core.tools.policy import OutputLimit, OutputLimitSetting
@@ -25,6 +27,7 @@ def tool[F: Callable[..., Any]](
     output_limit: OutputLimitSetting = OutputLimit.INHERIT,
     override: bool = False,
     parameter_fields: ParameterFields | None = None,
+    params: type[BaseModel] | None = None,
     metadata: tuple[object, ...] = (),
     chain: ToolChain = ToolChain.CONTINUE,
 ) -> Callable[[F], F]: ...
@@ -44,10 +47,11 @@ def tool(
     output_limit: OutputLimitSetting = OutputLimit.INHERIT,
     override: bool = False,
     parameter_fields: ParameterFields | None = None,
+    params: type[BaseModel] | None = None,
     metadata: tuple[object, ...] = (),
     chain: ToolChain = ToolChain.CONTINUE,
 ):
-    """Declare a tool; an explicit model description overrides its docstring."""
+    """Declare a tool, optionally binding its arguments to a Pydantic params model."""
 
     resources = resource_spec(resources)
 
@@ -63,6 +67,7 @@ def tool(
             override=override,
             output_limit=output_limit,
             parameter_fields=parameter_fields,
+            params=params,
             metadata=metadata,
             chain=chain,
         )
