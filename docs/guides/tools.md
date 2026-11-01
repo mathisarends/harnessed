@@ -331,6 +331,79 @@ Async callbacks return those values after awaiting. Additional parameters use
 `Inject[T]`. Class-based plugin methods follow the same signatures after `self`.
 `Next[R]` is a zero-argument async continuation and may be called once.
 
+Each dispatched event has its own result contract. A generic waterfall lets one
+middleware handle actions with independent result types:
+
+```python
+from dataclasses import dataclass
+from typing import Protocol
+
+from harnessed import Plugin
+from harnessed.kernel import Next, Waterfall, hook
+
+
+class Intent[R](Protocol):
+    async def stage(self, next_: Next[R]) -> R: ...
+
+
+@dataclass(frozen=True)
+class Perform[R](Waterfall[R]):
+    intent: Intent[R]
+
+
+class ActionStage(Plugin):
+    @hook(Perform)
+    async def stage[R](self, event: Perform[R], next_: Next[R]) -> R:
+        return await event.intent.stage(next_)
+```
+
+`R` is chosen separately for each event: a find intent can stage `list[str]`,
+while a navigation intent stages `bool`. Each concrete intent implements its
+own typed stage and can return a result directly or call its continuation.
+Delegating through `Intent[R]` keeps the intent, continuation and result related.
+Matching a generic event's intent by class does not let Python narrow its result
+type and `Next[R]` together.
+
+Tools retain independent parameter lists and native return types; `@tool`
+preserves the decorated method's signature. An application wrapper can preserve
+those arguments with a `ParamSpec` and bind them once before dispatch:
+
+```python
+from collections.abc import Awaitable, Callable
+
+from harnessed.kernel import Context
+
+
+async def perform[**P, R](
+    ctx: Context,
+    intent: Intent[R],
+    action: Callable[P, Awaitable[R]],
+    /,
+    *args: P.args,
+    **kwargs: P.kwargs,
+) -> R:
+    async def terminal() -> R:
+        return await action(*args, **kwargs)
+
+    return await ctx.dispatch(Perform(intent), default=terminal)
+```
+
+This async-action wrapper requires no shared tool argument schema or result
+class. Fixed-result events such as `Waterfall[ToolResult]` and explicit result
+unions remain useful where the application has that contract. `Any` opts out
+of checking the affected types.
+
+The generic middleware body and `ctx.dispatch` retain `R`. The current hook
+decorator specializes the callable it returns, so direct calls to a decorated
+generic method do not retain the same generic inference. Keep typed application
+entrypoints in functions such as `perform` and invoke middleware through dispatch.
+
+`ctx.dispatch(event, default=terminal)` and
+`EventBus.dispatch(ctx, event, default=terminal)` also check the result contract.
+The zero-argument terminal may return the result directly or an awaitable of it.
+The event's result type is invariant: a `Waterfall[str]` rejects an `int` terminal
+instead of widening the dispatch result to `str | int`.
+
 Pass several event classes to `@hook(...)` to share one handler:
 
 ```python
