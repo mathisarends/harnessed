@@ -28,19 +28,82 @@ integrations are optional extras; the standalone kernel uses only the standard
 library. Harnessed is distributed under the
 [MIT License](https://github.com/mathisarends/harnessed/blob/main/LICENSE).
 
-## Unreleased: ordered plugin instruction blocks
+## 0.10.0 (2026-11-01)
 
-Plugins now override `instructions() -> SystemPrompt`. Applications explicitly
-collect their complete blocks with
-`SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)`, optionally supplied as a
-kit's `prompt=` default. `order` is required. Agent caller text is passed through
-`instructions=`, while `prompt=` selects the document or collection strategy.
+This minor release replaces instruction descriptors and placement policies with
+complete plugin instruction blocks collected in explicit plugin-list order. It
+includes breaking prompt and kit APIs from 0.9.0. Conversation snapshots remain
+state format **1** and the standalone audit-event envelope remains version **3**;
+no storage migration is required.
 
-This removes instruction descriptors, decorators, section references, kit
-fragments and unplaced/exclusion policies. Built-in `usage` / `catalog` attributes
-are replaced by the same method contract. See the
-[context guide](guides/context.md) and the repository
-[Unreleased migration](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#unreleased).
+### Plugin instruction blocks (breaking)
+
+Plugins now override synchronous `instructions() -> SystemPrompt` and return
+actual content. The method uses recipe configuration; session-dependent content
+still belongs in `Instructions.from_file` or `Instructions.from_factory` values.
+The base method returns an empty document. `Instructions` remains a plain content
+value, while descriptors, `@instructions`, `instruction_refs()`, `InstructionRef`,
+`InstructionProvider`, `PluginInstructions` and `Unplaced` are removed.
+
+Applications explicitly collect complete blocks with
+`SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)`. The `order` argument is
+required. Blocks follow the final configured plugin list: nested kits expand at
+their position, removed recipes contribute nothing and slot replacements retain
+the inherited position. Dependency setup order does not affect prompt order.
+Selected providers run once per agent after composition. Missing collection
+raises `ConfigError` before providers run, including for an override returning
+empty content. See [prompt composition](guides/context.md).
+
+Pass caller text as `Agent(instructions="...")` and document configuration as
+`prompt=SystemPrompt(...)` or `prompt=SystemPrompt.from_plugins(...)`.
+`Agent(system_prompt=...)`, prompt `exclude=` / `unplaced=` policies and kit
+fragments are removed. A kit can now own the collection strategy through
+`Kit(prompt=...)`. Parent kit defaults override child defaults, explicit agent
+prompts override kit defaults and competing siblings require a direct choice.
+Caller text is prepended without replacing that strategy. See
+[kit composition](guides/plugins.md#publish-library-defaults-with-kit).
+
+Built-in Filesystem, Shell, BackgroundShell, Spill and Skills expose the same
+`instructions()` method; `.usage` / `.catalog` attributes are removed. Override
+the complete method to change or omit guidance. The Python method name
+`instructions` is reserved for synchronous prompt content; async providers and
+tool-decorated instruction methods fail at class definition. Runtime
+`SectionDelivery` remains explicit and evaluates the method once per mount
+activation. `None` content parts and `None` entries in Agent/Kit plugin lists are
+now accepted and skipped.
+
+### Typed dispatch and contributor checks
+
+`Context.dispatch` and `EventBus.dispatch` retain the event's result type through
+synchronous or asynchronous `default=` terminals and generic hooks. Static
+checking rejects incompatible terminal results; callback returns are not
+validated at runtime.
+
+Contributor checks now use locked Smelt CLI **0.4.0** and Pylint in prek and CI.
+Run `uv run pylint harnessed examples scripts` alongside Ruff, ty and Smelt.
+Smelt warnings fail checks while design review hints remain advisory. See
+[development and CI](contributing/development.md).
+
+### Upgrade from 0.9.0
+
+1. Replace descriptors and `@instructions` with synchronous
+   `instructions(self) -> SystemPrompt` methods. Keep plain `Instructions`
+   content values and session factories inside the returned document.
+2. Split `Agent(system_prompt=...)` into caller `instructions=` and document
+   `prompt=`. Collect plugin blocks with an explicit
+   `SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)` strategy.
+3. Replace instruction references, placement policies, built-in `.usage` /
+   `.catalog` attributes and kit fragments with complete method overrides and
+   kit `prompt=` defaults. Review final list order for policy and completion
+   plugins; rename Python tool methods named `instructions`.
+4. Review dispatch `default=` terminal types and keep runtime mount delivery
+   explicit. Existing conversation snapshots and audit envelopes need no format
+   conversion.
+
+Run `uv run python -m examples.32_system_prompts` and
+`uv run python -m examples.36_plugin_kits` for offline examples. The
+[complete migration and example](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-090)
+records all removed APIs and their replacements.
 
 ## 0.9.0 (2026-11-01)
 

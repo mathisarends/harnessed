@@ -12,24 +12,34 @@ Validate external values (user configuration, files, network payloads, and model
 arguments) with Pydantic. Use frozen dataclasses for internal events and values.
 Do not add repeated validation/reflection to token or tool dispatch paths.
 
-Class plugins may define a module-level Pydantic configuration model and assign
-it with `Config = MyPluginConfig`; the constructor validates its keyword
-configuration. Annotate `config: MyPluginConfig` for static checking. Allocate
-mutable per-mount state in `setup()`, not
-in the recipe constructor. Register resource cleanup with `ctx.effect()` as
-soon as allocation succeeds; these effects also run when setup fails. The
-recipe's shared clients and locks are not deep-copied. Applications retain
-ownership of shared client objects unless the plugin explicitly owns them.
+Declare a module-level frozen Pydantic model, usually by extending `PluginConfig`,
+and select it with `Plugin[MyPluginConfig]`. Pass one validated
+`config=MyPluginConfig(...)` object; the generic declares typed `self.config`.
+Constructors must be repeatable configuration code: each activation replays
+explicit constructor inputs. Keep mutable activation state in `PluginState` or
+`setup()`. Register resource cleanup with `ctx.effect()` as soon as allocation
+succeeds; these effects also run when setup fails. Applications retain ownership
+of explicitly supplied shared clients unless the plugin explicitly owns them.
 
-Functional plugins should declare temporal composition with `needs=[...]` and
-resolve those services through their context. Use `Inject` for per-call services
+Declare activation service bindings with `name = dependency(Service)` from
+`harnessed.kernel`. Required fields drive lifetime requirements; optional fields
+capture a service or `None` and restart when its provider changes. Use explicit
+`needs=[...]` for other lifetime requirements and `Inject` for per-call services
 in tools/hooks. `Inject[T | None]` is optional and does not drive restarts.
-For a named service use `Annotated[T, InjectMarker(key)]`.
+For a named call-scoped service use `Annotated[T, InjectMarker(key)]`.
+
+Provide plugin guidance through synchronous `instructions() -> SystemPrompt`.
+Use only recipe configuration in that method; files and async session factories
+belong in returned `Instructions` values. Collect complete blocks explicitly
+with `SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)`, supplied through
+the agent's or kit's `prompt=`. Caller `Agent(instructions="...")` text is
+prepended. See the [context guide](docs/guides/context.md).
 
 Hook priorities run in ascending order: `Priority.GUARD`, `Priority.DEFAULT`,
 then `Priority.OBSERVE`. Equal priorities keep registration order. Use explicit
 `owner=ctx` when registration happens outside the plugin's activated call chain.
-Duplicate tool or prompt-section names require `override=True`.
+Duplicate tool names require `override=True`. Plugin instruction blocks follow
+the resolved plugin list; replace a block by overriding `instructions()`.
 
 ## Verification
 
