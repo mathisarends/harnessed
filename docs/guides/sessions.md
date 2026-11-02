@@ -47,6 +47,19 @@ observations are not saved. Intermediate internal events may be lost in a crash
 before the next checkpoint, while external-action intent and acknowledged results
 retain their commit guarantees.
 
+The live view can advance beyond the persisted view while a model is streaming.
+Text/reasoning deltas and tool-argument previews use `TransientEvent`: they never
+enter the checkpoint or `SessionCommit.changes` and do not schedule writes. The
+assembled assistant message, including a captured interrupted partial reply, is
+recorded as one durable event. Other request/observation metadata can still be
+committed during a stream; those writes are independent of token frequency.
+
+`ToolProgressEvent` is currently a durable intermediate event, so continuous tool
+progress is batched after roughly 100 ms or at the next mandatory barrier. For
+frequent UI-only progress, declare a custom `TransientEvent`. Custom `DurableEvent`
+values are mandatory barriers and await a commit for each emitted event. Named
+context changes are also durable, rather than a destination for live draft tokens.
+
 Use `await session.flush()` to commit pending state explicitly. Closing drains the
 writer before releasing its resources. Without a store, `flush()` performs no I/O.
 The writer reuses image and text bytes already present in its conversation baseline

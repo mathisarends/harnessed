@@ -1,3 +1,5 @@
+import asyncio
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field, replace
 from typing import Literal
 
@@ -11,11 +13,14 @@ from harnessed.events import (
     CompactionAppliedEvent,
     ContextMessageEvent,
     DurableEvent,
+    ReasoningDeltaEvent,
     SessionEvent,
+    TextDeltaEvent,
+    ToolArgumentsDeltaEvent,
     UserMessageEvent,
 )
 from harnessed.hooks import SessionAppended
-from harnessed.models import Message, UserMessage
+from harnessed.models import Message, ModelChunk, ModelRequest, ToolCallDelta, UserMessage
 from harnessed.plugins import Compaction, every_turns
 from harnessed.sessions import (
     CheckpointExtension,
@@ -23,7 +28,7 @@ from harnessed.sessions import (
     SessionCommit,
     StoredSession,
 )
-from harnessed.testing import ScriptedModel
+from harnessed.testing import CallbackModel, ScriptedModel
 from tests._checkpoints import checkpoint
 
 
@@ -57,6 +62,59 @@ class Brief:
 class IndexedEvent(DurableEvent):
     files: int
     type: Literal["project.indexed"] = field(default="project.indexed", kw_only=True)
+
+
+async def test_token_deltas_are_live_without_scheduling_or_entering_commits(monkeypatch):
+    monkeypatch.setattr(persistence_store, "_CHECKPOINT_INTERVAL", 0.01)
+    store = RecordingStore()
+    entered, start = asyncio.Event(), asyncio.Event()
+    ready, release = asyncio.Event(), asyncio.Event()
+    before_tokens: list[int] = []
+    live: list[TextDeltaEvent | ReasoningDeltaEvent | ToolArgumentsDeltaEvent] = []
+
+    async def tokens(_request: ModelRequest) -> AsyncIterator[ModelChunk]:
+        entered.set()
+        await asyncio.wait_for(start.wait(), timeout=5)
+        before_tokens.append(len(store.commits))
+        for _ in range(1000):
+            yield ModelChunk(
+                text="x", reasoning="r", tool_call_delta=ToolCallDelta(0, "{}", "preview")
+            )
+        ready.set()
+        await asyncio.wait_for(release.wait(), timeout=5)
+
+    def observe(event: TextDeltaEvent | ReasoningDeltaEvent | ToolArgumentsDeltaEvent) -> None:
+        live.append(event)
+
+    async with Agent(model=CallbackModel(tokens), store=store).session(id="stream") as session:
+        session.on(TextDeltaEvent, observe)
+        session.on(ReasoningDeltaEvent, observe)
+        session.on(ToolArgumentsDeltaEvent, observe)
+        handle = await session.submit("Stream")
+        try:
+            await asyncio.wait_for(entered.wait(), timeout=5)
+            # Settle request/observation metadata before measuring token-only traffic.
+            await session.flush()
+            start.set()
+            await asyncio.wait_for(ready.wait(), timeout=5)
+            assert len(live) == 3000
+            # Cross several batching intervals while only the live draft changes.
+            await asyncio.sleep(0.05)
+            assert len(store.commits) == before_tokens[0]
+            assert not any(
+                isinstance(
+                    change.event, TextDeltaEvent | ReasoningDeltaEvent | ToolArgumentsDeltaEvent
+                )
+                for commit in store.commits
+                for change in commit.changes
+            )
+            assert "x" * 1000 not in store.rows["stream"].checkpoint.to_json()
+        finally:
+            release.set()
+        result = await asyncio.wait_for(handle.result(), timeout=5)
+        assert result.text == "x" * 1000
+        assert store.rows["stream"].checkpoint.state.history[-1].message.text == result.text
+        assert len(store.commits) < 10
 
 
 async def test_commits_cover_each_live_event_once_even_after_compaction_and_reopening():
