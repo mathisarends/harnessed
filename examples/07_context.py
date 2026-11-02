@@ -6,7 +6,18 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Protocol
 
-from harnessed import Agent, File, Image, Plugin, Section, Session, ToolCall, tool
+from harnessed import (
+    Agent,
+    File,
+    Image,
+    Instructions,
+    Plugin,
+    PluginOrder,
+    Session,
+    SystemPrompt,
+    ToolCall,
+    tool,
+)
 from harnessed.events import ContextMessageEvent
 from harnessed.hooks import PreStep
 from harnessed.kernel import Context, Inject, hook, plugin
@@ -71,7 +82,11 @@ async def main():
         )
         harness = Agent(
             model=model,
-            instructions=["You are a code reviewer.", Section.from_file(root / "AGENTS.md")],
+            prompt=SystemPrompt.from_plugins(
+                Instructions(text="You are a code reviewer."),
+                Instructions.from_file(path=root / "AGENTS.md"),
+                order=PluginOrder.AS_LISTED,
+            ),
             plugins=[
                 ContextValue("ci", "Authentication tests are available."),
                 memory_backend(),
@@ -79,7 +94,7 @@ async def main():
                 memory_tools,
             ],
         )
-        async with harness.session("review") as agent:
+        async with harness.session() as agent:
             result = await agent.run(
                 "Review this PR.",
                 attachments=[File(root / "PR.diff"), Image(root / "screenshot.png")],

@@ -1,7 +1,11 @@
 from harnessed.agent import Agent as Agent
 from harnessed.core.attachments import File as File
 from harnessed.core.attachments import Image as Image
+from harnessed.core.composition import CompositionDescription as CompositionDescription
+from harnessed.core.composition import Kit as Kit
+from harnessed.core.composition import KitPromptPolicy as KitPromptPolicy
 from harnessed.core.composition import PluginValidation as PluginValidation
+from harnessed.core.composition import ResolvedKit as ResolvedKit
 from harnessed.core.errors import PluginConflict as PluginConflict
 from harnessed.core.errors import SessionClosed as SessionClosed
 from harnessed.core.errors import StreamOverflow as StreamOverflow
@@ -17,14 +21,22 @@ from harnessed.core.model import StopReason as StopReason
 from harnessed.core.outputs import OutputContract as OutputContract
 from harnessed.core.plugin import Plugin as Plugin
 from harnessed.core.plugin import PluginConfig as PluginConfig
-from harnessed.core.prompt.values import Section as Section
+from harnessed.core.prompt.values import Instructions as Instructions
+from harnessed.core.prompt.values import PluginOrder as PluginOrder
+from harnessed.core.prompt.values import PromptFormat as PromptFormat
+from harnessed.core.prompt.values import SectionDelivery as SectionDelivery
+from harnessed.core.prompt.values import SystemPrompt as SystemPrompt
 from harnessed.core.runtime.control import SessionStatus as SessionStatus
 from harnessed.core.runtime.handles import RunHandle as RunHandle
 from harnessed.core.runtime.result import RunResult as RunResult
 from harnessed.core.runtime.session import Session as Session
 from harnessed.core.session.session import SessionLog as SessionLog
+from harnessed.core.session.state import SessionState as SessionState
 from harnessed.core.tools.context import ToolContext as ToolContext
 from harnessed.core.tools.decorator import tool as tool
+from harnessed.core.tools.info import ToolChain as ToolChain
+from harnessed.core.tools.info import ToolInfo as ToolInfo
+from harnessed.core.tools.info import ToolMetadata as ToolMetadata
 from harnessed.core.tools.registry import ToolError as ToolError
 from harnessed.kernel import Context as Context
 from harnessed.kernel import Inject as Inject
@@ -38,10 +50,13 @@ __all__ = [
     "Agent",
     "ApprovalAnswer",
     "Context",
+    "CompositionDescription",
     "File",
     "Image",
     "ImageDetail",
     "Inject",
+    "Kit",
+    "KitPromptPolicy",
     "Observation",
     "OutputContract",
     "Plugin",
@@ -50,18 +65,27 @@ __all__ = [
     "PluginValidation",
     "PolicyDecision",
     "Role",
+    "ResolvedKit",
     "RunHandle",
     "RunResult",
-    "Section",
+    "PromptFormat",
+    "PluginOrder",
+    "SectionDelivery",
+    "SystemPrompt",
+    "Instructions",
     "Session",
     "SessionClosed",
     "SessionLog",
+    "SessionState",
     "SessionStatus",
     "StopReason",
     "StreamOverflow",
     "ToolCall",
+    "ToolChain",
     "ToolContext",
     "ToolError",
+    "ToolInfo",
+    "ToolMetadata",
     "ToolResult",
     "ToolStatus",
     "hook",

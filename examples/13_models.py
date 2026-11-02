@@ -5,7 +5,8 @@ from contextlib import asynccontextmanager
 
 from harnessed import Agent
 from harnessed.models import (
-    Assistant,
+    AssistantMessage,
+    GenerationSettings,
     Model,
     ModelChunk,
     ModelInfo,
@@ -35,16 +36,18 @@ class EchoStream:
     def response(self) -> ModelResponse:
         if not self.finished:
             raise RuntimeError("Finish the stream first")
-        return ModelResponse(Assistant(self.text))
+        return ModelResponse(AssistantMessage(self.text))
 
 
 class EchoModel:
     """Structural implementation: no Harnessed or SDK base class is required."""
 
+    settings = GenerationSettings()
+
     info = ModelInfo("local-echo", context_window=4096)
 
     async def request(self, request: ModelRequest) -> ModelResponse:
-        return ModelResponse(Assistant(f"Echo: {request.messages[-1].text}"))
+        return ModelResponse(AssistantMessage(f"Echo: {request.messages[-1].text}"))
 
     @asynccontextmanager
     async def stream(self, request: ModelRequest):

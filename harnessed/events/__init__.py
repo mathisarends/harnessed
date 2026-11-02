@@ -1,5 +1,6 @@
 from typing import Any
 
+from harnessed.core.diagnostics import ModelAttemptOutcome, RetryKind, RetryReason
 from harnessed.core.event_kinds import EventKind
 from harnessed.core.event_registry import EventRegistry
 from harnessed.core.model import (
@@ -27,12 +28,10 @@ from harnessed.core.session.events import (
     InboxTarget,
     IncludedObservation,
     LogEvent,
-    LogTailRecoveredEvent,
     ModelRequestedEvent,
     ModelRequestFailedEvent,
     ModelRequestOutcome,
     ModelUsageRecordedEvent,
-    ObservationForm,
     ObservationPolicyAppliedEvent,
     ObservationRecordedEvent,
     ObservationsIncludedEvent,
@@ -67,7 +66,13 @@ from harnessed.core.session.events import (
 )
 from harnessed.core.stream import (
     ApprovalNeededEvent,
+    CompactionFinishedEvent,
+    CompactionOutcome,
+    CompactionStartedEvent,
     EventStream,
+    ModelAttemptFinishedEvent,
+    ModelAttemptStartedEvent,
+    ModelRetryScheduledEvent,
     ReasoningDeltaEvent,
     SessionStatusChangedEvent,
     StreamEvent,
@@ -91,6 +96,9 @@ __all__ = [
     "BuiltinEvent",
     "CacheMetricsEvent",
     "CompactionAppliedEvent",
+    "CompactionFinishedEvent",
+    "CompactionOutcome",
+    "CompactionStartedEvent",
     "ContextLifetime",
     "ContextMessageEvent",
     "ContextValueChangedEvent",
@@ -105,12 +113,14 @@ __all__ = [
     "InboxRemovedEvent",
     "InboxTarget",
     "IncludedObservation",
-    "LogTailRecoveredEvent",
+    "ModelAttemptFinishedEvent",
+    "ModelAttemptOutcome",
+    "ModelAttemptStartedEvent",
     "ModelRequestFailedEvent",
     "ModelRequestOutcome",
     "ModelRequestedEvent",
+    "ModelRetryScheduledEvent",
     "ModelUsageRecordedEvent",
-    "ObservationForm",
     "ObservationPolicyAppliedEvent",
     "ObservationRecordedEvent",
     "ObservationsIncludedEvent",
@@ -118,6 +128,8 @@ __all__ = [
     "OutputValidationFailedEvent",
     "PolicySource",
     "ReasoningDeltaEvent",
+    "RetryKind",
+    "RetryReason",
     "RuleAction",
     "RuleTriggeredEvent",
     "SessionEvent",

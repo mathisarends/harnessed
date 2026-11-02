@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Self
 
 from harnessed.core.errors import ApprovalUnavailable
 from harnessed.core.hooks import RequestApproval, SessionAppended
 from harnessed.core.messages import ApprovalAnswer
-from harnessed.core.model import OutputSchema
 from harnessed.core.runtime.approvals import LiveApproval, LiveApprovals
 from harnessed.core.runtime.control import SessionStatus
-from harnessed.core.runtime.result import RunResults
+from harnessed.core.runtime.result import RunResult
 from harnessed.core.session.events import (
     AgentControlChangedEvent,
     ApprovalResolvedEvent,
@@ -18,9 +17,10 @@ from harnessed.core.session.events import (
     ControlState,
     DurableEvent,
     InboxAddedEvent,
+    ModelRequestedEvent,
+    ModelRequestFailedEvent,
     OutputValidatedEvent,
     OutputValidationFailedEvent,
-    SessionEvent,
     SpillCreatedEvent,
     SpillExpiredEvent,
     SubagentApprovalRequestedEvent,
@@ -34,8 +34,13 @@ from harnessed.core.session.events import (
 )
 from harnessed.core.stream import (
     ApprovalNeededEvent,
+    CompactionFinishedEvent,
+    CompactionStartedEvent,
     CustomTransientEvent,
     EventStream,
+    ModelAttemptFinishedEvent,
+    ModelAttemptStartedEvent,
+    ModelRetryScheduledEvent,
     ReasoningDeltaEvent,
     SessionStatusChangedEvent,
     TextDeltaEvent,
@@ -58,15 +63,24 @@ class StreamApprovals:
         self.input_id: str | None = None
         self.pending: dict[str, LiveApproval] = {}
 
-    def prepared(self, item: InboxAddedEvent) -> None:
-        self.input_id = item.message.id
-
     async def __aenter__(self) -> Self:
         self._remove_answer = self.session.ctx.on(
             RequestApproval, self._answer, priority=Priority.OBSERVE
         )
         self._remove_ack = self.session.ctx.on(SessionAppended, self._ack)
         return self
+
+    async def __aexit__(self, *exc) -> None:
+        await self._remove_answer()
+        await self._remove_ack()
+        for request in self.pending.values():
+            self.live.close(
+                request.request_id, ApprovalUnavailable("The approval stream was closed")
+            )
+        self.pending.clear()
+
+    def prepared(self, item: InboxAddedEvent) -> None:
+        self.input_id = item.message.id
 
     async def _answer(self, event: RequestApproval) -> ApprovalAnswer | None:
         turn = self.session.log.open_turn
@@ -105,43 +119,18 @@ class StreamApprovals:
                 else ApprovalUnavailable(record.reason or "The approval was interrupted"),
             )
 
-    async def __aexit__(self, *exc) -> None:
-        await self._remove_answer()
-        await self._remove_ack()
-        for request in self.pending.values():
-            self.live.close(
-                request.request_id, ApprovalUnavailable("The approval stream was closed")
-            )
-        self.pending.clear()
-
-
-def _stream_status(event: TurnStartedEvent | AgentControlChangedEvent) -> SessionStatus:
-    match event:
-        case AgentControlChangedEvent(state=ControlState.PAUSED):
-            return SessionStatus.PAUSED
-        case AgentControlChangedEvent(
-            state=ControlState.STOPPING | ControlState.ABORTING | ControlState.STOPPED
-        ):
-            return SessionStatus.STOPPING
-        case _:
-            return SessionStatus.RUNNING
-
 
 async def project_stream_events(
     raw: AsyncGenerator[AgentEvent, None],
     *,
-    results: RunResults,
-    schema: OutputSchema | None = None,
+    completion: Callable[[], Awaitable[RunResult[Any]]],
 ) -> AsyncGenerator[EventStream[Any], None]:
-    """Project raw events into stream notifications and exactly one terminal result."""
-    events: list[SessionEvent] = []
+    """Project UI events, yielding one terminal result after normal exhaustion."""
     calls: set[str] = set()
     control_calls: set[str] = set()
     previous_status: SessionStatus | None = None
     try:
         async for event in raw:
-            if isinstance(event, SessionEvent):
-                events.append(event)
             match event:
                 case (
                     OutputValidatedEvent(call_id=call_id)
@@ -155,6 +144,13 @@ async def project_stream_events(
                     | ApprovalNeededEvent()
                     | ToolCallGenerationStartedEvent()
                     | ToolArgumentsDeltaEvent()
+                    | CompactionStartedEvent()
+                    | CompactionFinishedEvent()
+                    | ModelAttemptStartedEvent()
+                    | ModelAttemptFinishedEvent()
+                    | ModelRetryScheduledEvent()
+                    | ModelRequestedEvent()
+                    | ModelRequestFailedEvent()
                 ):
                     yield event
                 case CompactionAppliedEvent() | SpillCreatedEvent() | SpillExpiredEvent():
@@ -182,6 +178,18 @@ async def project_stream_events(
                     if status != previous_status:
                         previous_status = status
                         yield SessionStatusChangedEvent(status)
-        yield TurnFinishedEvent(results.build(tuple(events), schema=schema))
+        yield TurnFinishedEvent(await completion())
     finally:
         await raw.aclose()
+
+
+def _stream_status(event: TurnStartedEvent | AgentControlChangedEvent) -> SessionStatus:
+    match event:
+        case AgentControlChangedEvent(state=ControlState.PAUSED):
+            return SessionStatus.PAUSED
+        case AgentControlChangedEvent(
+            state=ControlState.STOPPING | ControlState.ABORTING | ControlState.STOPPED
+        ):
+            return SessionStatus.STOPPING
+        case _:
+            return SessionStatus.RUNNING

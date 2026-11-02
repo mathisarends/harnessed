@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from typing import Self
 
 import pytest
 
@@ -15,6 +16,12 @@ class Recorder(Plugin, slot="tracer"):
         super().__init__()
         self.active = []
         self.finished = []
+
+    def create_instance(self) -> Self:
+        instance = super().create_instance()
+        instance.active = self.active
+        instance.finished = self.finished
+        return instance
 
     async def setup(self, ctx):
         ctx.provide(Tracer, self)

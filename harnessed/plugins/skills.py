@@ -18,18 +18,17 @@ from pydantic import (
 
 from harnessed.core.errors import ConfigError
 from harnessed.core.hooks import SessionAppended
-from harnessed.core.messages import ToolStatus, freeze, to_dict
+from harnessed.core.messages import AssistantMessage, ToolMessage, ToolStatus, freeze, to_dict
 from harnessed.core.plugin import Plugin
 from harnessed.core.prompt.context import DynamicContext
-from harnessed.core.prompt.values import Section
+from harnessed.core.prompt.values import Instructions, SystemPrompt
 from harnessed.core.session.events import (
     CompactionAppliedEvent,
     ToolCallFinishedEvent,
     ToolCallRequestedEvent,
 )
 from harnessed.core.session.session import SessionLog
-from harnessed.core.tools.decorator import tool
-from harnessed.core.tools.registry import ToolError
+from harnessed.core.tools import ToolError, tool
 from harnessed.kernel import Context, Inject, Key, hook
 
 type SkillName = Annotated[
@@ -287,22 +286,27 @@ class Skills(Plugin, slot="skills", needs=(SessionLog, DynamicContext)):
             _yaml()
         self.sources = tuple(sources)
         self._key = Key[_Catalog]("skill catalog")
+
+    def instructions(self) -> SystemPrompt:
         description = "; ".join(
             source.name
             if isinstance(source, Skill)
             else str(source.path)
             if isinstance(source, _DirectorySkill)
             else str(source)
-            for source in sources
+            for source in self.sources
         )
-        self.guidance = Section.from_factory(
-            "skills",
-            self._render_catalog,
-            description=f"Skills: {description}; earlier sources win; read at session startup",
+        return SystemPrompt(
+            Instructions.from_factory(
+                factory=self._render_catalog,
+                title="Skills",
+                description=f"Skills: {description}; earlier sources win; read at session startup",
+            )
         )
 
     async def _catalog(self, ctx: Context) -> _Catalog:
-        if self._key not in ctx:
+        key = self.recipe._key
+        if key not in ctx:
             try:
                 catalog = await asyncio.to_thread(_discover, self.sources)
             except ConfigError:
@@ -311,8 +315,8 @@ class Skills(Plugin, slot="skills", needs=(SessionLog, DynamicContext)):
                 raise ConfigError(
                     f"Cannot read configured skill sources {self.sources!r}: {error}"
                 ) from error
-            ctx.provide(self._key, catalog)
-        return ctx[self._key]
+            ctx.provide(key, catalog)
+        return ctx[key]
 
     async def _render_catalog(self, ctx: Context) -> str:
         catalog = await self._catalog(ctx)
@@ -338,11 +342,20 @@ class Skills(Plugin, slot="skills", needs=(SessionLog, DynamicContext)):
         self._log = session
         self._context = context
         self._calls: set[str] = set()
-        self._loaded: dict[str, str] = {}
-        for event in session.events:
-            self._remember(event)
-        if session.last(CompactionAppliedEvent) is not None:
-            await self._retain()
+        self._loaded = {
+            key.removeprefix("skill:"): value
+            for key, value in context.values.items()
+            if key.startswith("skill:")
+        }
+        for message in session.messages:
+            if isinstance(message, AssistantMessage):
+                self._calls.update(
+                    call.id for call in message.tool_calls if call.name == "load_skill"
+                )
+            elif isinstance(message, ToolMessage) and message.tool_call_id in self._calls:
+                if message.status is ToolStatus.OK:
+                    self._remember_instructions(message.text)
+                self._calls.discard(message.tool_call_id)
 
     def _remember(self, event) -> None:
         if isinstance(event, ToolCallRequestedEvent):
@@ -352,15 +365,17 @@ class Skills(Plugin, slot="skills", needs=(SessionLog, DynamicContext)):
                 self._calls.discard(event.call.id)
         elif isinstance(event, ToolCallFinishedEvent) and event.call_id in self._calls:
             if event.result.status == ToolStatus.OK:
-                try:
-                    data, _ = json.JSONDecoder().raw_decode(event.result.text.lstrip())
-                    loaded = _Loaded.model_validate(data)
-                except (ValueError, TypeError):
-                    pass
-                else:
-                    self._loaded[loaded.name] = loaded.instructions
+                self._remember_instructions(event.result.text)
             if isinstance(event, ToolCallFinishedEvent):
                 self._calls.discard(event.call_id)
+
+    def _remember_instructions(self, text: str) -> None:
+        try:
+            data, _ = json.JSONDecoder().raw_decode(text.lstrip())
+            loaded = _Loaded.model_validate(data)
+        except (ValueError, TypeError):
+            return
+        self._loaded[loaded.name] = loaded.instructions
 
     async def _retain(self) -> None:
         for name, instructions in self._loaded.items():

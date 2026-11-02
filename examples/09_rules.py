@@ -18,6 +18,7 @@ def is_pytest(call: ToolCall) -> bool:
 
 class TestDiscipline(Plugin, needs=(Session,)):
     def __init__(self):
+        super().__init__()
         self.failures = 0
 
     @hook(ReviewToolResult)
@@ -66,11 +67,13 @@ async def demo(name, policy):
     )
     agent = Agent(model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), commands, policy])
     print(f"\n{name}")
-    async with agent.session(name) as session:
+    async with agent.session() as session:
+        steering = []
 
         @session.on(InboxAddedEvent)
         def inbox_changed(event):
             if event.mode != InboxMode.FOLLOWUP:
+                steering.append(event)
                 print(f"{event.mode}: {event.message.text}")
 
         async for event in session.stream("Run the tests and investigate failures."):
@@ -79,7 +82,7 @@ async def demo(name, policy):
         assert session.context.values
         assert any(
             isinstance(event, InboxAddedEvent) and event.mode == InboxMode.STEER
-            for event in session.events
+            for event in steering
         )
 
 

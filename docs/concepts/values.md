@@ -16,33 +16,37 @@ hash is process-local; it is not a persistent fingerprint. For content addressin
 serialize the intended JSON payload with a defined canonical encoding and hash
 those bytes.
 
-The persistence codec has a separate versioned boundary. Records require version
-2 and explicit dotted tags, such as `turn.start` and `tool.call.finished`. Version
-1 is unsupported after the tool lifecycle change. Older formats,
-unknown fields, invalid discriminators, non-finite numbers and malformed nested
-values are rejected without rewriting the append-only log.
-See the [compatibility policy](../releases.md#compatibility-policy) before upgrading
-persisted workflows.
+Conversation snapshots have an explicit versioned boundary. `SessionState`
+format 1 contains retained context, required metadata and verified resource bytes.
+Its immutable mappings and tuples are detached from mutable runtime containers.
+Old JSONL archives are not accepted as conversation state. Unknown fields,
+invalid versions and incomplete tool pairs fail validation.
 
-[Application events](../guides/events.md) use a session-local catalog assembled
-before loading persistence. Frozen dataclasses remain the event values; Pydantic
-validates their discriminated unions and supplies the durable JSON schema.
+Standalone audit-event envelopes retain their separate version 3 and dotted tags.
+Applications can encode events while executing a turn; these records are not an
+implicit session archive. [Application events](../guides/events.md) use a
+session-local catalog assembled before runtime startup. Frozen dataclasses remain
+the values; Pydantic validates unions and supplies their JSON schema. See the
+[session guide](../guides/sessions.md) and [compatibility policy](../releases.md#compatibility-policy).
 
 ## Message roles
 
-`Message` is a tagged union of frozen `System`, `User`, `Assistant` and `ToolReply`
-values in `harnessed.core.messages`. Constructors only accept fields belonging to
-that role: tool calls, reasoning and native provider state belong to Assistant;
-a ToolReply requires a call ID. User messages and tool replies can contain text
-and image parts. `user(...)` and `system(...)` are convenience constructors.
+`Message` is a tagged union of frozen `SystemMessage`, `UserMessage`, `AssistantMessage` and `ToolMessage`
+values in `harnessed.models`. Constructors only accept fields belonging to
+that role: tool calls, reasoning and native provider state belong to `AssistantMessage`;
+a ToolMessage requires a call ID. User messages and tool replies can contain text
+and image parts. Stored images use `ImageReference` with a content-addressed
+`AssetRef`; model transport copies resolve them to `ImagePart` data URLs.
+`user(...)` and `system(...)` are convenience constructors.
 
 The Core field is `reasoning`. Provider-specific fields, including DeepSeek's
 `reasoning_content` and Anthropic signatures, stay inside the optional adapter's
-opaque frozen `provider_state`. Unsigned synthetic or interrupted reasoning remains available for audit
+frozen `ProviderState.data`. The `provider_state` envelope names its format,
+version and originating provider/model binding; an absent envelope is `None`. Unsigned synthetic or interrupted reasoning remains available for audit
 and is omitted from native provider history; complete signed responses replay
 through their original provider state.
 
-ToolReply retains the original status and exit code alongside its content. Native
+ToolMessage retains the original status and exit code alongside its content. Native
 provider history therefore distinguishes failed or denied tools from successful
 results instead of relying on error words in the text. Unknown tool availability
 is a failure; policy/user denial remains a denial.

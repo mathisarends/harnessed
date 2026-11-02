@@ -15,8 +15,8 @@ from harnessed.core.session.events import (
     ApprovalStatus,
     SessionEvent,
 )
+from harnessed.core.tools import ToolRegistry
 from harnessed.core.tools.references import ToolReference, ToolSelector, tool_selector
-from harnessed.core.tools.registry import ToolRegistry
 from harnessed.kernel import Context, Inject, Next, Priority, hook
 
 from .messages import ToolCall
@@ -58,12 +58,8 @@ class ApprovalGateConfig(PluginConfig):
     priority: int = Priority.GUARD
 
 
-class ApprovalGate(Plugin, needs=(ToolRegistry,)):
+class ApprovalGate(Plugin[ApprovalGateConfig], needs=(ToolRegistry,)):
     """Keep a scoped guard active even when its optional approver is unavailable."""
-
-    Config = ApprovalGateConfig
-
-    config: ApprovalGateConfig
 
     def __init__(
         self,
@@ -73,7 +69,9 @@ class ApprovalGate(Plugin, needs=(ToolRegistry,)):
         scope: str = "approval-gate",
         priority: int = Priority.GUARD,
     ) -> None:
-        super().__init__(risky=risky, ask=ask, scope=scope, priority=priority)
+        super().__init__(
+            config=ApprovalGateConfig(risky=risky, ask=ask, scope=scope, priority=priority)
+        )
         self.risky = tuple(tool_selector(item) for item in self.config.risky)
         self.ask = self.config.ask
 
@@ -210,12 +208,8 @@ class ApprovalsConfig(PluginConfig):
     timeout: Annotated[float, Field(gt=0)] = 300.0
 
 
-class Approvals(Plugin, slot="approvals", needs=(ToolRegistry,)):
+class Approvals(Plugin[ApprovalsConfig], slot="approvals", needs=(ToolRegistry,)):
     """Compose default decisions and explicit tool rules; required approval wins trust."""
-
-    Config = ApprovalsConfig
-
-    config: ApprovalsConfig
 
     def __init__(
         self,
@@ -228,7 +222,7 @@ class Approvals(Plugin, slot="approvals", needs=(ToolRegistry,)):
         policy: Callable[[ToolCall], PolicyDecision | None] | None = None,
         timeout: float = 300.0,
     ) -> None:
-        super().__init__(timeout=timeout)
+        super().__init__(config=ApprovalsConfig(timeout=timeout))
         self.approver: Approver | None = (
             approver
             if approver is None or isinstance(approver, Approver)

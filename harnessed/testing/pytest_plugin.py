@@ -3,7 +3,8 @@
 import pytest
 
 from harnessed.agent import Agent
-from harnessed.kernel.plugin import as_plugin_spec
+from harnessed.core.prompt.values import SystemPrompt
+from harnessed.kernel import as_plugin_spec
 
 from .models import ScriptedModel
 
@@ -12,15 +13,30 @@ from .models import ScriptedModel
 def harnessed_session():
     """Open a real session using a script and the configured public plugins."""
 
-    def open_session(agent: Agent | None = None, *, script=(), plugins=(), session_id=None):
+    def open_session(
+        agent: Agent | None = None,
+        *,
+        script=(),
+        plugins=(),
+        state=None,
+        instructions: str | None = None,
+        prompt: SystemPrompt | None = None,
+    ):
         plugins = tuple(plugins)
         replaced = {as_plugin_spec(value).slot for value in plugins} | {"model"}
+        if prompt is not None or instructions is not None:
+            replaced.add("instructions")
         configured = (
             tuple(value for value in agent.plugins if as_plugin_spec(value).slot not in replaced)
             if agent is not None
             else ()
         )
-        app = Agent(model=ScriptedModel(script), plugins=(*configured, *plugins))
-        return app.session(session_id)
+        app = Agent(
+            model=ScriptedModel(script),
+            instructions=instructions,
+            prompt=prompt,
+            plugins=(*configured, *plugins),
+        )
+        return app.session(state=state)
 
     return open_session

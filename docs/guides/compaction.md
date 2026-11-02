@@ -1,8 +1,10 @@
 # Compact long conversations
 
-Compaction appends a `CompactionAppliedEvent` record. It changes the projected model
-history; original messages, tool calls and results remain in the session log.
-Replay and forks apply the same projection.
+Compaction applies a `CompactionAppliedEvent` transition and replaces retained
+working context with a summary and selected messages. The runtime releases
+discarded history and its indexes; current-turn result buffering may retain input
+until terminal delivery. Exported SessionState values contain the compacted
+conversation. Write a complete audit externally when historical records are needed.
 
 ```python
 from harnessed import Agent
@@ -45,6 +47,14 @@ compaction can summarize their older prefix even in the very first turn. Only
 completed step boundaries are eligible; tool calls and their results stay together.
 Retained assistant messages keep their provider state unchanged.
 
+Observations in retained steps keep their complete text and image parts, message
+identities and order. For example, `keep_steps=5` keeps five completed steps plus
+the current observation in an active turn. Older observations and their images
+are removed together in the same compacted request. Between compactions, the
+history grows without rewriting previous observations. The default model
+summarizer reads textual parts and captions; it does not reanalyze image pixels.
+Include important image findings in text if they must survive summarization.
+
 The active turn's task, steering messages and supplied context stay verbatim, as do
 fixed instructions and tool schemas. Pinning the active turn, including through
 `keep_first_turns`, protects its entire history. Recent closed turns remain verbatim
@@ -69,6 +79,27 @@ the normal step budget. A partial reply, exhausted step budget, absent policy or
 history that cannot be reduced propagates the error. The retry marker survives
 pause and restart.
 
+## Display compaction activity
+
+Automatic and manual attempts publish `CompactionStartedEvent`
+(`compaction.started`) before summarization and `CompactionFinishedEvent`
+(`compaction.finished`) after the attempt. Both are exported by `harnessed.events`
+and share `compaction_id`. A started attempt always closes, including on errors
+and cancellation. No lifecycle events are emitted for ineligible history or a
+backoff check that does not invoke the summarizer.
+
+The finish carries `CompactionOutcome.APPLIED`, `DISCARDED`, `FAILED` or
+`CANCELLED`. Discarded means the summary was not committed, for example because
+it did not reduce the request. Exceptions and cancellation still propagate.
+If an observer fails after commit, the outcome remains `APPLIED`.
+
+On success the durable `CompactionAppliedEvent` arrives before the finish. Its
+`id` equals `compaction_id`; it contains the summary and estimated
+`before_tokens`/`after_tokens`. Start and finish are transient activity signals,
+not replayed history. `session.stream()` forwards all three events during a turn.
+Use `session.subscribe(transient=True)` for a session-wide indicator, including
+manual compaction while idle or paused.
+
 ## Choose a summarizer
 
 Omitting `summarizer` uses the session's current `Model`. A model string, native
@@ -89,7 +120,7 @@ events carry `UsagePurpose.COMPACTION` from `harnessed.events`.
 ## Compact manually
 
 ```python
-async with agent.session("review") as session:
+async with agent.session() as session:
     await session.run("Review the change.")
     await session.pause()
     applied = await session.compact()
@@ -104,3 +135,7 @@ can arrive while summarizing, but its model step waits until compaction finishes
 
 Run the [offline policy comparison](examples.md) with
 `uv run python -m examples.16_compaction_policies`.
+
+Compaction can preserve only turns still present in the working context. Previously
+discarded turns cannot be restored by changing retention settings. Earlier exported
+snapshots remain independent owners of their messages and resource bytes.

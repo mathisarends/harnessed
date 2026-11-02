@@ -11,6 +11,8 @@ from uuid import uuid4
 
 from pydantic import Field, PlainSerializer
 
+from harnessed.core.assets import AssetRef
+
 
 def freeze(value: Any) -> Any:
     if value is None or isinstance(value, str | bool | int):
@@ -55,6 +57,7 @@ class ToolStatus(StrEnum):
     UNAVAILABLE = "unavailable"
     CANCELLED = "cancelled"
     TIMEOUT = "timeout"
+    SKIPPED = "skipped"
 
 
 class DenialSource(StrEnum):
@@ -65,6 +68,7 @@ class DenialSource(StrEnum):
 class ContentKind(StrEnum):
     TEXT = "text"
     IMAGE_URL = "image_url"
+    IMAGE_REFERENCE = "image_reference"
 
 
 class ImageDetail(StrEnum):
@@ -143,8 +147,11 @@ class ToolResult:
     truncation: OutputTruncation | None = None
     denied_by: DenialSource | None = None
     rule_matches: tuple[tuple[str, bool], ...] = ()
+    break_chain: bool = field(default=False, kw_only=True)
 
     def __post_init__(self) -> None:
+        if type(self.break_chain) is not bool:
+            raise TypeError("break_chain must be a bool")
         object.__setattr__(self, "status", ToolStatus(self.status))
         if self.denied_by is not None:
             object.__setattr__(self, "denied_by", DenialSource(self.denied_by))
@@ -224,7 +231,20 @@ class ImagePart:
     type: Literal[ContentKind.IMAGE_URL] = ContentKind.IMAGE_URL
 
 
-type ContentPart = TextPart | ImagePart
+@dataclass(frozen=True)
+class ImageReference:
+    """A stored image; resolved only for the model transport."""
+
+    asset: AssetRef
+    detail: ImageDetail = ImageDetail.AUTO
+    type: Literal[ContentKind.IMAGE_REFERENCE] = ContentKind.IMAGE_REFERENCE
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.asset, AssetRef) or not self.asset.media_type.startswith("image/"):
+            raise ValueError("Image references require an image asset")
+
+
+type ContentPart = TextPart | ImagePart | ImageReference
 
 
 def content_text(content: str | tuple[ContentPart, ...]) -> str:
@@ -239,7 +259,7 @@ def _content(value: str | tuple[ContentPart, ...]) -> str | tuple[ContentPart, .
     if isinstance(value, str):
         return value
     parts = tuple(value)
-    if any(not isinstance(part, TextPart | ImagePart) for part in parts):
+    if any(not isinstance(part, TextPart | ImagePart | ImageReference) for part in parts):
         raise TypeError("Message content must be a string or text/image parts")
     return parts
 
@@ -264,8 +284,8 @@ class _PlainMessage(_MessageText):
         return ""
 
     @property
-    def provider_state(self) -> Mapping[str, Any]:
-        return MappingProxyType({})
+    def provider_state(self) -> ProviderState | None:
+        return None
 
 
 class _NoCallID:
@@ -275,7 +295,7 @@ class _NoCallID:
 
 
 @dataclass(frozen=True)
-class System(_PlainMessage, _NoCallID):
+class SystemMessage(_PlainMessage, _NoCallID):
     __hash__ = None
     content: str = ""
     id: str = field(default_factory=lambda: uuid4().hex, kw_only=True)
@@ -287,7 +307,7 @@ class System(_PlainMessage, _NoCallID):
 
 
 @dataclass(frozen=True)
-class User(_PlainMessage, _NoCallID):
+class UserMessage(_PlainMessage, _NoCallID):
     __hash__ = None
     content: str | tuple[ContentPart, ...] = ""
     id: str = field(default_factory=lambda: uuid4().hex, kw_only=True)
@@ -299,14 +319,36 @@ class User(_PlainMessage, _NoCallID):
         object.__setattr__(self, "content", _content(self.content))
 
 
+@dataclass(frozen=True, kw_only=True)
+class ProviderState:
+    """Versioned adapter-owned replay data, tied to its originating provider/model."""
+
+    __hash__ = None
+    format: Annotated[str, Field(min_length=1)]
+    version: Annotated[int, Field(ge=1)]
+    provider: Annotated[str, Field(min_length=1)]
+    model: Annotated[str, Field(min_length=1)]
+    data: JSONMapping
+
+    def __post_init__(self) -> None:
+        if any(
+            not isinstance(value, str) or not value
+            for value in (self.format, self.provider, self.model)
+        ):
+            raise ValueError("Provider state requires format, provider and model identifiers")
+        if type(self.version) is not int or self.version < 1:
+            raise ValueError("Provider state requires a positive integer format version")
+        object.__setattr__(self, "data", freeze(self.data))
+
+
 @dataclass(frozen=True)
-class Assistant(_MessageText, _NoCallID):
+class AssistantMessage(_MessageText, _NoCallID):
     __hash__ = None
     content: str = ""
     tool_calls: tuple[ToolCall, ...] = ()
     reasoning: str = ""
     id: str = field(default_factory=lambda: uuid4().hex, kw_only=True)
-    provider_state: JSONMapping = field(default_factory=dict, kw_only=True)
+    provider_state: ProviderState | None = field(default=None, kw_only=True)
     role: Literal[Role.ASSISTANT] = field(default=Role.ASSISTANT, kw_only=True)
 
     def __post_init__(self) -> None:
@@ -315,11 +357,12 @@ class Assistant(_MessageText, _NoCallID):
         if not isinstance(self.reasoning, str):
             raise TypeError("Assistant reasoning must be text")
         object.__setattr__(self, "tool_calls", tuple(self.tool_calls))
-        object.__setattr__(self, "provider_state", freeze(self.provider_state))
+        if self.provider_state is not None and not isinstance(self.provider_state, ProviderState):
+            raise TypeError("Assistant provider_state must be a ProviderState or None")
 
 
 @dataclass(frozen=True)
-class ToolReply(_PlainMessage):
+class ToolMessage(_PlainMessage):
     __hash__ = None
     content: str | tuple[ContentPart, ...] = ""
     tool_call_id: str = field(kw_only=True)
@@ -342,27 +385,35 @@ class ToolReply(_PlainMessage):
         return self.status != ToolStatus.OK or self.exit_code not in (None, 0)
 
 
-type Message = Annotated[System | User | Assistant | ToolReply, Field(discriminator="role")]
+type Message = Annotated[
+    SystemMessage | UserMessage | AssistantMessage | ToolMessage, Field(discriminator="role")
+]
 
 
-def user(text: str) -> User:
-    return User(text)
+def user(text: str) -> UserMessage:
+    return UserMessage(text)
 
 
-def system(text: str) -> System:
-    return System(text)
+def system(text: str) -> SystemMessage:
+    return SystemMessage(text)
 
 
 @dataclass(frozen=True)
 class Observation:
+    """An immutable state snapshot retained until compaction or an explicit policy.
+
+    Text and images share one message and lifecycle. Refs identify the observed
+    state for applications; they are not interpreted as attachment locations.
+    """
+
     source: str
-    full: str
-    summary: str
+    content: str | tuple[ContentPart, ...]
     refs: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        if not self.source:
+        if not isinstance(self.source, str) or not self.source:
             raise ValueError("Observations require a source")
+        object.__setattr__(self, "content", _content(self.content))
         refs = tuple(self.refs)
         if any(not isinstance(ref, str) for ref in refs):
             raise TypeError("Observation refs must be strings")

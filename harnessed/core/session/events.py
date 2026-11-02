@@ -1,27 +1,37 @@
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from time import time
 from typing import Annotated, Any, Literal, Self, get_args
 from uuid import uuid4
 
-from pydantic import Field
+from pydantic import Field, PlainSerializer
 
+from harnessed.core.diagnostics import RetryKind
 from harnessed.core.event_kinds import EventKind
+from harnessed.core.limits import FinalStepPolicy
 from harnessed.core.messages import (
     ApprovalAnswer,
-    Assistant,
+    AssistantMessage,
     Message,
     Observation,
     PolicyDecision,
     SpillRef,
     ToolCall,
     ToolResult,
-    User,
+    UserMessage,
     freeze,
+    to_dict,
 )
-from harnessed.core.model import ModelRequest, ModelUsage, OutputSchema, StopReason, UsagePurpose
-from harnessed.kernel.events import Emit
+from harnessed.core.model import (
+    GenerationSettings,
+    ModelInfo,
+    ModelRequest,
+    ModelUsage,
+    OutputSchema,
+    StopReason,
+    UsagePurpose,
+)
+from harnessed.kernel import Emit
 
 
 class InboxMode(StrEnum):
@@ -54,11 +64,6 @@ class ModelRequestOutcome(StrEnum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     CONTEXT_EXCEEDED = "context_exceeded"
-
-
-class ObservationForm(StrEnum):
-    FULL = "full"
-    SUMMARY = "summary"
 
 
 class TurnOutcome(StrEnum):
@@ -242,28 +247,6 @@ class ToolExecutionStartedEvent(SessionEvent):
     call_id: Identifier
 
 
-@dataclass(frozen=True)
-class LogTailRecoveredEvent(SessionEvent):
-    __hash__ = None
-
-    type: Literal[EventKind.LOG_TAIL_RECOVERED] = field(
-        default=EventKind.LOG_TAIL_RECOVERED, kw_only=True
-    )
-    offset: int
-    discarded_bytes: int
-    sha256: str
-    archive: str
-
-    def __post_init__(self) -> None:
-        if (
-            type(self.offset) is not int
-            or self.offset < 0
-            or type(self.discarded_bytes) is not int
-            or self.discarded_bytes < 1
-        ):
-            raise ValueError("Invalid recovered log tail bounds")
-
-
 def _check_limit(name: str, value: int | None) -> None:
     if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 1):
         raise ValueError(f"{name} must be a positive integer or None")
@@ -271,7 +254,7 @@ def _check_limit(name: str, value: int | None) -> None:
 
 @dataclass(frozen=True)
 class TurnLimits:
-    """Per-turn overrides; None keeps the agent's configured behavior."""
+    """Queued overrides; turn-start records store the resolved step limit."""
 
     max_steps: Annotated[int, Field(ge=1)] | None = None
     token_budget: Annotated[int, Field(ge=1)] | None = None
@@ -290,7 +273,7 @@ class InboxAddedEvent(SessionEvent):
     target: InboxTarget
     mode: InboxMode
     context: tuple[Message, ...] = ()
-    settings: Mapping[str, Any] = field(default_factory=dict)
+    settings: GenerationSettings = field(default_factory=GenerationSettings)
     created_at: Annotated[float, Field(ge=0)] = field(default=0.0, kw_only=True)
     output_schema: OutputSchema | None = field(default=None, kw_only=True)
     limits: TurnLimits = field(default_factory=TurnLimits, kw_only=True)
@@ -309,7 +292,8 @@ class InboxAddedEvent(SessionEvent):
         if self.limits != TurnLimits() and self.mode != InboxMode.FOLLOWUP:
             raise ValueError("Only a new turn can declare limits")
         object.__setattr__(self, "context", tuple(self.context))
-        object.__setattr__(self, "settings", freeze(self.settings))
+        if not isinstance(self.settings, GenerationSettings):
+            raise TypeError("Inbox settings must be GenerationSettings")
 
     @classmethod
     def create(
@@ -318,7 +302,7 @@ class InboxAddedEvent(SessionEvent):
         mode: InboxMode,
         *,
         context: tuple[Message, ...] = (),
-        settings: Mapping[str, Any] | None = None,
+        settings: GenerationSettings | None = None,
         output_schema: OutputSchema | None = None,
         limits: TurnLimits | None = None,
     ) -> Self:
@@ -329,10 +313,10 @@ class InboxAddedEvent(SessionEvent):
             _INBOX_ROUTES[mode],
             mode,
             context,
-            settings or {},
+            settings if settings is not None else GenerationSettings(),
             created_at=time(),
             output_schema=output_schema,
-            limits=limits or TurnLimits(),
+            limits=limits if limits is not None else TurnLimits(),
         )
 
 
@@ -352,12 +336,15 @@ class TurnStartedEvent(SessionEvent):
     type: Literal[EventKind.TURN_START] = field(default=EventKind.TURN_START, kw_only=True)
     turn_id: Identifier
     input_id: str | None = None
-    settings: Mapping[str, Any] = field(default_factory=dict)
+    settings: GenerationSettings = field(default_factory=GenerationSettings)
     output_schema: OutputSchema | None = field(default=None, kw_only=True)
     limits: TurnLimits = field(default_factory=TurnLimits, kw_only=True)
+    final_step: FinalStepPolicy = field(default=FinalStepPolicy.NONE, kw_only=True)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "settings", freeze(self.settings))
+        if not isinstance(self.settings, GenerationSettings):
+            raise TypeError("Turn settings must be GenerationSettings")
+        object.__setattr__(self, "final_step", FinalStepPolicy(self.final_step))
 
 
 @dataclass(frozen=True)
@@ -382,10 +369,10 @@ class UserMessageEvent(SessionEvent):
     __hash__ = None
 
     type: Literal[EventKind.USER_MESSAGE] = field(default=EventKind.USER_MESSAGE, kw_only=True)
-    message: User
+    message: UserMessage
 
     def __post_init__(self) -> None:
-        if not isinstance(self.message, User):
+        if not isinstance(self.message, UserMessage):
             raise TypeError("UserMessageEvent requires a user message value")
 
 
@@ -427,17 +414,35 @@ class ObservationRecordedEvent(SessionEvent):
 
 @dataclass(frozen=True)
 class ModelRequestedEvent(SessionEvent):
+    """Commit one Harnessed model invocation's final request snapshot.
+
+    The request_id correlates its usage and exactly one assistant message or
+    request failure. Provider-internal transport retries retain this identity.
+    Retry metadata here describes runtime recovery, not provider SDK counters.
+    """
+
     __hash__ = None
 
     type: Literal[EventKind.MODEL_REQUESTED] = field(
         default=EventKind.MODEL_REQUESTED, kw_only=True
     )
     request: ModelRequest
+    model: ModelInfo = field(kw_only=True)
     request_id: Identifier = field(kw_only=True)
+    retry_group_id: Identifier | None = field(default=None, kw_only=True)
+    retry_kind: RetryKind | None = field(default=None, kw_only=True)
+    attempt: Annotated[int, Field(ge=1)] = field(default=1, kw_only=True)
+    max_retries: Annotated[int, Field(ge=0)] | None = field(default=None, kw_only=True)
+
+    def __post_init__(self) -> None:
+        if self.retry_kind is not None:
+            object.__setattr__(self, "retry_kind", RetryKind(self.retry_kind))
 
 
 @dataclass(frozen=True)
 class ModelRequestFailedEvent(SessionEvent):
+    """Close a request without an assistant message; not a turn completion."""
+
     __hash__ = None
 
     type: Literal[EventKind.MODEL_REQUEST_FAILED] = field(
@@ -453,13 +458,16 @@ class ModelRequestFailedEvent(SessionEvent):
 
 @dataclass(frozen=True)
 class IncludedObservation:
+    """One unchanged observation in the final model request, including its images."""
+
     source: str
     refs: tuple[str, ...]
-    form: ObservationForm
+    turn_id: Identifier = field(kw_only=True)
+    step: StepNumber = field(kw_only=True)
+    message_id: Identifier = field(kw_only=True)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "refs", tuple(self.refs))
-        object.__setattr__(self, "form", ObservationForm(self.form))
 
 
 @dataclass(frozen=True)
@@ -509,6 +517,8 @@ class CompactionAppliedEvent(SessionEvent):
 
     preserve_turns pins full turns; retained_turns is temporary sliding retention.
     preserve_inputs holds event offsets of active-turn inputs kept verbatim.
+    This is an applied history change, not a notification for every attempted
+    summary; failed or non-reducing summaries do not produce this record.
     """
 
     __hash__ = None
@@ -561,13 +571,13 @@ class ObservationPolicyAppliedEvent(SessionEvent):
     type: Literal[EventKind.OBSERVATION_POLICY_APPLIED] = field(
         default=EventKind.OBSERVATION_POLICY_APPLIED, kw_only=True
     )
-    max_summaries: int | None = None
+    max_observations: int | None = None
 
     def __post_init__(self) -> None:
-        if self.max_summaries is not None and (
-            type(self.max_summaries) is not int or self.max_summaries < 0
+        if self.max_observations is not None and (
+            type(self.max_observations) is not int or self.max_observations < 1
         ):
-            raise ValueError("max_summaries must be a non-negative integer or None")
+            raise ValueError("max_observations must be a positive integer or None")
 
 
 @dataclass(frozen=True)
@@ -604,18 +614,24 @@ class RuleTriggeredEvent(SessionEvent):
 
 @dataclass(frozen=True)
 class AssistantMessageEvent(SessionEvent):
+    """Close a model request with its accepted or interrupted partial message.
+
+    An interrupted message is terminal for its request_id and is not followed
+    by a ModelRequestFailedEvent for that same request.
+    """
+
     __hash__ = None
 
     type: Literal[EventKind.ASSISTANT_MESSAGE] = field(
         default=EventKind.ASSISTANT_MESSAGE, kw_only=True
     )
-    message: Assistant
+    message: AssistantMessage
     request_id: Identifier = field(kw_only=True)
     interrupted: bool = False
     stop_reason: StopReason | None = None
 
     def __post_init__(self) -> None:
-        if not isinstance(self.message, Assistant):
+        if not isinstance(self.message, AssistantMessage):
             raise TypeError("AssistantMessageEvent requires an assistant message value")
         if self.stop_reason is not None:
             object.__setattr__(self, "stop_reason", StopReason(self.stop_reason))
@@ -726,7 +742,7 @@ class OutputValidatedEvent(SessionEvent):
     turn_id: Identifier
     schema_id: Identifier
     message_id: Identifier
-    data: Any
+    data: Annotated[Any, PlainSerializer(to_dict, when_used="json")]
     call_id: str | None = None
     id: Identifier = field(default_factory=lambda: uuid4().hex)
 
@@ -828,7 +844,6 @@ type LogEvent = Annotated[
         | ToolPolicyAppliedEvent
         | ToolExecutionStartedEvent
         | ToolExecutionFinishedEvent
-        | LogTailRecoveredEvent
         | InboxAddedEvent
         | InboxRemovedEvent
         | TurnStartedEvent

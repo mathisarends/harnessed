@@ -27,6 +27,34 @@ Tags are stable namespaced strings, including `text.delta`, `reasoning.delta`,
 `tool.call.requested`, `approval.needed`, `compaction.applied` and `spill.created`.
 They do not depend on the Python class name. `EventKind`, closed states and
 outcomes such as `TurnOutcome` are also exported directly from `harnessed.events`.
+The [event reference](../reference/events.md) lists every built-in event and its
+delivery surface. Start with the [minimal stream consumer](streaming.md) and add
+cases for the capabilities your application displays. Matching every event is
+not required.
+
+## Correlate event lifecycles
+
+| Activity | Identity | Completion |
+| --- | --- | --- |
+| Turn | `turn_id` | `TurnEndedEvent` in the execution stream; `TurnFinishedEvent.result.turn_id` on normal UI stream exhaustion |
+| Model request | `request_id` | `AssistantMessageEvent` or `ModelRequestFailedEvent` |
+| Observed provider attempt | `(retry_kind, retry_group_id, attempt)` with `retry_kind=PROVIDER` | `ModelAttemptFinishedEvent`; unknown provider counts remain `None` |
+| Runtime recovery or correction | `(retry_kind, retry_group_id)` | Attempt notifications correlate distinct model `request_id` values within that group |
+| Generated message | `message_id`, then `AssistantMessageEvent.message.id` | The accepted or interrupted assistant message, when admitted |
+| Tool argument preview | `(message_id, call.index)` / `(message_id, delta.index)` | No paired terminal preview event; the completed assistant message is authoritative |
+| Scheduled tool call and its execution | `call.id` / `call_id` | `ToolCallFinishedEvent` for the call; `ToolExecutionFinishedEvent` for execution |
+| Approval question | Approval `request_id` | `ApprovalResolvedEvent`; answer through `session.approvals` |
+| Applied compaction | `CompactionAppliedEvent.id` | The event itself commits the history projection |
+| Compaction attempt | `compaction_id` | `CompactionFinishedEvent`, including discarded, failed and cancelled attempts |
+
+Model request IDs and approval request IDs identify separate activities despite
+sharing the field name `request_id`. Preview indexes are local to one generated
+message and must not be used alone as session-wide tool identities.
+
+Durable completion records describe runtime state. A UI consumer may disconnect,
+overflow or fail before receiving them, and a failed stream need not emit
+`TurnFinishedEvent`. Applications own their local activity state and cleanup;
+see [completion and delivery](streaming.md#completion-and-delivery).
 
 ## Observe events in plugins
 
@@ -52,9 +80,13 @@ history and the UI stream. These remain separate events.
 
 ## Model request lifecycle
 
-`ModelRequestedEvent(request, request_id=...)` records the final submitted
-snapshot. Harnessed assigns a fresh UUID to every attempt, including retries
-after a context limit. `AssistantMessageEvent` and response
+`ModelRequestedEvent(request, model=info, request_id=...)` records the final submitted
+snapshot after request hooks, output configuration and compaction, alongside
+the selected `ModelInfo`. Effective generation settings are part of the request;
+the selected model is event metadata, not a request override. It marks a
+Harnessed model invocation, rather than an individual HTTP transport attempt.
+Harnessed assigns a fresh UUID to every invocation, including retries after a
+context limit. `AssistantMessageEvent` and response
 `ModelUsageRecordedEvent` carry that same `request_id`. Compaction usage has
 `purpose=UsagePurpose.COMPACTION` and no response request ID.
 
@@ -64,16 +96,36 @@ Every request closes exactly once with an assistant message, including an
 observer that fails after the start was committed also produces a failure.
 Completion writes drain cancellation before runtime cleanup proceeds.
 
+A partial assistant message is already the request's completion; there is no
+additional `ModelRequestFailedEvent` for that same request. Conversely, a failure
+record does not imply that the whole turn cannot continue. A context-limit retry
+can start a new step and a new request after compaction. Inspect the turn result
+separately to determine its final outcome.
+
+Transport retries inside the provider SDK remain inside one Harnessed request.
+Observed attempts have transient diagnostics; they do not create additional
+durable `ModelRequestedEvent` snapshots. Runtime context recovery and output
+correction create new requests whose durable retry metadata links them to the
+preceding request. See [model and retry activity](streaming.md#model-and-retry-activity)
+for counters, separate retry kinds and missing provider telemetry.
+
 Plugins can inject `SessionLog` from `harnessed` and call `log.request(id)` to
 retrieve the submitted snapshot, or `log.request_finished(id)` to inspect its
-completion. Existing version 2 JSONL records without request IDs acquire stable
-`session_id:index` identities when loaded. Recovery closes orphan requests as
+completion. Version 3 records require explicit request IDs and reject older
+formats without migration. Recovery closes orphan requests as
 cancelled before repairing their turn.
 
 `ObservationsIncludedEvent(request_id, observations)` records the observation
 messages actually present after request transformation. It follows the request
 event even when the tuple is empty. Each `IncludedObservation` carries its source,
-refs and full/summary form; see [observation delivery](context.md).
+refs, originating turn and step, and message ID. The receipt covers the complete
+text/image snapshot; see [observation delivery](context.md).
+
+Compaction start/finish and model attempt/retry notifications are also public
+typed events. Their activity records are transient; successful compaction remains
+a durable `CompactionAppliedEvent`. See [compaction activity](compaction.md#display-compaction-activity)
+and [model retry activity](streaming.md#model-and-retry-activity) for correlation,
+outcomes, unknown provider counters and cancellation semantics.
 
 ## Tool lifecycle
 
@@ -103,6 +155,22 @@ timeouts and cancellation. Its result uses `ToolStatus.TIMEOUT` or
 `ToolStatus.CANCELLED` for those outcomes. Recovery writes a cancelled receipt
 for an unfinished execution, including an execution whose call was never saved.
 `log.execution_pending(call_id)` reports a start awaiting its receipt.
+
+## Compaction records
+
+`CompactionAppliedEvent` is a durable commit, also forwarded to the UI stream.
+Its `id` identifies the applied compaction, `through` selects the history prefix,
+and `before_tokens` / `after_tokens` describe the estimated request size change.
+It is emitted only after a useful summary has been validated and committed.
+Skipped, failed and non-reducing attempts do not produce this event. Summary
+usage can still be recorded with `UsagePurpose.COMPACTION`.
+
+`CompactionStartedEvent` and `CompactionFinishedEvent` describe the live attempt
+and share `compaction_id`. On success, `CompactionAppliedEvent.id` equals that
+identity and the applied record precedes the finish. A failed or discarded
+attempt can finish without an applied record. Start and finish are transient;
+the applied record is durable. See
+[compaction activity](compaction.md#display-compaction-activity) for outcomes.
 
 ## Declare application events
 
@@ -138,17 +206,18 @@ class Indexer(Plugin):
         return "Indexed."
 ```
 
-`await ctx.emit(event)` and `await session.emit(event)` persist durable events
-and publish transient ones. Both pass through the session's event catalog.
-Custom durable and transient events also reach that turn's UI stream. Durable
-values appear in `session.events`, results, forks and restored logs; transient
-notifications do not survive replay.
+`await ctx.emit(event)` and `await session.emit(event)` admit execution records
+or publish transient notifications through the event catalog. Custom events also
+reach that turn's UI stream. Serializable records appear in current-turn buffers
+and returned results; transient notifications are live only. Neither surface
+creates an archive. Applications subscribe or use hooks to save a complete audit.
+Custom audit records are excluded from conversation snapshots.
 
-The Agent collects declarations **before opening stored logs**. Declare the same
-types when reopening a session. Runtime `session.use(plugin)` registers event
-types before setup, and retains their codecs after the plugin is disposed.
-Catalogs are isolated between sessions. An unknown stored type fails without
-rewriting the original log.
+The Agent collects declarations before runtime startup. `session.use(plugin)`
+registers types before setup and retains their codecs after disposal. Catalogs
+are isolated between sessions. An external audit reader must supply its own
+matching declarations for custom records. Importing a conversation snapshot does
+not require plugin declarations used only by an earlier audit.
 
 Different classes cannot share a tag. Mutable dataclasses, missing Literal tags,
 non-finite or mutable payloads, and subclasses of built-in event kinds are
@@ -180,6 +249,9 @@ events. The open return type `EventStream[T]` includes application extension
 bases; class patterns preserve the structured `TurnFinishedEvent[T]` result type.
 An explicit application union gives the type checker knowledge of its custom
 variants. Loading a plugin dynamically cannot alter an existing static union.
+Consumers can ignore unmatched event classes. Applications that use exhaustive
+matching or a closed JSON union must maintain that explicit list when adopting
+additional variants; an optional `case _: pass` does not change their schema.
 
 For durable JSON envelopes, `EventRegistry([ProjectIndexed])` provides `schema()`,
 `encode(event)` and `decode(record)`. A live session exposes its complete catalog
@@ -190,3 +262,17 @@ Request IDs and approval payloads are data; answer them through
 
 Run `uv run python -m examples.28_custom_events` for streaming, schema generation
 and replay in one offline example.
+
+
+## Events on a configured plugin recipe
+
+A configured plugin declares `events = FILE_EVENTS` just like a plain plugin.
+Event types remain module-level contracts. `@hook(DocumentReadEvent)` subscribes
+to the type without adding a dependency on a producer; the observer may start
+without one and receive events from multiple producers. Producers declare codecs,
+while hooks belong to individual activations. Disposal removes listeners and
+retains registered codecs for later audit decoding.
+
+Run `uv run python -m examples.37_plugin_recipes` for one complete example of
+`Plugin[FileToolsConfig]`, explicit `config=FileToolsConfig(...)`, `FILE_EVENTS`,
+`ToolContext.emit(...)`, an independent observer and explicit kit instructions.

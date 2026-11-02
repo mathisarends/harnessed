@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from harnessed.core.limits import FinalStepPolicy
 from harnessed.core.model import Model, TokenLimitBehavior
 from harnessed.core.plugin import Plugin
 from harnessed.core.runtime.options import AgentLoopConfig, AgentOptions
@@ -19,12 +20,8 @@ class AgentFactory(Protocol):
 _DEFAULTS = AgentLoopConfig()
 
 
-class AgentLoop(Plugin, slot="loop"):
+class AgentLoop(Plugin[AgentLoopConfig], slot="loop"):
     """Configure the ReAct loop: step, tool, approval and output limits."""
-
-    Config = AgentLoopConfig
-
-    config: AgentLoopConfig
 
     def __init__(
         self,
@@ -33,21 +30,23 @@ class AgentLoop(Plugin, slot="loop"):
         tool_timeout: float = _DEFAULTS.tool_timeout,
         max_parallel_tools: int = _DEFAULTS.max_parallel_tools,
         approval_timeout: float = _DEFAULTS.approval_timeout,
-        max_tokens: int | None = _DEFAULTS.max_tokens,
         context_window: int | None = _DEFAULTS.context_window,
         on_max_tokens: TokenLimitBehavior = _DEFAULTS.on_max_tokens,
         output_retries: int = _DEFAULTS.output_retries,
+        final_step: FinalStepPolicy = _DEFAULTS.final_step,
         error_formatter: ErrorFormatter | None = None,
     ) -> None:
         super().__init__(
-            max_steps=max_steps,
-            tool_timeout=tool_timeout,
-            max_parallel_tools=max_parallel_tools,
-            approval_timeout=approval_timeout,
-            max_tokens=max_tokens,
-            context_window=context_window,
-            on_max_tokens=on_max_tokens,
-            output_retries=output_retries,
+            config=AgentLoopConfig(
+                max_steps=max_steps,
+                tool_timeout=tool_timeout,
+                max_parallel_tools=max_parallel_tools,
+                approval_timeout=approval_timeout,
+                context_window=context_window,
+                on_max_tokens=on_max_tokens,
+                output_retries=output_retries,
+                final_step=final_step,
+            )
         )
         self.error_formatter = error_formatter
 

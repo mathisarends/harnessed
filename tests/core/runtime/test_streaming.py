@@ -1,4 +1,6 @@
 import asyncio
+from collections.abc import AsyncIterator
+from contextlib import aclosing
 
 import pytest
 from pydantic import BaseModel, field_validator
@@ -15,12 +17,18 @@ from harnessed import (
 )
 from harnessed.core.errors import ApprovalUnavailable, OutputUnavailable, SessionClosed
 from harnessed.core.messages import ToolStatus
-from harnessed.core.model import ModelChunk
+from harnessed.core.model import ModelChunk, ModelRequest
 from harnessed.core.session.events import ApprovalStatus
 from harnessed.events import (
     ApprovalNeededEvent,
     ApprovalResolvedEvent,
+    AssistantMessageEvent,
+    EventStream,
     InboxAddedEvent,
+    ModelAttemptFinishedEvent,
+    ModelRequestedEvent,
+    ModelRequestFailedEvent,
+    ModelRequestOutcome,
     ReasoningDeltaEvent,
     SessionEvent,
     SessionStatusChangedEvent,
@@ -30,8 +38,9 @@ from harnessed.events import (
     ToolProgressEvent,
     TurnFinishedEvent,
 )
-from harnessed.plugins import Approvals, MemorySessions
-from harnessed.testing import ScriptedModel
+from harnessed.plugins import Approvals
+from harnessed.testing import CallbackModel, ScriptedModel
+from tests._audit import Audit
 
 
 class Work(Plugin):
@@ -44,6 +53,73 @@ class Work(Plugin):
         await call.progress("Publishing")
         self.effects.append("published")
         return "done"
+
+
+@pytest.mark.parametrize("partial", [False, True])
+async def test_model_failure_raises_without_a_terminal_ui_event(partial: bool) -> None:
+    async def respond(request: ModelRequest) -> AsyncIterator[ModelChunk]:
+        if partial:
+            yield ModelChunk(text="partial")
+        raise ValueError("model failed")
+
+    async with Agent(model=CallbackModel(respond)).session() as session:
+        session_audit = Audit(session)
+        received: list[EventStream[None]] = []
+        with pytest.raises(ValueError, match="model failed"):
+            async with aclosing(session.stream("Review")) as stream:
+                async for event in stream:
+                    received.append(event)
+
+        assert not any(isinstance(event, TurnFinishedEvent) for event in received)
+        assert "".join(event.text for event in received if isinstance(event, TextDeltaEvent)) == (
+            "partial" if partial else ""
+        )
+        requested = session.last(ModelRequestedEvent)
+        assert requested is not None
+        completions = [
+            event
+            for event in session_audit.events
+            if isinstance(event, AssistantMessageEvent | ModelRequestFailedEvent)
+            and event.request_id == requested.request_id
+        ]
+        assert len(completions) == 1
+        completion = completions[0]
+        if partial:
+            assert isinstance(completion, AssistantMessageEvent)
+            assert completion.interrupted and completion.message.text == "partial"
+        else:
+            assert isinstance(completion, ModelRequestFailedEvent)
+            assert completion.outcome is ModelRequestOutcome.FAILED
+
+
+async def test_closing_the_ui_stream_does_not_cancel_the_model_request() -> None:
+    release = asyncio.Event()
+
+    async def respond(request: ModelRequest) -> AsyncIterator[ModelChunk]:
+        yield ModelChunk(text="partial")
+        await release.wait()
+        yield ModelChunk(text=" reply")
+
+    async with Agent(model=CallbackModel(respond)).session() as session:
+        try:
+            async with aclosing(session.stream("Review")) as stream:
+                async for event in stream:
+                    if isinstance(event, TextDeltaEvent):
+                        break
+                else:
+                    pytest.fail("The stream ended without text")
+            requested = session.last(ModelRequestedEvent)
+            assert requested is not None
+            assert not session.log.request_finished(requested.request_id)
+        finally:
+            release.set()
+
+        await asyncio.wait_for(session.wait_until_idle(), 3)
+        response = session.last(AssistantMessageEvent)
+        assert response is not None
+        assert response.request_id == requested.request_id
+        assert response.message.text == "partial reply" and not response.interrupted
+        assert session.last(ModelRequestFailedEvent) is None
 
 
 async def test_slow_stream_overflows_without_blocking_the_run_or_losing_the_durable_answer():
@@ -95,10 +171,11 @@ def work():
     return [ModelChunk(tool_call=ToolCall("publish"))]
 
 
-async def test_stream_has_eight_kinds_a_durable_approval_and_one_terminal_result():
+async def test_stream_has_model_lifecycle_a_durable_approval_and_one_terminal_result():
     effects = []
     model = ScriptedModel([work(), [ModelChunk(reasoning="checked"), ModelChunk(text="Finished")]])
     async with Agent(model=model, plugins=[Work(effects)]).session() as session:
+        session_audit = Audit(session)
         events = []
         async for event in session.stream("Publish"):
             events.append(event)
@@ -113,6 +190,8 @@ async def test_stream_has_eight_kinds_a_durable_approval_and_one_terminal_result
                     await session.approvals.answer(event.request_id, ApprovalAnswer.DENY)
         assert effects == ["published"]
         assert {type(e) for e in events} == {
+            ModelRequestedEvent,
+            ModelAttemptFinishedEvent,
             TextDeltaEvent,
             ReasoningDeltaEvent,
             ToolCallRequestedEvent,
@@ -127,11 +206,12 @@ async def test_stream_has_eight_kinds_a_durable_approval_and_one_terminal_result
         assert sum(isinstance(e, TurnFinishedEvent) for e in events) == 1
         durable = [event for event in events if isinstance(event, SessionEvent)]
         assert {type(event) for event in durable} == {
+            ModelRequestedEvent,
             ToolCallRequestedEvent,
             ToolProgressEvent,
             ToolCallFinishedEvent,
         }
-        assert all(any(event is record for record in session.events) for event in durable)
+        assert all(any(event is record for record in session_audit.events) for event in durable)
         finished = [event for event in events if isinstance(event, ToolCallFinishedEvent)]
         assert len(finished) == 1 and finished[0].call.name == "publish"
 
@@ -155,22 +235,21 @@ async def test_closing_the_stream_resolves_pending_approval_and_removes_its_resp
         assert result.tool_calls[0][1].status == ToolStatus.UNAVAILABLE
 
 
-async def test_answer_waits_for_persistence_and_caller_cancellation_does_not_revoke_it(monkeypatch):
-    store = MemorySessions()
+async def test_answer_waits_for_admission_and_caller_cancellation_does_not_revoke_it(monkeypatch):
     entered, release = asyncio.Event(), asyncio.Event()
-    original = store.store.persistence.append
-
-    async def append(session_id, seq, event):
-        if isinstance(event, ApprovalResolvedEvent):
-            entered.set()
-            await release.wait()
-        await original(session_id, seq, event)
-
-    monkeypatch.setattr(store.store.persistence, "append", append)
     effects = []
     async with Agent(
-        model=ScriptedModel([work(), "done"]), plugins=[store, Work(effects)]
+        model=ScriptedModel([work(), "done"]), plugins=[Work(effects)]
     ).session() as session:
+        original = session.log._append
+
+        async def append(event):
+            if isinstance(event, ApprovalResolvedEvent):
+                entered.set()
+                await release.wait()
+            return await original(event)
+
+        monkeypatch.setattr(session.log, "_append", append)
         stream = session.stream("Publish")
         async for event in stream:
             if isinstance(event, ApprovalNeededEvent):
@@ -184,7 +263,7 @@ async def test_answer_waits_for_persistence_and_caller_cancellation_does_not_rev
             assert not answering.done() and session.last(ApprovalResolvedEvent) is None
             answering.cancel()
             with pytest.raises(asyncio.CancelledError):
-                await answering
+                await asyncio.wait_for(answering, timeout=5)
         finally:
             release.set()
         events = [event async for event in stream]

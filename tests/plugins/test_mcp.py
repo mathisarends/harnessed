@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import subprocess
 import sys
@@ -35,7 +36,7 @@ from harnessed.core.messages import PolicyDecision, ToolStatus, to_dict
 from harnessed.core.model import ModelChunk
 from harnessed.core.tools.registry import ToolRegistry
 from harnessed.events import ToolProgressEvent
-from harnessed.plugins import ApprovalGate, Approvals, JsonlSessions, ToolOutputLimit
+from harnessed.plugins import ApprovalGate, Approvals, ToolOutputLimit
 from harnessed.plugins.mcp import MCP
 from harnessed.testing import ScriptedModel
 
@@ -59,6 +60,7 @@ class MemoryTransport:
         self.closed = 0
         self.cancelled = asyncio.Event()
         self.started = asyncio.Event()
+        self.server_stopped = asyncio.Event()
 
     @asynccontextmanager
     async def connect(self):
@@ -99,9 +101,17 @@ class MemoryTransport:
         try:
             async with create_client_server_memory_streams() as (client_streams, server_streams):
                 async with anyio.create_task_group() as group:
-                    group.start_soon(
-                        server.run, *server_streams, server.create_initialization_options()
-                    )
+                    self.server_output = server_streams[1]
+
+                    async def run_server():
+                        try:
+                            await server.run(
+                                *server_streams, server.create_initialization_options()
+                            )
+                        finally:
+                            self.server_stopped.set()
+
+                    group.start_soon(run_server)
                     async with ClientSession(*client_streams) as client:
                         try:
                             yield client
@@ -282,7 +292,8 @@ async def test_structured_and_image_content_and_output_limits():
     result, _ = await run_tool(transport)
     value = result.tool_calls[0][1]
     assert json.loads(value.content[-1].text) == {"answer": 42}
-    assert value.content[1].url == "data:image/png;base64,aA=="
+    assert value.content[1].asset.sha256 == hashlib.sha256(b"h").hexdigest()
+    assert value.content[1].asset.media_type == "image/png"
     transport = MemoryTransport(
         result=CallToolResult(content=[TextContent(type="text", text="x" * 1000)])
     )
@@ -317,15 +328,11 @@ async def test_reopening_session_does_not_replay_remote_calls(tmp_path):
     model = ScriptedModel([[ModelChunk(tool_call=call)], "done", "next"])
     agent = Agent(
         model=model,
-        plugins=[
-            MCP("docs", transport=transport),
-            JsonlSessions(tmp_path),
-            Approvals(default=PolicyDecision.ALLOW),
-        ],
+        plugins=[MCP("docs", transport=transport), Approvals(default=PolicyDecision.ALLOW)],
     )
-    async with agent.session("saved") as session:
+    async with agent.session() as session:
         await session.run("search")
-    async with agent.session("saved") as session:
+    async with agent.session() as session:
         await session.run("continue")
     assert transport.calls == [("search", {"query": "once"})]
 
@@ -355,6 +362,117 @@ if __name__ == "__main__":
     assert result.tool_calls[0][1].text.splitlines()[0] == "stdio works"
 
 
+async def test_stdio_environment_cwd_and_literal_arguments(tmp_path, monkeypatch):
+    monkeypatch.setenv("HARNESS_MCP_TEST_SECRET", "must not be inherited")
+    server = tmp_path / "server.py"
+    server.write_text(
+        """import os
+import sys
+from mcp.server.fastmcp import FastMCP
+server = FastMCP("process-settings")
+@server.tool()
+def inspect() -> dict[str, object]:
+    return {
+        "secret": os.environ.get("HARNESS_MCP_TEST_SECRET"),
+        "mode": os.environ.get("HARNESS_MCP_TEST_MODE"),
+        "args": sys.argv[1:],
+        "cwd": os.getcwd(),
+    }
+if __name__ == "__main__":
+    server.run(transport="stdio")
+""",
+        encoding="utf-8",
+    )
+    argument = 'literal "quote"; $(not-a-command) & > file'
+    async with Agent(model=ScriptedModel(["unused"])).session() as session:
+        await session.use(
+            MCP.stdio(
+                "local",
+                command=sys.executable,
+                args=[str(server), argument],
+                cwd=tmp_path,
+                env={"HARNESS_MCP_TEST_MODE": "explicit"},
+                startup_timeout=15,
+            )
+        )
+        result = await session.ctx[ToolRegistry].execute(ToolCall("local__inspect", {}))
+    assert not result.is_error
+    value = json.loads(result.content[-1].text)
+    assert value == {"secret": None, "mode": "explicit", "args": [argument], "cwd": str(tmp_path)}
+
+
+@pytest.mark.parametrize("failure", ["exit", "malformed"])
+async def test_stdio_failure_hides_tools_without_retry(tmp_path, failure):
+    server = tmp_path / "server.py"
+    server.write_text(
+        """import asyncio
+import os
+import sys
+from mcp.server.fastmcp import FastMCP
+server = FastMCP("broken-process")
+@server.tool()
+async def fail() -> str:
+    if sys.argv[1] == "exit":
+        os._exit(7)
+    print("invalid JSON", flush=True)
+    await asyncio.sleep(60)
+    return "unreachable"
+if __name__ == "__main__":
+    server.run(transport="stdio")
+""",
+        encoding="utf-8",
+    )
+    async with Agent(model=ScriptedModel(["unused"])).session() as session:
+        await session.use(
+            MCP.stdio(
+                "local", command=sys.executable, args=[str(server), failure], startup_timeout=15
+            )
+        )
+        registry = session.ctx[ToolRegistry]
+        async with asyncio.timeout(5):
+            result = await registry.execute(ToolCall("local__fail", {}))
+        assert result.status is ToolStatus.ERROR
+        assert registry.definitions == ()
+        assert (await registry.execute(ToolCall("local__fail", {}))).is_error
+
+
+async def test_business_error_does_not_close_the_connection():
+    transport = MemoryTransport(
+        result=CallToolResult(content=[TextContent(type="text", text="not found")], isError=True)
+    )
+    async with Agent(model=ScriptedModel(["unused"])).session() as session:
+        await session.use(MCP("docs", transport=transport))
+        registry = session.ctx[ToolRegistry]
+        first = await registry.execute(ToolCall("docs__search", {"query": "missing"}))
+        assert first.status is ToolStatus.ERROR and registry.definitions
+        transport.result = CallToolResult(content=[TextContent(type="text", text="found")])
+        assert (
+            await registry.execute(ToolCall("docs__search", {"query": "exists"}))
+        ).text == "found"
+    assert len(transport.calls) == 2 and transport.closed == 1
+
+
+async def test_idle_disconnect_hides_tools_on_the_next_call():
+    transport = MemoryTransport()
+    async with Agent(model=ScriptedModel(["unused"])).session() as session:
+        await session.use(MCP("docs", transport=transport))
+        await transport.server_output.aclose()
+        await asyncio.wait_for(transport.server_stopped.wait(), 2)
+        registry = session.ctx[ToolRegistry]
+        result = await registry.execute(ToolCall("docs__search", {"query": "disconnected"}))
+        assert result.status is ToolStatus.ERROR
+        assert registry.definitions == ()
+    assert transport.calls == [] and transport.closed == 1
+
+
+async def test_repeated_catalog_cursor_fails_startup_and_closes_connection():
+    transport = MemoryTransport(page_size=0)
+    model = ScriptedModel(["unused"])
+    with pytest.raises(ValueError, match="repeated a pagination cursor"):
+        await Agent(model=model, plugins=[MCP("docs", transport=transport)]).run("x")
+    assert transport.closed == 1 and model.requests == []
+
+
 async def test_http_transport_with_real_mcp_server_and_auth(monkeypatch):
     server = FastMCP("http-test", stateless_http=True, json_response=True)
 
@@ -371,10 +489,10 @@ async def test_http_transport_with_real_mcp_server_and_auth(monkeypatch):
         requests.append(request)
 
     def create_client(**kwargs):
+        kwargs.setdefault("event_hooks", {}).setdefault("request", []).append(record)
         client = client_type(
             **kwargs,
             transport=httpx.ASGITransport(app=app),
-            event_hooks={"request": [record]},
         )
         clients.append(client)
         return client

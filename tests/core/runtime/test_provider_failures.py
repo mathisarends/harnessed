@@ -4,9 +4,10 @@ import pytest
 
 from harnessed import Agent, SessionStatus
 from harnessed.core.errors import RateLimited
-from harnessed.core.messages import User
+from harnessed.core.messages import UserMessage
 from harnessed.core.session.events import TurnOutcome
 from harnessed.testing import ScriptedModel
+from tests._audit import Audit
 
 
 class FailingOnce(ScriptedModel):
@@ -27,18 +28,21 @@ class FailingOnce(ScriptedModel):
 
 async def test_failed_model_call_ends_the_turn_and_leaves_the_session_usable():
     async with Agent(model=FailingOnce()).session() as session:
+        session_audit = Audit(session)
         with pytest.raises(RateLimited) as raised:
             await session.run("first")
         assert raised.value.retry_after == 2.0
         assert session.status == SessionStatus.IDLE
         assert session.log.open_turn is None
         assert not session.log.inbox.pending
-        assert [turn.reason for turn in session.turns] == [TurnOutcome.ABORTED]
+        assert [turn.reason for turn in session_audit.turns] == [TurnOutcome.ABORTED]
 
         result = await session.run("continue")
 
     assert result.text == "recovered"
-    assert [message.content for message in session.messages if isinstance(message, User)] == [
+    assert [
+        message.content for message in session.messages if isinstance(message, UserMessage)
+    ] == [
         "first",
         "continue",
     ]

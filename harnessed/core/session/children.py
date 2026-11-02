@@ -15,7 +15,7 @@ from .events import (
 
 @dataclass(frozen=True)
 class ChildSession:
-    """Replayable child snapshot; full child history stays in its own store."""
+    """Immutable delegation snapshot; child conversation state has its own store."""
 
     id: str
     agent: str
@@ -29,13 +29,16 @@ class ChildSession:
 
 
 class ChildProjection:
-    def __init__(self, events: Iterable[SessionEvent] = ()) -> None:
-        self.children: dict[str, ChildSession] = {}
-        self.calls: set[str] = set()
-        self.parent: SubagentLinkedEvent | None = None
-        for event in events:
-            self.validate(event)
-            self.apply(event)
+    def __init__(
+        self, children: Iterable[ChildSession] = (), parent: SubagentLinkedEvent | None = None
+    ) -> None:
+        self.children = {child.id: child for child in children}
+        self.calls = {child.call_id for child in self.children.values()}
+        if len(self.calls) != len(self.children):
+            raise ValueError("Delegations require distinct call IDs")
+        if parent is not None and not 1 <= parent.depth <= parent.depth_limit:
+            raise ValueError("A child requires one valid parent link")
+        self.parent = parent
 
     def validate(self, event: SessionEvent) -> None:
         if isinstance(event, SubagentLinkedEvent):

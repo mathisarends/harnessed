@@ -1,5 +1,5 @@
 site_name: Harnessed
-site_description: A composable Python agent SDK with reversible plugins and a durable session log.
+site_description: A composable Python agent SDK with reversible plugins and explicit conversation state.
 repo_url: https://github.com/mathisarends/harnessed
 edit_uri: blob/main/docs/
 docs_dir: docs
@@ -36,6 +36,7 @@ nav:
       - Streaming: guides/streaming.md
       - Events and extensions: guides/events.md
       - Tools and hooks: guides/tools.md
+      - Background shell commands: guides/background-shell.md
       - Plugins: guides/plugins.md
       - MCP tools: guides/mcp.md
       - Subagents: guides/subagents.md
@@ -45,6 +46,7 @@ nav:
       - Compaction: guides/compaction.md
       - Sessions and controls: guides/sessions.md
       - Approvals: guides/approvals.md
+      - Sandboxes: guides/sandboxes.md
       - Testing: guides/testing.md
       - Tracing: guides/tracing.md
       - Examples: guides/examples.md
@@ -52,8 +54,12 @@ nav:
       - Immutable values and the codec: concepts/values.md
   - Reference:
       - Core SDK: reference/sdk.md
+      - Events: reference/events.md
   - Benchmarks:
-      - Session memory and replay: benchmarks/sessions.md
+      - Conversation-state memory: benchmarks/sessions.md
   - Contributing:
       - Development and CI: contributing/development.md
+      - Smelt policy and feedback: contributing/smelt.md
+      - Plugin recipe design: contributing/plugin-recipes.md
+      - Implemented boundaries: contributing/structure-target.md
       - Roadmap: contributing/roadmap.md

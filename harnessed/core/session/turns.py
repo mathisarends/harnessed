@@ -70,43 +70,6 @@ class Turn:
         return event
 
 
-def derive_turns(events: Iterable[SessionEvent]) -> tuple[Turn, ...]:
-    events = tuple(events)
-    turns, steps = [], []
-    turn_start = step_start = None
-    turn_id = None
-    step_number = 0
-    for seq, event in enumerate(events):
-        if isinstance(event, TurnStartedEvent):
-            if turn_start is not None:
-                raise ValueError("A turn cannot start inside an open turn")
-            turn_start, turn_id, steps = seq, event.turn_id, []
-        elif isinstance(event, StepStartedEvent):
-            if turn_start is None or event.turn_id != turn_id or step_start is not None:
-                raise ValueError("A step must start inside its turn, after the previous step")
-            if type(event.step) is not int or event.step != len(steps) + 1:
-                raise ValueError("Steps must be numbered consecutively from one within each turn")
-            step_start, step_number = seq, event.step
-        elif isinstance(event, StepEndedEvent):
-            if step_start is None or (event.turn_id, event.step) != (turn_id, step_number):
-                raise ValueError("StepEndedEvent must close the current step")
-            assert turn_id is not None
-            steps.append(Step(turn_id, step_number, events[step_start : seq + 1], event.reason))
-            step_start = None
-        elif isinstance(event, TurnEndedEvent):
-            if turn_start is None or event.turn_id != turn_id or step_start is not None:
-                raise ValueError("TurnEndedEvent must close the current turn after its last step")
-            assert turn_id is not None
-            turns.append(Turn(turn_id, events[turn_start : seq + 1], tuple(steps), event.reason))
-            turn_start, turn_id = None, None
-    if turn_start is not None:
-        assert turn_id is not None
-        if step_start is not None:
-            steps.append(Step(turn_id, step_number, events[step_start:]))
-        turns.append(Turn(turn_id, events[turn_start:], tuple(steps)))
-    return tuple(turns)
-
-
 class TurnProjection:
     """Incremental builder; immutable snapshots never reference its mutable buffers."""
 
@@ -122,6 +85,10 @@ class TurnProjection:
         for event in events:
             self.validate(event)
             self.apply(event)
+
+    def release_closed(self) -> None:
+        self._closed.clear()
+        self._snapshot = None
 
     @property
     def closed_count(self) -> int:
@@ -179,7 +146,8 @@ class TurnProjection:
             self._steps = []
         if self._turn is None:
             return
-        self._snapshot = self._open_snapshot = None
+        self._snapshot = None
+        self._open_snapshot = None
         self._events.append(event)
         if isinstance(event, StepStartedEvent):
             self._step = []

@@ -8,7 +8,7 @@ tool, approval and persistence pipelines and requires no additional dependency.
 ## Configure specialists
 
 ```python
-from harnessed import Agent
+from harnessed import Agent, PluginOrder, SystemPrompt
 from harnessed.plugins import Approvals, Subagents
 
 reviewer = Agent(
@@ -16,6 +16,7 @@ reviewer = Agent(
     instructions="Review the supplied code and explain concrete findings.",
 )
 coordinator = Agent(
+    prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     model="openai:gpt-4.1",
     plugins=[
         Subagents({"review": reviewer}, max_parallel=2, max_steps=8),
@@ -41,7 +42,10 @@ Include the information it needs in the task. Each specialist uses its own model
 instructions, plugins and session store. Context isolation is not an operating
 system sandbox: configured backends still determine access to shared resources.
 
-The `Subagents` prompt contribution lists available names. Unknown names and empty
+The `Subagents.instructions()` block lists available names. Select
+`SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)` to collect it with other
+plugin instructions. Runtime mounts use `section_delivery=SectionDelivery.CONTEXT`
+to add their instructions to session context. Unknown names and empty
 tasks return tool errors without opening children. Python tools keep their normal
 names, so this plugin reserves `delegate` in the parent's tool registry.
 
@@ -74,9 +78,11 @@ Call and parallel limits are local to each parent, not a global tree semaphore.
 Token budgets retain their [turn semantics](sessions.md#control-a-live-run): they
 are checked before the next step and can be exceeded by an in-flight request.
 The parent turn budget counts only parent model usage. `session.tree_usage` adds
-acknowledged child receipts, each including its descendants, without double
-counting. Running children and usage lost before a crash receipt can be missing;
-this is an inspection total, not a hard spending cap.
+recorded child receipts to the current runtime's local `session.usage`, each
+receipt including its descendants without double counting. Receipts survive state
+export and restoration; local model usage follows the existing runtime lifetime.
+Running children and usage lost before a crash receipt can be missing; this is an
+inspection total, not a historical billing ledger or a hard spending cap.
 
 Tool resource scheduling remains session-local. Applications sharing writable
 files or other mutable resources across children must coordinate those resources
@@ -122,12 +128,13 @@ records `SubagentLinkedEvent` before starting work; inspect it through
 snapshots with IDs, originating turn/call IDs, status, answer and recorded usage.
 Snapshots are also available from `SessionLog.children` after replay.
 
-Configure persistence on each specialist if its logs should survive the process,
-for example with `JsonlSessions`. Parent and child agents can share a JSONL
-directory: each uses its own ID and writer lease. The default memory stores retain
-logs only for the configured agent's lifetime. Parent references do not override
-a specialist's retention policy, and deleting a parent does not cascade-delete
-its children.
+Configure `Agent(store=...)` on each specialist if its state should survive the
+session. For example, parent and child agents can share one
+`JsonSessionStore(root=...)`; each uses its own ID and compare-and-set revision.
+The default remains ephemeral. Applications own execution coordination and audit
+retention through their stores; revision checks do not replace worker ownership.
+Parent references do not override a specialist's retention policy, and deleting
+a parent does not cascade-delete its children.
 
 Child IDs derive from the parent session ID and delegation call ID. A repeated
 call with the same specialist and task and a recorded terminal receipt returns
@@ -135,8 +142,13 @@ that receipt; it does not start a second child. Reusing its ID with different
 arguments is rejected. After interruption, opening the parent marks an unfinished child
 reference `interrupted` without reopening or replaying child tools. Inspect its
 stored log and external effects before explicitly issuing a new delegation.
-Recovery does not promise an atomic commit across two session logs. Forked parent
-logs retain historical child references and receipts; they do not clone children.
+Child references and terminal receipts are retained in `SessionState`; a running
+delegation is represented in the checkpoint's current-turn suffix. The parent
+flushes its start record before opening the child and its receipt before returning
+the tool result. Stores receive those changes with their checkpoint in a
+`SessionCommit`. Recovery does not promise an atomic commit across parent and
+child stores. Continuing or copying parent state retains historical child
+references and receipts; it does not clone children.
 
 ## Custom session factories
 

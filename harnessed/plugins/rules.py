@@ -5,7 +5,7 @@ import json
 from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import replace
-from typing import Annotated
+from typing import Annotated, Self
 
 from pydantic import AfterValidator, ConfigDict, Field, StringConstraints, TypeAdapter
 from pydantic.dataclasses import dataclass
@@ -18,8 +18,6 @@ from harnessed.core.runtime.inbox import SessionInbox
 from harnessed.core.session.events import (
     RuleAction,
     RuleTriggeredEvent,
-    ToolCallFinishedEvent,
-    ToolCallRequestedEvent,
 )
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import TokenCounter, count_content
@@ -53,16 +51,20 @@ def _condition(callback, *args) -> bool:
 @dataclass(frozen=True, config=_CONFIG)
 class Rule:
     __hash__ = None
-    tools: tuple[RuleText, ...] = ()
-    command_contains: str | None = None
-    exit_code: int | ExitCondition | None = None
-    repeated: Annotated[int, Field(ge=1)] = 1
-    result_tokens_over: Annotated[int, Field(ge=0)] | None = None
-    predicate: ResultCondition | None = None
-    actions: tuple[tuple[RuleAction, RuleText], ...] = ()
 
-    def _action(self, kind: RuleAction, text: str) -> Rule:
-        return replace(self, actions=(*self.actions, (kind, text)))
+    tools: tuple[RuleText, ...] = ()
+
+    command_contains: str | None = None
+
+    exit_code: int | ExitCondition | None = None
+
+    repeated: Annotated[int, Field(ge=1)] = 1
+
+    result_tokens_over: Annotated[int, Field(ge=0)] | None = None
+
+    predicate: ResultCondition | None = None
+
+    actions: tuple[tuple[RuleAction, RuleText], ...] = ()
 
     def note(self, text: str) -> Rule:
         return self._action(RuleAction.NOTE, text)
@@ -92,6 +94,9 @@ class Rule:
             return False
         return self.predicate is None or _condition(self.predicate, call, result)
 
+    def _action(self, kind: RuleAction, text: str) -> Rule:
+        return replace(self, actions=(*self.actions, (kind, text)))
+
 
 def when(
     *,
@@ -116,6 +121,12 @@ class Rules(Plugin, needs=(SessionLog, DynamicContext, TokenCounter, SessionInbo
         if any(not isinstance(rule, Rule) or not rule.actions for rule in self.rules):
             raise ValueError("Each rule needs at least one note, context or steer action")
 
+    def create_instance(self) -> Self:
+        """Retain the validated immutable rule tuple, including one-shot source iterables."""
+        instance = super().create_instance()
+        instance.rules = self.rules
+        return instance
+
     def _count(
         self,
         index: int,
@@ -135,35 +146,6 @@ class Rules(Plugin, needs=(SessionLog, DynamicContext, TokenCounter, SessionInbo
         self._counts[key] = self._counts[key] + 1 if matched else 0
         self._last_counts[index] = self._counts[key]
         return key, self._counts[key]
-
-    async def setup(
-        self,
-        session: Inject[SessionLog],
-        context: Inject[DynamicContext],
-        counter: Inject[TokenCounter],
-    ) -> None:
-        # Match bits are recorded with the canonical tool result.
-        calls: dict[str, ToolCall] = {}
-        for event in session.events:
-            if isinstance(event, ToolCallRequestedEvent):
-                calls[event.call.id] = event.call
-            elif isinstance(event, ToolCallFinishedEvent) and event.call_id in calls:
-                recorded = dict(event.result.rule_matches)
-                for index, rule in enumerate(self.rules):
-                    rule_id = f"{self.name}:{index}"
-                    if rule_id in recorded:
-                        self._count(
-                            index,
-                            rule,
-                            calls[event.call_id],
-                            event.result,
-                            counter,
-                            matched=recorded[rule_id],
-                        )
-        for index, rule in enumerate(self.rules):
-            for kind, text in rule.actions:
-                if kind is RuleAction.CONTEXT and self._last_counts.get(index, 0) >= rule.repeated:
-                    await context.set(f"rule:{self.name}:{index}", text)
 
     @hook(ReviewToolResult)
     async def review(

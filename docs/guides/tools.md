@@ -47,6 +47,51 @@ a `ToolContext`, validates its external schema and returns `ToolResult`. Core
 owns registrations and uses the same availability, scheduling, approval and
 execution pipeline as Python tools; it has no MCP or JSON Schema dependency.
 
+## Pydantic parameter objects
+
+Use `@tool(params=SearchParams)` to receive all model-supplied arguments as one
+validated Pydantic object. Its fields form the tool's top-level JSON schema:
+
+```python
+from pydantic import BaseModel, Field
+
+from harnessed import Plugin, tool
+from harnessed.kernel import Inject
+from my_application import CatalogClient
+
+
+class SearchParams(BaseModel):
+    query: str = Field(description="Text to search for")
+    limit: int = Field(default=5, ge=1, le=20)
+
+
+class CatalogTools(Plugin):
+    @tool(description="Search the catalog", params=SearchParams, readonly=True)
+    async def search(self, params: SearchParams, *, client: Inject[CatalogClient]) -> str:
+        return await client.search(params.query, limit=params.limit)
+```
+
+The model sends `{"query": "keyboard"}`; the method receives
+`SearchParams(query="keyboard", limit=5)`. Field descriptions, constraints,
+aliases, default factories and model validators come from `SearchParams`.
+Validation is strict and rejects unknown inputs before invocation, including when
+the parameter model's configuration would otherwise ignore or allow extra fields.
+Other validation settings, including validation of field defaults, follow the model.
+
+The method must declare exactly one non-injected parameter, annotated with the
+same model class; its Python name is arbitrary and it may be keyword-only. Put
+defaults on the model's fields rather than on that method parameter. Injected
+services and a keyword-only `ToolContext` remain separate and hidden from the
+schema. `params` requires a `BaseModel` subclass and does not accept `RootModel`.
+It cannot be combined with `parameter_fields`; declare field metadata on the
+parameter model instead.
+
+Without `params=...`, each non-injected Python parameter still forms its own
+schema property. For example, `search(self, params: SearchParams)` with plain
+`@tool` expects `{"params": {"query": "keyboard"}}`.
+Scripted calls use the same top-level arguments:
+`call(CatalogTools.search, query="keyboard")`.
+
 ## Conditional tools
 
 `@tool(enabled=False)` hides a tool from model requests and prevents its execution.
@@ -116,7 +161,7 @@ class Worker(Plugin):
 ```
 
 A keyword-only `ToolContext` is supplied automatically; `Inject[ToolContext]`
-is also supported. Its signal, progress, call and append-only session log belong
+is also supported. Its signal, progress, call and live conversation state belong
 to this call. It does not expose the model driver. Normal service arguments use
 `Inject[T]`; an unmarked application parameter always belongs to the model.
 
@@ -167,6 +212,11 @@ Shell commands use their requested timeout or `Shell(timeout=...)` default, up t
 `AgentLoop(tool_timeout=...)` deadline so longer commands can complete.
 Its argument schema and runtime validation both advertise the configured `max_timeout`.
 
+Background execution is a separate opt-in capability. Add `BackgroundShell(...)`
+alongside a shell backend to expose start, live inspection, stdin and termination
+tools with session-inbox completion notifications. See the
+[background shell guide](background-shell.md) for registration and a runnable example.
+
 For configuration-dependent constraints, `@tool(parameter_fields=fields)` accepts
 an unbound method `fields(self) -> Mapping[str, FieldInfo]`. It runs once per mount
 after `setup` and adds Pydantic `Field` metadata to the named model parameters.
@@ -182,6 +232,91 @@ previous owner.
 
 See [the runnable class plugin example](https://github.com/mathisarends/harnessed/blob/main/examples/06_explicit_registration.py).
 
+## Application metadata and captured tool descriptions
+
+Attach immutable application values without changing the model's tool schema:
+
+```python
+from dataclasses import dataclass
+
+from harnessed import Plugin, ToolResult, tool
+from harnessed.hooks import Next, ReviewToolResult
+from harnessed.kernel import hook
+
+
+@dataclass(frozen=True)
+class AuditTag:
+    category: str
+
+
+class Workspace(Plugin):
+    @tool(readonly=True, metadata=(AuditTag(category="workspace"),))
+    async def inspect(self) -> str:
+        return "Workspace inspected."
+
+    @hook(ReviewToolResult)
+    async def review(self, event: ReviewToolResult, next_: Next[ToolResult]) -> ToolResult:
+        tag = event.tool.metadata.get(AuditTag) if event.tool is not None else None
+        result = await next_()
+        return result.with_note(f"Audit category: {tag.category}") if tag else result
+```
+
+`metadata=` accepts a tuple of values with distinct exact Python types. Duplicate
+types raise `ValueError`; base-class lookup is not implicit. `ToolMetadata.get(T)`
+returns `T | None`. The collection is immutable, and callers must also keep its
+values immutable. Metadata stays process-local: it is neither sent to the model
+nor automatically persisted. Write an application event if audit storage is needed.
+
+`ToolPolicy`, `ExecuteTool` and `ReviewToolResult` expose `tool: ToolInfo | None`.
+The snapshot includes `definition`, `metadata`, `readonly`, `parallel` and `chain`
+from the registration captured during planning. It never follows a replacement
+registration by name. Calls without a registered tool have `tool=None`; synthetic
+structured-answer results do not pass through these hooks. Import `ToolInfo`,
+`ToolMetadata` and `ToolChain` from `harnessed` when annotating consumers.
+
+Direct registry registration accepts the same metadata and chain options.
+Schema-defined integrations use `register_external(..., spec=ToolSpec(metadata=...))`
+and receive the same captured descriptions, without introducing provider metadata
+into the model-facing `ToolDefinition`.
+
+## End an action chain
+
+One model response may contain several calls. A context-changing tool can stop
+the remaining calls from that response while keeping the turn open:
+
+```python
+from harnessed import Plugin, ToolChain, ToolResult, tool
+
+
+class Workspace(Plugin):
+    @tool(chain=ToolChain.STOP_AFTER)
+    async def switch_context(self, context_id: str) -> str:
+        return f"Active context: {context_id}"
+
+    @tool
+    async def refresh(self) -> ToolResult:
+        return ToolResult("State changed; decide again.", break_chain=True)
+```
+
+The default is `ToolChain.CONTINUE`. `STOP_AFTER` runs alone, after earlier
+parallel calls finish. Once its execution is attempted, later calls are skipped,
+including when execution fails or times out. A denial or disabled tool does not
+trigger the boundary because execution never starts. Combining `STOP_AFTER` with
+`parallel=True` raises `ValueError`.
+
+`break_chain=True` is a per-result signal. With sequential tools it skips the
+remaining calls. With parallel tools it prevents further starts after the signal;
+already-started invocations finish normally. Use a sequential tool for a hard
+context boundary. A review hook may also request a break. Review, spill and output
+limiting cannot clear a break already requested by execution.
+
+Skipped calls receive `ToolStatus.SKIPPED` through the usual `ToolCallFinishedEvent`
+and model history, in the original call order. They have no execution receipt and
+do not request approval. Prior effects remain intact. Break signals are durable
+in execution receipts and final results; recovery preserves skipped status for
+unstarted calls after a recorded break. The next model step can decide again,
+subject to the turn's existing limits.
+
 ## Hook signatures
 
 `@hook(Event)` and `@ctx.hook(Event)` derive the callback type from the event:
@@ -196,12 +331,115 @@ Async callbacks return those values after awaiting. Additional parameters use
 `Inject[T]`. Class-based plugin methods follow the same signatures after `self`.
 `Next[R]` is a zero-argument async continuation and may be called once.
 
+Each dispatched event has its own result contract. A generic waterfall lets one
+middleware handle actions with independent result types:
+
+```python
+from dataclasses import dataclass
+from typing import Protocol
+
+from harnessed import Plugin
+from harnessed.kernel import Next, Waterfall, hook
+
+
+class Intent[R](Protocol):
+    async def stage(self, next_: Next[R]) -> R: ...
+
+
+@dataclass(frozen=True)
+class Perform[R](Waterfall[R]):
+    intent: Intent[R]
+
+
+class ActionStage(Plugin):
+    @hook(Perform)
+    async def stage[R](self, event: Perform[R], next_: Next[R]) -> R:
+        return await event.intent.stage(next_)
+```
+
+`R` is chosen separately for each event: a find intent can stage `list[str]`,
+while a navigation intent stages `bool`. Each concrete intent implements its
+own typed stage and can return a result directly or call its continuation.
+Delegating through `Intent[R]` keeps the intent, continuation and result related.
+Matching a generic event's intent by class does not let Python narrow its result
+type and `Next[R]` together.
+
+Tools retain independent parameter lists and native return types; `@tool`
+preserves the decorated method's signature. An application wrapper can preserve
+those arguments with a `ParamSpec` and bind them once before dispatch:
+
+```python
+from collections.abc import Awaitable, Callable
+
+from harnessed.kernel import Context
+
+
+async def perform[**P, R](
+    ctx: Context,
+    intent: Intent[R],
+    action: Callable[P, Awaitable[R]],
+    /,
+    *args: P.args,
+    **kwargs: P.kwargs,
+) -> R:
+    async def terminal() -> R:
+        return await action(*args, **kwargs)
+
+    return await ctx.dispatch(Perform(intent), default=terminal)
+```
+
+This async-action wrapper requires no shared tool argument schema or result
+class. Fixed-result events such as `Waterfall[ToolResult]` and explicit result
+unions remain useful where the application has that contract. `Any` opts out
+of checking the affected types.
+
+The generic middleware body and `ctx.dispatch` retain `R`. The current hook
+decorator specializes the callable it returns, so direct calls to a decorated
+generic method do not retain the same generic inference. Keep typed application
+entrypoints in functions such as `perform` and invoke middleware through dispatch.
+
+`ctx.dispatch(event, default=terminal)` and
+`EventBus.dispatch(ctx, event, default=terminal)` also check the result contract.
+The zero-argument terminal may return the result directly or an awaitable of it.
+The event's result type is invariant: a `Waterfall[str]` rejects an `int` terminal
+instead of widening the dispatch result to `str | int`.
+
+Pass several event classes to `@hook(...)` to share one handler:
+
+```python
+from harnessed import Plugin
+from harnessed.events import CompactionFinishedEvent, CompactionStartedEvent
+from harnessed.kernel import hook
+
+
+class CompactionLog(Plugin):
+    @hook(CompactionStartedEvent, CompactionFinishedEvent)
+    def forward(self, event: CompactionStartedEvent | CompactionFinishedEvent) -> None:
+        print(event.type)
+```
+
+The handler must accept every listed event, usually through a union annotation,
+and return a value compatible with every event's callback contract. Shared
+waterfall handlers also need compatible `Next[R]` continuations. Observer and
+waterfall events cannot share a decorator. Sync and async handlers support
+`Inject[T]` parameters as usual.
+
+Each event key creates a separate listener, equivalent to stacked `@hook(Event)`
+decorators. `priority` and `prepend` apply to every listener, and plugin disposal
+removes them all. Repeated keys or overlapping base/subclass keys can call the
+handler more than once for a dispatched event.
+
 Ty checks wrong event types, wrong callback results and incompatible continuations
 for decorators and direct `ctx.on(Event, callback)` registrations. The CI consumer
 fixtures include expected failures and reject unused suppressions, so weakening
 a signature breaks those checks too. Equal priorities retain registration order;
 lower priorities run first. Use `Priority.GUARD` for approval/policy gates and
 `Priority.OBSERVE` for measurements around actual execution.
+
+`harnessed.hooks.SessionClosing` lets an opt-in plugin release live resources when
+`session.aclose()` shuts down the driver, before plugin disposal. It receives the
+closing session and runs once per explicit close. Also register cleanup with
+`ctx.effect(...)` to cover startup rollback, unmounting and context teardown.
 
 ## Multimodal results
 

@@ -4,7 +4,14 @@ import math
 from collections.abc import Awaitable, Iterable
 from typing import Protocol
 
-from harnessed.core.messages import ContentPart, ImagePart, Message, content_text, to_dict
+from harnessed.core.messages import (
+    ContentPart,
+    ImagePart,
+    ImageReference,
+    Message,
+    content_text,
+    to_dict,
+)
 from harnessed.core.model import ModelRequest, OutputMode
 
 
@@ -23,7 +30,11 @@ async def count_request(counter: TokenCounter, request: ModelRequest) -> int:
 
 def count_content(counter: TokenCounter, content: str | tuple[ContentPart, ...]) -> int:
     """Estimate mixed content with the default allowance of 1024 tokens per image."""
-    images = 0 if isinstance(content, str) else sum(isinstance(p, ImagePart) for p in content)
+    images = (
+        0
+        if isinstance(content, str)
+        else sum(isinstance(p, ImagePart | ImageReference) for p in content)
+    )
     return counter.count_text(content_text(content)) + 1024 * images
 
 
@@ -34,14 +45,14 @@ class ApproximateTokenCounter:
         return math.ceil(len(text.encode("utf-8")) / 4)
 
     def count_request(self, request: ModelRequest) -> int:
-        total = self.count_messages(request.messages) + self.count_text(
+        total = self._count_messages(request.messages) + self.count_text(
             json.dumps(to_dict(request.tools), ensure_ascii=False)
         )
         if request.output_schema is not None and request.output_schema.mode != OutputMode.TOOL:
             total += self.count_text(json.dumps(to_dict(request.output_schema.json_schema)))
         return total
 
-    def count_messages(self, messages: Iterable[Message]) -> int:
+    def _count_messages(self, messages: Iterable[Message]) -> int:
         total = 0
         for message in messages:
             total += 4 + count_content(self, message.content) + self.count_text(message.reasoning)
@@ -61,7 +72,7 @@ class CalibratedTokenCounter:
     MAX_RATIO = 4.0
 
     def __init__(self, estimator: ApproximateTokenCounter | None = None) -> None:
-        self.estimator = estimator or ApproximateTokenCounter()
+        self.estimator = estimator if estimator is not None else ApproximateTokenCounter()
         self.ratio = 1.0
 
     def calibrate(self, request: ModelRequest, input_tokens: int) -> None:

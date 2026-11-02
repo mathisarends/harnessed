@@ -14,19 +14,24 @@ from harnessed import (
     ToolContext,
     tool,
 )
-from harnessed.core.messages import Assistant, ToolReply, User
+from harnessed.core.messages import AssistantMessage, ToolMessage, UserMessage
 from harnessed.core.model import ModelRequest, ModelResponse
 from harnessed.core.runtime.result import RunResult
 from harnessed.core.runtime.session import Session
 from harnessed.errors import PluginDependencyError
 from harnessed.events import (
     AssistantMessageEvent,
+    CompactionFinishedEvent,
+    CompactionOutcome,
     EventStream,
     IncludedObservation,
+    ModelAttemptFinishedEvent,
+    ModelAttemptOutcome,
+    ModelAttemptStartedEvent,
     ModelRequestFailedEvent,
     ModelRequestOutcome,
-    ObservationForm,
     ObservationsIncludedEvent,
+    RetryKind,
     ToolArgumentsDeltaEvent,
     ToolCallGenerationStartedEvent,
     ToolExecutionFinishedEvent,
@@ -34,9 +39,17 @@ from harnessed.events import (
     TurnFinishedEvent,
     TurnOutcome,
 )
-from harnessed.kernel import Context, Inject, PluginDependencyIssue, PluginSpec, hook, plugin
+from harnessed.kernel import (
+    Context,
+    Inject,
+    PluginDependencyIssue,
+    PluginSpec,
+    dependency,
+    hook,
+    plugin,
+)
 from harnessed.models import ToolArgumentsMode, ToolCallDelta, ToolCallStart
-from harnessed.plugins import AgentLoop, JsonlSessions, MemorySessions, Spill
+from harnessed.plugins import AgentLoop, Spill
 
 
 @plugin
@@ -48,11 +61,11 @@ assert_type(configured("workspace", enabled=False), PluginSpec)
 
 
 class EventObserver(Plugin, needs=(SessionLog,)):
-    log: Inject[SessionLog]
+    log = dependency(SessionLog)
 
     @hook(AssistantMessageEvent)
     async def on_assistant(self, event: AssistantMessageEvent) -> None:
-        assert_type(event.message, Assistant)
+        assert_type(event.message, AssistantMessage)
         assert_type(event.interrupted, bool)
         assert_type(event.request_id, str)
         assert_type(self.log.request(event.request_id), ModelRequest | None)
@@ -64,7 +77,9 @@ class EventObserver(Plugin, needs=(SessionLog,)):
     @hook(ObservationsIncludedEvent)
     async def on_included(self, event: ObservationsIncludedEvent) -> None:
         assert_type(event.observations, tuple[IncludedObservation, ...])
-        assert_type(event.observations[0].form, ObservationForm)
+        assert_type(event.observations[0].turn_id, str)
+        assert_type(event.observations[0].step, int)
+        assert_type(event.observations[0].message_id, str)
         assert_type(event.observations[0].refs, tuple[str, ...])
 
     @hook(ToolExecutionFinishedEvent)
@@ -153,6 +168,15 @@ async def typed_stream(session: Session) -> None:
         elif isinstance(event, ToolArgumentsDeltaEvent):
             assert_type(event.delta, ToolCallDelta)
             assert_type(event.delta.mode, ToolArgumentsMode)
+        elif isinstance(event, CompactionFinishedEvent):
+            assert_type(event.compaction_id, str)
+            assert_type(event.outcome, CompactionOutcome)
+        elif isinstance(event, ModelAttemptStartedEvent):
+            assert_type(event.attempt, int | None)
+            assert_type(event.retry_count, int | None)
+            assert_type(event.retry_kind, RetryKind)
+        elif isinstance(event, ModelAttemptFinishedEvent):
+            assert_type(event.outcome, ModelAttemptOutcome)
 
 
 async def functional_scope(ctx: Context) -> None:
@@ -172,10 +196,10 @@ async def tool_scope(ctx: Context) -> None:
 
 
 def invalid_message_shapes() -> None:
-    User("hello", tool_calls=())  # ty: ignore[unknown-argument]
-    Assistant("answer", tool_call_id="wrong role")  # ty: ignore[unknown-argument]
-    ToolReply("missing call ID")  # ty: ignore[missing-argument]
-    ModelResponse(User("wrong model response role"))  # ty: ignore[invalid-argument-type]
+    UserMessage("hello", tool_calls=())  # ty: ignore[unknown-argument]
+    AssistantMessage("answer", tool_call_id="wrong role")  # ty: ignore[unknown-argument]
+    ToolMessage("missing call ID")  # ty: ignore[missing-argument]
+    ModelResponse(UserMessage("wrong model response role"))  # ty: ignore[invalid-argument-type]
 
 
 def plugin_configuration_signatures() -> None:
@@ -185,8 +209,6 @@ def plugin_configuration_signatures() -> None:
     loop = AgentLoop(max_steps=8)
     assert_type(loop.config.max_steps, int)
     assert_type(Spill(max_files=4).config.max_files, int)
-    assert_type(JsonlSessions(recover_tail=True).config.recover_tail, bool)
-    assert_type(MemorySessions(max_sessions=0).config.max_sessions, int | None)
     AgentLoop(max_steps="8")  # ty: ignore[invalid-argument-type]
     AgentLoop(max_step=8)  # ty: ignore[unknown-argument]
 
@@ -197,6 +219,11 @@ def dependency_diagnostics(ctx: Context, error: PluginDependencyError) -> None:
     assert_type(error.issues[0].plugin, PluginSpec)
 
 
-async def repository_consumer(agent: AppAgent) -> None:
-    assert_type(await agent.sessions.list(), tuple[str, ...])
-    assert_type(await agent.sessions.delete("stored"), None)
+async def state_consumer(agent: AppAgent) -> None:
+    from harnessed import SessionState
+
+    result = await agent.run("first")
+    assert_type(result.state, SessionState)
+    assert_type(result.state.to_json(), str)
+    async with agent.session(state=SessionState.from_json(result.state.to_json())) as session:
+        assert_type(session.snapshot(), SessionState)

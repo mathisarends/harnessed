@@ -2,7 +2,15 @@
 
 import asyncio
 
-from harnessed import Agent, Observation, Plugin, Session, tool
+from harnessed import (
+    Agent,
+    Observation,
+    Plugin,
+    PluginOrder,
+    Session,
+    SystemPrompt,
+    tool,
+)
 from harnessed.events import CompactionAppliedEvent, SpillCreatedEvent
 from harnessed.hooks import PreStep
 from harnessed.kernel import Inject, hook
@@ -23,7 +31,6 @@ class WorkspaceState(Plugin, needs=(Session,)):
             Observation(
                 "workspace",
                 f"FULL current workspace frame {self.frame}",
-                f"[workspace frame {self.frame}]",
             )
         )
         return await next_()
@@ -44,14 +51,16 @@ async def main():
             [ModelChunk(text="The report is stored for ranged reads.")],
         ]
     )
+    spill = Spill(threshold_tokens=100, preview_tokens=8)
     agent = Agent(
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
         plugins=[
             AgentLoop(context_window=2000),
             Reports(),
             WorkspaceState(),
-            LatestObservationOnly(max_summaries=1),
-            Spill(threshold_tokens=100, preview_tokens=8),
+            LatestObservationOnly(),
+            spill,
             Compaction(
                 trigger=at_ratio(0.3),
                 summarizer=ScriptedModel(["The initial task was completed."]),
@@ -60,10 +69,11 @@ async def main():
             ),
         ],
     )
-    async with agent.session("strategies") as session:
+    async with agent.session() as session:
         await session.run("Old task context: " + "x" * 2000)
-        print((await session.run("Inspect the report.")).text)
-        for event in session.events:
+        result = await session.run("Inspect the report.")
+        print(result.text)
+        for event in result.events:
             if isinstance(event, CompactionAppliedEvent):
                 print(f"Compacted event prefix [0, {event.through}): {event.summary[:100]}")
             elif isinstance(event, SpillCreatedEvent):

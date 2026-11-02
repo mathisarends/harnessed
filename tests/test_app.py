@@ -4,7 +4,17 @@ import weakref
 
 import pytest
 
-from harnessed import Agent, ApprovalAnswer, Plugin, PluginConflict, Section, ToolCall, tool
+from harnessed import (
+    Agent,
+    ApprovalAnswer,
+    Instructions,
+    Plugin,
+    PluginConflict,
+    PluginOrder,
+    SystemPrompt,
+    ToolCall,
+    tool,
+)
 from harnessed.core.messages import PolicyDecision, ToolStatus
 from harnessed.core.model import ModelChunk
 from harnessed.core.session.events import (
@@ -15,14 +25,16 @@ from harnessed.core.session.events import (
     TurnStartedEvent,
 )
 from harnessed.core.session.session import SessionLog
-from harnessed.kernel.plugin import PluginStatus
+from harnessed.kernel import PluginStatus
 from harnessed.models import Model
-from harnessed.plugins import Approvals, ContextValue, Instructions, Service
+from harnessed.plugins import Approvals, ContextValue, PromptRenderer, Service
 from harnessed.testing import ScriptedModel
+from tests._audit import Audit
 
 
 class Calculator(Plugin):
-    guidance = "Use add for arithmetic."
+    def instructions(self) -> SystemPrompt:
+        return SystemPrompt(Instructions(text="Use add for arithmetic."))
 
     @tool(readonly=True)
     async def add(self, a: int, b: int) -> int:
@@ -36,10 +48,17 @@ async def test_application_facade_composes_plugins_and_fixed_ordered_guidance(tm
     model = ScriptedModel(
         [[ModelChunk(tool_call=ToolCall("add", {"a": 19, "b": 23}))], "42", "done"]
     )
+    calculator = Calculator()
     app = Agent(
-        model=model, instructions=["Be concise.", Section.from_file(path)], plugins=[Calculator()]
+        model=model,
+        prompt=SystemPrompt.from_plugins(
+            Instructions(text="Be concise."),
+            Instructions.from_file(path=path),
+            order=PluginOrder.AS_LISTED,
+        ),
+        plugins=[calculator],
     )
-    assert "Calculator.guidance" in str(app.prompt)
+    assert "Calculator.instructions" in str(app.prompt)
     async with app.session() as session:
         result = await session.run("Add")
         assert result.text == "42" and result.tool_calls[0][1].content == "42"
@@ -58,26 +77,48 @@ async def test_application_facade_composes_plugins_and_fixed_ordered_guidance(tm
 
 async def test_facade_parameters_are_equivalent_to_public_plugins():
     one, two = ScriptedModel(["done"]), ScriptedModel(["done"])
-    await Agent(model=one, instructions="Rules.", plugins=[Calculator()]).run("Go")
-    await Agent(plugins=[Service(Model, two), Instructions("Rules."), Calculator()]).run("Go")
+    calculator = Calculator()
+    await Agent(
+        model=one,
+        prompt=SystemPrompt.from_plugins(Instructions(text="Rules."), order=PluginOrder.AS_LISTED),
+        plugins=[calculator],
+    ).run("Go")
+    calculator_4 = Calculator()
+    await Agent(
+        plugins=[
+            Service(Model, two),
+            PromptRenderer(
+                SystemPrompt.from_plugins(Instructions(text="Rules."), order=PluginOrder.AS_LISTED)
+            ),
+            calculator_4,
+        ]
+    ).run("Go")
     assert [message.text for message in one.requests[0].messages] == [
         message.text for message in two.requests[0].messages
     ]
     assert one.requests[0].tools == two.requests[0].tools
 
 
-async def test_guidance_can_be_placed_replaced_or_omitted():
-    app = Agent(
-        model=ScriptedModel(["done"]),
-        instructions=[Calculator.guidance],
-        plugins=[Calculator(), Plugin(guidance="Other guidance.")],
-    )
-    async with app.session() as session:
-        assert await session.prompt.render() == "Use add for arithmetic.\n\nOther guidance."
-    async with Agent(
-        model=ScriptedModel([]), plugins=[Calculator(guidance=None)]
-    ).session() as session:
-        assert await session.prompt.render() == ""
+async def test_plugin_instruction_block_can_be_overridden_or_omitted():
+    class CustomCalculator(Calculator):
+        def instructions(self) -> SystemPrompt:
+            return SystemPrompt("Replacement guidance.")
+
+    class QuietCalculator(Calculator):
+        def instructions(self) -> SystemPrompt:
+            return SystemPrompt()
+
+    for recipe, expected in [
+        (CustomCalculator(), "Replacement guidance."),
+        (QuietCalculator(), ""),
+    ]:
+        app = Agent(
+            model=ScriptedModel([]),
+            plugins=[recipe],
+            prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+        )
+        async with app.session() as session:
+            assert await session.prompt.render() == expected
 
 
 async def test_dynamic_context_is_durable_changes_only_and_does_not_change_system_prompt():
@@ -88,19 +129,23 @@ async def test_dynamic_context_is_durable_changes_only_and_does_not_change_syste
         plugins=[ContextValue("user", lambda: current[0])],
     )
     async with app.session() as session:
+        session_audit = Audit(session)
         await session.run("First")
         await session.run("Same context")
         current[0] = "two"
         await session.run("Changed context")
-        changes = [event for event in session.events if isinstance(event, ContextValueChangedEvent)]
+        changes = [
+            event for event in session_audit.events if isinstance(event, ContextValueChangedEvent)
+        ]
         assert [event.value for event in changes] == ["one", "two"]
         assert await session.prompt.render() == "Fixed rules."
         assert session.context.values == {"user": "two"}
 
 
-async def test_runtime_guidance_is_context_and_disposes_with_its_plugin():
-    async with Agent(model=ScriptedModel([]), instructions="Fixed.").session() as session:
-        handle = await session.use(Plugin(guidance="Runtime help."))
+async def test_runtime_context_is_explicit_and_disposes_with_its_plugin():
+    async with Agent(model=ScriptedModel(["done"]), instructions="Fixed.").session() as session:
+        handle = await session.use(ContextValue(key="runtime.help", value="Runtime help."))
+        await session.run("Refresh context")
         assert list(session.context.values.values()) == ["Runtime help."]
         assert await session.prompt.render() == "Fixed."
         await handle.aclose()
@@ -114,7 +159,7 @@ async def test_removed_runtime_plugins_are_collectable_while_the_session_stays_o
     async with Agent(model=ScriptedModel([])).session() as session:
         references = []
         for index in range(10):
-            recipe = Plugin(guidance=f"Runtime help {index}", needs=(Missing,) if index % 2 else ())
+            recipe = Plugin(needs=(Missing,) if index % 2 else ())
             handle = await session.use(recipe)
             references.extend((weakref.ref(handle), weakref.ref(recipe)))
             await handle.aclose()
@@ -122,7 +167,7 @@ async def test_removed_runtime_plugins_are_collectable_while_the_session_stays_o
         await session.ctx.settle()
         gc.collect()
         assert all(reference() is None for reference in references)
-        assert not session._runtime_guidance and not session.context.values
+        assert not session.context.values
 
 
 async def test_default_approvals_allow_reads_and_reject_side_effects_without_a_responder():
@@ -178,30 +223,31 @@ async def test_latest_dynamic_context_survives_compaction_and_replay():
     await session.append(CompactionAppliedEvent(len(session), "Earlier work."))
     text = "\n".join(message.text for message in session.messages)
     assert "current" in text and ">old<" not in text
-    replay = SessionLog("context-replay", seed=session.events)
+    replay = SessionLog("context-replay", state=session.snapshot())
     assert replay.messages == session.messages
     assert DynamicContext(replay).values == {"user": "current"}
 
 
-async def test_runtime_guidance_tracks_temporal_dependency_restarts():
+async def test_runtime_context_tracks_temporal_dependency_restarts():
     class Backend:
         pass
 
-    class Runtime(Plugin):
-        needs = (Backend,)
-        guidance = "Use the active backend."
+    class Runtime(ContextValue):
+        needs = (*ContextValue.needs, Backend)
 
-    async with Agent(model=ScriptedModel([])).session() as session:
-        handle = await session.use(Runtime())
+    async with Agent(model=ScriptedModel(["one", "two"])).session() as session:
+        handle = await session.use(Runtime(key="backend", value="Use the active backend."))
         assert handle.status == PluginStatus.WAITING and session.context.values == {}
         remove = session.ctx.provide(Backend, Backend())
         await session.ctx.settle()
+        await session.run("Refresh context")
         assert list(session.context.values.values()) == ["Use the active backend."]
         await remove()
         await session.ctx.settle()
         assert session.context.values == {}
         session.ctx.provide(Backend, Backend())
         await session.ctx.settle()
+        await session.run("Refresh context")
         assert list(session.context.values.values()) == ["Use the active backend."]
 
 
@@ -209,14 +255,14 @@ async def test_public_session_type_and_forks_open_as_independent_conversations()
     from harnessed import Session as LiveSession
 
     app = Agent(model=ScriptedModel(["first", "alternate", "resumed"]))
-    async with app.session("original") as session:
+    async with app.session() as session:
         assert isinstance(session, LiveSession)
         await session.run("Remember the original")
-        branch = session.fork("branch")
-    async with app.session(branch) as alternative:
+        branch = session.snapshot()
+    async with app.session(state=branch) as alternative:
         await alternative.run("Try another approach")
         assert alternative.messages[-1].text == "alternate"
-    async with app.session("original") as resumed:
+    async with app.session(state=branch) as resumed:
         assert all(message.text != "Try another approach" for message in resumed.messages)
         await resumed.run("Continue")
         assert resumed.messages[-1].text == "resumed"

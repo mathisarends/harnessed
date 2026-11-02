@@ -2,20 +2,16 @@ from pathlib import Path
 
 import pytest
 
-from harnessed import Agent, PolicyDecision
-from harnessed.core.session.events import TurnEndedEvent, TurnStartedEvent
-from harnessed.core.session.session import SessionLog
+from harnessed import (
+    Agent,
+    Instructions,
+    PluginOrder,
+    PolicyDecision,
+    SystemPrompt,
+)
 from harnessed.plugins import Approvals, Filesystem, Shell
 from harnessed.plugins.filesystem import FileSystemBackend, LocalFileSystem
-from harnessed.testing import (
-    FakeShell,
-    InMemoryFS,
-    InMemoryPersistence,
-    ScriptedModel,
-    assert_tool_called,
-    call,
-    reply,
-)
+from harnessed.testing import FakeShell, InMemoryFS, ScriptedModel, assert_tool_called, call, reply
 
 pytest_plugins = ["harnessed.testing.pytest_plugin"]
 
@@ -23,9 +19,11 @@ pytest_plugins = ["harnessed.testing.pytest_plugin"]
 async def test_scripted_replies_and_fake_shell_keep_process_results_and_arguments():
     shell = FakeShell({"pytest": "1 passed"})
     model = ScriptedModel([call("run_command", argv=["pytest"]), reply("done")])
-    result = await Agent(model=model, plugins=[shell, Approvals(default=PolicyDecision.ALLOW)]).run(
-        "Test"
-    )
+    result = await Agent(
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+        model=model,
+        plugins=[shell, Approvals(default=PolicyDecision.ALLOW)],
+    ).run("Test")
     _, output = assert_tool_called(result, "run_command", argv=["pytest"])
     assert output.exit_code == 0 and "1 passed" in output.content
     assert shell.calls[0].argv == ("pytest",)
@@ -38,7 +36,12 @@ async def test_scripted_replies_and_fake_shell_keep_process_results_and_argument
 async def test_virtual_and_local_filesystems_share_ranges_newlines_and_edit_semantics(
     tmp_path, memory
 ):
-    async with Agent(model=ScriptedModel([]), plugins=[InMemoryFS()]).session() as session:
+    inmemoryfs = InMemoryFS()
+    async with Agent(
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+        model=ScriptedModel([]),
+        plugins=[inmemoryfs],
+    ).session() as session:
         files = session.ctx[FileSystemBackend] if memory else LocalFileSystem(tmp_path)
         text = "ä😀\r\nlast\rline\n"
         await files.write(Path("nested/test.txt"), text)
@@ -54,28 +57,22 @@ async def test_virtual_and_local_filesystems_share_ranges_newlines_and_edit_sema
             await files.write(Path("../outside"), "no")
 
 
-async def test_failure_injection_preserves_session_append_atomicity():
-    persistence = InMemoryPersistence(fail_after=1)
-    log = SessionLog("failure", persistence=persistence)
-    await log.append(TurnStartedEvent("one"))
-    original = log.events
-    with pytest.raises(OSError, match="Injected"):
-        await log.append(TurnEndedEvent("one"))
-    assert log.events == original and await persistence.load("failure") == original
-    await log.flush()
-    assert persistence.flushes == 1
-    await persistence.aclose()
-    assert persistence.closed
-
-
 async def test_pytest_fixture_replaces_feature_slots_without_duplicate_configuration(
     harnessed_session, tmp_path
 ):
-    configured = Agent(instructions="Fixed.", plugins=[Filesystem(tmp_path), Shell(tmp_path)])
+    filesystem = Filesystem(tmp_path)
+    shell = Shell(tmp_path)
+    configured = Agent(
+        prompt=SystemPrompt.from_plugins(Instructions(text="Fixed."), order=PluginOrder.AS_LISTED),
+        plugins=[filesystem, shell],
+    )
+    virtual_files = InMemoryFS({"note.txt": "virtual"})
+    virtual_shell = FakeShell()
     async with harnessed_session(
         configured,
+        prompt=SystemPrompt.from_plugins(Instructions(text="Fixed."), order=PluginOrder.AS_LISTED),
         script=[call("read_file", path="note.txt"), reply("done")],
-        plugins=[InMemoryFS({"note.txt": "virtual"}), FakeShell()],
+        plugins=[virtual_files, virtual_shell],
     ) as session:
         result = await session.run("Read")
         assert assert_tool_called(result, "read_file")[1].content == "virtual"

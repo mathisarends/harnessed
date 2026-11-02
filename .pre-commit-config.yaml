@@ -1,4 +1,4 @@
-minimum_pre_commit_version: "4.0.0"
+minimum_prek_version: "0.5.9"
 default_install_hook_types: [pre-commit]
 
 repos:
@@ -34,9 +34,21 @@ repos:
         language: system
         require_serial: true
         types_or: [python, pyi]
+      - id: pylint
+        name: Pylint control flow and contracts
+        entry: uv run --locked --no-sync pylint harnessed examples scripts
+        language: system
+        pass_filenames: false
+        always_run: true
       - id: ty
         name: ty type check
         entry: uv run --locked --no-sync ty check --error-on-warning
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: smelt
+        name: Smelt architecture and conventions
+        entry: uv run --locked --no-sync smelt check --fail-on warning --format concise
         language: system
         pass_filenames: false
         always_run: true

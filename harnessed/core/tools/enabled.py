@@ -2,8 +2,7 @@ import inspect
 from collections.abc import Callable
 from types import MethodType
 
-from harnessed.kernel import Context
-from harnessed.kernel.di import binding_plan
+from harnessed.kernel import Context, binding_plan
 
 from .context import ToolContext
 

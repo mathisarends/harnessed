@@ -1,5 +1,6 @@
 from uuid import uuid4
 
+from harnessed.core.assets import AssetStore, _MemoryAssets
 from harnessed.core.children import ChildSessionRequest
 from harnessed.core.composition import PluginValidation, validate_plugins
 from harnessed.core.errors import ConfigError
@@ -8,55 +9,70 @@ from harnessed.core.plugin import Service
 from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.runtime.agent_loop import AgentFactory
 from harnessed.core.runtime.session import Session
-from harnessed.core.session.artifacts import copy_artifacts
 from harnessed.core.session.events import TurnStartedEvent
-from harnessed.core.session.files import SessionFiles
+from harnessed.core.session.files import MemoryFiles, SessionFiles
 from harnessed.core.session.session import SessionLog
+from harnessed.core.session.state import SessionState
 from harnessed.core.session.store import SessionPersistence, SessionStore
-from harnessed.core.tools.registry import ToolRegistry
+from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import Context
 
 
 async def open_session(
-    ctx: Context, target: str | SessionLog | None, *, plugin_validation: PluginValidation
+    ctx: Context,
+    state: SessionState | None,
+    *,
+    plugin_validation: PluginValidation,
+    store: SessionStore | None = None,
+    id: str | None = None,
 ) -> Session:
-    """Lease, seed and repair one log in ``ctx``, then install and start its runtime.
-
-    ``target`` is a session ID to open or resume, a forked log to seed a new ID, or
-    None for a fresh ID. Every resource opened here is owned by ``ctx``.
-    """
-    branch = target if isinstance(target, SessionLog) else None
-    if branch is not None:
-        session_id = branch.id
-    elif target is None:
-        session_id = uuid4().hex
-    elif isinstance(target, str):
-        session_id = target
-    else:
-        raise ConfigError("session_id must be a string, forked log or None")
-    store = ctx[SessionStore]
-    persistence = await ctx.enter(store.open(session_id))
-    ctx.provide(SessionPersistence, persistence)
-    seed = await persistence.load(session_id)
-    files = store.files(session_id)
-    ctx.provide(SessionFiles, files)
-    if branch is not None:
-        if seed or await files.entries():
-            raise ConfigError(f"Fork destination {session_id!r} already contains a log")
-        missing = await copy_artifacts(branch.events, branch.source_files, files)
-        seed = (*branch.events, *missing)
-        for seq, event in enumerate(seed):
-            await persistence.append(session_id, seq, event)
-        await persistence.flush()
-    log = SessionLog(session_id, ctx=ctx, seed=seed, persistence=persistence, files=files)
+    """Open fresh runtime resources around an application-owned conversation value."""
+    if state is not None and not isinstance(state, SessionState):
+        raise ConfigError("state must be a SessionState or None")
+    if id is not None and (not isinstance(id, str) or not id.strip()):
+        raise ConfigError("Conversation IDs must be non-empty strings")
+    if id is not None and store is None and ChildSessionRequest not in ctx:
+        raise ConfigError("Opening a conversation by ID requires an explicit store")
+    session_id = uuid4().hex if id is None else id
+    stored = await store.load_session(session_id) if store is not None else None
+    if ChildSessionRequest in ctx and (stored is not None or state is not None):
+        raise ConfigError("A delegation cannot reopen an existing child session")
+    if stored is not None and state is not None:
+        raise ConfigError("An existing stored conversation cannot also receive state")
+    checkpoint = stored.checkpoint if stored is not None else None
+    selected = checkpoint.state if checkpoint is not None else state
+    persistence = (
+        SessionPersistence(store, session_id, stored.revision if stored is not None else None)
+        if store is not None
+        else None
+    )
+    log = SessionLog(
+        session_id,
+        ctx=ctx,
+        state=selected,
+        persistence=persistence,
+        assets=(
+            _MemoryAssets((*checkpoint.state.assets, *checkpoint.assets))
+            if checkpoint is not None
+            else None
+        ),
+        files=(
+            MemoryFiles((*checkpoint.state.files, *checkpoint.files))
+            if checkpoint is not None
+            else None
+        ),
+    )
+    ctx.provide(AssetStore, log.assets)
+    ctx.provide(SessionFiles, log.files)
+    ctx.effect(log.close_resources)
     ctx.effect(log.finish_subscriptions)
     if ChildSessionRequest in ctx:
-        if seed or await files.entries():
-            raise ConfigError("A delegation cannot reopen an existing child session")
         await log.append(ctx[ChildSessionRequest].link)
         await log.flush()
-    await log.repair_interrupted()
-    _restore_output_schemas(ctx[OutputTypes], log)
+    if checkpoint is not None:
+        await log.restore(checkpoint)
+        _restore_output_schemas(ctx[OutputTypes], log)
+        await log.repair_interrupted()
     runtime = ctx[AgentFactory].create(ctx, log)
     try:
         await ctx.install(
@@ -78,9 +94,9 @@ async def open_session(
 
 
 def _restore_output_schemas(outputs: OutputTypes, log: SessionLog) -> None:
-    """Fail before resuming when queued or open work needs an unrestored output type."""
     schemas = [item.output_schema for item in log.inbox.pending]
-    if log.open_turn is not None and (start := log.last(TurnStartedEvent)) is not None:
+    start = log.last(TurnStartedEvent)
+    if log.open_turn is not None and start is not None:
         schemas.append(start.output_schema)
     for schema in schemas:
         if schema is not None:

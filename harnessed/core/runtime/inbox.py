@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
-from harnessed.core.attachments import Attachment, prepare_input
+from harnessed.core.attachments import Attachment, _prepare_input
 from harnessed.core.messages import Message
-from harnessed.core.model import OutputSchema
+from harnessed.core.model import GenerationSettings, OutputSchema
 from harnessed.core.runtime.control import SessionControl
 from harnessed.core.session.events import (
     InboxAddedEvent,
@@ -43,7 +43,7 @@ def _item(event: InboxAddedEvent) -> InboxItem:
 
 
 class InboxWriter:
-    """Serialize durable inbox appends; the session and its inbox share one writer."""
+    """Serialize in-memory inbox admission; the session and its inbox share one writer."""
 
     def __init__(self, log: SessionLog, control: SessionControl) -> None:
         self.log = log
@@ -71,15 +71,20 @@ class InboxWriter:
         *,
         attachments: Iterable[Attachment] = (),
         context: Mapping[str, Any] | None = None,
-        settings: Mapping[str, Any] | None = None,
+        settings: GenerationSettings | None = None,
         output_schema: OutputSchema | None = None,
         limits: TurnLimits | None = None,
         prepared: Callable[[InboxAddedEvent], None] | None = None,
     ) -> InboxItem:
         async with self._sending():
             self.control.check_open()
-            message, contributions = await prepare_input(
-                content, attachments=attachments, context=context
+            message, contributions = await _prepare_input(
+                content, attachments=attachments, context=context, assets=self.log.assets
+            )
+            self.control.check_open()
+            message = await self.log._images.retain_message(message)
+            contributions = tuple(
+                [await self.log._images.retain_message(item) for item in contributions]
             )
             self.control.check_open()
             event = InboxAddedEvent.create(
@@ -90,20 +95,18 @@ class InboxWriter:
                 output_schema=output_schema,
                 limits=limits,
             )
-            offset = len(self.log.events)
-            try:
-                await self.log.append(event)
-            finally:
-                # An acknowledged write survives cancellation of its submitting caller.
-                if any(record is event for record in self.log.events[offset:]):
-                    if prepared is not None:
-                        prepared(event)
-                    self.control.wake()
+
+            def committed() -> None:
+                if prepared is not None:
+                    prepared(event)
+                self.control.wake()
+
+            await self.log.append(event, on_committed=committed)
             return _item(event)
 
 
 class SessionInbox:
-    """Expose queued input snapshots and durable removal without owning a loop."""
+    """Expose queued input snapshots and removal without owning a loop."""
 
     def __init__(self, log: SessionLog, control: SessionControl, writer: InboxWriter) -> None:
         self.log = log
@@ -121,7 +124,7 @@ class SessionInbox:
         try:
             await self.log.append(InboxRemovedEvent(item_id, InboxRemovalReason.DISCARDED))
         except ValueError:
-            # A model step may have claimed the item while persistence was awaited.
+            # A model step may have claimed the item while admission observers were awaited.
             if not any(item.id == item_id for item in self.pending):
                 raise KeyError(item_id) from None
             raise

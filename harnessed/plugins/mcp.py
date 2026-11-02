@@ -3,7 +3,7 @@ import json
 import logging
 import re
 import warnings
-from collections.abc import AsyncGenerator, Iterable, Mapping
+from collections.abc import AsyncGenerator, Coroutine, Iterable, Mapping
 from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from hashlib import sha256
@@ -11,23 +11,29 @@ from pathlib import Path
 from typing import Annotated, NoReturn, Protocol, Self
 
 import httpx
+from anyio import BrokenResourceError, ClosedResourceError, EndOfStream
 from jsonschema import Draft202012Validator, ValidationError
 from jsonschema.protocols import Validator
 from jsonschema.validators import validator_for
-from mcp import ClientSession, StdioServerParameters
+from mcp import ClientSession, McpError, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.client.streamable_http import streamable_http_client
+from mcp.shared.session import RequestResponder
 from mcp.types import (
     CallToolRequest,
     CallToolRequestParams,
     CallToolResult,
     ClientRequest,
+    ClientResult,
     ImageContent,
     PaginatedRequestParams,
+    ServerNotification,
+    ServerRequest,
     TextContent,
     Tool,
 )
 from pydantic import Field
+from pydantic import ValidationError as ModelValidationError
 from referencing import Registry
 from referencing.exceptions import NoSuchResource
 
@@ -41,12 +47,28 @@ from harnessed.core.messages import (
 )
 from harnessed.core.model import ToolDefinition
 from harnessed.core.plugin import Plugin, PluginConfig
-from harnessed.core.tools.context import ToolContext
+from harnessed.core.tools import ToolContext, ToolError, ToolRegistry, ToolSpec
 from harnessed.core.tools.enabled import ToolEnabled, bind_enabled
-from harnessed.core.tools.registry import ToolError, ToolRegistry, ToolSpec
 from harnessed.kernel import Context
 
 logger = logging.getLogger(__name__)
+
+_HTTP_CLOSE_TIMEOUT = 5.0
+
+
+async def _bound_http_shutdown(request: httpx.Request) -> None:
+    # SSE reads may stay open indefinitely; the SDK's session DELETE must not.
+    if request.method == "DELETE":
+        request.extensions["timeout"] = httpx.Timeout(_HTTP_CLOSE_TIMEOUT).as_dict()
+
+
+async def _check_message(
+    message: RequestResponder[ServerRequest, ClientResult] | ServerNotification | Exception,
+) -> None:
+    # The SDK's default handler ignores malformed messages, leaving pending
+    # requests waiting until timeout. Fail the receive loop and wake its waiters.
+    if isinstance(message, Exception):
+        raise message
 
 
 class MCPTransport(Protocol):
@@ -66,7 +88,7 @@ class _Stdio:
     @asynccontextmanager
     async def connect(self) -> AsyncGenerator[ClientSession]:
         async with stdio_client(self.parameters) as (read, write):
-            async with ClientSession(read, write) as client:
+            async with ClientSession(read, write, message_handler=_check_message) as client:
                 yield client
 
 
@@ -79,10 +101,13 @@ class _HTTP:
     @asynccontextmanager
     async def connect(self) -> AsyncGenerator[ClientSession]:
         async with httpx.AsyncClient(
-            headers=self.headers, auth=self.auth, timeout=httpx.Timeout(30, read=None)
+            headers=self.headers,
+            auth=self.auth,
+            timeout=httpx.Timeout(30, read=None),
+            event_hooks={"request": [_bound_http_shutdown]},
         ) as http:
             async with streamable_http_client(self.url, http_client=http) as (read, write, _):
-                async with ClientSession(read, write) as client:
+                async with ClientSession(read, write, message_handler=_check_message) as client:
                     yield client
 
 
@@ -102,6 +127,7 @@ class _Connection:
         self.ready: asyncio.Future[ClientSession] = asyncio.get_running_loop().create_future()
         self.task: asyncio.Task[None] | None = None
         self.closing = False
+        self.closed = asyncio.Event()
 
     async def start(self) -> ClientSession:
         self.task = asyncio.create_task(self._run(), name=f"harnessed:mcp:{self.name}")
@@ -123,13 +149,29 @@ class _Connection:
             else:
                 logger.warning("MCP connection %s closed (%s)", self.name, type(error).__name__)
         finally:
+            self.closed.set()
             if not self.ready.done():
                 self.ready.cancel()
+
+    async def request(self, operation: Coroutine[object, object, CallToolResult]) -> CallToolResult:
+        # SDK shutdown can cancel its receive loop before it wakes every waiter.
+        request = asyncio.create_task(operation, name=f"harnessed:mcp:{self.name}:request")
+        closed = asyncio.create_task(self.closed.wait(), name=f"harnessed:mcp:{self.name}:closed")
+        try:
+            done, _ = await asyncio.wait((request, closed), return_when=asyncio.FIRST_COMPLETED)
+            if request in done:
+                return request.result()
+            raise ToolError("MCP connection closed; remount the plugin to reconnect")
+        finally:
+            request.cancel()
+            closed.cancel()
+            await asyncio.gather(request, closed, return_exceptions=True)
 
     async def aclose(self) -> None:
         if self.task is not None:
             if not self.closing:
                 self.closing = True
+                self.closed.set()
                 self.task.cancel()
             while not self.task.done():
                 try:
@@ -207,20 +249,32 @@ class _RemoteTool:
             await context.progress(text)
 
         try:
-            result = await self.client.send_request(
-                ClientRequest(
-                    CallToolRequest(
-                        params=CallToolRequestParams(name=self.tool.name, arguments=payload)
-                    )
-                ),
-                CallToolResult,
-                progress_callback=on_progress,
+            result = await self.connection.request(
+                self.client.send_request(
+                    ClientRequest(
+                        CallToolRequest(
+                            params=CallToolRequestParams(name=self.tool.name, arguments=payload)
+                        )
+                    ),
+                    CallToolResult,
+                    progress_callback=on_progress,
+                )
             )
-        except asyncio.CancelledError:
+        except (
+            asyncio.CancelledError,
+            McpError,
+            BrokenResourceError,
+            ClosedResourceError,
+            EndOfStream,
+        ):
             # MCP 1.x does not expose the request ID needed for a per-call
-            # cancellation notification. Close the owned transport instead.
+            # cancellation notification. Close cancelled or failed protocol
+            # sessions rather than advertising tools on an unusable connection.
             await self.connection.aclose()
             raise
+        except ModelValidationError as error:
+            await self.connection.aclose()
+            raise ToolError("MCP server returned an invalid tool response") from error
         if not result.isError and self.output_validator is not None:
             if result.structuredContent is None:
                 raise ToolError("MCP tool omitted its declared structured output")
@@ -231,16 +285,13 @@ class _RemoteTool:
         return _result(result)
 
 
-class MCP(Plugin, needs=(ToolRegistry,)):
+class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
     """Expose one MCP server's tools through the standard Harnessed runtime.
 
     Construction performs no I/O. Each session or runtime mount owns a fresh
     connection and a fixed tool catalog. Server annotations never grant local
     readonly status; configure trusted tools explicitly with readonly_tools.
     """
-
-    Config = MCPConfig
-    config: MCPConfig
 
     def __init__(
         self,
@@ -258,12 +309,14 @@ class MCP(Plugin, needs=(ToolRegistry,)):
             raise TypeError("MCP tool selections must be collections of names, not strings")
         super().__init__(
             name=f"mcp:{name}",
-            server_name=name,
-            include_tools=None if include_tools is None else tuple(include_tools),
-            readonly_tools=tuple(readonly_tools),
-            startup_timeout=startup_timeout,
-            call_timeout=call_timeout,
-            parallel=parallel,
+            config=MCPConfig(
+                server_name=name,
+                include_tools=None if include_tools is None else tuple(include_tools),
+                readonly_tools=tuple(readonly_tools),
+                startup_timeout=startup_timeout,
+                call_timeout=call_timeout,
+                parallel=parallel,
+            ),
         )
         ToolSpec(enabled=enabled)
         self.transport = transport
@@ -325,7 +378,7 @@ class MCP(Plugin, needs=(ToolRegistry,)):
             raise ValueError("MCP HTTP URL must have an http(s) scheme and host")
         return cls(
             name,
-            transport=_HTTP(url, dict(headers or {}), auth),
+            transport=_HTTP(url, dict(headers if headers is not None else {}), auth),
             include_tools=include_tools,
             readonly_tools=readonly_tools,
             startup_timeout=startup_timeout,

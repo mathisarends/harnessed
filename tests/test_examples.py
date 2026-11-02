@@ -32,10 +32,10 @@ runpy.run_module(module, run_name="__main__", alter_sys=True)
         "examples.11_temporal_needs",
         "examples.12_layered_sdk",
         "examples.13_models",
-        "examples.14_session_log",
+        "examples.14_session_state",
         "examples.15_tool_output_limits",
         "examples.16_compaction_policies",
-        "examples.17_resume_crash",
+        "examples.17_external_state",
         "examples.18_parallel_tools",
         "examples.19_approvals_and_priorities",
         "examples.20_pause_resume_stop",
@@ -50,7 +50,16 @@ runpy.run_module(module, run_name="__main__", alter_sys=True)
         "examples.29_tracing",
         "examples.30_conditional_tools",
         "examples.31_mcp",
-        "examples.32_subagents",
+        "examples.32_system_prompts",
+        "examples.33_basic_stream",
+        "examples.34_sandbox",
+        "examples.35_background_shell",
+        "examples.36_plugin_kits",
+        "examples.37_plugin_recipes",
+        "examples.38_session_store",
+        "examples.39_typed_session_store",
+        "examples.40_atomic_session_store",
+        "examples.41_subagents",
     ],
 )
 def test_offline_sdk_example_runs(module):
@@ -78,12 +87,9 @@ def test_offline_sdk_example_runs(module):
 
 # Names without a public facade yet. Shrink this, never grow it.
 _INTERNAL_EXAMPLE_IMPORTS = {
-    ("harnessed.core.prompt.system_prompt", "SystemPrompt"),
+    ("harnessed.core.prompt.system_prompt", "SystemPromptStore"),
     ("harnessed.core.session.codec", "decode_event"),
     ("harnessed.core.session.codec", "encode_event"),
-    ("harnessed.core.session.session", "SessionLog"),
-    ("harnessed.core.session.session", "derive_messages"),
-    ("harnessed.core.session.session", "derive_requests"),
     ("harnessed.core.tools.registry", "ToolRegistry"),
 }
 

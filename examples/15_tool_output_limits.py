@@ -4,7 +4,17 @@ import asyncio
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from harnessed import Agent, Plugin, PolicyDecision, Role, ToolResult, ToolStatus, tool
+from harnessed import (
+    Agent,
+    Plugin,
+    PluginOrder,
+    PolicyDecision,
+    Role,
+    SystemPrompt,
+    ToolResult,
+    ToolStatus,
+    tool,
+)
 from harnessed.events import ToolCallFinishedEvent
 from harnessed.hooks import ExecuteTool
 from harnessed.kernel import Inject, hook
@@ -49,6 +59,7 @@ async def main():
             ]
         )
         agent = Agent(
+            prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
             model=model,
             plugins=[
                 Approvals(default=PolicyDecision.ALLOW),
@@ -59,7 +70,7 @@ async def main():
                 early_limit,
             ],
         )
-        async with agent.session("output-limit") as session:
+        async with agent.session() as session:
             result = await session.run("Inspect the large log and read it in small ranges.")
             for event in result.events:
                 if not isinstance(event, ToolCallFinishedEvent):

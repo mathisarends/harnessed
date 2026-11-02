@@ -7,7 +7,7 @@ from functools import partial
 from types import MappingProxyType, MethodType
 from typing import Annotated, Any, overload
 
-from pydantic import ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, RootModel, TypeAdapter, ValidationError
 from pydantic.fields import FieldInfo
 
 from harnessed.core.errors import ToolNameConflict
@@ -16,6 +16,7 @@ from harnessed.core.model import ToolDefinition
 from harnessed.core.tools.arguments import ToolArguments, tool_result_content
 from harnessed.core.tools.context import ToolContext, ToolContexts
 from harnessed.core.tools.enabled import ToolEnabled, bind_enabled, validate_enabled
+from harnessed.core.tools.info import ToolChain, ToolInfo, ToolMetadata
 from harnessed.core.tools.policy import OutputLimit, OutputLimitSetting, validate_output_limit
 from harnessed.core.tools.references import ToolReference, ToolSelector, tool_selector
 from harnessed.core.tools.scheduling import (
@@ -24,9 +25,15 @@ from harnessed.core.tools.scheduling import (
     ToolScheduling,
     resource_spec,
 )
-from harnessed.kernel import Context, RegistrationState
-from harnessed.kernel.di import BindingPlan, Dependency, binding_plan
-from harnessed.kernel.effects import Disposer, run_sync
+from harnessed.kernel import (
+    BindingPlan,
+    Context,
+    Dependency,
+    Disposer,
+    RegistrationState,
+    binding_plan,
+    run_sync,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,10 +67,29 @@ class ToolSpec:
     override: bool = False
     output_limit: OutputLimitSetting = OutputLimit.INHERIT
     parameter_fields: ParameterFields | None = None
+    params: type[BaseModel] | None = None
+    metadata: tuple[object, ...] = ()
+    chain: ToolChain = ToolChain.CONTINUE
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "metadata", ToolMetadata(self.metadata).values)
+        object.__setattr__(self, "chain", ToolChain(self.chain))
+        if self.parallel and self.chain is ToolChain.STOP_AFTER:
+            raise ValueError("STOP_AFTER tools must run sequentially")
         if self.description is not None and not isinstance(self.description, str):
             raise TypeError("Tool description must be a string or None")
+        if self.params is not None:
+            if (
+                not isinstance(self.params, type)
+                or not issubclass(self.params, BaseModel)
+                or self.params is BaseModel
+                or issubclass(self.params, RootModel)
+            ):
+                raise TypeError("params must be a Pydantic BaseModel subclass, not RootModel")
+            if self.parameter_fields is not None:
+                raise ValueError(
+                    "params cannot be combined with parameter_fields; use model fields"
+                )
         validate_output_limit(self.output_limit)
         validate_enabled(self.enabled)
 
@@ -208,6 +234,9 @@ class ToolRegistry:
         output_limit: OutputLimitSetting = OutputLimit.INHERIT,
         override: bool = False,
         owner: Context | None = None,
+        params: type[BaseModel] | None = None,
+        metadata: tuple[object, ...] = (),
+        chain: ToolChain = ToolChain.CONTINUE,
     ) -> Callable[[F], F]: ...
 
     def tool(
@@ -225,6 +254,9 @@ class ToolRegistry:
         output_limit: OutputLimitSetting = OutputLimit.INHERIT,
         override: bool = False,
         owner: Context | None = None,
+        params: type[BaseModel] | None = None,
+        metadata: tuple[object, ...] = (),
+        chain: ToolChain = ToolChain.CONTINUE,
     ):
         def register(callback):
             self.register(
@@ -239,6 +271,9 @@ class ToolRegistry:
                 output_limit=output_limit,
                 override=override,
                 owner=owner,
+                params=params,
+                metadata=metadata,
+                chain=chain,
             )
             return callback
 
@@ -260,6 +295,9 @@ class ToolRegistry:
         owner: Context | None = None,
         spec: ToolSpec | None = None,
         parameter_fields: Mapping[str, FieldInfo] | None = None,
+        params: type[BaseModel] | None = None,
+        metadata: tuple[object, ...] = (),
+        chain: ToolChain = ToolChain.CONTINUE,
     ) -> Disposer:
         spec = spec or ToolSpec(
             name=name,
@@ -271,6 +309,9 @@ class ToolRegistry:
             readonly=readonly,
             override=override,
             output_limit=output_limit,
+            params=params,
+            metadata=metadata,
+            chain=chain,
         )
         name, timeout, parallel = spec.name, spec.timeout, spec.parallel
         resources, readonly, override = spec.resources, spec.readonly, spec.override
@@ -294,11 +335,16 @@ class ToolRegistry:
         if existing and not override:
             previous = existing[-1].owner
             raise ToolNameConflict(
-                f"Tool {tool_name!r} is already registered by {self._owner_name(previous)}; "
-                f"{self._owner_name(owner)} must declare override=True"
+                f"Tool {tool_name!r} is already registered by {previous.owner_name}; "
+                f"{owner.owner_name} must declare override=True"
             )
         arguments = ToolArguments.from_signature(
-            tool_name, plan.signature, plan.hints, plan.dependencies, parameter_fields
+            tool_name,
+            plan.signature,
+            plan.hints,
+            plan.dependencies,
+            parameter_fields,
+            params=spec.params,
         )
         definition = ToolDefinition(
             tool_name,
@@ -340,7 +386,7 @@ class ToolRegistry:
         spec = spec or ToolSpec()
         if spec.name is not None and spec.name != definition.name:
             raise ValueError("External tool spec name must match its definition")
-        if spec.parameter_fields is not None:
+        if spec.parameter_fields is not None or spec.params is not None:
             raise ValueError("External tools use their definition's parameter schema")
         spec = replace(
             spec,
@@ -368,10 +414,6 @@ class ToolRegistry:
             return remove
 
         return owner.register(install)
-
-    @staticmethod
-    def _owner_name(owner: Context) -> str:
-        return owner.owner_name
 
     def is_readonly(self, name: str) -> bool:
         tool = self._visible(self._tools.get(name, []))
@@ -437,6 +479,13 @@ class ToolRegistry:
             ToolScheduling(tool.spec.parallel, tuple(keys)),
             binding=tool,
             output_limit=tool.spec.output_limit,
+            tool=ToolInfo(
+                tool.definition,
+                ToolMetadata(tool.spec.metadata),
+                tool.spec.readonly,
+                tool.spec.parallel,
+                tool.spec.chain,
+            ),
         )
 
     async def execute(

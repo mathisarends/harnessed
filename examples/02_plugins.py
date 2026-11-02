@@ -2,14 +2,23 @@
 
 import asyncio
 
-from harnessed import Agent, Plugin, ToolCall, tool
+from harnessed import (
+    Agent,
+    Instructions,
+    Plugin,
+    PluginOrder,
+    SystemPrompt,
+    ToolCall,
+    tool,
+)
 from harnessed.models import Model, ModelChunk
-from harnessed.plugins import Instructions, Service
+from harnessed.plugins import PromptRenderer, Service
 from harnessed.testing import ScriptedModel
 
 
 class Calculator(Plugin):
-    guidance = "Use add for arithmetic."
+    def instructions(self) -> SystemPrompt:
+        return SystemPrompt(Instructions(text="Use add for arithmetic."))
 
     @tool(readonly=True)
     async def add(self, a: int, b: int) -> int:
@@ -24,13 +33,22 @@ async def main():
             "The result is 42.",
         ]
     )
-    # Exactly the same services and behavior as model=... and instructions=... .
+    # Equivalent to supplying model=... and prompt=... on Agent.
+    calculator = Calculator()
     agent = Agent(
-        plugins=[Service(Model, model), Instructions("Keep answers concise."), Calculator()]
+        plugins=[
+            Service(Model, model),
+            PromptRenderer(
+                SystemPrompt.from_plugins(
+                    Instructions(text="Keep answers concise."), order=PluginOrder.AS_LISTED
+                )
+            ),
+            calculator,
+        ]
     )
     print("Composition:", [type(value).__name__ for value in agent.plugins])
     print(agent.prompt)
-    async with agent.session("explicit-calculator") as session:
+    async with agent.session() as session:
         print((await session.run("What is 19 + 23?")).text)
         print("Exact prompt:", await session.prompt.render())
 

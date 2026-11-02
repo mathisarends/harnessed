@@ -1,12 +1,11 @@
-from collections.abc import Iterable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
+from typing import Self
 
-from harnessed.core.session.events import SessionEvent
-from harnessed.core.session.store import MemoryPersistence
-from harnessed.core.tools.registry import ToolError
-from harnessed.plugins.filesystem import FileStat, Filesystem
+from harnessed.core.tools import ToolError
+from harnessed.plugins.filesystem import FileStat, Filesystem, SearchResult, search_files
 from harnessed.plugins.shell import ProcResult, Shell
 
 
@@ -63,6 +62,12 @@ class _MemoryFiles:
                 raise NotADirectoryError(str(parent))
         self.files[key] = text
 
+    async def read_bytes(self, path: PurePath, *, limit: int | None = None) -> bytes:
+        if limit is not None and limit < 0:
+            raise ValueError("File ranges must be non-negative")
+        text = await self.read(path)
+        return text.encode("utf-8")[:limit]
+
     async def list(self, path: PurePath):
         key = _path(path)
         if not (await self.stat(path)).is_dir:
@@ -82,6 +87,9 @@ class _MemoryFiles:
             for path in sorted(self._entries())
             if path and _matches(PurePosixPath(path).parts, PurePosixPath(normalized).parts)
         )[:limit]
+
+    async def grep(self, query: str, *, pattern: str = "**/*", limit: int = 100) -> SearchResult:
+        return await search_files(self, query, pattern=pattern, limit=limit)
 
     async def stat(self, path: PurePath):
         key = _path(path)
@@ -111,8 +119,17 @@ class InMemoryFS(Filesystem):
     """Replace Filesystem's slot and tools with an observable virtual workspace."""
 
     def __init__(self, files: Mapping[str, str] | None = None, **options) -> None:
-        self.files = {_path(path): text for path, text in (files or {}).items()}
+        self.files = {
+            _path(path): text for path, text in (files if files is not None else {}).items()
+        }
         super().__init__(implementation=_MemoryFiles(self.files), **options)
+
+    def create_instance(self) -> Self:
+        """Share the fake's observable store explicitly across its activations."""
+        instance = super().create_instance()
+        instance.files = self.files
+        instance.implementation = _MemoryFiles(self.files)
+        return instance
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,45 +157,14 @@ class FakeShell(Shell):
     """Replace Shell's slot; unexpected commands fail without launching a process."""
 
     def __init__(self, responses: Mapping[str, str | ProcResult] | None = None, **options) -> None:
-        self.responses = dict(responses or {})
+        self.responses = dict(responses if responses is not None else {})
         self.calls: list[CommandCall] = []
         super().__init__(implementation=_FakeCommands(self.responses, self.calls), **options)
 
-
-class InMemoryPersistence(MemoryPersistence):
-    """A controllable log backend with flush/close observations and write failure injection."""
-
-    def __init__(
-        self,
-        seed: Mapping[str, Iterable[SessionEvent]] | None = None,
-        *,
-        fail_after: int | None = None,
-    ) -> None:
-        super().__init__()
-        self.records = {key: list(events) for key, events in (seed or {}).items()}
-        self.fail_after = fail_after
-        self.writes = 0
-        self.flushes = 0
-        self.closed = False
-
-    def _check_open(self) -> None:
-        if self.closed:
-            raise RuntimeError("Persistence is closed")
-
-    async def load(self, session_id):
-        self._check_open()
-        return await super().load(session_id)
-
-    async def append(self, session_id, seq, event) -> None:
-        self._check_open()
-        if self.fail_after is not None and self.writes >= self.fail_after:
-            raise OSError("Injected persistence failure")
-        await super().append(session_id, seq, event)
-        self.writes += 1
-
-    async def flush(self) -> None:
-        self._check_open()
-        self.flushes += 1
-
-    async def aclose(self) -> None:
-        self.closed = True
+    def create_instance(self) -> Self:
+        """Keep command observations on the caller-owned fake recipe."""
+        instance = super().create_instance()
+        instance.responses = self.responses
+        instance.calls = self.calls
+        instance.implementation = _FakeCommands(self.responses, self.calls)
+        return instance

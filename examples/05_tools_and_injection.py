@@ -3,7 +3,13 @@
 import asyncio
 
 from examples.features.workspace import FailureNudge, WorkspaceTools
-from harnessed import Agent, ApprovalAnswer, PolicyDecision
+from harnessed import (
+    Agent,
+    ApprovalAnswer,
+    PluginOrder,
+    PolicyDecision,
+    SystemPrompt,
+)
 from harnessed.events import ToolCallFinishedEvent, ToolProgressEvent
 from harnessed.plugins import Approvals, Filesystem
 from harnessed.testing import ScriptedModel, call
@@ -22,10 +28,12 @@ async def main():
             "The file is missing. I will check the path first.",
         ]
     )
+    filesystem = Filesystem(root=".")
     agent = Agent(
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
         plugins=[
-            Filesystem(root="."),
+            filesystem,
             WorkspaceTools(),
             FailureNudge(threshold=2),
             Approvals(
@@ -35,7 +43,7 @@ async def main():
             ),
         ],
     )
-    async with agent.session("bundles") as session:
+    async with agent.session() as session:
         async for event in session.stream("Count the lines in the example file."):
             match event:
                 case ToolProgressEvent(text=text):

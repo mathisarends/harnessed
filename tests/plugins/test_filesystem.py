@@ -1,14 +1,31 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
 
-from harnessed import Agent, ToolCall
+from harnessed import (
+    Agent,
+    PluginOrder,
+    SystemPrompt,
+    ToolCall,
+)
 from harnessed.core.messages import ToolStatus
 from harnessed.core.model import ModelChunk
 from harnessed.core.tools.registry import ToolError, ToolRegistry
 from harnessed.plugins.filesystem import Filesystem, LocalFileSystem
 from harnessed.testing import ScriptedModel
+
+
+async def test_binary_reads_preserve_bytes_and_apply_byte_limits(tmp_path):
+    data = b"\xff\x00" + "ä😀".encode()
+    (tmp_path / "binary.bin").write_bytes(data)
+    file_system = LocalFileSystem(tmp_path)
+    assert await file_system.read_bytes(Path("binary.bin")) == data
+    assert await file_system.read_bytes(Path("binary.bin"), limit=3) == data[:3]
+    assert await file_system.read_bytes(Path("binary.bin"), limit=0) == b""
+    with pytest.raises(ValueError, match="non-negative"):
+        await file_system.read_bytes(Path("binary.bin"), limit=-1)
 
 
 async def test_ranged_reads_never_read_the_entire_file(tmp_path, monkeypatch):
@@ -56,7 +73,7 @@ async def test_edits_are_unambiguous_and_failed_atomic_replace_preserves_origina
     def fail_replace(*args):
         raise OSError("Disk rejected replace")
 
-    monkeypatch.setattr("harnessed.plugins.filesystem.os.replace", fail_replace)
+    monkeypatch.setattr(os, "replace", fail_replace)
     with pytest.raises(OSError, match="Disk rejected"):
         await fs.write(path, "lost")
     assert await fs.read(path) == "one one"
@@ -66,7 +83,12 @@ async def test_edits_are_unambiguous_and_failed_atomic_replace_preserves_origina
 async def test_filesystem_plugin_schema_bounds_search_notices_and_safe_approvals(tmp_path):
     (tmp_path / "large.txt").write_text("match\n" + "x" * 200_001, encoding="utf-8")
     (tmp_path / "other.txt").write_text("match", encoding="utf-8")
-    app = Agent(model=ScriptedModel([]), plugins=[Filesystem(tmp_path)])
+    filesystem = Filesystem(tmp_path)
+    app = Agent(
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+        model=ScriptedModel([]),
+        plugins=[filesystem],
+    )
     async with app.session() as session:
         registry = session.ctx[ToolRegistry]
         schemas = {definition.name: definition.parameters for definition in registry.definitions}
@@ -89,6 +111,11 @@ async def test_filesystem_plugin_schema_bounds_search_notices_and_safe_approvals
             "blocked",
         ]
     )
-    result = await Agent(model=model, plugins=[Filesystem(tmp_path)]).run("Write")
+    filesystem_2 = Filesystem(tmp_path)
+    result = await Agent(
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+        model=model,
+        plugins=[filesystem_2],
+    ).run("Write")
     assert result.tool_calls[0][1].status == ToolStatus.UNAVAILABLE
     assert not (tmp_path / "denied.txt").exists()

@@ -20,8 +20,7 @@ from harnessed.core.session.events import (
     SubagentStatus,
     ToolProgressEvent,
 )
-from harnessed.core.tools.context import ToolContext
-from harnessed.core.tools.registry import ToolError
+from harnessed.core.tools import ToolContext, ToolError
 
 if TYPE_CHECKING:
     from .session import Session
@@ -149,6 +148,24 @@ class ChildSessionSupervisor:
         finally:
             self.tasks.discard(running)
 
+    async def aclose(self) -> None:
+        self.closed = True
+        tasks = tuple(self.tasks)
+        for task in tasks:
+            if not task.done() and not task.cancelling():
+                task.cancel()
+        if tasks:
+            drained = asyncio.gather(*tasks, return_exceptions=True)
+            cancelled = False
+            while not drained.done():
+                try:
+                    await asyncio.shield(drained)
+                except asyncio.CancelledError:
+                    cancelled = True
+            drained.result()
+            if cancelled:
+                raise asyncio.CancelledError
+
     async def _run(self, started: SubagentStartedEvent, depth_limit: int) -> ToolResult:
         log = self.parent.log
         child: Session | None = None
@@ -230,21 +247,3 @@ class ChildSessionSupervisor:
             else ToolStatus.ERROR
         )
         return ToolResult(json.dumps(to_dict(receipt)), status)
-
-    async def aclose(self) -> None:
-        self.closed = True
-        tasks = tuple(self.tasks)
-        for task in tasks:
-            if not task.done() and not task.cancelling():
-                task.cancel()
-        if tasks:
-            drained = asyncio.gather(*tasks, return_exceptions=True)
-            cancelled = False
-            while not drained.done():
-                try:
-                    await asyncio.shield(drained)
-                except asyncio.CancelledError:
-                    cancelled = True
-            drained.result()
-            if cancelled:
-                raise asyncio.CancelledError

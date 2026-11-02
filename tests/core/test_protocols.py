@@ -3,8 +3,15 @@ from typing import Protocol
 
 import pytest
 
-from harnessed import Agent as Application
-from harnessed import ToolCall, plugin
+from harnessed import (
+    Agent as Application,
+)
+from harnessed import (
+    PluginOrder,
+    SystemPrompt,
+    ToolCall,
+    plugin,
+)
 from harnessed.core.approvals import Approver
 from harnessed.core.compaction import Summarizer
 from harnessed.core.hooks import ToolPolicy
@@ -12,7 +19,6 @@ from harnessed.core.messages import ApprovalAnswer, PolicyDecision
 from harnessed.core.model import Model, ModelChunk
 from harnessed.core.runtime.agent_loop import AgentFactory
 from harnessed.core.session.events import ToolCallFinishedEvent
-from harnessed.core.session.store import SessionPersistence
 from harnessed.core.tokens import TokenCounter
 from harnessed.kernel import Context
 from harnessed.plugins import Approvals
@@ -34,7 +40,6 @@ from harnessed.testing import ScriptedModel
         Summarizer,
         SpillStore,
         AgentFactory,
-        SessionPersistence,
     ],
 )
 def test_service_contracts_use_structural_protocols(contract):
@@ -56,6 +61,7 @@ class ForeignModel:
     def __init__(self, responses):
         self.backend = ScriptedModel(responses)
         self.info = self.backend.info
+        self.settings = self.backend.settings
         self.requests = self.backend.requests
 
     async def request(self, request):
@@ -83,9 +89,10 @@ async def test_foreign_fs_and_model_work_through_di_without_framework_inheritanc
     assert ForeignFiles.__bases__ == (object,)
     assert ForeignModel.__bases__ == (object,)
     async with Application(
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
         plugins=[Approvals(default=PolicyDecision.ALLOW), foreign_files(), FilesystemTools()],
-    ).session("foreign") as agent:
+    ).session() as agent:
         result = await agent.run("Write and read the note.")
         assert result.text == "done"
         assert files.files == {"note.txt": "hello"}
@@ -150,7 +157,7 @@ async def test_foreign_shell_and_approver_are_accepted_structurally(tmp_path):
             policy(),
         ],
     )
-    async with harness.session("foreign-shell") as agent:
+    async with harness.session() as agent:
         result = await agent.run("Run the tests.")
         returned = next(
             event.result for event in result.events if isinstance(event, ToolCallFinishedEvent)

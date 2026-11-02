@@ -43,6 +43,7 @@ class SessionControl:
         self.ready = False
         self.finishing = False
         self.closing = False
+        self.suspending = False
         self._changed = asyncio.Event()
         self._request_lock = asyncio.Lock()
         self._maintenance = asyncio.Lock()
@@ -54,16 +55,24 @@ class SessionControl:
         if self.closing or self.status is SessionStatus.CLOSED:
             raise SessionClosed("This session is closed")
 
+    def notify(self) -> None:
+        self._changed.set()
+        self._changed = asyncio.Event()
+
+    def fail(self, error: Exception) -> None:
+        """Stop admitting work and cancel the driver after an owned service fails."""
+        self.error = error
+        self.ready = False
+        if self.task is not None and not self.task.done():
+            self.task.cancel()
+        self.notify()
+
     def _check_external(self) -> None:
         self.check_open()
         if self._inside_driver():
             raise SessionStateError(
                 "A driver hook or tool cannot wait for its own control boundary"
             )
-
-    def notify(self) -> None:
-        self._changed.set()
-        self._changed = asyncio.Event()
 
     @asynccontextmanager
     async def _request(self) -> AsyncGenerator[None]:
@@ -133,6 +142,7 @@ class SessionControl:
                 raise self.error
             await self._changed.wait()
             self.check_open()
+        await self.log.flush()
 
     async def resume(self) -> None:
         self.check_open()
@@ -146,7 +156,7 @@ class SessionControl:
 
     @asynccontextmanager
     async def maintenance(self) -> AsyncGenerator[None]:
-        """Reserve an idle/paused boundary while permitting durable queued input."""
+        """Reserve an idle/paused boundary while permitting queued input."""
         self._check_external()
         task = asyncio.current_task()
         if self._maintenance_owner is task:
@@ -185,6 +195,56 @@ class SessionControl:
 
     async def abort(self, *, keep_inbox: bool = False) -> None:
         await self._terminate(immediate=True, keep_inbox=keep_inbox)
+
+    async def finish_termination(self) -> None:
+        self.finishing = True
+        await self.log.repair_interrupted()
+        self.notify()
+
+    async def finish_driver(self) -> None:
+        self.finishing = True
+        if self.log.control.stopped:
+            await self.finish_termination()
+        if self.log.control.state == ControlState.PAUSING:
+            await self.log.append(AgentControlChangedEvent(ControlState.PAUSED))
+        self.synchronize()
+
+    async def join(self) -> None:
+        """Wait for the current driver, including when it leaves deferred inputs pending."""
+        self._check_external()
+        while self.task is not None and not self.task.done():
+            await asyncio.shield(self.task)
+        if self.error is not None:
+            raise self.error
+
+    async def wait_until_idle(self) -> None:
+        self._check_external()
+        while True:
+            self.check_open()
+            if self.error is not None:
+                raise self.error
+            if self.status is SessionStatus.IDLE and not self.log.inbox.pending:
+                return
+            await self._changed.wait()
+
+    async def close(self, *, preserve_paused: bool = False) -> None:
+        if self.status is SessionStatus.CLOSED:
+            return
+        self._check_external()
+        async with self._request():
+            self.closing = True
+            self.suspending = preserve_paused and self.log.control.paused
+        if self.ready and not self.suspending and not self.log.persistence_failed:
+            await self._terminate(immediate=True, keep_inbox=False, during_close=True)
+        if self.task is not None and not self.task.done():
+            self.task.cancel()
+            try:
+                await asyncio.shield(self.task)
+            except asyncio.CancelledError:
+                if not self.task.cancelled():
+                    raise
+        self.status = SessionStatus.CLOSED
+        self.notify()
 
     async def _terminate(
         self, *, immediate: bool, keep_inbox: bool, during_close: bool = False
@@ -227,54 +287,3 @@ class SessionControl:
                     raise
                 await self.finish_termination()
         self.synchronize()
-
-    async def finish_termination(self) -> None:
-        self.finishing = True
-        await self.log.repair_interrupted()
-        self.notify()
-
-    async def finish_driver(self) -> None:
-        self.finishing = True
-        if self.log.control.stopped:
-            await self.finish_termination()
-        if self.log.control.state == ControlState.PAUSING:
-            await self.log.append(AgentControlChangedEvent(ControlState.PAUSED))
-        self.synchronize()
-
-    async def join(self) -> None:
-        """Wait for the current driver, including when it leaves deferred inputs pending."""
-        self._check_external()
-        while self.task is not None and not self.task.done():
-            await asyncio.shield(self.task)
-        if self.error is not None:
-            raise self.error
-
-    async def wait_until_idle(self) -> None:
-        self._check_external()
-        while True:
-            self.check_open()
-            if self.error is not None:
-                raise self.error
-            if self.status is SessionStatus.IDLE and not self.log.inbox.pending:
-                return
-            await self._changed.wait()
-
-    async def close(self) -> None:
-        if self.status is SessionStatus.CLOSED:
-            return
-        self._check_external()
-        async with self._request():
-            self.closing = True
-        # Startup rollback preserves queued work; a durable pause also survives close.
-        if self.ready and not self.log.control.paused:
-            await self._terminate(immediate=True, keep_inbox=False, during_close=True)
-        if self.task is not None and not self.task.done():
-            self.task.cancel()
-            try:
-                await asyncio.shield(self.task)
-            except asyncio.CancelledError:
-                if not self.task.cancelled():
-                    raise
-        await self.log.flush()
-        self.status = SessionStatus.CLOSED
-        self.notify()

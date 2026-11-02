@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "harnessed"
-version = "0.3.0"
-description = "A composable Python agent SDK with reversible plugins and a durable session log."
+version = "0.10.0"
+description = "A composable Python agent SDK with reversible plugins and explicit conversation state."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -26,7 +26,7 @@ dependencies = ["pydantic>=2.12,<3"]
 Documentation = "https://github.com/mathisarends/harnessed/blob/main/docs/index.md"
 Repository = "https://github.com/mathisarends/harnessed"
 Issues = "https://github.com/mathisarends/harnessed/issues"
-Changelog = "https://github.com/mathisarends/harnessed/blob/main/docs/releases.md"
+Changelog = "https://github.com/mathisarends/harnessed/blob/main/Changelog.md"
 
 [project.optional-dependencies]
 openai = ["pydantic-ai-slim[openai]>=2.63,<3"]
@@ -43,10 +43,12 @@ otel = [
 [dependency-groups]
 dev = [
     "mkdocs>=1.6,<2",
-    "pre-commit>=4,<5",
+    "prek>=0.5.9,<0.6",
+    "pylint>=4.1.3,<5",
     "pytest>=8,<10",
     "pytest-asyncio>=1,<2",
     "ruff>=0.17.3,<1",
+    "smelt-cli==0.4.0",
     "twine>=6.2,<7",
     "ty>=0.0.93,<0.1",
 ]
@@ -94,3 +96,31 @@ include = ["harnessed", "examples", "scripts", "tests/typing"]
 
 [tool.ty.rules]
 unused-ignore-comment = "error"
+
+[tool.pylint.main]
+py-version = "3.12"
+recursive = true
+prefer-stubs = true
+persistent = false
+
+[tool.pylint.messages_control]
+# Ruff owns syntax/style, ty owns types, and Smelt owns architecture.
+# Pylint adds control-flow, iteration-mutation and override checks. Generic
+# call/type inference cannot model the lazy SDK or dependency-injected lifecycle.
+disable = ["all"]
+enable = [
+    "F",
+    "possibly-used-before-assignment",
+    "used-before-assignment",
+    "modified-iterating-list",
+    "modified-iterating-dict",
+    "modified-iterating-set",
+    "arguments-renamed",
+    "invalid-overridden-method",
+    "overridden-final-method",
+    "subclassed-final-class",
+]
+
+[tool.pylint.reports]
+reports = false
+score = false

@@ -32,66 +32,6 @@ class PluginStatus(StrEnum):
     DISPOSED = "disposed"
 
 
-class _Runtime:
-    def __init__(self) -> None:
-        self.handles: list[PluginHandle] = []
-        self.task: asyncio.Task | None = None
-        self.dirty = False
-        self.errors: list[Exception] = []
-
-    def changed(self) -> None:
-        self.dirty = True
-        for handle in tuple(self.handles):
-            if (
-                handle.status == PluginStatus.STARTING
-                and handle._start_task is not None
-                and (handle._mount._closed or handle._signature() != handle._starting_signature)
-            ):
-                handle._start_task.cancel()
-        if not self.handles or (self.task is not None and not self.task.done()):
-            return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return
-        self.task = loop.create_task(self.reconcile(), name="harnessed:composition")
-
-    async def reconcile(self) -> None:
-        blocked = set()
-        while self.dirty:
-            self.dirty = False
-            for handle in tuple(self.handles):
-                if handle in blocked or (
-                    handle._disposed
-                    or handle._mount._closed
-                    or handle.status in (PluginStatus.STARTING, PluginStatus.STOPPING)
-                ):
-                    continue
-                signature = handle._signature()
-                try:
-                    cycle = handle._cycle(signature)
-                    if cycle:
-                        blocked.update(cycle)
-                        await handle._suspend()
-                        raise RuntimeError(
-                            "Cyclic plugin needs: " + " -> ".join(h.name for h in cycle)
-                        )
-                    if (
-                        handle.status == PluginStatus.ACTIVE
-                        and signature != handle._active_signature
-                    ):
-                        await handle._suspend()
-                    signature = handle._signature()
-                    if signature is not None and handle.status in (
-                        PluginStatus.WAITING,
-                        PluginStatus.FAILED,
-                    ):
-                        if signature != handle._failed_signature:
-                            await handle._activate()
-                except Exception as exc:
-                    self.errors.append(exc)
-
-
 class PluginHandle:
     """An owned recipe. Dependency loss suspends it; aclose permanently removes it."""
 
@@ -110,6 +50,18 @@ class PluginHandle:
         self._starting_signature = None
         self._start_task: asyncio.Task | None = None
         self._dependents: set[PluginHandle] = set()
+        self._instance: PluginBase | None = None
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc) -> None:
+        await self.aclose()
+
+    @property
+    def instance(self) -> PluginBase | None:
+        """The current class-plugin activation, or None while waiting or disposed."""
+        return self._instance
 
     @property
     def missing_services(self) -> tuple[ServiceKey[Any], ...]:
@@ -126,6 +78,18 @@ class PluginHandle:
                 missing.append(key)
         return tuple(missing)
 
+    async def aclose(self) -> None:
+        if self._disposed:
+            return
+        self._disposed = True
+        runtime = self._mount._scope.runtime
+        runtime.handles.remove(self)
+        try:
+            await self._suspend()
+        finally:
+            self.status = PluginStatus.DISPOSED
+            runtime.changed()
+
     def _signature(self):
         try:
             bindings = tuple(self._mount._binding(key, exclude=self) for key in self.spec.needs)
@@ -137,7 +101,13 @@ class PluginHandle:
             for binding in bindings
         ):
             return None
-        return bindings
+        observed = []
+        for key in self.spec.observes:
+            try:
+                observed.append(self._mount._binding(key, exclude=self))
+            except MissingService:
+                observed.append(None)
+        return (*bindings, *observed)
 
     def _cycle(self, signature):
         def visit(handle, path):
@@ -146,12 +116,16 @@ class PluginHandle:
             if handle in path:
                 return None
             for binding in handle._active_signature or ():
+                if binding is None:
+                    continue
                 provider = binding.owner._handle
                 if provider is not None and (cycle := visit(provider, [*path, handle])):
                     return cycle
             return None
 
         for binding in signature or ():
+            if binding is None:
+                continue
             provider = binding.owner._handle
             if provider is not None and (cycle := visit(provider, [])):
                 return cycle
@@ -199,6 +173,8 @@ class PluginHandle:
             self.ctx = child = self._mount._child(self._mount._scope)
             child._handle = self
             for binding in signature:
+                if binding is None:
+                    continue
                 provider = binding.owner._handle
                 if provider is not None:
                     provider._dependents.add(self)
@@ -213,7 +189,8 @@ class PluginHandle:
                             f"Plugin {spec.name} must be an async generator yielding once"
                         )
                     try:
-                        await anext(generator)
+                        instance = await anext(generator)
+                        self._instance = instance if isinstance(instance, PluginBase) else None
                     except StopAsyncIteration as exc:
                         raise RuntimeError(f"Plugin {spec.name} did not yield") from exc
 
@@ -245,7 +222,10 @@ class PluginHandle:
                         await self._mount.dispatch(PluginFailed(self.name, self.error))
                     except Exception:
                         logger.exception("PluginFailed observer failed for %s", self.name)
-                await child.aclose()
+                try:
+                    await child.aclose()
+                finally:
+                    self._instance = None
                 raise
 
     async def _suspend(self, visited: set | None = None) -> None:
@@ -271,25 +251,68 @@ class PluginHandle:
             finally:
                 self.status = PluginStatus.WAITING
                 self._active_signature = None
+                self._instance = None
                 self._mount._scope.runtime.changed()
 
-    async def aclose(self) -> None:
-        if self._disposed:
+
+class _Runtime:
+    def __init__(self) -> None:
+        self.handles: list[PluginHandle] = []
+        self.task: asyncio.Task | None = None
+        self.dirty = False
+        self.errors: list[Exception] = []
+
+    def changed(self) -> None:
+        self.dirty = True
+        for handle in tuple(self.handles):
+            if (
+                handle.status == PluginStatus.STARTING
+                and handle._start_task is not None
+                and (handle._mount._closed or handle._signature() != handle._starting_signature)
+            ):
+                handle._start_task.cancel()
+        if not self.handles or (self.task is not None and not self.task.done()):
             return
-        self._disposed = True
-        runtime = self._mount._scope.runtime
-        runtime.handles.remove(self)
         try:
-            await self._suspend()
-        finally:
-            self.status = PluginStatus.DISPOSED
-            runtime.changed()
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        self.task = loop.create_task(self._reconcile(), name="harnessed:composition")
 
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc) -> None:
-        await self.aclose()
+    async def _reconcile(self) -> None:
+        blocked = set()
+        while self.dirty:
+            self.dirty = False
+            for handle in tuple(self.handles):
+                if handle in blocked or (
+                    handle._disposed
+                    or handle._mount._closed
+                    or handle.status in (PluginStatus.STARTING, PluginStatus.STOPPING)
+                ):
+                    continue
+                signature = handle._signature()
+                try:
+                    cycle = handle._cycle(signature)
+                    if cycle:
+                        blocked.update(cycle)
+                        await handle._suspend()
+                        raise RuntimeError(
+                            "Cyclic plugin needs: " + " -> ".join(h.name for h in cycle)
+                        )
+                    if (
+                        handle.status == PluginStatus.ACTIVE
+                        and signature != handle._active_signature
+                    ):
+                        await handle._suspend()
+                    signature = handle._signature()
+                    if signature is not None and handle.status in (
+                        PluginStatus.WAITING,
+                        PluginStatus.FAILED,
+                    ):
+                        if signature != handle._failed_signature:
+                            await handle._activate()
+                except Exception as exc:
+                    self.errors.append(exc)
 
 
 @overload

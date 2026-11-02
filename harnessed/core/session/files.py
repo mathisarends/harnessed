@@ -28,11 +28,11 @@ _KEY = TypeAdapter(FileKey, config=_CONFIG)
 _RANGE = TypeAdapter(tuple[FileOffset, ReadLimit], config=_CONFIG)
 
 
-def validate_file_key(key: str) -> str:
+def _validate_file_key(key: str) -> str:
     return _KEY.validate_python(key)
 
 
-def validate_file_range(offset: int, limit: int) -> tuple[int, int]:
+def _validate_file_range(offset: int, limit: int) -> tuple[int, int]:
     return _RANGE.validate_python((offset, limit))
 
 
@@ -41,6 +41,22 @@ class StoredFile:
     key: str
     size_bytes: int
     modified_ns: int
+
+
+@dataclass(frozen=True)
+class TextValue:
+    key: FileKey
+    text: str
+    modified_ns: int
+
+    def __post_init__(self) -> None:
+        _validate_file_key(self.key)
+        if (
+            not isinstance(self.text, str)
+            or type(self.modified_ns) is not int
+            or self.modified_ns < 0
+        ):
+            raise ValueError("Text resources require string content and a non-negative timestamp")
 
 
 class SessionFiles(Protocol):
@@ -53,30 +69,41 @@ class SessionFiles(Protocol):
 
 
 class MemoryFiles:
-    """Artifacts retained alongside the in-memory log across live session leases."""
+    """Text resources owned by one live conversation."""
 
-    def __init__(self) -> None:
-        self._values: dict[str, tuple[str, int]] = {}
+    def __init__(self, values: tuple[TextValue, ...] = ()) -> None:
+        self._values: dict[str, tuple[str, int]] = {
+            value.key: (value.text, value.modified_ns) for value in values
+        }
+
+    def snapshot(self, keys: set[str] | None = None) -> tuple[TextValue, ...]:
+        keys = set(self._values) if keys is None else keys
+        return tuple(
+            TextValue(key, *self._values[key]) for key in sorted(keys) if key in self._values
+        )
+
+    def retain(self, keys: set[str]) -> None:
+        self._values = {key: value for key, value in self._values.items() if key in keys}
 
     async def put(self, key: str, text: str) -> None:
-        key = validate_file_key(key)
+        key = _validate_file_key(key)
         if not isinstance(text, str):
             raise TypeError("Session file content must be text")
         self._values[key] = text, time_ns()
 
     async def read(self, key: str, *, offset: int = 0, limit: int = 4000) -> str:
-        key = validate_file_key(key)
-        offset, limit = validate_file_range(offset, limit)
+        key = _validate_file_key(key)
+        offset, limit = _validate_file_range(offset, limit)
         try:
             return self._values[key][0][offset : offset + limit]
         except KeyError:
             raise FileNotFoundError(key) from None
 
     async def remove(self, key: str) -> None:
-        self._values.pop(validate_file_key(key), None)
+        self._values.pop(_validate_file_key(key), None)
 
     def clear(self) -> None:
-        """Release all artifacts when the owning memory store deletes a session."""
+        """Release the live session's text resources."""
         self._values.clear()
 
     async def entries(self) -> tuple[StoredFile, ...]:

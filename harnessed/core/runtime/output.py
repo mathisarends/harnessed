@@ -1,9 +1,7 @@
-from __future__ import annotations
-
 from dataclasses import replace
 
 from harnessed.core.errors import ConfigError, SessionStateError
-from harnessed.core.messages import Assistant, ToolResult, User
+from harnessed.core.messages import AssistantMessage, ToolResult, UserMessage
 from harnessed.core.model import (
     Model,
     ModelRequest,
@@ -35,18 +33,16 @@ class OutputHandler:
         self.options = options
         self.values = values
 
-    def prepare(self, request: ModelRequest, schema: OutputSchema | None) -> ModelRequest:
+    def prepare(
+        self, request: ModelRequest, schema: OutputSchema | None, *, model: Model
+    ) -> ModelRequest:
         """Expose either native JSON output or one reserved, side-effect-free answer tool."""
         if schema is None:
             return request
         self.ctx[OutputTypes].resolve(schema)
         if any(tool.name == FINAL_ANSWER for tool in request.tools):
             raise ConfigError("The tool name 'final_answer' is reserved for structured output")
-        mode = (
-            OutputMode.NATIVE
-            if self.ctx[Model].info.supports_structured_output
-            else OutputMode.TOOL
-        )
+        mode = OutputMode.NATIVE if model.info.supports_structured_output else OutputMode.TOOL
         schema = replace(schema, mode=mode)
         tools = request.tools
         if mode == OutputMode.TOOL:
@@ -61,7 +57,7 @@ class OutputHandler:
         return replace(request, tools=tools, output_schema=schema)
 
     async def validate(
-        self, response: Assistant, schema: OutputSchema | None
+        self, response: AssistantMessage, schema: OutputSchema | None
     ) -> tuple[dict[str, ToolResult], str | None]:
         """Commit the verdict before control-call pairs; return a bounded terminal failure."""
         if schema is None:
@@ -108,7 +104,7 @@ class OutputHandler:
                 )
             if not outputs:
                 await self.log.append(
-                    ContextMessageEvent(User(note), ContextLifetime.TURN, current.id)
+                    ContextMessageEvent(UserMessage(note), ContextLifetime.TURN, current.id)
                 )
             return (
                 {call.id: ToolResult.error(note) for call in outputs},

@@ -18,6 +18,7 @@ from harnessed.kernel import hook
 from harnessed.models import ModelChunk
 from harnessed.plugins import Approvals
 from harnessed.testing import ScriptedModel
+from tests._audit import Audit
 
 type Notification = Annotated[
     events.TextDeltaEvent | events.ReasoningDeltaEvent | events.ApprovalNeededEvent,
@@ -30,6 +31,7 @@ def test_public_event_exports_cover_every_builtin_with_one_canonical_class_name(
         get_origin(kind) or kind for kind in get_args(get_args(StreamEvent.__value__)[0])
     }
     kinds = set(SESSION_EVENT_TYPES.values()) | stream_types
+    assert kinds
     for kind in kinds:
         assert kind.__name__.endswith("Event")
         assert getattr(events, kind.__name__) is kind
@@ -87,6 +89,7 @@ async def test_direct_public_event_imports_observe_the_canonical_runtime_events(
         plugins=[Observer(), Approvals(default=PolicyDecision.ALLOW)],
     )
     async with agent.session() as session:
+        session_audit = Audit(session)
         await session.run("Say hello")
         assert [type(event) for event in observed] == [
             AssistantMessageEvent,
@@ -94,12 +97,12 @@ async def test_direct_public_event_imports_observe_the_canonical_runtime_events(
             AssistantMessageEvent,
             TurnEndedEvent,
         ]
-        assert all(any(event is record for record in session.events) for event in observed)
+        assert all(any(event is record for record in session_audit.events) for event in observed)
 
 
 def test_current_record_format_roundtrips_the_turn_end_payload():
     record = {
-        "version": 2,
+        "version": 3,
         "type": "turn.end",
         "data": {"turn_id": "turn", "reason": "completed"},
     }
@@ -127,7 +130,7 @@ def test_data_notifications_roundtrip_through_a_discriminated_union():
 def test_namespaced_log_events_use_canonical_tags_only():
     event = events.TurnStartedEvent("turn")
     record = encode_event(event)
-    assert record["type"] == "turn.start" and record["version"] == 2
+    assert record["type"] == "turn.start" and record["version"] == 3
     record.update(type="TurnStartedEvent", version=3)
     with pytest.raises(ValueError):
         decode_event(record)
@@ -139,3 +142,14 @@ def test_live_notifications_cannot_spoof_a_different_registered_discriminator():
     registry = events.EventRegistry()
     with pytest.raises(TypeError, match="registered"):
         registry.validate(events.TextDeltaEvent("message", "hello", type="reasoning.delta"))
+
+
+def test_compaction_lifecycle_roundtrips_as_live_events_but_cannot_enter_the_durable_codec():
+    adapter = TypeAdapter(StreamEvent[None])
+    for event in (
+        events.CompactionStartedEvent("compact"),
+        events.CompactionFinishedEvent("compact", events.CompactionOutcome.CANCELLED),
+    ):
+        assert adapter.validate_json(adapter.dump_json(event)) == event
+        with pytest.raises(TypeError):
+            encode_event(event)

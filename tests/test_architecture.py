@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from harnessed.kernel.plugin import PluginStatus
+from harnessed.kernel import PluginStatus
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "harnessed"
@@ -57,7 +57,9 @@ def test_imports_follow_layer_direction_and_public_boundaries():
 
 
 def test_optional_integrations_and_features_are_isolated():
-    for path in PACKAGE.rglob("*.py"):
+    paths = tuple(PACKAGE.rglob("*.py"))
+    assert paths
+    for path in paths:
         relative = path.relative_to(PACKAGE).as_posix()
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             imported = []
@@ -77,7 +79,7 @@ def test_optional_integrations_and_features_are_isolated():
                     assert relative == "models/pydantic_ai.py", relative
                 if module == "yaml":
                     assert relative == "plugins/skills.py", relative
-                if module.split(".")[0] in {"mcp", "jsonschema", "referencing"}:
+                if module.split(".")[0] in {"mcp", "jsonschema", "referencing", "httpx", "anyio"}:
                     assert relative == "plugins/mcp.py", relative
                 if relative.startswith("plugins/") and relative != "plugins/__init__.py":
                     assert module != "harnessed.plugins", relative
@@ -127,6 +129,7 @@ def test_validation_is_explicit_and_otel_is_optional_and_isolated():
         "harnessed.hooks",
         "harnessed.models",
         "harnessed.plugins",
+        "harnessed.sessions",
     ],
 )
 def test_public_exports_resolve_to_their_canonical_classes_and_functions(module):
@@ -156,10 +159,19 @@ def test_public_exports_resolve_to_their_canonical_classes_and_functions(module)
 def test_application_facade_stays_small_and_has_no_transitional_names():
     import harnessed
 
-    assert len(harnessed.__all__) <= 33
-    assert {"Agent", "Session", "Plugin", "tool", "RunResult", "ToolContext"} <= set(
-        harnessed.__all__
-    )
+    assert len(harnessed.__all__) <= 45
+    assert {
+        "Agent",
+        "Session",
+        "SessionState",
+        "Plugin",
+        "Kit",
+        "CompositionDescription",
+        "tool",
+        "RunResult",
+        "ToolContext",
+    } <= set(harnessed.__all__)
+    assert {"PluginOrder", "SectionDelivery"} <= set(harnessed.__all__)
     assert not {
         "ApprovalRequest",
         "Harness",
@@ -167,8 +179,26 @@ def test_application_facade_stays_small_and_has_no_transitional_names():
         "Bundle",
         "FileSystemBackend",
         "Shell",
-        "SystemPrompt",
+        "Section",
     } & set(harnessed.__all__)
+
+
+@pytest.mark.parametrize(
+    "name", ["SystemMessage", "UserMessage", "AssistantMessage", "ToolMessage"]
+)
+def test_message_facade_uses_explicit_canonical_names_without_aliases(name: str) -> None:
+    import harnessed.core.messages as messages
+    import harnessed.models as models
+
+    assert getattr(models, name) is getattr(messages, name)
+
+
+@pytest.mark.parametrize("name", ["System", "User", "Assistant", "ToolReply"])
+def test_message_variants_have_no_transitional_aliases(name: str) -> None:
+    import harnessed.core.messages as messages
+    import harnessed.models as models
+
+    assert not hasattr(messages, name) and not hasattr(models, name)
 
 
 def test_package_root_has_only_public_entrypoints_and_no_transition_modules():
@@ -177,6 +207,7 @@ def test_package_root_has_only_public_entrypoints_and_no_transition_modules():
         "agent.py",
         "errors.py",
         "hooks.py",
+        "sessions.py",
     }
     assert (PACKAGE / "events" / "__init__.py").is_file()
     assert not (PACKAGE / "std").exists()
@@ -254,4 +285,12 @@ def test_lazy_sdk_exports_and_type_stub_stay_in_sync():
         if isinstance(node, ast.ImportFrom) and not node.level
         for alias in node.names
     }
-    assert declared == harnessed._EXPORTS
+    source = ast.parse((PACKAGE / "__init__.py").read_text(encoding="utf-8"))
+    exports = next(
+        node.value
+        for node in source.body
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "_EXPORTS" for target in node.targets)
+    )
+    assert declared == ast.literal_eval(exports)
+    assert set(declared) == set(harnessed.__all__)

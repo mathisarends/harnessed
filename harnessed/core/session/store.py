@@ -1,138 +1,192 @@
-from collections.abc import AsyncGenerator
-from contextlib import AbstractAsyncContextManager, asynccontextmanager
-from typing import Annotated, Protocol
+import asyncio
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Protocol
 
-from pydantic import ConfigDict, Field, StringConstraints, TypeAdapter
+from harnessed.core.errors import SessionStateError
 
-from harnessed.core.errors import SessionLocked
-from harnessed.core.plugin import Plugin, PluginConfig
-from harnessed.core.session.events import SessionEvent
-from harnessed.core.session.files import MemoryFiles, SessionFiles, validate_file_key
-from harnessed.kernel import Context
+from .checkpoint import CheckpointExtension, SessionCheckpoint
+from .commit import SessionChange, SessionCommit
+from .events import (
+    AgentControlChangedEvent,
+    ApprovalRequestedEvent,
+    ApprovalResolvedEvent,
+    ApprovalRevokedEvent,
+    CompactionAppliedEvent,
+    ContextValueChangedEvent,
+    InboxAddedEvent,
+    InboxRemovedEvent,
+    ModelRequestedEvent,
+    ToolCallFinishedEvent,
+    ToolExecutionFinishedEvent,
+    ToolExecutionStartedEvent,
+    TurnEndedEvent,
+)
 
-type SessionID = Annotated[str, StringConstraints(pattern=r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$")]
-_SESSION_ID = TypeAdapter(SessionID, config=ConfigDict(strict=True, hide_input_in_errors=True))
 
+@dataclass(frozen=True)
+class StoredSession:
+    """A typed Harnessed checkpoint and its repository revision."""
 
-def validate_session_id(value: str) -> str:
-    """Use one identifier contract for every storage backend."""
-    selected = _SESSION_ID.validate_python(value, strict=True)
-    validate_file_key(f"{selected}.jsonl")
-    return selected
+    checkpoint: SessionCheckpoint
+    revision: int
 
-
-class SessionPersistence(Protocol):
-    async def load(self, session_id: str) -> tuple[SessionEvent, ...]: ...
-    async def append(self, session_id: str, seq: int, event: SessionEvent) -> None: ...
-    async def flush(self) -> None: ...
-    async def aclose(self) -> None: ...
+    def __post_init__(self) -> None:
+        if not isinstance(self.checkpoint, SessionCheckpoint):
+            raise TypeError("Stored sessions require a SessionCheckpoint")
+        if type(self.revision) is not int or self.revision < 1:
+            raise ValueError("Session revisions must be positive integers")
 
 
 class SessionStore(Protocol):
-    """Lease a single writer for an existing or new session."""
+    """Application-owned persistence; each save is an atomic compare-and-set.
 
-    def open(self, session_id: str) -> AbstractAsyncContextManager[SessionPersistence]: ...
-    def files(self, session_id: str) -> SessionFiles: ...
-    async def list(self) -> tuple[str, ...]: ...
-    async def delete(self, session_id: str) -> None: ...
-
-
-class MemoryPersistence:
-    """Shared in-process log storage; closing a lease preserves its records."""
-
-    def __init__(self) -> None:
-        self.records: dict[str, list[SessionEvent]] = {}
-
-    async def load(self, session_id: str) -> tuple[SessionEvent, ...]:
-        return tuple(self.records.get(session_id, ()))
-
-    async def append(self, session_id: str, seq: int, event: SessionEvent) -> None:
-        records = self.records.setdefault(session_id, [])
-        if seq != len(records):
-            raise ValueError("Session append sequence does not match the stored log")
-        records.append(event)
-
-    async def flush(self) -> None:
-        pass
-
-    async def aclose(self) -> None:
-        pass
-
-
-class _MemoryStore:
-    def __init__(self, max_sessions: int | None = None) -> None:
-        self.persistence = MemoryPersistence()
-        self.max_sessions = max_sessions
-        self._active: set[str] = set()
-        self._files: dict[str, MemoryFiles] = {}
-        self._retained: dict[str, None] = {}
-
-    def files(self, session_id: str) -> SessionFiles:
-        session_id = validate_session_id(session_id)
-        return self._files.setdefault(session_id, MemoryFiles())
-
-    async def list(self) -> tuple[str, ...]:
-        return tuple(
-            sorted(
-                self.persistence.records.keys()
-                | self._files.keys()
-                | self._active
-                | self._retained.keys()
-            )
-        )
-
-    async def delete(self, session_id: str) -> None:
-        session_id = validate_session_id(session_id)
-        if session_id in self._active:
-            raise SessionLocked(f"Session {session_id!r} still has a live owner")
-        self._discard(session_id)
-
-    def _discard(self, session_id: str) -> None:
-        files = self._files.pop(session_id, None)
-        if files is not None:
-            files.clear()
-        self.persistence.records.pop(session_id, None)
-        self._retained.pop(session_id, None)
-
-    def _prune(self) -> None:
-        if self.max_sessions is not None:
-            while len(self._retained) > self.max_sessions:
-                self._discard(next(iter(self._retained)))
-
-    @asynccontextmanager
-    async def open(self, session_id: str) -> AsyncGenerator[SessionPersistence]:
-        session_id = validate_session_id(session_id)
-        if session_id in self._active:
-            raise SessionLocked(f"Session {session_id!r} already has a live owner")
-        self._retained.pop(session_id, None)
-        self._active.add(session_id)
-        try:
-            yield self.persistence
-        finally:
-            self._active.remove(session_id)
-            self._retained[session_id] = None
-            self._prune()
-
-
-class MemorySessionsConfig(PluginConfig):
-    max_sessions: Annotated[int, Field(ge=0)] | None = None
-
-
-class MemorySessions(Plugin, slot="sessions"):
-    """Retain at most max_sessions closed conversations, most recently closed first.
-
-    None retains every conversation; zero discards logs and artifacts on close.
-    Active leases never count toward the limit and cannot be evicted. This is
-    a conversation-count limit, not a byte limit on an individual live session.
+    None expects a missing entry. Successful saves return the next positive
+    revision; conflicts raise SessionWriteConflict. Acknowledgement means the
+    checkpoint and any application projection of its changes committed together.
+    Stores may ignore changes when no projection is needed. Applications coordinate
+    active workers separately: revision checks prevent lost updates, not duplicate
+    external tool side effects.
     """
 
-    Config = MemorySessionsConfig
+    async def load_session(self, conversation_id: str) -> StoredSession | None: ...
 
-    config: MemorySessionsConfig
+    async def save_session(
+        self,
+        conversation_id: str,
+        commit: SessionCommit,
+        *,
+        expected_revision: int | None,
+    ) -> int: ...
 
-    def __init__(self, *, max_sessions: int | None = None) -> None:
-        super().__init__(max_sessions=max_sessions)
-        self.store = _MemoryStore(self.config.max_sessions)
 
-    async def setup(self, ctx: Context) -> None:
-        ctx.provide(SessionStore, self.store)
+class SessionPersistence:
+    """Coalesce intermediate state behind explicit durability barriers.
+
+    The log owns state capture and the write lock. One delayed task requests the
+    latest state; pending changes retain event references, not checkpoint copies.
+    A failed write poisons the binding and notifies the active runtime.
+    """
+
+    def __init__(self, store: SessionStore, conversation_id: str, revision: int | None) -> None:
+        self._store = store
+        self._conversation_id = conversation_id
+        self._revision = revision
+        self._failure: Exception | None = None
+        self._reported = False
+        self._changes: list[SessionChange] = []
+        self._closing = False
+        self._wake = asyncio.Event()
+        self._task: asyncio.Task[None] | None = None
+        self._flush: Callable[[], Awaitable[None]] | None = None
+        self._on_failure: Callable[[Exception], None] | None = None
+
+    def bind(self, flush: Callable[[], Awaitable[None]]) -> None:
+        self._flush = flush
+
+    def set_error_handler(self, callback: Callable[[Exception], None]) -> None:
+        self._on_failure = callback
+
+    @property
+    def failed(self) -> bool:
+        return self._failure is not None
+
+    def check(self, *, report: bool = True) -> None:
+        if self._failure is not None:
+            if report:
+                self._reported = True
+            raise self._failure
+
+    def record(self, change: SessionChange) -> bool:
+        self.check()
+        self._changes.append(change)
+        if self._closing:
+            # Kernel-owned teardown can still remove named facts after the runtime
+            # closes. Commit those changes inline without restarting the timer.
+            return True
+        if isinstance(
+            change.event,
+            InboxAddedEvent
+            | InboxRemovedEvent
+            | ModelRequestedEvent
+            | ToolExecutionStartedEvent
+            | ToolExecutionFinishedEvent
+            | ToolCallFinishedEvent
+            | TurnEndedEvent
+            | AgentControlChangedEvent
+            | ApprovalRequestedEvent
+            | ApprovalResolvedEvent
+            | ApprovalRevokedEvent
+            | ContextValueChangedEvent
+            | CompactionAppliedEvent
+            | CheckpointExtension,
+        ):
+            return True
+        self._schedule()
+        return False
+
+    async def flush(self, capture: Callable[[], SessionCheckpoint], *, report: bool = True) -> None:
+        """Commit the latest dirty state while the owning log holds its lock."""
+        self.check(report=report)
+        if not self._changes:
+            return
+        try:
+            commit = SessionCommit(capture(), tuple(self._changes))
+            revision = await self._store.save_session(
+                self._conversation_id, commit, expected_revision=self._revision
+            )
+            expected = 1 if self._revision is None else self._revision + 1
+            if type(revision) is not int or revision != expected:
+                raise SessionStateError("A session store must return the next revision")
+            self._revision = revision
+            self._changes.clear()
+        except Exception as error:
+            self._failure = error
+            if report:
+                self._reported = True
+            raise
+
+    async def aclose(self) -> None:
+        """Drain pending work; already reported failures are not raised twice."""
+        self._closing = True
+        self._wake.set()
+        try:
+            task = self._task
+            if task is not None:
+                await asyncio.shield(task)
+            if self._failure is not None:
+                if not self._reported:
+                    self.check()
+                return
+            flush = self._flush
+            if flush is not None:
+                await flush()
+        finally:
+            self._flush = None
+            self._on_failure = None
+
+    def _schedule(self) -> None:
+        if self._task is None and not self._closing:
+            self._task = asyncio.create_task(self._deferred(), name="harnessed:persistence")
+
+    async def _deferred(self) -> None:
+        try:
+            try:
+                await asyncio.wait_for(self._wake.wait(), timeout=_CHECKPOINT_INTERVAL)
+            except TimeoutError:
+                pass
+            flush = self._flush
+            if flush is not None:
+                await flush()
+        except Exception as error:
+            self._failure = error
+            callback = self._on_failure
+            if callback is not None:
+                callback(error)
+        finally:
+            self._task = None
+            if self._changes and self._failure is None:
+                self._schedule()
+
+
+_CHECKPOINT_INTERVAL = 0.1

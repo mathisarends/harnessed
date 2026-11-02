@@ -5,11 +5,11 @@ import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from harnessed import Agent, Plugin, PolicyDecision, Role, Section, ToolCall, tool
+from harnessed import Agent, Plugin, PluginOrder, PolicyDecision, Role, SystemPrompt, ToolCall, tool
 from harnessed.events import ToolCallFinishedEvent
 from harnessed.kernel import Inject
 from harnessed.models import ModelChunk
-from harnessed.plugins import AgentLoop, Approvals, Filesystem, Instructions
+from harnessed.plugins import AgentLoop, Approvals, Filesystem, PromptRenderer
 from harnessed.plugins.filesystem import FileSystemBackend
 from harnessed.testing import ScriptedModel
 
@@ -39,7 +39,7 @@ async def independent_calls():
     async with Agent(
         model=model,
         plugins=[AgentLoop(max_parallel_tools=3), Approvals(default=PolicyDecision.ALLOW), tools],
-    ).session("lookups") as session:
+    ).session() as session:
         result = await session.run("Look up records 0, 1 and 2.")
         returned = [event for event in result.events if isinstance(event, ToolCallFinishedEvent)]
         print("Actual completion order:", completion_order)
@@ -76,15 +76,16 @@ async def writes_with_resource_keys(root: Path):
         ToolCall("save_document", {"path": "./a.txt", "text": "second version"}),
     ]
     model = ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "Documents saved."])
+    filesystem = Filesystem(root)
     async with Agent(
         model=model,
         plugins=[
             Approvals(default=PolicyDecision.ALLOW),
-            Filesystem(root),
-            Instructions([Section.from_file(Path(root) / "AGENTS.md", missing_ok=True)]),
+            filesystem,
+            PromptRenderer(SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)),
             tools,
         ],
-    ).session("documents") as session:
+    ).session() as session:
         result = await session.run("Save both documents and then update a.txt.")
         returned = [event for event in result.events if isinstance(event, ToolCallFinishedEvent)]
         assert all(not event.result.is_error for event in returned)

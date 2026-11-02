@@ -1,7 +1,12 @@
 import pytest
 
-from harnessed import Agent, Plugin, Section
-from harnessed.core.prompt.system_prompt import SystemPrompt
+from harnessed import (
+    Agent,
+    Instructions,
+    PluginOrder,
+    SystemPrompt,
+)
+from harnessed.core.prompt.system_prompt import SystemPromptStore
 from harnessed.kernel import Context, plugin
 from harnessed.testing import ScriptedModel
 
@@ -16,13 +21,14 @@ async def test_session_section_factories_render_once_and_own_their_registrations
 
     instructions = tmp_path / "instructions.md"
     instructions.write_text("Project rules.", encoding="utf-8")
-    section = Section.from_factory(
-        "catalog", catalog, description="Catalog read at session startup"
+    section = Instructions.from_factory(
+        factory=catalog, description="Catalog read at session startup"
     )
     app = Agent(
         model=ScriptedModel(["one", "two"]),
-        instructions=[Section.from_file(instructions)],
-        plugins=[Plugin(guidance=section)],
+        prompt=SystemPrompt.from_plugins(
+            Instructions.from_file(path=instructions), section, order=PluginOrder.AS_LISTED
+        ),
     )
     async with app.session() as first:
         await first.run("One")
@@ -40,12 +46,12 @@ async def test_session_section_factory_requires_an_explicit_owner():
         return "catalog"
 
     with pytest.raises(ValueError, match="session context"):
-        await Section.from_factory("catalog", catalog).render()
+        await Instructions.from_factory(factory=catalog).render()
 
 
 async def test_owned_snapshot_restores_the_previous_prompt_on_disposal():
     async with Context() as ctx:
-        prompt = SystemPrompt(ctx)
+        prompt = SystemPromptStore(ctx)
         prompt.fixed("base")
         owner = ctx.extend()
         remove = prompt.fixed("override", owner=owner)
@@ -60,7 +66,7 @@ async def test_owned_snapshot_restores_the_previous_prompt_on_disposal():
 
 async def test_equal_snapshot_values_still_have_independent_disposers():
     async with Context() as ctx:
-        prompt = SystemPrompt(ctx)
+        prompt = SystemPromptStore(ctx)
         first = prompt.fixed("same")
         prompt.fixed("middle")
         last = prompt.fixed("same")
@@ -71,15 +77,15 @@ async def test_equal_snapshot_values_still_have_independent_disposers():
 
 
 async def test_failed_plugin_setup_rolls_back_its_prompt_snapshot():
-    @plugin(needs=[SystemPrompt])
+    @plugin(needs=[SystemPromptStore])
     async def broken(ctx):
-        ctx[SystemPrompt].fixed("must disappear")
+        ctx[SystemPromptStore].fixed("must disappear")
         raise ValueError("setup failed")
         yield
 
     async with Context() as ctx:
-        prompt = SystemPrompt(ctx)
-        ctx.provide(SystemPrompt, prompt)
+        prompt = SystemPromptStore(ctx)
+        ctx.provide(SystemPromptStore, prompt)
         prompt.fixed("base")
         with pytest.raises(ValueError, match="setup failed"):
             await ctx.plugin(broken())

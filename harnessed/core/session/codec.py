@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Mapping
-from dataclasses import fields, is_dataclass, replace
+from dataclasses import fields, is_dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, cast
 
@@ -14,19 +14,18 @@ from harnessed.core.messages import (
     freeze,
     to_dict,
 )
-from harnessed.core.model import ModelRequest
 from harnessed.core.session.events import (
     SESSION_EVENT_TYPES,
-    AssistantMessageEvent,
     LogEvent,
-    ModelRequestedEvent,
-    ModelUsageRecordedEvent,
     SessionEvent,
 )
 
 if TYPE_CHECKING:
     from harnessed.core.event_registry import EventRegistry
     from harnessed.core.stream import TransientEvent
+
+
+CURRENT_VERSION = 3
 
 
 def _validate_event(
@@ -65,7 +64,6 @@ def _validate_event(
     immutable(event)
 
 
-CURRENT_VERSION = 2
 _ADAPTER = TypeAdapter(
     LogEvent,
     config=ConfigDict(
@@ -75,11 +73,6 @@ _ADAPTER = TypeAdapter(
         hide_input_in_errors=True,
     ),
 )
-
-
-def event_schema(*, registry: EventRegistry | None = None) -> dict[str, Any]:
-    """Return the discriminated JSON schema of the current durable event values."""
-    return registry.schema() if registry is not None else _ADAPTER.json_schema()
 
 
 def encode_event(event: SessionEvent, *, registry: EventRegistry | None = None) -> dict[str, Any]:
@@ -123,103 +116,3 @@ def decode_event(record: dict[str, Any], *, registry: EventRegistry | None = Non
         raise SessionFormatError(f"Invalid {tag} record payload") from error
     registry.validate(event) if registry is not None else _validate_event(event)
     return event
-
-
-class EventLogCodec:
-    """Encode repeated request prefixes relative to the preceding model request.
-
-    Standalone event exports remain self-contained. Ordered persistence uses
-    this codec to reconstruct the exact immutable requests, including edits.
-    Encoding is pure; accept advances the base only after a successful write.
-    """
-
-    def __init__(
-        self, *, registry: EventRegistry | None = None, session_id: str = "session"
-    ) -> None:
-        self.registry = registry
-        self._previous: ModelRequest | None = None
-        self._session_id = session_id
-        self._request_count = 0
-        self._request_id: str | None = None
-
-    def encode(self, event: SessionEvent) -> dict[str, Any]:
-        if not isinstance(event, ModelRequestedEvent):
-            return encode_event(event, registry=self.registry)
-        previous = self._previous
-        prefix = 0
-        if previous is not None:
-            for old, new in zip(previous.messages, event.request.messages, strict=False):
-                if old != new:
-                    break
-                prefix += 1
-        reuse_tools = previous is not None and event.request.tools == previous.tools
-        tail = replace(
-            event.request,
-            messages=event.request.messages[prefix:],
-            tools=() if reuse_tools else event.request.tools,
-        )
-        record = encode_event(replace(event, request=tail), registry=self.registry)
-        request = record["data"]["request"]
-        request["messages"] = {"prefix": prefix, "items": request["messages"]}
-        if reuse_tools:
-            request["tools"] = None
-        return record
-
-    def accept(self, event: SessionEvent) -> None:
-        if isinstance(event, ModelRequestedEvent):
-            self._previous = event.request
-            self._request_id = event.request_id
-            self._request_count += 1
-
-    def decode(self, record: dict[str, Any]) -> SessionEvent:
-        if not isinstance(record, dict):
-            raise SessionFormatError("Invalid session record envelope")
-        freeze(record)
-        tag = record.get("type")
-        body: Any = record.get("data")
-        if isinstance(body, dict) and "request_id" not in body:
-            # Pre-ID records retain stable identities across replay and reopen.
-            request_id = None
-            if tag == ModelRequestedEvent.type:
-                request_id = f"{self._session_id}:{self._request_count}"
-            elif tag in (AssistantMessageEvent.type, ModelUsageRecordedEvent.type) and (
-                tag != ModelUsageRecordedEvent.type or body.get("purpose", "response") == "response"
-            ):
-                request_id = self._request_id or f"{self._session_id}:0"
-            if request_id is not None:
-                restored: dict[str, Any] = {**record, "data": {**body, "request_id": request_id}}
-                record = restored
-        previous = self._previous
-        prefix = 0
-        reuse_tools = False
-        if record.get("type") == ModelRequestedEvent.type:
-            request = dict(record["data"]["request"])
-            delta = request["messages"]
-            if (
-                not isinstance(delta, dict)
-                or set(delta) != {"prefix", "items"}
-                or type(delta["prefix"]) is not int
-                or not 0 <= delta["prefix"] <= (len(previous.messages) if previous else 0)
-                or not isinstance(delta["items"], list)
-            ):
-                raise SessionFormatError("Invalid model request prefix delta")
-            prefix = delta["prefix"]
-            request["messages"] = delta["items"]
-            if "tools" in request and request["tools"] is None:
-                if previous is None:
-                    raise SessionFormatError("Tool reuse requires a preceding model request")
-                reuse_tools = True
-                request["tools"] = []
-            record = {**record, "data": {**record["data"], "request": request}}
-        event = decode_event(record, registry=self.registry)
-        if isinstance(event, ModelRequestedEvent) and previous is not None:
-            event = replace(
-                event,
-                request=replace(
-                    event.request,
-                    messages=(*previous.messages[:prefix], *event.request.messages),
-                    tools=previous.tools if reuse_tools else event.request.tools,
-                ),
-            )
-        self.accept(event)
-        return event

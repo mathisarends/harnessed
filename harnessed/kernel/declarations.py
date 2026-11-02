@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import copy
 import inspect
 from collections.abc import Callable, Iterable
-from typing import TYPE_CHECKING, Any, ClassVar, Protocol, Self, get_type_hints
+from functools import wraps
+from typing import TYPE_CHECKING, Any, Protocol, Self
 
+from .dependencies import DependencyField
 from .di import Dependency, _dependency, bind_injected, injections
 from .effects import resolve
 from .events import Event
@@ -75,55 +76,48 @@ class Bundle:
         return PluginSpec(self.name, mount, tuple(dict.fromkeys(needs)), (), {})
 
 
-class _InjectedAttribute:
-    def __init__(self, name: str) -> None:
-        self.name = name
-
-    def __get__(self, instance: PluginBase | None, owner: type | None = None) -> Any:
-        if instance is None:
-            return self
-        if instance._mount_injections is None:
-            raise RuntimeError("Inject is available only on a mounted plugin, not its recipe")
-        return instance._mount_injections[self.name]
-
-    def __set__(self, instance: PluginBase, value: Any) -> None:
-        if instance._mount_injections is None:
-            raise RuntimeError("Inject is available only on a mounted plugin, not its recipe")
-        instance._mount_injections[self.name] = value
-
-
-def _class_dependencies(cls: type[PluginBase]) -> dict[str, Dependency]:
-    compiled = cls.__dict__.get("_compiled_injections")
-    if compiled is not None:
-        return compiled
-    dependencies = {
-        name: dependency
-        for name, annotation in get_type_hints(cls, include_extras=True).items()
-        if (dependency := _dependency(annotation)) is not None
-    }
-    for name in dependencies:
-        if not isinstance(inspect.getattr_static(cls, name, None), _InjectedAttribute):
-            setattr(cls, name, _InjectedAttribute(name))
-    cls._compiled_injections = dependencies
-    return dependencies
-
-
 class PluginBase:
-    """Reusable recipe with per-mount Inject attributes and PluginState values.
+    """Reusable recipe reconstructed from explicit constructor inputs per activation.
 
-    Constructor inputs are shallow-copied; assignments in setup belong to that
-    mount. Inject attributes resolve before setup and are unavailable on recipes.
-    Declare lifetime dependencies explicitly with needs; Inject only binds values.
-    provides=True publishes the mount under the class declaring that option.
+    Constructors must only describe configuration and capabilities. Inputs retain
+    their identity; constructor-created values and PluginState are fresh per mount.
+    Acquire resources in setup and register their cleanup on its Context.
     """
 
     needs: tuple[ServiceKey[Any], ...] = ()
-    _recipe: Self
+
+    _recipe: Self | None = None
+
     slot: str | None = None
+
     _mount_state: dict[PluginState[Any], Any] | None = None
+
     _mount_injections: dict[str, Any] | None = None
+
     _provides: ServiceKey[Any] | None = None
-    _compiled_injections: ClassVar[dict[str, Dependency] | None] = None
+
+    _constructor_args: tuple[Any, ...]
+    _constructor_kwargs: dict[str, Any]
+
+    def __init__(
+        self,
+        *,
+        name: str | None = None,
+        hooks: Iterable[HookEntry] = (),
+        needs: Iterable[ServiceKey[Any]] | None = None,
+        registrations: Iterable[tuple[Registration, Callable]] = (),
+    ) -> None:
+        if "_constructor_args" not in vars(self):
+            self._constructor_args = ()
+            self._constructor_kwargs = dict(
+                name=name, hooks=tuple(hooks), needs=needs, registrations=tuple(registrations)
+            )
+            hooks = self._constructor_kwargs["hooks"]
+            registrations = self._constructor_kwargs["registrations"]
+        self.name = type(self).__name__ if name is None or name == "" else name
+        self.hooks = tuple(hooks)
+        self.needs = tuple(self.needs if needs is None else needs)
+        self.registrations = tuple(registrations)
 
     def __init_subclass__(
         cls,
@@ -146,28 +140,41 @@ class PluginBase:
             ):
                 raise TypeError("provides requires True, False, a service class or named Key")
             cls._provides = cls if provides is True else None if provides is False else provides
-        for name, annotation in cls.__dict__.get("__annotations__", {}).items():
-            if not isinstance(annotation, str) and _dependency(annotation) is not None:
-                setattr(cls, name, _InjectedAttribute(name))
+        try:
+            annotations = inspect.get_annotations(cls)
+        except NameError:
+            # Python 3.14 defers ordinary annotations, including unresolved names.
+            # They declare no dependencies and must not block class creation.
+            annotations = {}
+        for annotation in annotations.values():
+            if (
+                isinstance(annotation, str)
+                and "Inject[" in annotation
+                or not isinstance(annotation, str)
+                and _dependency(annotation) is not None
+            ):
+                raise TypeError("Class-level Inject fields were removed; use dependency(key)")
+        constructor = cls.__dict__.get("__init__")
+        if constructor is not None:
 
-    def __getattr__(self, name: str) -> Any:
-        # Resolve deferred class annotations only once their module is available.
-        if not name.startswith("__") and name in _class_dependencies(type(self)):
-            return getattr(self, name)
-        raise AttributeError(name)
+            @wraps(constructor)
+            def initialize(self: PluginBase, *args: Any, **kwargs: Any) -> None:
+                if "_constructor_args" not in vars(self):
+                    self._constructor_args = args
+                    self._constructor_kwargs = dict(kwargs)
+                constructor(self, *args, **kwargs)
 
-    def __init__(
-        self,
-        *,
-        name: str | None = None,
-        hooks: Iterable[HookEntry] = (),
-        needs: Iterable[ServiceKey[Any]] | None = None,
-        registrations: Iterable[tuple[Registration, Callable]] = (),
-    ) -> None:
-        self.name = name or type(self).__name__
-        self.hooks = tuple(hooks)
-        self.needs = tuple(self.needs if needs is None else needs)
-        self.registrations = tuple(registrations)
+            type.__setattr__(cls, "__init__", initialize)
+
+    @property
+    def is_active(self) -> bool:
+        """Whether runtime values are available, including activation cleanup."""
+        return self._mount_state is not None
+
+    @property
+    def recipe(self) -> Self:
+        """The configured recipe which owns this activation, or this recipe itself."""
+        return self._recipe if self._recipe is not None else self
 
     async def setup(self, *args: Any, **kwargs: Any) -> None:
         pass
@@ -178,17 +185,18 @@ class PluginBase:
     def create_instance(self) -> Self:
         """Create an unmounted instance from this recipe.
 
-        Constructor attributes are shared inputs, including caller-owned clients.
-        PluginState fields are initialized separately on every mount. Override
-        this method to reconstruct custom instances; never return the recipe.
+        Replay the original constructor with its explicit inputs, without copying
+        arbitrary attributes or resources. Custom factories must return a fresh
+        instance of exactly this class. Constructors may run more than once.
         """
-        return copy.copy(self)
+        return type(self)(*self._constructor_args, **self._constructor_kwargs)
 
     def _registration_entries(self):
         return tuple(getattr(self, "registrations", ()))
 
     def _as_plugin_spec(self) -> PluginSpec:
-
+        if self.is_active:
+            raise TypeError("Cannot mount an already mounted instance; use its recipe")
         dependencies = _class_dependencies(type(self))
         members = {}
         for base in reversed(type(self).__mro__):
@@ -203,7 +211,8 @@ class PluginBase:
                 registrations.extend(
                     (recipe, callback) for recipe in getattr(member, "_harnessed_registrations", ())
                 )
-        needs = list(getattr(self, "needs", ()))
+        needs: list[ServiceKey[Any]] = list(self.needs)
+        needs.extend(binding.key for binding in dependencies.values() if not binding.optional)
         needs.extend(key for registration, _ in registrations for key in registration.needs)
 
         async def mount(ctx):
@@ -240,7 +249,7 @@ class PluginBase:
                         ctx.on(event, callback, prepend=prepend, priority=priority)
                     for registration in getattr(member, "_harnessed_registrations", ()):
                         await resolve(registration.mount(ctx, callback))
-                yield
+                yield instance
             finally:
                 bound = _lifecycle_arguments(instance.teardown, ctx)
                 await resolve(instance.teardown(*bound.args, **bound.kwargs))
@@ -252,9 +261,20 @@ class PluginBase:
             (),
             {},
             self.slot,
-            getattr(self, "guidance", None),
             () if self._provides is None else (self._provides,),
+            tuple(binding.key for binding in dependencies.values() if binding.optional),
         )
+
+
+def _class_dependencies(cls: type[PluginBase]) -> dict[str, Dependency]:
+    members: dict[str, object] = {}
+    for base in reversed(cls.__mro__):
+        members.update(vars(base))
+    return {
+        name: member.binding
+        for name, member in members.items()
+        if isinstance(member, DependencyField)
+    }
 
 
 def _lifecycle_arguments(callback, ctx):

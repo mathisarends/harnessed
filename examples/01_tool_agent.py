@@ -2,7 +2,12 @@
 
 import asyncio
 
-from harnessed import Agent, Plugin, ToolCall, tool
+from harnessed import (
+    Agent,
+    Plugin,
+    ToolCall,
+    tool,
+)
 from harnessed.models import ModelChunk
 from harnessed.testing import ScriptedModel
 
@@ -22,7 +27,7 @@ async def main():
         ]
     )
     agent = Agent(model=model, instructions="Keep answers concise.", plugins=[Calculator()])
-    async with agent.session("calculator") as session:
+    async with agent.session() as session:
         result = await session.run("What is 19 + 23?")
         print(result.text)
         print("Turn:", result.turn_id, "Stop:", result.stop_reason)

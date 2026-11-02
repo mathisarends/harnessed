@@ -3,7 +3,7 @@
 The [SDK reference](../reference/sdk.md) and topic guides describe implemented
 behavior. The initial release includes plugin composition and per-mount state,
 typed tools and hooks, fixed instructions and dynamic context, optional providers,
-durable sessions and controls, structured output, streaming and custom events,
+explicit conversation state and live controls, structured output, streaming and custom events,
 approvals, skills, compaction, spill, tracing hooks and offline testing.
 An optional [OpenTelemetry integration](../guides/tracing.md) now exports runtime
 spans to Phoenix, Langfuse and other OTLP collectors.
@@ -11,11 +11,12 @@ spans to Phoenix, Langfuse and other OTLP collectors.
 The following additions remain outside the current release scope. They are
 candidates for discussion, not committed APIs or release dates.
 
-## Integration candidates
+## Conversation state follow-ups
 
-| Candidate | Intended direction | Existing extension point |
-| --- | --- | --- |
-| SQLite or PostgreSQL sessions | Add storage implementations that preserve writer ownership and durable replay | The `sessions` slot and `SessionStore` protocol |
+Applications own persistence through `SessionState` or an explicit `SessionStore`;
+see the [session guide](../guides/sessions.md). Stores now support checkpoints for
+paused execution. Application-supplied blob storage for large checkpoints remains
+a future candidate; current checkpoints include their resource bytes.
 
 The optional [MCP client](../guides/mcp.md) now exposes tools over stdio and
 Streamable HTTP. Resources, prompts, sampling, elicitation and live catalog
@@ -47,8 +48,9 @@ Concrete consumers should establish their requirements before adding framework A
 
 ## Instruction factory callbacks
 
-`Section.from_factory` currently requires an asynchronous callback returning text.
-The original proposal to also accept synchronous instruction factories remains
+`Instructions.from_factory` requires an asynchronous callback returning text.
+Configuration-only synchronous content is returned by `Plugin.instructions()`.
+The proposal to also accept synchronous session-context factories remains
 undecided. Supporting both would be a small convenience addition; it should retain
 explicit typing and the existing once-per-session rendering semantics.
 

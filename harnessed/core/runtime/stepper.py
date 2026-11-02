@@ -1,22 +1,25 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any
+from dataclasses import replace
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from harnessed.core.budget import ContextBudget
 from harnessed.core.compaction import CompactionManager, CompactionPolicy
+from harnessed.core.diagnostics import ModelAttemptOutcome, RetryKind
 from harnessed.core.errors import ContextLengthExceeded, OutputValidationError
 from harnessed.core.hooks import ConfigureRequest, PrepareRequest, PreStep, StepDecision
-from harnessed.core.messages import Assistant, Observation, Role, User
-from harnessed.core.model import Model, ModelRequest, resolve_request_settings
-from harnessed.core.prompt.system_prompt import SystemPrompt
+from harnessed.core.limits import FinalStepPolicy
+from harnessed.core.messages import AssistantMessage, Observation, Role, SystemMessage, UserMessage
+from harnessed.core.model import GenerationSettings, Model, ModelRequest, resolve_request_settings
+from harnessed.core.prompt.system_prompt import SystemPromptStore
 from harnessed.core.runtime.control import SessionControl
 from harnessed.core.runtime.executor import ToolExecutor
 from harnessed.core.runtime.options import AgentOptions
 from harnessed.core.runtime.output import OutputHandler
 from harnessed.core.runtime.respond import ModelResponder
+from harnessed.core.runtime.retries import RequestRetries
 from harnessed.core.session.events import (
     AssistantMessageEvent,
     ContextLifetime,
@@ -26,8 +29,10 @@ from harnessed.core.session.events import (
     ModelRequestedEvent,
     ModelRequestFailedEvent,
     ModelRequestOutcome,
+    ModelUsageRecordedEvent,
     ObservationRecordedEvent,
     ObservationsIncludedEvent,
+    OutputValidationFailedEvent,
     StepEndedEvent,
     StepOutcome,
     StepStartedEvent,
@@ -38,7 +43,7 @@ from harnessed.core.session.events import (
 )
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import TokenCounter
-from harnessed.core.tools.registry import ToolRegistry
+from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import Context
 
 if TYPE_CHECKING:
@@ -67,19 +72,28 @@ class StepRunner:
         self.tools = tools
         self.responder = responder
         self.session = session
+        self.retries = RequestRetries(log, options)
         self._observations: dict[str, Observation] = {}
 
     def observe(self, observation: Observation) -> None:
         self._observations[observation.source] = observation
 
-    async def run(self, turn: str, step: int, settings: Mapping[str, Any]) -> bool:
+    async def run(
+        self,
+        turn: str,
+        step: int,
+        settings: GenerationSettings,
+        *,
+        max_steps: int,
+        final: bool = False,
+    ) -> bool:
         await self.control.checkpoint()
         await self.ctx.settle()
         inbox = self.log.inbox
         pending = inbox.for_step(step)
         incoming = tuple(item.message for item in pending)
         decision = await self.ctx.dispatch(
-            PreStep(self.session, incoming, step),
+            PreStep(self.session, incoming, step, max_steps=max_steps, is_final_step=final),
             default=lambda incoming=incoming: StepDecision(incoming),
         )
         if not decision.accepted:
@@ -91,7 +105,7 @@ class StepRunner:
             return False
         accepted = decision.messages
         await self.log.append(StepStartedEvent(turn, step))
-        prompt = await self.ctx[SystemPrompt].render()
+        prompt = await self.ctx[SystemPromptStore].render()
         previous_event = self.log.last(SystemMessageEvent)
         previous = previous_event.content if previous_event is not None else None
         if prompt != previous:
@@ -113,7 +127,7 @@ class StepRunner:
                         )
             event = (
                 UserMessageEvent(message)
-                if isinstance(message, User)
+                if isinstance(message, UserMessage)
                 else ContextMessageEvent(message)
             )
             await self.log.append(event)
@@ -123,10 +137,8 @@ class StepRunner:
             await self.log.append(ObservationRecordedEvent(observation, turn, step))
         model = self.ctx[Model]
         request = ModelRequest(
-            model.info.name,
-            self.log.messages,
+            (*self.log.messages, *self.session.context.owned_messages),
             self.ctx[ToolRegistry].visible_definitions(self.ctx),
-            self.options.max_tokens,
             settings=settings,
         )
         request = await self.ctx.dispatch(
@@ -137,9 +149,22 @@ class StepRunner:
             ConfigureRequest(self.session, request),
             default=lambda request=request: request,
         )
-        request = self.outputs.prepare(request, self.log.current_turn().start.output_schema)
-        request = resolve_request_settings(request, model.info.default_settings)
-        request = await self.compaction.prepare(request)
+        if final:
+            request = replace(
+                request,
+                tools=(),
+                output_schema=None,
+                messages=(*request.messages, SystemMessage(_FINAL_STEP_INSTRUCTION)),
+            )
+        else:
+            request = self.outputs.prepare(
+                request, self.log.current_turn().start.output_schema, model=model
+            )
+        request = resolve_request_settings(request, model.settings)
+        request = await self.log._images.retain_request(request)
+        request = await self.compaction.prepare(request, model=model)
+        if final:
+            request = replace(request, tools=(), output_schema=None)
         if ContextBudget in self.ctx:
             await self.ctx[ContextBudget].check(
                 request,
@@ -147,39 +172,108 @@ class StepRunner:
                 counter=self.ctx[TokenCounter],
             )
         request_id = uuid4().hex
+        record = self.retries.request(request, request_id, model.info)
         try:
-            response = await self._request(request, request_id=request_id)
+            response = await self._request(record, model)
         except ContextLengthExceeded:
             current = self.log.current_turn()
             if (
                 CompactionPolicy not in self.ctx
-                or step >= (current.start.limits.max_steps or self.options.max_steps)
+                or step >= max_steps
                 or any(item.reason == StepOutcome.CONTEXT_LIMIT for item in current.steps)
                 or any(
                     isinstance(event, AssistantMessageEvent) for event in current.steps[-1].events
                 )
             ):
+                await self.retries.finished(record, ModelAttemptOutcome.EXHAUSTED)
                 raise
-            applied, _ = await self.compaction.compact(request)
+            try:
+                applied, _ = await self.compaction.compact(request, model=model)
+            except BaseException as error:
+                await self.retries.finished(
+                    record,
+                    ModelAttemptOutcome.CANCELLED
+                    if isinstance(error, asyncio.CancelledError)
+                    else ModelAttemptOutcome.FAILED,
+                )
+                raise
             if applied is None:
+                await self.retries.finished(record, ModelAttemptOutcome.FAILED)
                 raise
             # A retry is a new model step. Completed tools and visible partial replies
             # are never replayed by retrying an in-progress step.
             await self.log.append(StepEndedEvent(turn, step, StepOutcome.CONTEXT_LIMIT))
+            if record.retry_kind == RetryKind.OUTPUT_CORRECTION:
+                await self.retries.finished(record, ModelAttemptOutcome.FAILED)
+            await self.retries.scheduled(record, RetryKind.CONTEXT_RECOVERY)
             return True
-        results, failure = await self.outputs.validate(response, request.output_schema)
-        await self.tools.run(response.tool_calls, results=results)
+        except BaseException as error:
+            await self.retries.finished(
+                record,
+                ModelAttemptOutcome.CANCELLED
+                if isinstance(error, asyncio.CancelledError)
+                else ModelAttemptOutcome.FAILED,
+            )
+            raise
+        try:
+            results, failure = await self.outputs.validate(response, request.output_schema)
+            await self.tools.run(response.tool_calls, results=results, allow_execution=not final)
+        except BaseException as error:
+            await self.retries.finished(
+                record,
+                ModelAttemptOutcome.CANCELLED
+                if isinstance(error, asyncio.CancelledError)
+                else ModelAttemptOutcome.FAILED,
+            )
+            raise
         await self.log.append(StepEndedEvent(turn, step))
+        invalid = any(
+            isinstance(event, OutputValidationFailedEvent) and event.message_id == response.id
+            for event in self.log.current_turn().steps[-1].events
+        )
+        limits = self.log.current_turn().start.limits
+        next_is_final = (
+            step + 1 == max_steps
+            and self.log.current_turn().start.final_step is FinalStepPolicy.SUMMARIZE
+        )
+        can_retry = (
+            invalid
+            and failure is None
+            and step < max_steps
+            and not next_is_final
+            and (
+                limits.token_budget is None
+                or sum(
+                    event.usage.total_tokens
+                    for event in self.log.current_turn().events
+                    if isinstance(event, ModelUsageRecordedEvent)
+                )
+                < limits.token_budget
+            )
+        )
+        if can_retry:
+            if record.retry_kind == RetryKind.CONTEXT_RECOVERY:
+                await self.retries.finished(record, ModelAttemptOutcome.SUCCEEDED)
+            await self.retries.scheduled(record, RetryKind.OUTPUT_CORRECTION)
+        else:
+            await self.retries.finished(
+                record,
+                ModelAttemptOutcome.EXHAUSTED if invalid else ModelAttemptOutcome.SUCCEEDED,
+                kind=RetryKind.OUTPUT_CORRECTION if invalid else None,
+            )
         if failure is not None:
             raise OutputValidationError(f"Structured output retry limit reached: {failure}")
         return True
 
-    async def _request(self, request: ModelRequest, *, request_id: str) -> Assistant:
+    async def _request(self, record: ModelRequestedEvent, model: Model) -> AssistantMessage:
+        request = record.request
+        request_id = record.request_id
         try:
             included = self.log.included_observations(request)
-            await self.log.append(ModelRequestedEvent(request, request_id=request_id))
+            await self.log.append(record)
             await self.log.append(ObservationsIncludedEvent(request_id, included))
-            return await self.responder.respond(request, request_id=request_id)
+            await self.retries.started(record)
+            return await self.responder.respond(request, model=model, request_id=request_id)
         except BaseException as error:
             if self.log.request(request_id) is not None and not self.log.request_finished(
                 request_id
@@ -193,3 +287,10 @@ class StepRunner:
                 )
                 await self.log.append(ModelRequestFailedEvent(request_id, outcome, str(error)))
             raise
+
+
+_FINAL_STEP_INSTRUCTION = (
+    "This is the final available step. End this turn with a text summary of the results, "
+    "uncertainties and unfinished work based on the information already available. "
+    "Do not call tools or claim unfinished work is complete."
+)

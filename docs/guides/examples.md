@@ -6,6 +6,8 @@ requires its provider extra and credentials.
 
 | Topic | Run | Source |
 | --- | --- | --- |
+| Background shell control | `uv run python -m examples.35_background_shell` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/35_background_shell.py) |
+| Optional sandbox configuration | `uv run python -m examples.34_sandbox` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/34_sandbox.py) |
 | Tool agent | `uv run python -m examples.01_tool_agent` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/01_tool_agent.py) |
 | Plugin composition | `uv run python -m examples.02_plugins` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/02_plugins.py) |
 | Queued turns and quiet context | `uv run python -m examples.03_inbox` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/03_inbox.py) |
@@ -16,6 +18,11 @@ requires its provider extra and credentials.
 | Structural Model | `uv run python -m examples.13_models` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/13_models.py) |
 | Compaction policies | `uv run python -m examples.16_compaction_policies` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/16_compaction_policies.py) |
 | Pause/resume/stop/abort | `uv run python -m examples.20_pause_resume_stop` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/20_pause_resume_stop.py) |
+| Snapshot export and independent continuations | `uv run python -m examples.14_session_state` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/14_session_state.py) |
+| Application-owned persistence | `uv run python -m examples.17_external_state` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/17_external_state.py) |
+| Opt-in JSON checkpoints and persisted pause | `uv run python -m examples.38_session_store` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/38_session_store.py) |
+| Typed checkpoints and an application repository adapter | `uv run python -m examples.39_typed_session_store` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/39_typed_session_store.py) |
+| Atomic domain-message and checkpoint commits | `uv run python -m examples.40_atomic_session_store` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/40_atomic_session_store.py) |
 | Session-owned spill | `uv run python -m examples.24_session_spill` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/24_session_spill.py) |
 | Validated forms | `uv run python -m examples.21_validated_forms` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/21_validated_forms.py) |
 
@@ -32,6 +39,10 @@ See [the source](https://github.com/mathisarends/harnessed/blob/main/examples/25
 and [the response-contract guide](structured-output.md).
 
 ## UI streaming
+
+Start with `uv run python -m examples.33_basic_stream` for a consumer handling
+only text and the terminal result. See
+[the source](https://github.com/mathisarends/harnessed/blob/main/examples/33_basic_stream.py).
 
 `uv run python -m examples.26_ui_stream` shows text, reasoning, tool progress,
 an acknowledged approval and a typed terminal report. See
@@ -65,9 +76,40 @@ to the console, with an outer backend span and model usage, without network
 access or credentials. See [the source](https://github.com/mathisarends/harnessed/blob/main/examples/29_tracing.py)
 and [the Phoenix/Langfuse setup guide](tracing.md).
 
+Add `--otlp` to use `otlp_provider()` with batched HTTP export instead. Configure
+`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` and any authentication headers for your
+destination first; the model remains scripted and requires no provider credentials.
+The helper wraps all sessions and shuts down its provider on exit. The default
+console mode remains offline.
+
+## System prompt composition
+
+`uv run python -m examples.32_system_prompts` declares literal and
+configuration-dependent plugin blocks, explicitly selects
+`PluginOrder.AS_LISTED` through a kit, and renders the same document as plain
+text, XML and Markdown.
+See [system prompts and changing context](context.md).
+
+## Plugin kits
+
+`uv run python -m examples.36_plugin_kits` publishes library defaults, nests them
+in a project kit, excludes optional tools and replaces a library capability by
+slot. It prints static provenance and runs the selected tool with a scripted model.
+See [library composition](plugins.md#publish-library-defaults-with-kit).
+
+## Plugin recipes and dependencies
+
+`uv run python -m examples.37_plugin_recipes` declares stable required and optional
+dependencies, `Plugin[FileToolsConfig]` with an explicit frozen config object and
+activation-owned state. It declares `FILE_EVENTS`, emits a `DocumentReadEvent`
+through `ToolContext.emit`, and handles it in an independent observer with `@hook`.
+The kit places its default `instructions` group without a `fragments` declaration.
+It also tests the same recipe's configuration and fake dependencies with
+`mount_plugin`, without an agent.
+
 ## Subagents
 
-`uv run python -m examples.32_subagents` delegates a review to an isolated child,
+`uv run python -m examples.41_subagents` delegates a review to an isolated child,
 prints its durable receipt and inspects tree usage with scripted models. See
-[the source](https://github.com/mathisarends/harnessed/blob/main/examples/32_subagents.py)
+[the source](https://github.com/mathisarends/harnessed/blob/main/examples/41_subagents.py)
 and [the subagent guide](subagents.md).

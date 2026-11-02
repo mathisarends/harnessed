@@ -13,6 +13,7 @@ from harnessed.core.session.events import InboxAddedEvent, InboxMode, TurnLimits
 from harnessed.core.stream import TextDeltaEvent, TurnFinishedEvent
 from harnessed.plugins import Approvals
 from harnessed.testing import CallbackModel, ScriptedModel
+from tests._audit import Audit
 
 
 class TwoTurns(CallbackModel):
@@ -33,9 +34,9 @@ class TwoTurns(CallbackModel):
 
 async def test_concurrent_runs_return_their_own_text_usage_and_turn_without_waiting_for_idle():
     model = TwoTurns()
-    async with Application(model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]).session(
-        "concurrent"
-    ) as session:
+    async with Application(
+        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+    ).session() as session:
         queued = asyncio.Event()
 
         @session.on(InboxAddedEvent)
@@ -47,7 +48,7 @@ async def test_concurrent_runs_return_their_own_text_usage_and_turn_without_wait
         await model.started[0].wait()
         second = asyncio.create_task(session.run("second"))
         try:
-            await queued.wait()
+            await asyncio.wait_for(queued.wait(), timeout=5)
             model.release[0].set()
             await model.started[1].wait()
             one = await asyncio.wait_for(asyncio.shield(first), timeout=1)
@@ -58,16 +59,16 @@ async def test_concurrent_runs_return_their_own_text_usage_and_turn_without_wait
         finally:
             model.release[0].set()
             model.release[1].set()
-        two = await second
+        two = await asyncio.wait_for(second, timeout=5)
         assert two.text == "reply 2" and two.usage.total_tokens == 13
         assert two.turn_id != one.turn_id
 
 
 async def test_stream_ends_with_its_turn_and_does_not_emit_the_following_turn():
     model = TwoTurns()
-    async with Application(model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]).session(
-        "stream-turn"
-    ) as session:
+    async with Application(
+        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+    ).session() as session:
 
         async def collect():
             return [event async for event in session.stream("first")]
@@ -90,42 +91,43 @@ async def test_stream_ends_with_its_turn_and_does_not_emit_the_following_turn():
         await session.control.join()
 
 
-async def test_public_max_token_policies_return_typed_stop_reasons_or_fail():
+@pytest.mark.parametrize("policy", tuple(TokenLimitBehavior))
+async def test_public_max_token_policies_return_typed_stop_reasons_or_fail(
+    policy: TokenLimitBehavior,
+) -> None:
     import pytest
 
     from harnessed import Agent, StopReason
-    from harnessed.core.messages import Assistant
+    from harnessed.core.messages import AssistantMessage
     from harnessed.core.model import ModelResponse
     from harnessed.plugins import AgentLoop
     from harnessed.testing import ScriptedModel
 
-    partial = ModelResponse(Assistant("partial"), stop_reason=StopReason.MAX_TOKENS)
-    for policy in TokenLimitBehavior:
-        model = ScriptedModel([partial, "complete"])
-        async with Agent(
-            model=model, plugins=[AgentLoop(on_max_tokens=policy)]
-        ).session() as session:
-            if policy == "fail":
-                with pytest.raises(OutputTokenLimit, match="output token limit"):
-                    await session.run("task")
-                assert session.turns[-1].closed
-            else:
-                result = await session.run("task")
-                expected = StopReason.MAX_TOKENS if policy == "accept" else StopReason.END
-                assert result.stop_reason is expected
-                assert result.completed is (expected is StopReason.END)
-                assert result.text == ("partial" if policy == "accept" else "complete")
-                assert len(model.requests) == (1 if policy == "accept" else 2)
+    partial = ModelResponse(AssistantMessage("partial"), stop_reason=StopReason.MAX_TOKENS)
+    model = ScriptedModel([partial, "complete"])
+    async with Agent(model=model, plugins=[AgentLoop(on_max_tokens=policy)]).session() as session:
+        session_audit = Audit(session)
+        if policy == "fail":
+            with pytest.raises(OutputTokenLimit, match="output token limit"):
+                await session.run("task")
+            assert session_audit.turns[-1].closed
+        else:
+            result = await session.run("task")
+            expected = StopReason.MAX_TOKENS if policy == "accept" else StopReason.END
+            assert result.stop_reason is expected
+            assert result.completed is (expected is StopReason.END)
+            assert result.text == ("partial" if policy == "accept" else "complete")
+            assert len(model.requests) == (1 if policy == "accept" else 2)
 
 
 async def test_step_limit_takes_precedence_over_the_last_model_finish_reason():
     from harnessed import Agent, StopReason
-    from harnessed.core.messages import Assistant
+    from harnessed.core.messages import AssistantMessage
     from harnessed.core.model import ModelResponse
     from harnessed.plugins import AgentLoop
     from harnessed.testing import ScriptedModel
 
-    partial = ModelResponse(Assistant("partial"), stop_reason=StopReason.MAX_TOKENS)
+    partial = ModelResponse(AssistantMessage("partial"), stop_reason=StopReason.MAX_TOKENS)
     result = await Agent(
         model=ScriptedModel([partial]),
         plugins=[AgentLoop(max_steps=1, on_max_tokens=TokenLimitBehavior.CONTINUE)],
@@ -147,7 +149,7 @@ def _tool_steps(count: int) -> list[list[ModelChunk]]:
 
 async def test_per_run_step_limit_overrides_the_agent_default_for_one_turn():
     model = ScriptedModel([*_tool_steps(2), *_tool_steps(1), "done"])
-    async with Application(model=model, plugins=[Looping()]).session("limits") as session:
+    async with Application(model=model, plugins=[Looping()]).session() as session:
         limited = await session.run("task", max_steps=2)
         assert limited.stop_reason is StopReason.MAX_STEPS
         assert not limited.completed
@@ -158,22 +160,24 @@ async def test_per_run_step_limit_overrides_the_agent_default_for_one_turn():
 
 async def test_token_budget_stops_before_the_step_that_would_exceed_it():
     model = ScriptedModel([*_tool_steps(3), "done"])
-    async with Application(model=model, plugins=[Looping()]).session("budget") as session:
+    async with Application(model=model, plugins=[Looping()]).session() as session:
+        session_audit = Audit(session)
         result = await session.run("task", token_budget=20)
         assert result.stop_reason is StopReason.TOKEN_BUDGET
         assert not result.completed
         assert len(model.requests) == 2
-        start = session.log.turns[-1].start
-        assert start.limits == TurnLimits(token_budget=20)
+        start = session_audit.turns[-1].start
+        assert start.limits == TurnLimits(max_steps=32, token_budget=20)
         restored = decode_event(json.loads(json.dumps(encode_event(start))))
         assert restored == start
 
 
 async def test_invalid_limits_fail_before_queueing_and_only_new_turns_carry_limits():
-    async with Application(model=ScriptedModel([])).session("invalid") as session:
+    async with Application(model=ScriptedModel([])).session() as session:
+        session_audit = Audit(session)
         for limits in ({"max_steps": 0}, {"token_budget": True}):
             with pytest.raises(ValueError):
                 await session.run("task", **limits)
-        assert not session.log.events
+        assert not session_audit.events
     with pytest.raises(ValueError, match="limits"):
         InboxAddedEvent.create(user("look"), InboxMode.STEER, limits=TurnLimits(max_steps=1))

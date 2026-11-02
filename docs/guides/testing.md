@@ -5,7 +5,7 @@ It records requests and accepts strings, complete responses, or sequences of
 stream chunks. `call` and `reply` make ordinary tool rounds concise:
 
 ```python
-from harnessed import Agent, PolicyDecision, Plugin, tool
+from harnessed import Agent, Plugin, PolicyDecision, tool
 from harnessed.testing import ScriptedModel, assert_tool_called, call, reply
 
 
@@ -56,25 +56,37 @@ summarize through the session model; installing the testing package changes no p
 
 ## Replace feature backends
 
+For one plugin activation, `mount_plugin(recipe, services=(Service(Contract, fake),))`
+is an async context manager yielding the concrete typed active instance. It supplies
+a tool registry and owns cleanup on success, errors and cancellation, without an
+agent, model or prompt-provider evaluation. See the
+[plugin example](plugins.md#test-one-activation-without-an-agent). Test direct tool
+calls on this instance: recipes expose declarations, while their runtime values
+and tool execution are unavailable.
+
+## Observable backend fakes
+
 `InMemoryFS` and `FakeShell` are real plugins in the `filesystem` and `shell` slots.
 They use the normal tool schemas, injection, approvals, execution and log paths.
 
 ```python
+from harnessed import PluginOrder, SystemPrompt
 from harnessed.plugins import Approvals
-from harnessed.testing import InMemoryFS, FakeShell
+from harnessed.testing import FakeShell, InMemoryFS
 
 files = InMemoryFS({"project/notes.txt": "Remember this."})
 commands = FakeShell({"pytest": "1 passed"})
 agent = Agent(
+    prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     model=ScriptedModel([call("run_command", argv=["pytest"]), reply("Tests pass")]),
     plugins=[files, commands, Approvals(default=PolicyDecision.ALLOW)],
 )
 ```
 
 Inspect `files.files` and `commands.calls` to assert side effects. An unconfigured
-fake command fails; it never launches a subprocess. `InMemoryPersistence` provides
-a controllable storage backend with flush/close observations and write-failure
-injection for persistence tests.
+fake command fails; it never launches a subprocess. Conversation snapshots support
+JSON round trips without a storage backend; assert their imported context and
+resource contents directly.
 
 ## Opt into the pytest fixture
 
@@ -88,22 +100,31 @@ The fixture opens a real session with a scripted model. Extra plugins replace
 matching slots in an existing agent configuration:
 
 ```python
+from harnessed import PluginOrder
+
+
 async def test_workspace(harnessed_session):
+    files = InMemoryFS({"note.txt": "virtual"})
     async with harnessed_session(
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         script=[call("read_file", path="note.txt"), reply("done")],
-        plugins=[InMemoryFS({"note.txt": "virtual"})],
+        plugins=[files],
     ) as session:
         result = await session.run("Read the note")
         assert assert_tool_called(result, "read_file")[1].content == "virtual"
 ```
 
-The fixture also accepts an existing `Agent` as its first argument. Provider SDKs
+The fixture also accepts an existing `Agent` as its first argument. When replacing
+plugins, retain an explicit `prompt=SystemPrompt.from_plugins(
+order=PluginOrder.AS_LISTED)` strategy to collect their selected instruction
+blocks. The fixture accepts `instructions=` for caller text and `prompt=` for
+the strategy. Provider SDKs
 and credentials are unnecessary for these tests. Configure pytest-asyncio as you
 normally would for asynchronous tests; Harnessed does not change its settings.
 
-## Memory and replay benchmarks
+## Conversation-state benchmarks
 
-`uv run python -m scripts.benchmark_sessions` measures growing conversations,
-lossless JSONL encoding/replay and repeated one-shot runs without a provider.
-See [the workload, metrics and baseline](../benchmarks/sessions.md) before
-interpreting the results. These measurements have no machine-dependent CI thresholds.
+`uv run python -m scripts.benchmark_sessions` measures compacted conversations,
+state round trips and repeated one-shot runs without a provider or retained model
+requests. `scripts.benchmark_image_assets` measures active screenshot resources.
+See [the workload and metrics](../benchmarks/sessions.md).

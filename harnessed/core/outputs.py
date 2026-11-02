@@ -141,12 +141,12 @@ class OutputValues:
         finally:
             self.release(schema)
 
+    def __contains__(self, event_id: str) -> bool:
+        return event_id in self._values
+
     def put(self, event_id: str, schema_id: str, value: Any) -> None:
         self._values[event_id] = (schema_id, value)
         self._prune()
-
-    def __contains__(self, event_id: str) -> bool:
-        return event_id in self._values
 
     def pop(self, event_id: str) -> Any:
         return self._values.pop(event_id)[1]

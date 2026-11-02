@@ -9,6 +9,10 @@ class ConfigError(HarnessedError, ValueError):
     pass
 
 
+class SandboxError(HarnessedError, RuntimeError):
+    """A sandbox could not enforce its configuration or complete an operation."""
+
+
 class PluginConflict(ConfigError):
     pass
 
@@ -43,10 +47,6 @@ class ToolNameConflict(ConfigError):
     """Two live registrations claim the same name without an explicit override."""
 
 
-class SessionLocked(HarnessedError, RuntimeError):
-    pass
-
-
 class SessionStateError(HarnessedError, RuntimeError):
     """An operation is not valid in the session's current state."""
 
@@ -59,18 +59,22 @@ class SessionFormatError(HarnessedError, ValueError):
     """A stored session record does not match the current log format."""
 
 
+class SessionWriteConflict(HarnessedError, RuntimeError):
+    """The stored conversation changed since this runtime loaded its revision."""
+
+
 class OutputTokenLimit(HarnessedError, RuntimeError):
     """The model stopped at its output token limit under ``on_max_tokens=FAIL``."""
 
 
 class StreamOverflow(HarnessedError, RuntimeError):
-    """A stream consumer exceeded its buffer; durable records remain in the log."""
+    """A live consumer exceeded its buffer; historical capture belongs to the application."""
 
     def __init__(self, capacity: int) -> None:
         self.capacity = capacity
         super().__init__(
             f"Event consumer exceeded its buffer of {capacity} events; "
-            "read session.events for durable records and reconnect"
+            "consume events faster or increase the buffer before reconnecting"
         )
 
 

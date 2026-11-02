@@ -3,22 +3,26 @@ import json
 
 import pytest
 
-from harnessed import Agent as Application
+from harnessed import (
+    Agent as Application,
+)
 from harnessed import (
     Inject,
     Observation,
     Plugin,
+    PluginOrder,
     PolicyDecision,
     Session,
+    SystemPrompt,
     ToolCall,
     ToolResult,
     tool,
 )
 from harnessed.core.compaction import ModelSummarizer
 from harnessed.core.hooks import PreStep
-from harnessed.core.messages import Assistant, ToolStatus, User
+from harnessed.core.messages import AssistantMessage, ToolStatus, UserMessage
 from harnessed.core.model import ModelChunk, ModelUsage
-from harnessed.core.session.codec import EventLogCodec, decode_event, encode_event
+from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.core.session.events import (
     CompactionAppliedEvent,
     ModelUsageRecordedEvent,
@@ -33,17 +37,11 @@ from harnessed.core.session.files import SessionFiles
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tools.registry import ToolError
 from harnessed.kernel import hook
-from harnessed.plugins import (
-    AgentLoop,
-    Approvals,
-    Compaction,
-    JsonlSessions,
-    at_ratio,
-    every_turns,
-)
+from harnessed.plugins import AgentLoop, Approvals, Compaction, at_ratio, every_turns
 from harnessed.plugins.observations import LatestObservationOnly
 from harnessed.plugins.spill import Spill, SpillStore
 from harnessed.testing import ExtractiveSummarizer, ScriptedModel
+from tests._audit import Audit, AuditProjection
 
 
 async def test_large_results_spill_to_session_files_and_keep_structured_metadata(tmp_path):
@@ -57,16 +55,14 @@ async def test_large_results_spill_to_session_files_and_keep_structured_metadata
     tools = ToolsPlugin(name="large")
 
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("large"))], "done"])
+    spill = Spill(threshold_tokens=100, preview_tokens=8)
     app = Application(
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            tools,
-            JsonlSessions(tmp_path),
-            Spill(threshold_tokens=100, preview_tokens=8),
-        ],
+        plugins=[Approvals(default=PolicyDecision.ALLOW), tools, spill],
     )
-    async with app.session("spill") as agent:
+    async with app.session() as agent:
+        agent_audit = Audit(agent)
         result = (await agent.run("go")).tool_calls[0][1]
         assert result.exit_code == 3 and result.status == ToolStatus.ERROR
         assert result.spill is not None and result.content != original
@@ -81,19 +77,28 @@ async def test_large_results_spill_to_session_files_and_keep_structured_metadata
         assert model.requests[1].messages[-1].text == result.content
         assert result.with_note("extra").spill == result.spill
         events = tuple(
-            decode_event(json.loads(json.dumps(encode_event(e)))) for e in agent.log.events
+            decode_event(json.loads(json.dumps(encode_event(e)))) for e in agent_audit.events
         )
-        assert SessionLog("replay", seed=events).messages == agent.log.messages
+        assert AuditProjection(events).messages == agent.log.messages
         assert any(isinstance(e, SpillCreatedEvent) for e in events)
         ref = result.spill
+        state = agent.snapshot()
+    spill_2 = Spill()
     async with Application(
-        model=ScriptedModel([]), plugins=[JsonlSessions(tmp_path), Spill()]
-    ).session("spill") as restored:
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+        model=ScriptedModel([]),
+        plugins=[spill_2],
+    ).session(state=state) as restored:
         assert await restored.ctx[SpillStore].read(ref.path, offset=7, limit=6) == "output"
 
 
 async def test_session_spill_reads_unicode_ranges_reject_escape_and_reuse_content(tmp_path):
-    async with Application(model=ScriptedModel([]), plugins=[Spill()]).session() as session:
+    spill = Spill()
+    async with Application(
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+        model=ScriptedModel([]),
+        plugins=[spill],
+    ).session() as session:
         store = session.ctx[SpillStore]
         refs = await asyncio.gather(*(store.put("ä😀abc") for _ in range(20)))
         first = refs[0]
@@ -106,22 +111,15 @@ async def test_session_spill_reads_unicode_ranges_reject_escape_and_reuse_conten
             await store.read(first.path, limit=16001)
 
 
-async def test_session_spill_does_not_hide_unrelated_write_failures(tmp_path, monkeypatch):
-    def denied(source, destination):
-        raise PermissionError("write denied")
-
-    async with Application(
-        model=ScriptedModel([]), plugins=[JsonlSessions(tmp_path), Spill()]
-    ).session() as session:
-        monkeypatch.setattr("harnessed.plugins.sessions.os.replace", denied)
-        with pytest.raises(PermissionError, match="write denied"):
-            await session.ctx[SpillStore].put("content")
-        assert not list(tmp_path.rglob("*.tmp"))
-
-
 async def test_read_spill_tool_returns_bounded_ranges_without_respilling():
     model = ScriptedModel([])
-    async with Application(model=model, plugins=[Spill(threshold_tokens=1)]).session() as agent:
+    spill_5 = Spill(threshold_tokens=1)
+    async with Application(
+        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+        model=model,
+        plugins=[spill_5],
+    ).session() as agent:
+        agent_audit = Audit(agent)
         ref = await agent.ctx[SpillStore].put("x" * 100)
         model.responses.extend(
             [
@@ -131,7 +129,7 @@ async def test_read_spill_tool_returns_bounded_ranges_without_respilling():
         )
         result = (await agent.run("read")).tool_calls[0][1]
         assert result.content == "x" * 40 and result.spill is None
-        assert not any(isinstance(e, SpillCreatedEvent) for e in agent.log.events)
+        assert not any(isinstance(e, SpillCreatedEvent) for e in agent_audit.events)
 
 
 async def test_threshold_compaction_commits_once_and_replays_and_forks(tmp_path):
@@ -156,13 +154,13 @@ async def test_threshold_compaction_commits_once_and_replays_and_forks(tmp_path)
                 keep_turns=0,
                 summary_tokens=24,
             ),
-            JsonlSessions(tmp_path),
         ],
     )
-    async with harness.session("compact") as agent:
+    async with harness.session() as agent:
+        agent_audit = Audit(agent)
         await agent.run("old context " + "x" * 1200)
         await agent.run("current task", context={"ticket": "preserve current context"})
-        applied = [e for e in agent.log.events if isinstance(e, CompactionAppliedEvent)]
+        applied = [e for e in agent_audit.events if isinstance(e, CompactionAppliedEvent)]
         assert len(applied) == 1
         request = model.requests[1]
         texts = [m.text for m in request.messages]
@@ -170,19 +168,12 @@ async def test_threshold_compaction_commits_once_and_replays_and_forks(tmp_path)
         assert "current task" in texts
         assert "Task context [ticket]:\npreserve current context" in texts
         assert "x" * 1200 not in "\n".join(texts)
-        replay = SessionLog("replay", seed=agent.log.events)
+        replay = AuditProjection(agent_audit.events)
         assert replay.messages == agent.log.messages
-        assert agent.log.fork("fork").messages == replay.messages
         assert any(
             isinstance(e, UserMessageEvent) and "x" * 1200 in e.message.text
-            for e in agent.log.events
+            for e in agent_audit.events
         )
-    codec = EventLogCodec()
-    persisted = tuple(
-        codec.decode(json.loads(line))
-        for line in (tmp_path / "compact.jsonl").read_text().splitlines()
-    )
-    assert any(isinstance(e, CompactionAppliedEvent) for e in persisted)
 
 
 async def test_compaction_preserves_base_prompt_recent_turns_and_replaces_previous_summary():
@@ -190,7 +181,7 @@ async def test_compaction_preserves_base_prompt_recent_turns_and_replaces_previo
     await session.append(SystemMessageEvent("permanent rules"))
     for name in ("one", "two"):
         await session.append(TurnStartedEvent(name))
-        await session.append(UserMessageEvent(User(name)))
+        await session.append(UserMessageEvent(UserMessage(name)))
         await session.append(TurnEndedEvent(name))
     await session.append(CompactionAppliedEvent(4, "first summary"))
     assert [m.text for m in session.messages] == [
@@ -205,7 +196,7 @@ async def test_compaction_preserves_base_prompt_recent_turns_and_replaces_previo
     ]
     with pytest.raises(ValueError, match="advance"):
         await session.append(CompactionAppliedEvent(7, "duplicate"))
-    with pytest.raises(ValueError, match="closed turn"):
+    with pytest.raises(ValueError, match="completed context boundary"):
         await session.append(CompactionAppliedEvent(2, "invalid"))
 
 
@@ -226,12 +217,13 @@ async def test_failed_or_cancelled_compactor_does_not_commit_partial_compaction(
             Compaction(trigger=at_ratio(0.5), summarizer=BlockingCompactor(), keep_turns=0),
         ],
     )
-    async with harness.session("cancel-compact") as agent:
+    async with harness.session() as agent:
+        agent_audit = Audit(agent)
         await agent.run("x" * 1000)
         await agent.submit("next")
-        await started.wait()
+        await asyncio.wait_for(started.wait(), timeout=5)
         await agent.abort()
-        assert not any(isinstance(e, CompactionAppliedEvent) for e in agent.log.events)
+        assert not any(isinstance(e, CompactionAppliedEvent) for e in agent_audit.events)
         assert "x" * 1000 in "\n".join(m.text for m in agent.log.messages)
 
 
@@ -250,11 +242,12 @@ async def test_compactor_error_is_reported_and_history_is_intact():
             Compaction(trigger=at_ratio(0.5), summarizer=Broken(), keep_turns=0),
         ],
     )
-    async with harness.session("failed-summary") as agent:
+    async with harness.session() as agent:
+        agent_audit = Audit(agent)
         await agent.run("x" * 1000)
         with pytest.raises(ValueError, match="summary failed"):
             await agent.run("next")
-        assert not any(isinstance(e, CompactionAppliedEvent) for e in agent.log.events)
+        assert not any(isinstance(e, CompactionAppliedEvent) for e in agent_audit.events)
         assert len(model.requests) == 1
 
 
@@ -273,7 +266,8 @@ async def test_keep_turns_retains_recent_work_and_later_compaction_merges_old_su
             ),
         ],
     )
-    async with harness.session("keep") as agent:
+    async with harness.session() as agent:
+        agent_audit = Audit(agent)
         await agent.run("FIRST " + "x" * 800)
         await agent.run("SECOND " + "y" * 800)
         await agent.run("current")
@@ -281,7 +275,7 @@ async def test_keep_turns_retains_recent_work_and_later_compaction_merges_old_su
         assert any("y" * 800 in text for text in texts)
         assert not any("x" * 800 in text for text in texts)
         await agent.run("next")
-        assert sum(isinstance(e, CompactionAppliedEvent) for e in agent.log.events) == 2
+        assert sum(isinstance(e, CompactionAppliedEvent) for e in agent_audit.events) == 2
         assert sum(m.id.startswith("compaction:") for m in agent.log.messages) == 1
 
 
@@ -302,30 +296,24 @@ async def test_compaction_does_not_commit_a_summary_that_expands_the_request():
             ),
         ],
     )
-    async with harness.session("no-growth") as agent:
+    async with harness.session() as agent:
+        agent_audit = Audit(agent)
         await agent.run("original" * 30)
         await agent.run("next")
-        assert not any(isinstance(e, CompactionAppliedEvent) for e in agent.log.events)
+        assert not any(isinstance(e, CompactionAppliedEvent) for e in agent_audit.events)
 
 
-async def test_empty_or_non_advancing_compaction_is_rejected_on_replay():
-    seed = (TurnStartedEvent("t"), UserMessageEvent(User("one")), TurnEndedEvent("t"))
-    with pytest.raises(ValueError, match="non-empty"):
-        SessionLog("invalid", seed=(*seed, CompactionAppliedEvent(3, "")))
-    with pytest.raises(ValueError, match="existing event prefix"):
-        SessionLog("invalid", seed=(*seed, CompactionAppliedEvent(99, "summary")))
-
-
-async def test_latest_observation_policy_limits_old_summaries_per_source_and_unwinds():
+async def test_latest_observation_policy_keeps_one_unchanged_snapshot_and_unwinds():
 
     class Observer(Plugin, needs=(Session,)):
         def __init__(self):
+            super().__init__()
             self.index = 0
 
         @hook(PreStep)
         async def observe(self, event, next_, agent: Inject[Session]):
             self.index += 1
-            agent.observe(Observation("browser", f"full {self.index}", f"brief {self.index}"))
+            agent.observe(Observation("browser", f"full {self.index}"))
             return await next_()
 
     model = ScriptedModel(["one", "two", "three"])
@@ -334,25 +322,25 @@ async def test_latest_observation_policy_limits_old_summaries_per_source_and_unw
         plugins=[
             Approvals(default=PolicyDecision.ALLOW),
             Observer(),
-            LatestObservationOnly(max_summaries=1),
+            LatestObservationOnly(),
         ],
-    ).session("observations") as agent:
+    ).session() as agent:
+        agent_audit = Audit(agent)
         for text in ("one", "two", "three"):
             await agent.run(text)
         texts = [m.text for m in model.requests[-1].messages]
-        assert "brief 1" not in texts and "brief 2" in texts and ("full 3" in texts)
-        assert "full 1" not in texts
-        assert SessionLog("replay", seed=agent.log.events).messages == agent.log.messages
+        assert "full 1" not in texts and "full 2" not in texts and "full 3" in texts
+        assert AuditProjection(agent_audit.events).messages == agent.log.messages
     assert isinstance(agent.log.events[-1], ObservationPolicyAppliedEvent)
-    assert agent.log.events[-1].max_summaries is None
+    assert agent.log.events[-1].max_observations is None
 
 
 async def test_cache_usage_is_preserved_as_provider_reported_usage():
     usage = ModelUsage(100, 10, 80, 20)
     model = ScriptedModel([[ModelChunk(text="one", usage=usage)]])
-    async with Application(model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]).session(
-        "cache"
-    ) as agent:
+    async with Application(
+        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+    ).session() as agent:
         await agent.run("one")
         event = agent.log.last(ModelUsageRecordedEvent)
         assert event.usage.cache_hit_rate == 0.8
@@ -361,18 +349,15 @@ async def test_cache_usage_is_preserved_as_provider_reported_usage():
 
 async def test_model_summarizer_uses_explicit_model_without_tools_and_closes_stream():
     llm = ScriptedModel(["summary"])
-    summary = await ModelSummarizer(llm, model_name="summary-model").summarize(
-        (User("history"),), max_tokens=32
-    )
+    summary = await ModelSummarizer(llm).summarize((UserMessage("history"),), max_tokens=32)
     assert summary.text == "summary"
-    assert llm.requests[0].model == "summary-model"
-    assert not llm.requests[0].tools and llm.requests[0].max_tokens == 32
+    assert not llm.requests[0].tools and llm.requests[0].settings.max_tokens == 32
 
 
 async def test_model_summarizer_keeps_tool_names_and_arguments_in_summary_input():
     llm = ScriptedModel(["summary"])
-    messages = (Assistant(tool_calls=(ToolCall("bash", {"command": "pytest tests/auth"}),)),)
-    await ModelSummarizer(llm, model_name="summary").summarize(messages, max_tokens=32)
+    messages = (AssistantMessage(tool_calls=(ToolCall("bash", {"command": "pytest tests/auth"}),)),)
+    await ModelSummarizer(llm).summarize(messages, max_tokens=32)
     transcript = llm.requests[0].messages[-1].text
     assert "bash" in transcript and "pytest tests/auth" in transcript
 
@@ -384,7 +369,7 @@ async def test_model_summarizer_keeps_tool_names_and_arguments_in_summary_input(
         lambda: Compaction(trigger=at_ratio(1.1), summarizer=ExtractiveSummarizer()),
         lambda: Compaction(trigger=at_ratio(0.8), summarizer=ExtractiveSummarizer(), keep_turns=-1),
         lambda: Spill(threshold_tokens=0),
-        lambda: LatestObservationOnly(max_summaries=-1),
+        lambda: ObservationPolicyAppliedEvent(0),
         lambda: ModelUsage(-1),
     ],
 )
