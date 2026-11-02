@@ -150,9 +150,14 @@ plugin_validation=PluginValidation.ERROR, store=None)` resolves reusable configu
 | agent.run(prompt, state=None, **options) | Run one turn and return its terminal result and state |
 | SessionState.from_json(payload) / state.to_json() | Validate or encode the canonical conversation snapshot in memory |
 
-`SessionStore` and `StoredSession(payload: str, revision: int)` are exported from
-`harnessed.sessions`. Implement `load_session(conversation_id) -> StoredSession | None`
-and `save_session(conversation_id, payload, *, expected_revision) -> int`.
+`SessionCheckpoint`, `SessionStore` and `StoredSession(checkpoint: SessionCheckpoint, revision: int)`
+are exported from `harnessed.sessions`. Implement `load_session(conversation_id) -> StoredSession | None`
+and `save_session(conversation_id, checkpoint, *, expected_revision) -> int`.
+Checkpoints are frozen Pydantic dataclasses with typed state, execution events,
+controls and resources. Adapters map them to application-owned repository models;
+the SDK defines no database schema. `to_json()` / `from_json()` provide optional
+canonical encoding without requiring a plugin catalog. `CheckpointExtension`
+preserves application-defined event data for validation by the owning session.
 Writes atomically compare revisions and return the next integer; None expects
 absence. Conflicts raise `SessionWriteConflict` from `harnessed.errors`.
 The application owns pool lifetime and coordinates active workers per ID.
