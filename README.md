@@ -16,8 +16,11 @@ Direct API.
 Harnessed 0.x is **alpha software**. APIs and persisted session formats may
 change in minor releases before 1.0. See the
 [release notes and compatibility policy](https://github.com/mathisarends/harnessed/blob/main/docs/releases.md).
-For the breaking prompt changes in 0.10.0, follow the
-[upgrade from 0.9.0](https://github.com/mathisarends/harnessed/blob/main/docs/releases.md#upgrade-from-090).
+For opt-in persistence, atomic session commits and trace content filtering in
+0.11.0, follow the
+[upgrade from 0.10.0](https://github.com/mathisarends/harnessed/blob/main/docs/releases.md#upgrade-from-0100).
+The earlier [0.10.0 prompt migration](https://github.com/mathisarends/harnessed/blob/main/docs/releases.md#upgrade-from-090)
+remains available for applications upgrading from 0.9.0.
 
 ## Build an agent
 

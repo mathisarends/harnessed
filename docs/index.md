@@ -8,8 +8,10 @@ Harnessed 0.x is alpha software. Read the
 [release notes and compatibility policy](releases.md) before depending on its
 public APIs or persisted session formats.
 
-Upgrading from 0.9.0? Follow the [0.10.0 migration](releases.md#upgrade-from-090)
-for the new plugin instruction blocks and explicit prompt collection order.
+Upgrading from 0.10.0? See the [0.11.0 upgrade guide](releases.md#upgrade-from-0100)
+for opt-in persistence, atomic session commits and trace content filtering.
+Applications on 0.9.0 should also follow the
+[0.10.0 prompt migration](releases.md#upgrade-from-090).
 
 | I want to... | Read |
 | --- | --- |
