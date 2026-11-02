@@ -134,8 +134,11 @@ The application owns pool lifetime and coordinates active workers per ID.
 
 `harnessed.integrations.json.JsonSessionStore(*, root)` ships without an extra.
 It uses atomic JSON replacement and OS locks for revision checks on a local
-filesystem. Persistence remains opt-in. Successful durable admissions are saved
-before hooks and result delivery. Closing a persistent paused session preserves
+filesystem. Persistence remains opt-in. An owned writer coalesces intermediate
+state in the background and awaits commits at input, model/tool intent, result,
+pause and turn-end barriers. `session.flush()` explicitly commits pending state;
+closing drains the writer. Background failures reach run/result/stream consumers.
+Closing a persistent paused session preserves
 its execution; reopening it remains paused. Explicit `SessionState` values still
 contain terminal conversation state only. See [sessions](../guides/sessions.md)
 for recovery, output-validator restoration and checkpoint format boundaries.
@@ -248,6 +251,7 @@ See the [context guide](../guides/context.md).
 | use(plugin, section_delivery=SectionDelivery.ERROR) | Mount a reversible capability; CONTEXT owns guidance per activation, IGNORE skips sections |
 | compact() | Summarize completed history while idle or paused; return its record or None |
 | snapshot() | Export immutable conversation state at an idle boundary |
+| flush() | Await pending checkpoint persistence; no I/O without a store |
 | subscribe(transient=False) | Independent raw log subscription |
 | events / turns | Current-turn execution buffers, released after terminal delivery |
 | messages / usage / last(Event) | Retained working context, live-session usage and recent diagnostics |

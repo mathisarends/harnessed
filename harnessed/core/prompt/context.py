@@ -118,4 +118,5 @@ class ContextValue(Plugin, needs=(DynamicContext,)):
         return await next_()
 
     async def teardown(self, context: Inject[DynamicContext]) -> None:
-        await context.remove(self.key)
+        if not context.log.persistence_failed:
+            await context.remove(self.key)

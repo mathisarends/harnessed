@@ -11,7 +11,12 @@
 - Ship `harnessed.integrations.json.JsonSessionStore(root=...)` without an extra.
   Hashed IDs, atomic replacement and OS locks protect local checkpoint updates.
   No session files are written without an explicitly configured store.
-- Save durable admissions before hooks and results. Restore deliberately paused
+- Coalesce intermediate state with one owned background writer, offload JSON
+  encoding and acknowledge input, model/tool intent, receipt, pause and terminal
+  barriers only after commit. `session.flush()` explicitly commits pending state;
+  closing drains the writer. Background failures reach live callers and streams.
+- Avoid duplicating image and text resources already present in the checkpoint
+  baseline. Restore deliberately paused
   turns, limits, queues, approval grants, images and spilled text. Interrupted
   active work is repaired without automatically repeating external tool actions.
 

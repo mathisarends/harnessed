@@ -32,13 +32,32 @@ creates its directory on the first save. Without `store=`, no session directory
 is created and an explicit `id=` raises `ConfigError`. With a store, omitting
 `id` generates a fresh ID; retain `session.id` if it must be reopened.
 
-Each durable event updates one versioned checkpoint before its admission is
-acknowledged or its hooks are dispatched. An awaited `run()` has saved its final
-reply; `pause()` waits for the completed step's checkpoint. Quiet context changes,
-queued input and controls are also saved. Transient streaming notifications and
-unrecorded observations are not saved. This is awaited persistence, not a
-fire-and-forget background task. A write failure stops further admissions on that
-binding and reaches the caller; reopen after resolving the failure.
+The session owns one background writer. Intermediate changes mark its latest state
+dirty and are coalesced into a checkpoint requested after 100 ms; no separate queue
+of checkpoint copies grows with the event rate. Checkpoint JSON encoding and file
+I/O run in workers. Model and tool activity can overlap a background save; state
+admission and writes remain serialized within each session.
+
+Durability barriers await committed state: input admission/removal, model request
+intent, tool execution intent and receipts, reviewed tool results, turn completion,
+controls, approval changes, named facts, compaction and custom durable events.
+Thus an awaited `run()` has saved its final reply, and `pause()` waits for the
+completed step's checkpoint. Transient token notifications and unrecorded
+observations are not saved. Intermediate internal events may be lost in a crash
+before the next checkpoint, while external-action intent and acknowledged results
+retain their commit guarantees.
+
+Use `await session.flush()` to commit pending state explicitly. Closing drains the
+writer before releasing its resources. Without a store, `flush()` performs no I/O.
+The writer reuses image and text bytes already present in its conversation baseline
+instead of embedding a second copy in the same checkpoint.
+
+A failed background save stops further admissions, cancels active work for cleanup
+and reaches `run()`, `RunHandle.result()` or the stream iterator. A previously
+unobserved idle failure is also reported when closing. Applications map these
+exceptions to their HTTP, SSE, WebSocket or job-status API; ignoring a submitted
+handle does not create a frontend notification channel. Reopen after resolving
+the storage failure.
 
 JSON stores use hashed filenames, a revision envelope, a flushed temporary file
 and atomic replacement. An OS writer lock protects revision checking and writing

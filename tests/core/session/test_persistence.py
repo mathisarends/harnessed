@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel
 
+import harnessed.core.session.store as persistence_store
 from harnessed import (
     Agent,
     ApprovalAnswer,
@@ -19,9 +20,9 @@ from harnessed import (
 )
 from harnessed.core.messages import ImageReference, UserMessage
 from harnessed.errors import ConfigError, SessionClosed, SessionFormatError, SessionWriteConflict
-from harnessed.events import ApprovalRequestedEvent
+from harnessed.events import ApprovalRequestedEvent, ContextMessageEvent
 from harnessed.integrations.json import JsonSessionStore
-from harnessed.plugins import Spill
+from harnessed.plugins import ContextValue, Spill
 from harnessed.plugins.spill import SpillStore
 from harnessed.sessions import SessionStore, StoredSession
 from harnessed.testing import ScriptedModel, call
@@ -173,7 +174,9 @@ async def test_storage_failure_reaches_the_run_caller_without_returning_success(
                     pass
 
 
-async def test_cancelled_write_finishes_before_cancellation_is_delivered():
+@pytest.mark.parametrize("operation", ["context", "flush"])
+async def test_cancelled_write_finishes_before_cancellation_is_delivered(monkeypatch, operation):
+    monkeypatch.setattr(persistence_store, "_CHECKPOINT_INTERVAL", 60.0)
     entered = asyncio.Event()
     release = asyncio.Event()
 
@@ -189,7 +192,11 @@ async def test_cancelled_write_finishes_before_cancellation_is_delivered():
 
     repository = SlowRepository()
     async with Agent(model=ScriptedModel([]), store=repository).session(id="cancel") as session:
-        write = asyncio.create_task(session.context.set("fact", "retained"))
+        if operation == "flush":
+            await session.emit(ContextMessageEvent(UserMessage("retained")))
+            write = asyncio.create_task(session.flush())
+        else:
+            write = asyncio.create_task(session.context.set("fact", "retained"))
         await asyncio.wait_for(entered.wait(), timeout=5)
         write.cancel()
         release.set()
@@ -293,3 +300,128 @@ async def test_images_and_spilled_text_survive_a_paused_turn(store):
         await restored.resume()
         await asyncio.wait_for(restored.wait_until_idle(), timeout=5)
         assert restored.messages[-1].text == "finished"
+
+
+@pytest.mark.parametrize("boundary", ["flush", "close"])
+async def test_intermediate_changes_coalesce_and_restore_at_the_requested_boundary(
+    monkeypatch, boundary
+):
+    monkeypatch.setattr(persistence_store, "_CHECKPOINT_INTERVAL", 60.0)
+    repository = ConversationRepository()
+    agent = Agent(model=ScriptedModel([]), store=repository)
+    async with agent.session(id="batch") as session:
+        await session.context.set("seed", "ready")
+        before = repository.rows["batch"].revision
+        await session.emit(ContextMessageEvent(UserMessage("first")))
+        await session.emit(ContextMessageEvent(UserMessage("second")))
+        assert repository.rows["batch"].revision == before
+        if boundary == "flush":
+            await session.flush()
+            assert repository.rows["batch"].revision == before + 1
+    assert repository.rows["batch"].revision == before + 1
+    async with agent.session(id="batch") as restored:
+        assert [message.text for message in restored.messages][-2:] == ["first", "second"]
+
+
+async def test_intermediate_changes_are_saved_in_the_background():
+    persisted = asyncio.Event()
+    repository = ConversationRepository()
+
+    def observe(payload: str) -> None:
+        history = json.loads(payload)["state"]["history"]
+        if history and history[-1]["message"]["content"] == "background fact":
+            persisted.set()
+
+    repository.before_save = observe
+    async with Agent(model=ScriptedModel([]), store=repository).session(id="background") as session:
+        await session.emit(ContextMessageEvent(UserMessage("background fact")))
+        await asyncio.wait_for(persisted.wait(), timeout=5)
+        stored = repository.rows["background"]
+        assert json.loads(stored.payload)["state"]["history"][-1]["message"]["content"] == (
+            "background fact"
+        )
+
+
+async def test_background_failure_reaches_a_live_handle_and_cleans_up_its_tool():
+    entered, cleaned, block = asyncio.Event(), asyncio.Event(), asyncio.Event()
+
+    class Work(Plugin):
+        @tool(readonly=True)
+        async def work(self) -> str:
+            entered.set()
+            try:
+                await block.wait()
+                return "done"
+            finally:
+                cleaned.set()
+
+    repository = ConversationRepository()
+
+    def unavailable(payload: str) -> None:
+        raise OSError("background storage unavailable")
+
+    agent = Agent(model=ScriptedModel([call(Work.work)]), plugins=[Work()], store=repository)
+    async with agent.session(id="failure") as session:
+        handle = await session.submit("Work")
+        await asyncio.wait_for(entered.wait(), timeout=5)
+        repository.before_save = unavailable
+        await session.emit(ContextMessageEvent(UserMessage("pending fact")))
+        with pytest.raises(OSError, match="background storage unavailable"):
+            await asyncio.wait_for(handle.result(), timeout=5)
+        await asyncio.wait_for(cleaned.wait(), timeout=5)
+
+
+async def test_background_failure_while_idle_is_reported_when_closing():
+    failed = asyncio.Event()
+    repository = ConversationRepository()
+
+    def unavailable(payload: str) -> None:
+        failed.set()
+        raise OSError("idle storage unavailable")
+
+    repository.before_save = unavailable
+    agent = Agent(model=ScriptedModel([]), store=repository)
+    with pytest.raises(OSError, match="idle storage unavailable"):
+        async with agent.session(id="idle") as session:
+            await session.emit(ContextMessageEvent(UserMessage("pending fact")))
+            await asyncio.wait_for(failed.wait(), timeout=5)
+
+
+async def test_model_request_is_not_executed_when_its_intent_cannot_be_saved():
+    repository = ConversationRepository()
+    model = ScriptedModel(["must not execute"])
+
+    def unavailable(payload: str) -> None:
+        if any(event["type"] == "model.requested" for event in json.loads(payload)["events"]):
+            raise OSError("model intent unavailable")
+
+    repository.before_save = unavailable
+    async with Agent(model=model, store=repository).session(id="intent") as session:
+        with pytest.raises(OSError, match="model intent unavailable"):
+            await session.run("Work")
+    assert not model.requests
+
+
+async def test_context_provider_can_unmount_while_a_persistent_session_closes(store):
+    agent = Agent(model=ScriptedModel(["done"]), store=store, plugins=[ContextValue("ci", "ready")])
+    async with agent.session(id="provider") as session:
+        result = await session.run("Work")
+        assert result.state.context == {"ci": "ready"}
+    async with Agent(model=ScriptedModel([]), store=store).session(id="provider") as restored:
+        assert "ci" not in restored.context.values
+
+
+async def test_reported_store_failure_is_not_raised_again_by_context_provider_teardown():
+    repository = ConversationRepository()
+
+    def unavailable(payload: str) -> None:
+        raise OSError("storage unavailable")
+
+    agent = Agent(
+        model=ScriptedModel(["done"]), store=repository, plugins=[ContextValue("ci", "ready")]
+    )
+    async with agent.session(id="provider") as session:
+        await session.run("First")
+        repository.before_save = unavailable
+        with pytest.raises(OSError, match="storage unavailable"):
+            await session.run("Second")

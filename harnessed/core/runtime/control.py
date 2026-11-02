@@ -59,6 +59,14 @@ class SessionControl:
         self._changed.set()
         self._changed = asyncio.Event()
 
+    def fail(self, error: Exception) -> None:
+        """Stop admitting work and cancel the driver after an owned service fails."""
+        self.error = error
+        self.ready = False
+        if self.task is not None and not self.task.done():
+            self.task.cancel()
+        self.notify()
+
     def _check_external(self) -> None:
         self.check_open()
         if self._inside_driver():
@@ -226,7 +234,7 @@ class SessionControl:
         async with self._request():
             self.closing = True
             self.suspending = preserve_paused and self.log.control.paused
-        if self.ready and not self.suspending:
+        if self.ready and not self.suspending and not self.log.persistence_failed:
             await self._terminate(immediate=True, keep_inbox=False, during_close=True)
         if self.task is not None and not self.task.done():
             self.task.cancel()

@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 from collections.abc import AsyncIterator, Callable
+from functools import partial
 from typing import cast
 
 from harnessed.core.approvals import Approval, ApprovalState, approval_transition
@@ -63,7 +64,7 @@ from harnessed.core.session.state import HistoryTurn, SessionState, image_refs
 from harnessed.core.session.store import SessionPersistence
 from harnessed.core.session.turns import Turn, TurnProjection
 from harnessed.core.stream import SessionPublished, TransientEvent, coalesce_deltas
-from harnessed.kernel import Context
+from harnessed.kernel import Context, run_sync
 
 
 class SessionLog:
@@ -136,16 +137,39 @@ class SessionLog:
         self._turn_state: SessionState | None = None
         self._turn_seed: tuple[SessionEvent, ...] = ()
         self._turn_offset = self._sequence
+        if persistence is not None:
+            persistence.bind(partial(self._flush_checkpoint, report=False))
 
     @property
     def persistent(self) -> bool:
         return self._persistence is not None
 
+    @property
+    def persistence_failed(self) -> bool:
+        return self._persistence is not None and self._persistence.failed
+
     async def flush(self) -> None:
-        """Wait for preceding checkpoint writes and surface a failed store binding."""
-        async with self._lock:
-            if self._persistence is not None:
-                self._persistence.check()
+        """Commit preceding changes, draining a write even if the waiter is cancelled."""
+        if self._persistence is None:
+            return
+        task = asyncio.create_task(self._flush_checkpoint())
+        cancelled = False
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                cancelled = True
+        task.result()
+        if cancelled:
+            raise asyncio.CancelledError
+
+    def set_persistence_error_handler(self, callback: Callable[[Exception], None]) -> None:
+        if self._persistence is not None:
+            self._persistence.set_error_handler(callback)
+
+    async def close_persistence(self) -> None:
+        if self._persistence is not None:
+            await self._persistence.aclose()
 
     @property
     def boundary_state(self) -> SessionState:
@@ -179,15 +203,29 @@ class SessionLog:
 
     def _checkpoint(self) -> SessionCheckpoint:
         turn = self.open_turn
+        state = self.snapshot() if turn is None else self.boundary_state
+        assets = {value.ref.sha256 for value in state.assets}
+        files = {value.key: value for value in state.files}
         return SessionCheckpoint(
-            state=self.snapshot() if turn is None else self.boundary_state,
+            state=state,
             offset=self._turn_offset if turn is not None else self._sequence,
             seed=self._turn_seed if turn is not None else self._checkpoint_seed(),
             events=turn.events if turn is not None else (),
             control=AgentControlChangedEvent(self._control.state, self._control.keep_inbox),
-            assets=self._assets.snapshot(),
-            files=self._files.snapshot(),
+            assets=tuple(
+                value for value in self._assets.snapshot() if value.ref.sha256 not in assets
+            ),
+            files=tuple(value for value in self._files.snapshot() if files.get(value.key) != value),
         )
+
+    async def _serialize_checkpoint(self) -> str:
+        checkpoint = self._checkpoint()
+        return await run_sync(partial(checkpoint.to_json, registry=self.registry))
+
+    async def _flush_checkpoint(self, *, report: bool = True) -> None:
+        async with self._lock:
+            if self._persistence is not None:
+                await self._persistence.flush(self._serialize_checkpoint, report=report)
 
     def _checkpoint_seed(self) -> tuple[SessionEvent, ...]:
         events: list[SessionEvent] = list(self._pending.values())
@@ -589,8 +627,12 @@ class SessionLog:
                     event.usage if self._usage is None else sum_usage((self._usage, event.usage))
                 )
             self.registry.validate(event)
-            if self._persistence is not None and not self._restoring:
-                await self._persistence.save(self._checkpoint().to_json(registry=self.registry))
+            if (
+                self._persistence is not None
+                and not self._restoring
+                and self._persistence.record(event)
+            ):
+                await self._persistence.flush(self._serialize_checkpoint)
             if not self._restoring:
                 self._notify(event)
         return seq, event
