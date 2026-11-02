@@ -28,7 +28,7 @@ integrations are optional extras; the standalone kernel uses only the standard
 library. Harnessed is distributed under the
 [MIT License](https://github.com/mathisarends/harnessed/blob/main/LICENSE).
 
-## 0.11.0 (unreleased)
+## 0.11.0 (2026-11-02)
 
 This minor release adds opt-in session persistence, atomic application-owned
 projections, OpenTelemetry content filtering and explicit kit resolution.
