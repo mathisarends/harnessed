@@ -11,6 +11,15 @@
   Interrupted delegations are marked without automatically replaying child tools.
 - Add a core child-session factory protocol, an offline example and a guide.
 
+## 0.11.0 (2026-11-02)
+
+This minor release adds opt-in session persistence, atomic application-owned
+projections, OpenTelemetry content filtering and explicit kit resolution.
+The ephemeral default and explicit `SessionState` continuation remain available.
+Conversation snapshots remain state format **1** and standalone audit envelopes
+remain version **3**. New execution checkpoints and JSON-store envelopes use
+format **2**.
+
 ### Added
 
 - Add immutable `SessionCommit` and `SessionChange` values. Stores receive the
@@ -58,7 +67,7 @@
 
 ### API and storage boundaries
 
-- Breaking: `save_session` accepts `commit: SessionCommit` and
+- Unreleased prototype changes: `save_session` accepts `commit: SessionCommit` and
   `StoredSession.checkpoint` replaces `StoredSession.payload`. JSON encoding moves
   to store implementations; typed in-memory stores need no serialization. The JSON
   store envelope and execution checkpoint both use format **2**; unreleased format
@@ -73,6 +82,34 @@
   not restored. Pending structured work requires explicit validator registration.
 - Revision checks prevent lost updates, not concurrent external side effects.
   API servers own per-conversation execution coordination and store/pool lifetime.
+
+### Upgrade from 0.10.0
+
+1. Existing ephemeral agents and `SessionState` continuation need no API or format
+   migration. Persistence is opt-in; `agent.session(id=...)` requires `store=`.
+2. To retain conversations across requests or processes, configure
+   `Agent(store=JsonSessionStore(root=...))` or implement `SessionStore` from
+   `harnessed.sessions`. Save `commit.checkpoint` and any domain projections of
+   `commit.changes` in one transaction with an atomic revision check. Reopen by
+   ID, and register `restore_outputs` before resuming structured work.
+3. If testing an unreleased persistence prototype from `main`, replace string
+   payloads and checkpoint-only saves with `SessionCommit`; read
+   `StoredSession.checkpoint` on load. Back up prototype data and start a format
+   **2** store. Format **1** execution checkpoints and old JSONL archives have no
+   automatic migration. These prototype APIs were not part of 0.10.0.
+4. To capture trace content with literal secret masking, use
+   `ContentCapture.redacted(*secrets)` from
+   `harnessed.integrations.opentelemetry`. Add `content_filter=` for
+   application-specific transformations; content capture remains opt-in.
+5. Use `kit.resolve(prompt=KitPromptPolicy.INCLUDE)` to inspect or flatten a kit,
+   or `OMIT` to omit kit prompt strategies recursively. Explicit prompt plugins
+   and selected recipes' instruction contributions remain intact.
+
+See [sessions](docs/guides/sessions.md), [tracing](docs/guides/tracing.md) and
+[kit resolution](docs/guides/plugins.md#resolve-a-kit-into-flat-recipes).
+Run `uv run python -m examples.38_session_store`,
+`uv run python -m examples.39_typed_session_store` and
+`uv run python -m examples.40_atomic_session_store` for offline persistence examples.
 
 ## 0.10.0 (2026-11-01)
 

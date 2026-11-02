@@ -23,6 +23,11 @@ Detailed breaking changes and upgrade instructions are recorded in the repositor
   [custom events](guides/events.md) and
   [structured answers](guides/structured-output.md).
 
+Python 3.12, 3.13 and 3.14 are supported on Linux, Windows and macOS. Provider
+integrations are optional extras; the standalone kernel uses only the standard
+library. Harnessed is distributed under the
+[MIT License](https://github.com/mathisarends/harnessed/blob/main/LICENSE).
+
 ## Unreleased
 
 `Subagents` from `harnessed.plugins` delegates explicit tasks to configured
@@ -31,7 +36,15 @@ durable relationships and recorded child receipts keep delegations inspectable
 through completion, cancellation and checkpoint recovery. See
 [subagents](guides/subagents.md).
 
-### Opt-in session persistence
+## 0.11.0 (2026-11-02)
+
+This minor release adds opt-in session persistence, atomic application-owned
+projections, OpenTelemetry content filtering and explicit kit resolution.
+Conversation snapshots remain state format **1** and standalone audit envelopes
+remain version **3**. New execution checkpoints and JSON-store envelopes use
+format **2**. Existing 0.10.0 applications need no API or storage migration.
+
+### Opt-in session persistence and atomic commits
 
 Use `Agent(store=JsonSessionStore(root=...))` or supply an application-owned
 `SessionStore`, then reopen conversations with `agent.session(id=...)`.
@@ -42,23 +55,66 @@ paused sessions survive closure; register output validators with `restore_output
 before resuming structured work. See [sessions](guides/sessions.md) for the repository
 contract, revision conflicts, recovery and execution ownership.
 
-Custom stores receive `SessionCommit` instead of a bare `SessionCheckpoint`.
+Custom stores receive a typed `SessionCommit`.
 Read `commit.checkpoint` for recovery and `commit.changes` for new, sequenced
 events. Apply mapped domain changes and the checkpoint in one repository
 transaction, returning only after commit. Stores without a domain projection may
 ignore the changes. `StoredSession` still returns a checkpoint and revision.
 
-The former string API is also removed;
-`StoredSession.checkpoint` replaces `StoredSession.payload`. Import the typed value
-from `harnessed.sessions` and map it inside your application adapter. JSON encoding
-is optional and belongs to the store. Both the checkpoint document and bundled
-JSON-store envelope reject their previous unreleased format 1; no transitional
-string API or automatic migration is provided.
+The session owns one background writer that batches intermediate changes.
+Input, model/tool intent, receipts, pauses and terminal results await committed
+storage. `session.flush()` commits pending state, and closure drains the writer.
+Live text/reasoning deltas and tool-argument previews remain transient; they never
+enter checkpoints or commits. Tool progress is a durable intermediate event.
 
-Python 3.12, 3.13 and 3.14 are supported on Linux, Windows and macOS. Provider
-integrations are optional extras; the standalone kernel uses only the standard
-library. Harnessed is distributed under the
-[MIT License](https://github.com/mathisarends/harnessed/blob/main/LICENSE).
+Revision checks prevent lost updates, but applications still coordinate execution
+per conversation and own the store or pool lifetime. Recovery repairs interrupted
+work without automatically repeating external tool actions.
+
+### Trace content filtering
+
+Use `ContentCapture.redacted(*secrets)` from
+`harnessed.integrations.opentelemetry` to mask registered literal strings and
+secret wrappers throughout captured conversation and tool content, before size
+limits. Add a synchronous `content_filter=` for application transformations or
+field omission. Replacements are also redacted; processing failures omit content
+without failing the agent. Content capture and exception text remain opt-in.
+See [tracing](guides/tracing.md) for the policy and its limits.
+
+### Explicit kit resolution
+
+`Kit.resolve()` returns frozen `ResolvedKit` recipes and their original
+composition provenance without mounting plugins or rendering instructions.
+`KitPromptPolicy.INCLUDE` retains kit prompt strategies; `OMIT` skips them
+recursively before slot conflict resolution. Explicit prompt plugins and selected
+recipes' instruction contributions remain intact. See
+[kit resolution](guides/plugins.md#resolve-a-kit-into-flat-recipes).
+
+### Upgrade from 0.10.0
+
+1. Keep existing ephemeral agents and `SessionState` snapshots. The default
+   remains in memory; persistence requires an explicit `store=` and reopening
+   requires a retained conversation ID.
+2. For persistence, choose the bundled `JsonSessionStore` or implement
+   `SessionStore` from `harnessed.sessions`. Save `commit.checkpoint` and any
+   projections of `commit.changes` in the same revision-checked transaction.
+   Register `restore_outputs` when reopening pending structured work, then call
+   `resume()` for a deliberately paused session.
+3. For unreleased persistence prototypes from `main`, replace string payloads
+   or checkpoint-only saves with `SessionCommit`, and load through
+   `StoredSession.checkpoint` instead of `.payload`. JSON encoding belongs to
+   the adapter. Back up prototype data and start a format **2** store; format
+   **1** execution checkpoints and former JSONL archives have no automatic
+   migration. These prototypes were not part of 0.10.0.
+4. Enable trace capture with an explicit redaction policy when needed, and use
+   `Kit.resolve(prompt=...)` when flattening or inspecting reusable kits.
+   Existing tracing and agent composition remain available.
+
+Run the offline examples with `uv run python -m examples.38_session_store`,
+`uv run python -m examples.39_typed_session_store` and
+`uv run python -m examples.40_atomic_session_store`. The
+[changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
+records the complete release scope.
 
 ## 0.10.0 (2026-11-01)
 
