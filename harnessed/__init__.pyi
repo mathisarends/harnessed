@@ -30,6 +30,8 @@ from harnessed.core.runtime.result import RunResult as RunResult
 from harnessed.core.runtime.session import Session as Session
 from harnessed.core.session.session import SessionLog as SessionLog
 from harnessed.core.session.state import SessionState as SessionState
+from harnessed.core.session.store import SessionStore as SessionStore
+from harnessed.core.session.store import StoredSession as StoredSession
 from harnessed.core.tools.context import ToolContext as ToolContext
 from harnessed.core.tools.decorator import tool as tool
 from harnessed.core.tools.info import ToolChain as ToolChain
@@ -73,6 +75,8 @@ __all__ = [
     "SessionClosed",
     "SessionLog",
     "SessionState",
+    "SessionStore",
+    "StoredSession",
     "SessionStatus",
     "StopReason",
     "StreamOverflow",

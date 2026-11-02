@@ -43,6 +43,7 @@ class SessionControl:
         self.ready = False
         self.finishing = False
         self.closing = False
+        self.suspending = False
         self._changed = asyncio.Event()
         self._request_lock = asyncio.Lock()
         self._maintenance = asyncio.Lock()
@@ -133,6 +134,7 @@ class SessionControl:
                 raise self.error
             await self._changed.wait()
             self.check_open()
+        await self.log.flush()
 
     async def resume(self) -> None:
         self.check_open()
@@ -217,14 +219,14 @@ class SessionControl:
                 return
             await self._changed.wait()
 
-    async def close(self) -> None:
+    async def close(self, *, preserve_paused: bool = False) -> None:
         if self.status is SessionStatus.CLOSED:
             return
         self._check_external()
         async with self._request():
             self.closing = True
-        # Closing owns local cleanup; there is no archived paused execution.
-        if self.ready:
+            self.suspending = preserve_paused and self.log.control.paused
+        if self.ready and not self.suspending:
             await self._terminate(immediate=True, keep_inbox=False, during_close=True)
         if self.task is not None and not self.task.done():
             self.task.cancel()

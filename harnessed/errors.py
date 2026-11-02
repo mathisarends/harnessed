@@ -19,6 +19,7 @@ from harnessed.core.errors import (
     SessionClosed,
     SessionFormatError,
     SessionStateError,
+    SessionWriteConflict,
     StreamOverflow,
     ToolNameConflict,
 )
@@ -44,6 +45,7 @@ __all__ = [
     "SessionClosed",
     "SessionFormatError",
     "SessionStateError",
+    "SessionWriteConflict",
     "StreamOverflow",
     "ToolNameConflict",
 ]

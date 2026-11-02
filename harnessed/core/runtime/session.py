@@ -89,7 +89,7 @@ class Session:
         self._close_task: asyncio.Task[None] | None = None
         self.id = session.id
         self.context = DynamicContext(session)
-        self._boundary_state = session.snapshot()
+        self._boundary_state = session.boundary_state
         self._compaction = CompactionManager(ctx, session, context_window=options.context_window)
         self.control = SessionControl(session, self._drive, lambda: _driving.get() is self)
         self._live_approvals = LiveApprovals()
@@ -553,7 +553,7 @@ class Session:
 
     async def _close(self) -> None:
         try:
-            await self.control.close()
+            await self.control.close(preserve_paused=self.log.persistent)
         finally:
             try:
                 if self.control.closing:
@@ -570,7 +570,8 @@ class Session:
                     break
         except (StopAtBoundary, asyncio.CancelledError):
             try:
-                await self.control.finish_termination()
+                if not self.control.suspending:
+                    await self.control.finish_termination()
             except Exception as exc:
                 self.control.error = exc
         except Exception as exc:

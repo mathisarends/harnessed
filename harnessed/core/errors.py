@@ -59,6 +59,10 @@ class SessionFormatError(HarnessedError, ValueError):
     """A stored session record does not match the current log format."""
 
 
+class SessionWriteConflict(HarnessedError, RuntimeError):
+    """The stored conversation changed since this runtime loaded its revision."""
+
+
 class OutputTokenLimit(HarnessedError, RuntimeError):
     """The model stopped at its output token limit under ``on_max_tokens=FAIL``."""
 

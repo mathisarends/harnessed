@@ -23,6 +23,17 @@ Detailed breaking changes and upgrade instructions are recorded in the repositor
   [custom events](guides/events.md) and
   [structured answers](guides/structured-output.md).
 
+## Unreleased: opt-in session persistence
+
+Use `Agent(store=JsonSessionStore(root=...))` or supply an application-owned
+`SessionStore`, then reopen conversations with `agent.session(id=...)`.
+Explicit `SessionState` continuation and the ephemeral default remain available.
+Stored execution checkpoints use format **1**, separate from conversation snapshots
+and former JSONL archives. They have no automatic legacy migration. Persistent
+paused sessions survive closure; register output validators with `restore_outputs`
+before resuming structured work. See [sessions](guides/sessions.md) for the repository
+contract, revision conflicts, recovery and execution ownership.
+
 Python 3.12, 3.13 and 3.14 are supported on Linux, Windows and macOS. Provider
 integrations are optional extras; the standalone kernel uses only the standard
 library. Harnessed is distributed under the

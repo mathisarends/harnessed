@@ -46,6 +46,8 @@ _EXPORTS = {
     "SessionClosed": ("harnessed.core.errors", "SessionClosed"),
     "SessionLog": ("harnessed.core.session.session", "SessionLog"),
     "SessionState": ("harnessed.core.session.state", "SessionState"),
+    "SessionStore": ("harnessed.core.session.store", "SessionStore"),
+    "StoredSession": ("harnessed.core.session.store", "StoredSession"),
     "SessionStatus": ("harnessed.core.runtime.control", "SessionStatus"),
     "StopReason": ("harnessed.core.model", "StopReason"),
     "StreamOverflow": ("harnessed.core.errors", "StreamOverflow"),

@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Add opt-in `Agent(store=...)` and `agent.session(id=..., restore_outputs=...)`.
+  Applications implement the structural `SessionStore` contract directly in their
+  conversation repository, with `StoredSession` values and atomic revision checks.
+- Ship `harnessed.integrations.json.JsonSessionStore(root=...)` without an extra.
+  Hashed IDs, atomic replacement and OS locks protect local checkpoint updates.
+  No session files are written without an explicitly configured store.
+- Save durable admissions before hooks and results. Restore deliberately paused
+  turns, limits, queues, approval grants, images and spilled text. Interrupted
+  active work is repaired without automatically repeating external tool actions.
+
+### API and storage boundaries
+
+- Stored sessions use a new execution-checkpoint format **1**, distinct from
+  terminal `SessionState` format **1** and audit-event envelope **3**. Raw state
+  JSON and former JSONL archives cannot be opened as execution checkpoints; there
+  are no legacy migrations or `MemorySessions` / `JsonlSessions` aliases.
+- A persistent paused session now remains recoverable after closure. Its live
+  handles still close; reopen by ID and call `resume()`. Ephemeral session closure
+  continues to discard queued and paused work. Python stacks and plugin state are
+  not restored. Pending structured work requires explicit validator registration.
+- Revision checks prevent lost updates, not concurrent external side effects.
+  API servers own per-conversation execution coordination and store/pool lifetime.
+
 ## 0.10.0 (2026-11-01)
 
 This minor release replaces instruction descriptors and placement policies with

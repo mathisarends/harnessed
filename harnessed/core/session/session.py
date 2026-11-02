@@ -1,11 +1,12 @@
 import asyncio
+import hashlib
 from collections.abc import AsyncIterator, Callable
 from typing import cast
 
 from harnessed.core.approvals import Approval, ApprovalState, approval_transition
 from harnessed.core.assets import AssetStore, _MemoryAssets
 from harnessed.core.buffering import EventBuffer
-from harnessed.core.errors import SessionStateError
+from harnessed.core.errors import SessionFormatError, SessionStateError
 from harnessed.core.event_registry import EventRegistry
 from harnessed.core.hooks import SessionAppended
 from harnessed.core.messages import (
@@ -19,6 +20,7 @@ from harnessed.core.messages import (
     ToolStatus,
 )
 from harnessed.core.model import ModelRequest, ModelUsage, sum_usage
+from harnessed.core.session.checkpoint import SessionCheckpoint
 from harnessed.core.session.control import RunControl
 from harnessed.core.session.events import (
     AgentControlChangedEvent,
@@ -58,6 +60,7 @@ from harnessed.core.session.history import derive_requests as derive_requests
 from harnessed.core.session.images import _SessionImages
 from harnessed.core.session.inbox import Inbox
 from harnessed.core.session.state import HistoryTurn, SessionState, image_refs
+from harnessed.core.session.store import SessionPersistence
 from harnessed.core.session.turns import Turn, TurnProjection
 from harnessed.core.stream import SessionPublished, TransientEvent, coalesce_deltas
 from harnessed.kernel import Context
@@ -75,6 +78,7 @@ class SessionLog:
         files: MemoryFiles | None = None,
         registry: EventRegistry | None = None,
         assets: _MemoryAssets | None = None,
+        persistence: SessionPersistence | None = None,
     ) -> None:
         if registry is None:
             registry = (
@@ -127,6 +131,71 @@ class SessionLog:
         self._preserved_turns = state.preserved_turns if state else ()
         self._uncompacted_turns = state.turns_since_compaction if state else 0
         self._closed_count = len(self._turn_boundaries)
+        self._persistence = persistence
+        self._restoring = False
+        self._turn_state: SessionState | None = None
+        self._turn_seed: tuple[SessionEvent, ...] = ()
+        self._turn_offset = self._sequence
+
+    @property
+    def persistent(self) -> bool:
+        return self._persistence is not None
+
+    async def flush(self) -> None:
+        """Wait for preceding checkpoint writes and surface a failed store binding."""
+        async with self._lock:
+            if self._persistence is not None:
+                self._persistence.check()
+
+    @property
+    def boundary_state(self) -> SessionState:
+        return self._turn_state if self._turn_state is not None else self.snapshot()
+
+    async def restore(self, checkpoint: SessionCheckpoint) -> None:
+        """Project a validated checkpoint without dispatching historical hooks."""
+        if self._events or self.open_turn is not None or checkpoint.offset < self._sequence:
+            raise SessionFormatError("Checkpoint offset precedes its conversation state")
+        self._restoring = True
+        try:
+            for event in checkpoint.seed:
+                await self._append(event)
+            self._events.clear()
+            self._snapshot = None
+            self._sequence = checkpoint.offset
+            for event in checkpoint.events:
+                await self._append(event)
+            if checkpoint.events and self.open_turn is None:
+                raise SessionFormatError("An execution suffix must contain one open turn")
+            self._control = RunControl((checkpoint.control,))
+            files = {value.key: value.text for value in self._files.snapshot()}
+            for ref in self.resources:
+                if hashlib.sha256(files[ref.path].encode("utf-8")).hexdigest() != ref.sha256:
+                    raise SessionFormatError("Checkpoint text resource integrity check failed")
+            self._retain_resources()
+        except (ValueError, KeyError) as error:
+            raise SessionFormatError("Invalid checkpoint execution") from error
+        finally:
+            self._restoring = False
+
+    def _checkpoint(self) -> SessionCheckpoint:
+        turn = self.open_turn
+        return SessionCheckpoint(
+            state=self.snapshot() if turn is None else self.boundary_state,
+            offset=self._turn_offset if turn is not None else self._sequence,
+            seed=self._turn_seed if turn is not None else self._checkpoint_seed(),
+            events=turn.events if turn is not None else (),
+            control=AgentControlChangedEvent(self._control.state, self._control.keep_inbox),
+            assets=self._assets.snapshot(),
+            files=self._files.snapshot(),
+        )
+
+    def _checkpoint_seed(self) -> tuple[SessionEvent, ...]:
+        events: list[SessionEvent] = list(self._pending.values())
+        for grant in self.approvals.grants:
+            events.append(grant.request)
+            if grant.resolution is not None:
+                events.append(grant.resolution)
+        return tuple(events)
 
     @property
     def next_sequence(self) -> int:
@@ -211,6 +280,8 @@ class SessionLog:
     def _release_turn(self) -> None:
         """Release execution buffers after publishing the terminal result."""
         self._events.clear()
+        self._turn_state = None
+        self._turn_seed = ()
         self._snapshot = None
         self._turns.release_closed()
         self._requests.clear()
@@ -377,7 +448,7 @@ class SessionLog:
     ) -> None:
         self.registry.validate(event)
         cancelled = False
-        terminal = isinstance(
+        terminal = self._persistence is not None or isinstance(
             event,
             ToolExecutionFinishedEvent
             | ToolCallFinishedEvent
@@ -413,6 +484,9 @@ class SessionLog:
 
     async def _append(self, event: SessionEvent) -> tuple[int, SessionEvent]:
         async with self._lock:
+            self.registry.validate(event)
+            if self._persistence is not None and not self._restoring:
+                self._persistence.check()
             event = await self._images.retain_event(event)
             if isinstance(event, InboxAddedEvent) and event.message.id in self._pending:
                 raise ValueError(f"Duplicate pending message id: {event.message.id}")
@@ -421,6 +495,10 @@ class SessionLog:
             approval = approval_transition(self._approval_records, event)
             self._turns.validate(event)
             seq = self._sequence
+            if isinstance(event, TurnStartedEvent):
+                self._turn_state = self.snapshot()
+                self._turn_seed = self._checkpoint_seed()
+                self._turn_offset = seq
             if isinstance(event, CompactionAppliedEvent):
                 if not self._compacted_through < event.through <= seq or not event.summary.strip():
                     raise ValueError("Compaction must advance a completed context boundary")
@@ -472,7 +550,8 @@ class SessionLog:
                     for kind, record in self._last.items()
                     if kind in (CompactionAppliedEvent, AgentControlChangedEvent)
                 }
-                self._retain_resources()
+                if not self._restoring:
+                    self._retain_resources()
             if isinstance(event, ToolExecutionStartedEvent):
                 self._open_executions.add(event.call_id)
             elif isinstance(event, ToolExecutionFinishedEvent):
@@ -510,7 +589,10 @@ class SessionLog:
                     event.usage if self._usage is None else sum_usage((self._usage, event.usage))
                 )
             self.registry.validate(event)
-            self._notify(event)
+            if self._persistence is not None and not self._restoring:
+                await self._persistence.save(self._checkpoint().to_json(registry=self.registry))
+            if not self._restoring:
+                self._notify(event)
         return seq, event
 
     async def publish(self, event: TransientEvent) -> None:

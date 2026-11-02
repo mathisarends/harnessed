@@ -50,7 +50,9 @@ class _MemoryAssets:
     def __init__(self, values: tuple[AssetValue, ...] = ()) -> None:
         self._values: dict[str, AssetValue] = {value.ref.sha256: value for value in values}
 
-    def snapshot(self, refs: set[AssetRef]) -> tuple[AssetValue, ...]:
+    def snapshot(self, refs: set[AssetRef] | None = None) -> tuple[AssetValue, ...]:
+        if refs is None:
+            return tuple(self._values.values())
         return tuple(
             AssetValue(ref, self._values[ref.sha256].data)
             for ref in sorted(refs, key=lambda ref: (ref.sha256, ref.media_type))
