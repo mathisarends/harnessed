@@ -130,6 +130,36 @@ install providers, or disable Harnessed's fallback plugins. For example, excludi
 a library's `AgentLoop` restores the built-in loop unless another override is
 supplied. Missing service requirements are still reported at session startup.
 
+### Resolve a kit into flat recipes
+
+`kit.resolve(*, prompt=KitPromptPolicy.INCLUDE)` returns a frozen `ResolvedKit`
+with `plugins` and `description`. Import both public types and `KitPromptPolicy`
+from `harnessed`. Resolution applies the same nested slot, ordering and exclusion
+rules as Agent composition. It adds no agent defaults, mounts no plugins and
+does not evaluate instruction providers or render prompt files.
+
+```python
+from harnessed import KitPromptPolicy
+
+resolved = project_kit().resolve(prompt=KitPromptPolicy.OMIT)
+plugins = resolved.plugins
+print(resolved.description)
+```
+
+`INCLUDE` keeps each `Kit.prompt` as a prompt-renderer recipe, including its
+normal slot conflicts. `OMIT` skips those declarations recursively before slot
+resolution. Explicit `PromptRenderer(...)` recipes remain present. Selected
+plugins retain their own instructions, descriptions, tools and event declarations;
+the embedding application's prompt strategy determines how instructions render.
+The source kit is unchanged.
+
+`resolved.description` retains the original kit paths, replacement histories and
+exclusions. Passing `resolved.plugins` to an Agent supplies a flat list of direct
+inputs: the new Agent has no original kit scope, and its descriptions reflect
+that. Pass the original kit when its precedence and provenance should remain
+part of the Agent composition. A `ResolvedKit` itself is an inspection result,
+not a mountable recipe or an Agent plugin input.
+
 ### Inspect the resolved composition
 
 `agent.describe()` returns an immutable `CompositionDescription`, exported from
