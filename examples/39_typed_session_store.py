@@ -6,7 +6,7 @@ from examples._conversation_repository import ConversationConflictError, Convers
 from harnessed import Agent
 from harnessed.errors import SessionWriteConflict
 from harnessed.models import UserMessage
-from harnessed.sessions import SessionCheckpoint, SessionStore, StoredSession
+from harnessed.sessions import SessionCheckpoint, SessionCommit, SessionStore, StoredSession
 from harnessed.testing import ScriptedModel
 
 
@@ -26,10 +26,11 @@ class ConversationSessionStore:
     async def save_session(
         self,
         conversation_id: str,
-        checkpoint: SessionCheckpoint,
+        commit: SessionCommit,
         *,
         expected_revision: int | None,
     ) -> int:
+        checkpoint = commit.checkpoint
         document = await asyncio.to_thread(checkpoint.to_json)
         try:
             return await self._repository.commit(

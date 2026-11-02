@@ -22,6 +22,7 @@ requires its provider extra and credentials.
 | Application-owned persistence | `uv run python -m examples.17_external_state` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/17_external_state.py) |
 | Opt-in JSON checkpoints and persisted pause | `uv run python -m examples.38_session_store` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/38_session_store.py) |
 | Typed checkpoints and an application repository adapter | `uv run python -m examples.39_typed_session_store` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/39_typed_session_store.py) |
+| Atomic domain-message and checkpoint commits | `uv run python -m examples.40_atomic_session_store` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/40_atomic_session_store.py) |
 | Session-owned spill | `uv run python -m examples.24_session_spill` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/24_session_spill.py) |
 | Validated forms | `uv run python -m examples.21_validated_forms` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/21_validated_forms.py) |
 

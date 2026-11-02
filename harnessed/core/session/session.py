@@ -22,10 +22,12 @@ from harnessed.core.messages import (
 )
 from harnessed.core.model import ModelRequest, ModelUsage, sum_usage
 from harnessed.core.session.checkpoint import (
+    CheckpointEntry,
     CheckpointExtension,
     CheckpointSeed,
     SessionCheckpoint,
 )
+from harnessed.core.session.commit import SessionChange
 from harnessed.core.session.control import RunControl
 from harnessed.core.session.events import (
     AgentControlChangedEvent,
@@ -221,12 +223,8 @@ class SessionLog:
             state=state,
             offset=self._turn_offset if turn is not None else self._sequence,
             seed=self._turn_seed if turn is not None else self._checkpoint_seed(),
-            # The log admits only catalog-validated built-ins or DurableEvent extensions.
             events=tuple(
-                CheckpointExtension.from_event(event, registry=self.registry)
-                if isinstance(event, DurableEvent)
-                else cast(LogEvent, event)
-                for event in (turn.events if turn is not None else ())
+                self._checkpoint_entry(event) for event in (turn.events if turn is not None else ())
             ),
             control=AgentControlChangedEvent(self._control.state, self._control.keep_inbox),
             assets=tuple(
@@ -234,6 +232,12 @@ class SessionLog:
             ),
             files=tuple(value for value in self._files.snapshot() if files.get(value.key) != value),
         )
+
+    def _checkpoint_entry(self, event: SessionEvent) -> CheckpointEntry:
+        # The log admits only catalog-validated built-ins or DurableEvent extensions.
+        if isinstance(event, DurableEvent):
+            return CheckpointExtension.from_event(event, registry=self.registry)
+        return cast(LogEvent, event)
 
     async def _flush_checkpoint(self, *, report: bool = True) -> None:
         async with self._lock:
@@ -643,7 +647,7 @@ class SessionLog:
             if (
                 self._persistence is not None
                 and not self._restoring
-                and self._persistence.record(event)
+                and self._persistence.record(SessionChange(seq, self._checkpoint_entry(event)))
             ):
                 await self._persistence.flush(self._checkpoint)
             if not self._restoring:

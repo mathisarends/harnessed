@@ -4,6 +4,13 @@
 
 ### Added
 
+- Add immutable `SessionCommit` and `SessionChange` values. Stores receive the
+  checkpoint with all new, ordered durable events since their last acknowledged
+  save, enabling atomic application-owned message/projection writes. Retain
+  changes through background batching, compaction and turn closure; reopening
+  does not re-emit historical changes. Add an executable SQLite transaction
+  example with no SDK dependency in the repository layer.
+
 - Expose a frozen, Pydantic-validated `SessionCheckpoint` from `harnessed.sessions`.
   Stores receive typed state, built-in events, controls and resources instead of
   an opaque string. Application adapters own the mapping to their existing
@@ -42,7 +49,7 @@
 
 ### API and storage boundaries
 
-- Breaking: `save_session` accepts `checkpoint: SessionCheckpoint` and
+- Breaking: `save_session` accepts `commit: SessionCommit` and
   `StoredSession.checkpoint` replaces `StoredSession.payload`. JSON encoding moves
   to store implementations; typed in-memory stores need no serialization. The JSON
   store envelope and execution checkpoint both use format **2**; unreleased format

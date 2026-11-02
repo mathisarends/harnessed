@@ -68,11 +68,11 @@ checkpoint, including resource bytes, rather than appending an audit log.
 
 ## Use an existing conversation repository
 
-Import `SessionCheckpoint`, `SessionStore` and `StoredSession` from
+Import `SessionCommit`, `SessionCheckpoint`, `SessionStore` and `StoredSession` from
 `harnessed.sessions`. A store implements two async methods structurally:
 
 ```python
-from harnessed.sessions import SessionCheckpoint, SessionStore, StoredSession
+from harnessed.sessions import SessionCheckpoint, SessionCommit, SessionStore, StoredSession
 
 
 class ConversationSessionStore:
@@ -81,7 +81,7 @@ class ConversationSessionStore:
     async def save_session(
         self,
         conversation_id: str,
-        checkpoint: SessionCheckpoint,
+        commit: SessionCommit,
         *,
         expected_revision: int | None,
     ) -> int: ...
@@ -105,6 +105,71 @@ It maps typed checkpoint information to application-owned fields and translates
 the repository's conflict error to `SessionWriteConflict`. Its storage layout is
 illustrative; applications can map fields into their own records instead of
 storing one document.
+
+### Commit application changes atomically
+
+Each `save_session` receives one frozen, Pydantic-validated `SessionCommit`:
+
+```python
+checkpoint = commit.checkpoint
+for change in commit.changes:
+    position = change.sequence  # Conversation-local, zero-based event position.
+    event = change.event  # Concrete built-in event or CheckpointExtension.
+```
+
+`changes` contains all new durable events since the previous acknowledged save,
+in order. Sequences are contiguous and end at `commit.next_sequence`, which is
+`checkpoint.offset + len(checkpoint.events)`. The runtime retains these immutable
+event references until the store acknowledges the commit, including events that
+compaction removes from working history. A failed save poisons the binding; the
+SDK does not silently discard changes or automatically retry uncertain commits.
+Reopening restores the checkpoint without replaying old changes into the store;
+recovery repairs can generate new changes. Token deltas are transient and are
+excluded. Importing a terminal `SessionState` does not synthesize historical
+changes. Manually constructed `SessionCommit(checkpoint)` values can seed storage
+without an event archive; runtime saves always include their pending changes.
+
+To keep domain messages and recovery state atomic, map the changes inside your
+adapter and apply them with the checkpoint in one application-owned transaction:
+
+```text
+BEGIN
+  Apply mapped message/domain changes
+  Compare the revision and write the checkpoint
+COMMIT
+```
+
+Raise on a revision conflict so the transaction rolls back both writes. Return
+only after commit; storage errors then reach the waiting run/result/stream caller.
+Model and tool execution happens between short transactions, outside DB locks.
+The SDK passes a commit request; your repository implements its atomicity.
+Separate writes before `session.run()` are not automatically enrolled.
+
+The executable
+[atomic adapter example](https://github.com/mathisarends/harnessed/blob/main/examples/_atomic_session_store.py)
+maps `InboxAddedEvent` to an accepted user message and `AssistantMessageEvent` to
+an assistant message. `UserMessageEvent` also records an admitted input during
+execution, so treating both input events as separate domain messages would
+create duplicates. Applications choose their own projections, metadata and
+final/draft-message semantics; an assistant event can be an intermediate tool
+reply. Stable message IDs support application upserts. The
+[repository](https://github.com/mathisarends/harnessed/blob/main/examples/_atomic_repository.py)
+uses a real SQLite transaction for this offline example, with no SDK imports.
+Run `uv run python -m examples.40_atomic_session_store`. No database driver,
+Unit-of-Work abstraction or web-framework integration is added to Harnessed.
+
+Adapters can ignore `changes` when only recovery state is needed. The bundled
+JSON store does this: its file remains a current checkpoint, not a domain-message
+archive or an incremental journal. Checkpoint and JSON-envelope formats remain 2.
+Application-specific event payloads use the same `CheckpointExtension` boundary
+as checkpoints. Resource references are SDK event data; retained checkpoint
+resources cover recovery, while long-term application attachment storage remains
+application-owned.
+
+A lost commit acknowledgement can leave the client uncertain even when the DB
+committed. Reopen and reconcile using revisions/application IDs rather than
+blindly rerunning external actions. Transient streaming text may arrive before
+its commit; successful terminal completion still awaits committed storage.
 
 ### Inspect and encode typed checkpoints
 
@@ -156,8 +221,8 @@ previous revision plus one. Raise `SessionWriteConflict` from `harnessed.errors`
 when the expected revision does not match. Return only after commit. Keep database
 transactions local to each store call, outside model and tool execution.
 Authorization, retention, connection pools and the backend schema remain owned
-by the application. Domain message writes and checkpoint commits are not
-automatically one transaction.
+by the application. To include domain writes, perform them in the same repository
+transaction as the checkpoint, using `commit.changes` as the incremental input.
 
 Revisions prevent lost updates; they do not stop two workers from executing tools
 before one loses the write race. Applications must serialize execution for each

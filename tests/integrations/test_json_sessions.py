@@ -10,7 +10,7 @@ from harnessed.errors import SessionFormatError, SessionWriteConflict
 from harnessed.integrations.json import JsonSessionStore
 from harnessed.sessions import StoredSession
 from harnessed.testing import ScriptedModel
-from tests._checkpoints import checkpoint
+from tests._checkpoints import checkpoint, commit
 
 
 async def test_json_store_is_opt_in_and_handles_arbitrary_application_ids(tmp_path):
@@ -18,9 +18,7 @@ async def test_json_store_is_opt_in_and_handles_arbitrary_application_ids(tmp_pa
     store = JsonSessionStore(root=root)
     assert await store.load_session("../tenant:客户/4711") is None
     assert not root.exists()
-    assert (
-        await store.save_session("../tenant:客户/4711", checkpoint(), expected_revision=None) == 1
-    )
+    assert await store.save_session("../tenant:客户/4711", commit(), expected_revision=None) == 1
     assert await JsonSessionStore(root=root).load_session("../tenant:客户/4711") == StoredSession(
         checkpoint(), 1
     )
@@ -30,19 +28,19 @@ async def test_json_store_is_opt_in_and_handles_arbitrary_application_ids(tmp_pa
 
 async def test_json_store_compare_and_set_preserves_the_winner(tmp_path):
     store = JsonSessionStore(root=tmp_path)
-    await store.save_session("one", checkpoint("first"), expected_revision=None)
-    assert await store.save_session("one", checkpoint("second"), expected_revision=1) == 2
+    await store.save_session("one", commit("first"), expected_revision=None)
+    assert await store.save_session("one", commit("second"), expected_revision=1) == 2
     with pytest.raises(SessionWriteConflict):
-        await store.save_session("one", checkpoint("stale"), expected_revision=1)
+        await store.save_session("one", commit("stale"), expected_revision=1)
     with pytest.raises(SessionWriteConflict):
-        await store.save_session("one", checkpoint("overwrite"), expected_revision=None)
+        await store.save_session("one", commit("overwrite"), expected_revision=None)
     assert await store.load_session("one") == StoredSession(checkpoint("second"), 2)
 
 
 @pytest.mark.parametrize("change", ["truncated", "version", "revision", "identity", "extra"])
 async def test_json_store_rejects_corruption_without_overwriting_it(tmp_path, change):
     store = JsonSessionStore(root=tmp_path)
-    await store.save_session("one", checkpoint(), expected_revision=None)
+    await store.save_session("one", commit(), expected_revision=None)
     path = next(tmp_path.glob("*.json"))
     record = json.loads(path.read_text())
     if change == "truncated":
@@ -60,13 +58,13 @@ async def test_json_store_rejects_corruption_without_overwriting_it(tmp_path, ch
     with pytest.raises(SessionFormatError):
         await store.load_session("one")
     with pytest.raises(SessionFormatError):
-        await store.save_session("one", checkpoint("replacement"), expected_revision=1)
+        await store.save_session("one", commit("replacement"), expected_revision=1)
     assert path.read_text() == data
 
 
 async def test_json_compare_and_set_is_atomic_between_processes(tmp_path: Path):
     store = JsonSessionStore(root=tmp_path)
-    await store.save_session("shared", checkpoint("initial"), expected_revision=None)
+    await store.save_session("shared", commit("initial"), expected_revision=None)
     code = """
 import asyncio
 import sys
@@ -74,15 +72,15 @@ from harnessed.errors import SessionWriteConflict
 from harnessed.integrations.json import JsonSessionStore
 from harnessed import SessionState
 from harnessed.events import AgentControlChangedEvent, ControlState
-from harnessed.sessions import SessionCheckpoint
+from harnessed.sessions import SessionCheckpoint, SessionCommit
 
 async def main():
     try:
         await JsonSessionStore(root=sys.argv[1]).save_session(
-            "shared", SessionCheckpoint(
+            "shared", SessionCommit(SessionCheckpoint(
                 state=SessionState(context={"marker": sys.argv[2]}), offset=0,
                 control=AgentControlChangedEvent(ControlState.ACTIVE),
-            ), expected_revision=1
+            )), expected_revision=1
         )
     except SessionWriteConflict:
         print("conflict")

@@ -34,7 +34,13 @@ paused sessions survive closure; register output validators with `restore_output
 before resuming structured work. See [sessions](guides/sessions.md) for the repository
 contract, revision conflicts, recovery and execution ownership.
 
-Custom stores receive `SessionCheckpoint` instead of `payload: str`;
+Custom stores receive `SessionCommit` instead of a bare `SessionCheckpoint`.
+Read `commit.checkpoint` for recovery and `commit.changes` for new, sequenced
+events. Apply mapped domain changes and the checkpoint in one repository
+transaction, returning only after commit. Stores without a domain projection may
+ignore the changes. `StoredSession` still returns a checkpoint and revision.
+
+The former string API is also removed;
 `StoredSession.checkpoint` replaces `StoredSession.payload`. Import the typed value
 from `harnessed.sessions` and map it inside your application adapter. JSON encoding
 is optional and belongs to the store. Both the checkpoint document and bundled
