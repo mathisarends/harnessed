@@ -3,7 +3,9 @@ from harnessed.core.attachments import File as File
 from harnessed.core.attachments import Image as Image
 from harnessed.core.composition import CompositionDescription as CompositionDescription
 from harnessed.core.composition import Kit as Kit
+from harnessed.core.composition import KitPromptPolicy as KitPromptPolicy
 from harnessed.core.composition import PluginValidation as PluginValidation
+from harnessed.core.composition import ResolvedKit as ResolvedKit
 from harnessed.core.errors import PluginConflict as PluginConflict
 from harnessed.core.errors import SessionClosed as SessionClosed
 from harnessed.core.errors import StreamOverflow as StreamOverflow
@@ -54,6 +56,7 @@ __all__ = [
     "ImageDetail",
     "Inject",
     "Kit",
+    "KitPromptPolicy",
     "Observation",
     "OutputContract",
     "Plugin",
@@ -62,6 +65,7 @@ __all__ = [
     "PluginValidation",
     "PolicyDecision",
     "Role",
+    "ResolvedKit",
     "RunHandle",
     "RunResult",
     "PromptFormat",

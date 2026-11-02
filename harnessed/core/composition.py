@@ -84,6 +84,21 @@ class CompositionDescription:
         return "\n".join(lines)
 
 
+class KitPromptPolicy(StrEnum):
+    """Whether resolving a kit includes its declared prompt strategies."""
+
+    INCLUDE = "include"
+    OMIT = "omit"
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedKit:
+    """Flat recipes and their original composition, without agent defaults or mounts."""
+
+    plugins: tuple[PluginLike, ...]
+    description: CompositionDescription
+
+
 @dataclass(frozen=True, slots=True)
 class _Exclusion:
     plugin: PluginLike
@@ -121,6 +136,17 @@ class Kit:
         object.__setattr__(self, "plugins", tuple(value for value in plugins if value is not None))
         object.__setattr__(self, "prompt", prompt)
         object.__setattr__(self, "_excluded", ())
+
+    def resolve(self, *, prompt: KitPromptPolicy = KitPromptPolicy.INCLUDE) -> ResolvedKit:
+        """Resolve this scope without mounting plugins or rendering instructions.
+
+        OMIT skips Kit.prompt recursively, before resolving slot conflicts.
+        Explicit prompt plugins and selected recipes' instruction contributions
+        remain intact. Flattened recipes become direct inputs when passed to an
+        Agent; this result's description retains their original kit provenance.
+        """
+        resolved = _resolve((self,), (), prompt=KitPromptPolicy(prompt))
+        return ResolvedKit(resolved.plugins, resolved.description)
 
     def without(self, *types: type[object]) -> Self:
         """Return a new kit excluding matching recipe types and their subclasses.
@@ -236,7 +262,12 @@ def _merge(candidates: list[tuple[_Entry, bool]]) -> tuple[_Entry, ...]:
     )
 
 
-def _resolve(plugins: Iterable[PluginInput | None], path: tuple[str, ...]) -> ResolvedComposition:
+def _resolve(
+    plugins: Iterable[PluginInput | None],
+    path: tuple[str, ...],
+    *,
+    prompt: KitPromptPolicy = KitPromptPolicy.INCLUDE,
+) -> ResolvedComposition:
     candidates: list[tuple[_Entry, bool]] = []
     removed: list[PluginRemoval] = []
     for value in plugins:
@@ -246,10 +277,10 @@ def _resolve(plugins: Iterable[PluginInput | None], path: tuple[str, ...]) -> Re
             child_path = (*path, value.name)
             children = (
                 (*value.plugins, PromptRenderer(value.prompt))
-                if value.prompt is not None
+                if value.prompt is not None and prompt is KitPromptPolicy.INCLUDE
                 else value.plugins
             )
-            child = _resolve(children, child_path)
+            child = _resolve(children, child_path, prompt=prompt)
             candidates.extend((entry, False) for entry in child.entries)
             removed.extend(child.removed)
             removed.extend(
