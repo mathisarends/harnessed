@@ -4,7 +4,7 @@ from time import time
 from typing import Annotated, Any, Literal, Self, get_args
 from uuid import uuid4
 
-from pydantic import Field
+from pydantic import Field, PlainSerializer
 
 from harnessed.core.diagnostics import RetryKind
 from harnessed.core.event_kinds import EventKind
@@ -20,6 +20,7 @@ from harnessed.core.messages import (
     ToolResult,
     UserMessage,
     freeze,
+    to_dict,
 )
 from harnessed.core.model import (
     GenerationSettings,
@@ -741,7 +742,7 @@ class OutputValidatedEvent(SessionEvent):
     turn_id: Identifier
     schema_id: Identifier
     message_id: Identifier
-    data: Any
+    data: Annotated[Any, PlainSerializer(to_dict, when_used="json")]
     call_id: str | None = None
     id: Identifier = field(default_factory=lambda: uuid4().hex)
 

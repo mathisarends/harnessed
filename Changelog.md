@@ -4,6 +4,12 @@
 
 ### Added
 
+- Expose a frozen, Pydantic-validated `SessionCheckpoint` from `harnessed.sessions`.
+  Stores receive typed state, built-in events, controls and resources instead of
+  an opaque string. Application adapters own the mapping to their existing
+  repository models. Custom events round-trip as immutable `CheckpointExtension`
+  values without requiring a store-side plugin catalog.
+
 - Add opt-in `Agent(store=...)` and `agent.session(id=..., restore_outputs=...)`.
   Import `SessionStore` and `StoredSession` from `harnessed.sessions` to keep the
   root SDK small. Applications implement the structural contract directly in their
@@ -36,7 +42,12 @@
 
 ### API and storage boundaries
 
-- Stored sessions use a new execution-checkpoint format **1**, distinct from
+- Breaking: `save_session` accepts `checkpoint: SessionCheckpoint` and
+  `StoredSession.checkpoint` replaces `StoredSession.payload`. JSON encoding moves
+  to store implementations; typed in-memory stores need no serialization. The JSON
+  store envelope and execution checkpoint both use format **2**; unreleased format
+  **1** is rejected rather than migrated.
+- Stored sessions use execution-checkpoint format **2**, distinct from
   terminal `SessionState` format **1** and audit-event envelope **3**. Raw state
   JSON and former JSONL archives cannot be opened as execution checkpoints; there
   are no legacy migrations or `MemorySessions` / `JsonlSessions` aliases.

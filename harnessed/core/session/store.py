@@ -5,6 +5,7 @@ from typing import Protocol
 
 from harnessed.core.errors import SessionStateError
 
+from .checkpoint import SessionCheckpoint
 from .events import (
     AgentControlChangedEvent,
     ApprovalRequestedEvent,
@@ -26,14 +27,14 @@ from .events import (
 
 @dataclass(frozen=True)
 class StoredSession:
-    """An opaque Harnessed checkpoint and its repository revision."""
+    """A typed Harnessed checkpoint and its repository revision."""
 
-    payload: str
+    checkpoint: SessionCheckpoint
     revision: int
 
     def __post_init__(self) -> None:
-        if not isinstance(self.payload, str):
-            raise TypeError("Session payloads must be strings")
+        if not isinstance(self.checkpoint, SessionCheckpoint):
+            raise TypeError("Stored sessions require a SessionCheckpoint")
         if type(self.revision) is not int or self.revision < 1:
             raise ValueError("Session revisions must be positive integers")
 
@@ -50,7 +51,11 @@ class SessionStore(Protocol):
     async def load_session(self, conversation_id: str) -> StoredSession | None: ...
 
     async def save_session(
-        self, conversation_id: str, payload: str, *, expected_revision: int | None
+        self,
+        conversation_id: str,
+        checkpoint: SessionCheckpoint,
+        *,
+        expected_revision: int | None,
     ) -> int: ...
 
 
@@ -119,15 +124,15 @@ class SessionPersistence:
         self._schedule()
         return False
 
-    async def flush(self, serialize: Callable[[], Awaitable[str]], *, report: bool = True) -> None:
+    async def flush(self, capture: Callable[[], SessionCheckpoint], *, report: bool = True) -> None:
         """Commit the latest dirty state while the owning log holds its lock."""
         self.check(report=report)
         if not self._dirty:
             return
         try:
-            payload = await serialize()
+            checkpoint = capture()
             revision = await self._store.save_session(
-                self._conversation_id, payload, expected_revision=self._revision
+                self._conversation_id, checkpoint, expected_revision=self._revision
             )
             expected = 1 if self._revision is None else self._revision + 1
             if type(revision) is not int or revision != expected:

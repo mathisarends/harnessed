@@ -1,5 +1,4 @@
 import asyncio
-import json
 from collections.abc import Callable
 from pathlib import Path
 
@@ -24,29 +23,29 @@ from harnessed.events import ApprovalRequestedEvent, ContextMessageEvent
 from harnessed.integrations.json import JsonSessionStore
 from harnessed.plugins import ContextValue, Spill
 from harnessed.plugins.spill import SpillStore
-from harnessed.sessions import SessionStore, StoredSession
+from harnessed.sessions import SessionCheckpoint, SessionStore, StoredSession
 from harnessed.testing import ScriptedModel, call
 
 
 class ConversationRepository:
     def __init__(self) -> None:
         self.rows: dict[str, StoredSession] = {}
-        self.before_save: Callable[[str], None] | None = None
+        self.before_save: Callable[[SessionCheckpoint], None] | None = None
 
     async def load_session(self, conversation_id: str) -> StoredSession | None:
         return self.rows.get(conversation_id)
 
     async def save_session(
-        self, conversation_id: str, payload: str, *, expected_revision: int | None
+        self, conversation_id: str, checkpoint: SessionCheckpoint, *, expected_revision: int | None
     ) -> int:
         if self.before_save is not None:
-            self.before_save(payload)
+            self.before_save(checkpoint)
         current = self.rows.get(conversation_id)
         revision = current.revision if current is not None else None
         if revision != expected_revision:
             raise SessionWriteConflict(conversation_id)
         revision = 1 if revision is None else revision + 1
-        self.rows[conversation_id] = StoredSession(payload, revision)
+        self.rows[conversation_id] = StoredSession(checkpoint, revision)
         return revision
 
 
@@ -68,7 +67,7 @@ async def test_repository_reopens_by_id_and_saves_context_and_results_before_ret
         result = await session.run("Remember this.")
         stored = await store.load_session(session.id)
         assert stored is not None
-        assert json.loads(stored.payload)["state"]["history"][-1]["message"]["content"] == "first"
+        assert stored.checkpoint.state.history[-1].message.text == "first"
         assert result.state.context == {"customer": "Ada"}
     async with agent.session(id="tenant:customer/4711") as restored:
         assert restored.context.values == {"customer": "Ada"}
@@ -80,6 +79,20 @@ async def test_repository_reopens_by_id_and_saves_context_and_results_before_ret
         "first",
         "Continue.",
     ]
+
+
+async def test_typed_repository_does_not_require_checkpoint_json_encoding(monkeypatch):
+    def forbidden(_self: SessionCheckpoint) -> str:
+        raise AssertionError("The runtime must not require JSON for a typed store")
+
+    monkeypatch.setattr(SessionCheckpoint, "to_json", forbidden)
+    repository = ConversationRepository()
+    agent = Agent(model=ScriptedModel(["done"]), store=repository)
+    async with agent.session(id="typed") as session:
+        await session.run(UserMessage("Hello", id="application-message"))
+    async with agent.session(id="typed") as restored:
+        assert restored.messages[0].id == "application-message"
+        assert restored.messages[-1].text == "done"
 
 
 async def test_paused_turn_reopens_without_repeating_tools_and_keeps_limits(store):
@@ -157,9 +170,9 @@ async def test_stale_worker_cannot_overwrite_a_new_revision(store):
 async def test_storage_failure_reaches_the_run_caller_without_returning_success(mode):
     repository = ConversationRepository()
 
-    def fail_terminal(payload: str) -> None:
-        history = json.loads(payload)["state"]["history"]
-        if history and history[-1]["message"]["content"] == "done":
+    def fail_terminal(checkpoint: SessionCheckpoint) -> None:
+        history = checkpoint.state.history
+        if history and history[-1].message.text == "done":
             raise OSError("storage unavailable")
 
     repository.before_save = fail_terminal
@@ -182,12 +195,16 @@ async def test_cancelled_write_finishes_before_cancellation_is_delivered(monkeyp
 
     class SlowRepository(ConversationRepository):
         async def save_session(
-            self, conversation_id: str, payload: str, *, expected_revision: int | None
+            self,
+            conversation_id: str,
+            checkpoint: SessionCheckpoint,
+            *,
+            expected_revision: int | None,
         ) -> int:
             entered.set()
             await release.wait()
             return await super().save_session(
-                conversation_id, payload, expected_revision=expected_revision
+                conversation_id, checkpoint, expected_revision=expected_revision
             )
 
     repository = SlowRepository()
@@ -202,7 +219,7 @@ async def test_cancelled_write_finishes_before_cancellation_is_delivered(monkeyp
         release.set()
         with pytest.raises(asyncio.CancelledError):
             await asyncio.wait_for(write, timeout=5)
-        assert "retained" in repository.rows["cancel"].payload
+        assert "retained" in repository.rows["cancel"].checkpoint.to_json()
 
 
 async def test_restoring_structured_pending_work_requires_the_registered_output_identity(store):
@@ -238,8 +255,11 @@ async def test_conversation_id_requires_a_store_and_existing_state_cannot_be_ove
 
 
 async def test_corrupt_checkpoint_does_not_start_an_empty_conversation():
-    repository = ConversationRepository()
-    repository.rows["corrupt"] = StoredSession('{"version": 99}', 1)
+    class CorruptRepository(ConversationRepository):
+        async def load_session(self, conversation_id: str) -> StoredSession | None:
+            return StoredSession(SessionCheckpoint.from_json('{"version": 99}'), 1)
+
+    repository = CorruptRepository()
     with pytest.raises(SessionFormatError):
         async with Agent(model=ScriptedModel([]), store=repository).session(id="corrupt"):
             pytest.fail("Corruption must fail before the runtime starts")
@@ -286,7 +306,7 @@ async def test_images_and_spilled_text_survive_a_paused_turn(store):
         plugins=[Source(), Spill(threshold_tokens=32)],
     )
     async with agent.session(id="resources") as session:
-        image = await session.assets.put(b"pixels", media_type="image/png")
+        image = await session.assets.put(b"pixels\xff\x00", media_type="image/png")
         await session.submit(UserMessage((ImageReference(image),)))
         await asyncio.wait_for(entered.wait(), timeout=5)
         pausing = asyncio.create_task(session.pause())
@@ -294,7 +314,7 @@ async def test_images_and_spilled_text_survive_a_paused_turn(store):
         release.set()
         await asyncio.wait_for(pausing, timeout=5)
     async with agent.session(id="resources") as restored:
-        assert await restored.assets.read(image) == b"pixels"
+        assert await restored.assets.read(image) == b"pixels\xff\x00"
         resource = restored.log.resources[0]
         assert await restored.ctx[SpillStore].read(resource.path, limit=16000) == text[:16000]
         await restored.resume()
@@ -327,9 +347,9 @@ async def test_intermediate_changes_are_saved_in_the_background():
     persisted = asyncio.Event()
     repository = ConversationRepository()
 
-    def observe(payload: str) -> None:
-        history = json.loads(payload)["state"]["history"]
-        if history and history[-1]["message"]["content"] == "background fact":
+    def observe(checkpoint: SessionCheckpoint) -> None:
+        history = checkpoint.state.history
+        if history and history[-1].message.text == "background fact":
             persisted.set()
 
     repository.before_save = observe
@@ -337,9 +357,7 @@ async def test_intermediate_changes_are_saved_in_the_background():
         await session.emit(ContextMessageEvent(UserMessage("background fact")))
         await asyncio.wait_for(persisted.wait(), timeout=5)
         stored = repository.rows["background"]
-        assert json.loads(stored.payload)["state"]["history"][-1]["message"]["content"] == (
-            "background fact"
-        )
+        assert stored.checkpoint.state.history[-1].message.text == ("background fact")
 
 
 async def test_background_failure_reaches_a_live_handle_and_cleans_up_its_tool():
@@ -357,7 +375,7 @@ async def test_background_failure_reaches_a_live_handle_and_cleans_up_its_tool()
 
     repository = ConversationRepository()
 
-    def unavailable(payload: str) -> None:
+    def unavailable(checkpoint: SessionCheckpoint) -> None:
         raise OSError("background storage unavailable")
 
     agent = Agent(model=ScriptedModel([call(Work.work)]), plugins=[Work()], store=repository)
@@ -375,7 +393,7 @@ async def test_background_failure_while_idle_is_reported_when_closing():
     failed = asyncio.Event()
     repository = ConversationRepository()
 
-    def unavailable(payload: str) -> None:
+    def unavailable(checkpoint: SessionCheckpoint) -> None:
         failed.set()
         raise OSError("idle storage unavailable")
 
@@ -391,8 +409,8 @@ async def test_model_request_is_not_executed_when_its_intent_cannot_be_saved():
     repository = ConversationRepository()
     model = ScriptedModel(["must not execute"])
 
-    def unavailable(payload: str) -> None:
-        if any(event["type"] == "model.requested" for event in json.loads(payload)["events"]):
+    def unavailable(checkpoint: SessionCheckpoint) -> None:
+        if any(event.type == "model.requested" for event in checkpoint.events):
             raise OSError("model intent unavailable")
 
     repository.before_save = unavailable
@@ -414,7 +432,7 @@ async def test_context_provider_can_unmount_while_a_persistent_session_closes(st
 async def test_reported_store_failure_is_not_raised_again_by_context_provider_teardown():
     repository = ConversationRepository()
 
-    def unavailable(payload: str) -> None:
+    def unavailable(checkpoint: SessionCheckpoint) -> None:
         raise OSError("storage unavailable")
 
     agent = Agent(

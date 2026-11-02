@@ -1,10 +1,10 @@
 """Provider-independent model contracts; optional integrations live in harnessed.models."""
 
-from collections.abc import AsyncIterator, Iterable, Mapping
+from collections.abc import AsyncIterator, Iterable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
-from typing import Annotated, Any, Protocol, Self, runtime_checkable
+from typing import Annotated, Protocol, Self, runtime_checkable
 
 from pydantic import ConfigDict, Field
 from pydantic.dataclasses import dataclass as validated_dataclass
@@ -85,7 +85,7 @@ class ToolDefinition:
     __hash__ = None
     name: Annotated[str, Field(min_length=1)]
     description: str
-    parameters: Mapping[str, Any]
+    parameters: JSONMapping
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "parameters", freeze(self.parameters))
@@ -98,7 +98,7 @@ class OutputSchema:
     __hash__ = None
     id: Annotated[str, Field(min_length=1)]
     name: Annotated[str, Field(min_length=1)]
-    json_schema: Mapping[str, Any]
+    json_schema: JSONMapping
     wrapped: bool = False
     mode: OutputMode = OutputMode.AUTO
 

@@ -3,13 +3,11 @@ from uuid import uuid4
 from harnessed.core.assets import AssetStore, _MemoryAssets
 from harnessed.core.composition import PluginValidation, validate_plugins
 from harnessed.core.errors import ConfigError
-from harnessed.core.event_registry import EventRegistry
 from harnessed.core.outputs import OutputTypes
 from harnessed.core.plugin import Service
 from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.runtime.agent_loop import AgentFactory
 from harnessed.core.runtime.session import Session
-from harnessed.core.session.checkpoint import SessionCheckpoint
 from harnessed.core.session.events import TurnStartedEvent
 from harnessed.core.session.files import MemoryFiles, SessionFiles
 from harnessed.core.session.session import SessionLog
@@ -38,11 +36,7 @@ async def open_session(
     stored = await store.load_session(session_id) if store is not None else None
     if stored is not None and state is not None:
         raise ConfigError("An existing stored conversation cannot also receive state")
-    checkpoint = (
-        SessionCheckpoint.from_json(stored.payload, registry=ctx[EventRegistry])
-        if stored is not None
-        else None
-    )
+    checkpoint = stored.checkpoint if stored is not None else None
     selected = checkpoint.state if checkpoint is not None else state
     persistence = (
         SessionPersistence(store, session_id, stored.revision if stored is not None else None)

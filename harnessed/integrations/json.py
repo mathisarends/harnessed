@@ -10,6 +10,7 @@ from pydantic import ConfigDict, Field, TypeAdapter, ValidationError
 from pydantic.dataclasses import dataclass
 
 from harnessed.core.errors import SessionFormatError, SessionWriteConflict
+from harnessed.core.session.checkpoint import SessionCheckpoint
 from harnessed.core.session.store import StoredSession
 from harnessed.kernel import run_sync
 
@@ -35,15 +36,19 @@ class JsonSessionStore:
         return await run_sync(partial(self._load, conversation_id))
 
     async def save_session(
-        self, conversation_id: str, payload: str, *, expected_revision: int | None
+        self,
+        conversation_id: str,
+        checkpoint: SessionCheckpoint,
+        *,
+        expected_revision: int | None,
     ) -> int:
         if expected_revision is not None and (
             type(expected_revision) is not int or expected_revision < 1
         ):
             raise ValueError("Expected revisions must be positive integers or None")
-        if not isinstance(payload, str):
-            raise TypeError("Session payloads must be strings")
-        return await run_sync(partial(self._save, conversation_id, payload, expected_revision))
+        if not isinstance(checkpoint, SessionCheckpoint):
+            raise TypeError("Session stores require a SessionCheckpoint")
+        return await run_sync(partial(self._save, conversation_id, checkpoint, expected_revision))
 
     def _path(self, conversation_id: str) -> Path:
         if not isinstance(conversation_id, str) or not conversation_id.strip():
@@ -63,9 +68,14 @@ class JsonSessionStore:
                 raise ValueError("Session identity or version does not match")
         except (ValueError, ValidationError) as error:
             raise SessionFormatError(f"Invalid JSON session checkpoint: {path.name}") from error
-        return StoredSession(record.payload, record.revision)
+        return StoredSession(record.checkpoint, record.revision)
 
-    def _save(self, conversation_id: str, payload: str, expected_revision: int | None) -> int:
+    def _save(
+        self,
+        conversation_id: str,
+        checkpoint: SessionCheckpoint,
+        expected_revision: int | None,
+    ) -> int:
         path = self._path(conversation_id)
         self._root.mkdir(parents=True, exist_ok=True)
         with _writer_lock(path.with_suffix(".lock")):
@@ -74,7 +84,7 @@ class JsonSessionStore:
             if revision != expected_revision:
                 raise SessionWriteConflict(conversation_id)
             next_revision = 1 if revision is None else revision + 1
-            data = _RECORD.dump_json(_Record(conversation_id, payload, next_revision), indent=2)
+            data = _RECORD.dump_json(_Record(conversation_id, checkpoint, next_revision), indent=2)
             descriptor, name = tempfile.mkstemp(prefix=f".{path.stem}-", dir=self._root)
             temporary = Path(name)
             try:
@@ -120,9 +130,9 @@ def _writer_lock(path: Path) -> Generator[None]:
 @dataclass(frozen=True, config=ConfigDict(extra="forbid", strict=True, hide_input_in_errors=True))
 class _Record:
     conversation_id: str
-    payload: str
+    checkpoint: SessionCheckpoint
     revision: int = Field(ge=1)
-    version: int = Field(default=1, ge=1, le=1)
+    version: int = Field(default=2, ge=2, le=2)
 
 
 _RECORD = TypeAdapter(_Record)

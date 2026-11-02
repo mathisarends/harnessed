@@ -21,7 +21,11 @@ from harnessed.core.messages import (
     ToolStatus,
 )
 from harnessed.core.model import ModelRequest, ModelUsage, sum_usage
-from harnessed.core.session.checkpoint import SessionCheckpoint
+from harnessed.core.session.checkpoint import (
+    CheckpointExtension,
+    CheckpointSeed,
+    SessionCheckpoint,
+)
 from harnessed.core.session.control import RunControl
 from harnessed.core.session.events import (
     AgentControlChangedEvent,
@@ -31,11 +35,13 @@ from harnessed.core.session.events import (
     CompactionAppliedEvent,
     ContextMessageEvent,
     ControlState,
+    DurableEvent,
     InboxAddedEvent,
     InboxRemovalReason,
     InboxRemovedEvent,
     InboxTarget,
     IncludedObservation,
+    LogEvent,
     ModelRequestedEvent,
     ModelRequestFailedEvent,
     ModelRequestOutcome,
@@ -64,7 +70,7 @@ from harnessed.core.session.state import HistoryTurn, SessionState, image_refs
 from harnessed.core.session.store import SessionPersistence
 from harnessed.core.session.turns import Turn, TurnProjection
 from harnessed.core.stream import SessionPublished, TransientEvent, coalesce_deltas
-from harnessed.kernel import Context, run_sync
+from harnessed.kernel import Context
 
 
 class SessionLog:
@@ -135,7 +141,7 @@ class SessionLog:
         self._persistence = persistence
         self._restoring = False
         self._turn_state: SessionState | None = None
-        self._turn_seed: tuple[SessionEvent, ...] = ()
+        self._turn_seed: tuple[CheckpointSeed, ...] = ()
         self._turn_offset = self._sequence
         if persistence is not None:
             persistence.bind(partial(self._flush_checkpoint, report=False))
@@ -187,7 +193,12 @@ class SessionLog:
             self._snapshot = None
             self._sequence = checkpoint.offset
             for event in checkpoint.events:
-                await self._append(event)
+                restored = (
+                    event.to_event(registry=self.registry)
+                    if isinstance(event, CheckpointExtension)
+                    else event
+                )
+                await self._append(restored)
             if checkpoint.events and self.open_turn is None:
                 raise SessionFormatError("An execution suffix must contain one open turn")
             self._control = RunControl((checkpoint.control,))
@@ -210,7 +221,13 @@ class SessionLog:
             state=state,
             offset=self._turn_offset if turn is not None else self._sequence,
             seed=self._turn_seed if turn is not None else self._checkpoint_seed(),
-            events=turn.events if turn is not None else (),
+            # The log admits only catalog-validated built-ins or DurableEvent extensions.
+            events=tuple(
+                CheckpointExtension.from_event(event, registry=self.registry)
+                if isinstance(event, DurableEvent)
+                else cast(LogEvent, event)
+                for event in (turn.events if turn is not None else ())
+            ),
             control=AgentControlChangedEvent(self._control.state, self._control.keep_inbox),
             assets=tuple(
                 value for value in self._assets.snapshot() if value.ref.sha256 not in assets
@@ -218,17 +235,13 @@ class SessionLog:
             files=tuple(value for value in self._files.snapshot() if files.get(value.key) != value),
         )
 
-    async def _serialize_checkpoint(self) -> str:
-        checkpoint = self._checkpoint()
-        return await run_sync(partial(checkpoint.to_json, registry=self.registry))
-
     async def _flush_checkpoint(self, *, report: bool = True) -> None:
         async with self._lock:
             if self._persistence is not None:
-                await self._persistence.flush(self._serialize_checkpoint, report=report)
+                await self._persistence.flush(self._checkpoint, report=report)
 
-    def _checkpoint_seed(self) -> tuple[SessionEvent, ...]:
-        events: list[SessionEvent] = list(self._pending.values())
+    def _checkpoint_seed(self) -> tuple[CheckpointSeed, ...]:
+        events: list[CheckpointSeed] = list(self._pending.values())
         for grant in self.approvals.grants:
             events.append(grant.request)
             if grant.resolution is not None:
@@ -632,7 +645,7 @@ class SessionLog:
                 and not self._restoring
                 and self._persistence.record(event)
             ):
-                await self._persistence.flush(self._serialize_checkpoint)
+                await self._persistence.flush(self._checkpoint)
             if not self._restoring:
                 self._notify(event)
         return seq, event

@@ -28,11 +28,18 @@ Detailed breaking changes and upgrade instructions are recorded in the repositor
 Use `Agent(store=JsonSessionStore(root=...))` or supply an application-owned
 `SessionStore`, then reopen conversations with `agent.session(id=...)`.
 Explicit `SessionState` continuation and the ephemeral default remain available.
-Stored execution checkpoints use format **1**, separate from conversation snapshots
+Stored execution checkpoints use format **2**, separate from conversation snapshots
 and former JSONL archives. They have no automatic legacy migration. Persistent
 paused sessions survive closure; register output validators with `restore_outputs`
 before resuming structured work. See [sessions](guides/sessions.md) for the repository
 contract, revision conflicts, recovery and execution ownership.
+
+Custom stores receive `SessionCheckpoint` instead of `payload: str`;
+`StoredSession.checkpoint` replaces `StoredSession.payload`. Import the typed value
+from `harnessed.sessions` and map it inside your application adapter. JSON encoding
+is optional and belongs to the store. Both the checkpoint document and bundled
+JSON-store envelope reject their previous unreleased format 1; no transitional
+string API or automatic migration is provided.
 
 Python 3.12, 3.13 and 3.14 are supported on Linux, Windows and macOS. Provider
 integrations are optional extras; the standalone kernel uses only the standard

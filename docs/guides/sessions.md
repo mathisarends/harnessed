@@ -68,36 +68,96 @@ checkpoint, including resource bytes, rather than appending an audit log.
 
 ## Use an existing conversation repository
 
-Import `SessionStore` and `StoredSession` from `harnessed.sessions`. A repository implements
-the protocol structurally; no base class, plugin or database dependency is required:
+Import `SessionCheckpoint`, `SessionStore` and `StoredSession` from
+`harnessed.sessions`. A store implements two async methods structurally:
 
 ```python
-class ConversationRepository:
+from harnessed.sessions import SessionCheckpoint, SessionStore, StoredSession
+
+
+class ConversationSessionStore:
     async def load_session(self, conversation_id: str) -> StoredSession | None: ...
 
     async def save_session(
         self,
         conversation_id: str,
-        payload: str,
+        checkpoint: SessionCheckpoint,
         *,
         expected_revision: int | None,
     ) -> int: ...
 
 
-agent = Agent(model=model, store=ConversationRepository(...))
+store: SessionStore = ConversationSessionStore(...)
+agent = Agent(model=model, store=store)
 ```
 
-`StoredSession(payload, revision)` contains an opaque Harnessed JSON checkpoint
-and a positive revision. Harnessed owns checkpoint encoding and validation; the
-application owns SQL, pools, transactions, conversation identity, authorization,
-retention and deletion. A thin adapter can map an existing repository's methods
-to this protocol. The agent never closes an application-owned store or pool.
+`StoredSession(checkpoint, revision)` contains a typed checkpoint and a positive
+revision. Harnessed passes an immutable exchange value to the adapter; it does
+not prescribe your domain models, database columns or repository method names.
+Keep an existing repository independent of Harnessed and map its own records
+inside this application-owned adapter. Implementing the protocol directly is
+also possible. The agent never closes an application-owned store or pool.
+
+The executable
+[adapter example](https://github.com/mathisarends/harnessed/blob/main/examples/39_typed_session_store.py)
+wraps a [repository with no SDK imports](https://github.com/mathisarends/harnessed/blob/main/examples/_conversation_repository.py).
+It maps typed checkpoint information to application-owned fields and translates
+the repository's conflict error to `SessionWriteConflict`. Its storage layout is
+illustrative; applications can map fields into their own records instead of
+storing one document.
+
+### Inspect and encode typed checkpoints
+
+`SessionCheckpoint` is a frozen, Pydantic-validated dataclass:
+
+| Field | Meaning |
+| --- | --- |
+| `state` | Typed terminal `SessionState` before the open turn, or the current idle conversation |
+| `offset` | Sequence position where the execution suffix begins |
+| `seed` | Typed pending inputs and active approval grants |
+| `events` | Discriminated built-in events plus explicit `CheckpointExtension` values |
+| `control` | Typed `AgentControlChangedEvent` with its `ControlState` |
+| `assets` / `files` | Resources needed in addition to the conversation baseline |
+| `version` | Current checkpoint format, `Literal[2]` |
+
+For example, `checkpoint.state.history[i].message` is the SDK's typed message
+union. Narrow with `isinstance(message, UserMessage)` from `harnessed.models`.
+The baseline may be compacted and excludes an open turn; it is not a complete
+application message archive. Your domain messages remain application-owned.
+
+Construct checkpoints from your repository's typed records, or use the optional
+canonical JSON codec at the persistence boundary:
+
+```python
+document = checkpoint.to_json()
+restored = SessionCheckpoint.from_json(document)
+```
+
+The codec performs no I/O and needs no plugin catalog. Missing required fields,
+unsupported versions and invalid built-in events fail validation. Pydantic
+`TypeAdapter(SessionCheckpoint)` supplies schema generation and serialization.
+The dataclass can also be nested in a technical `BaseModel` with
+`model_dump_json()` / `model_validate_json()`; applications do not need to adopt
+Pydantic or embed an SDK type in their domain models. Serialization is synchronous;
+offload large documents in async adapters. The bundled JSON store performs its
+encoding and file I/O in a worker. Typed in-memory stores need no JSON conversion.
+
+Custom durable events become `CheckpointExtension(tag=..., data=...)` values.
+Their recursively immutable JSON payload is the explicit application-defined
+boundary. Stores preserve extensions without registering or importing plugins.
+When reopening, Harnessed validates each extension against the agent's explicitly
+registered event class before starting execution. Unknown tags and invalid
+application payloads fail restoration. Built-in events retain their concrete
+Python types throughout storage and restoration.
 
 Saving must atomically compare the stored revision with `expected_revision`.
 None requires a missing entry and returns revision 1; an update returns the
 previous revision plus one. Raise `SessionWriteConflict` from `harnessed.errors`
 when the expected revision does not match. Return only after commit. Keep database
 transactions local to each store call, outside model and tool execution.
+Authorization, retention, connection pools and the backend schema remain owned
+by the application. Domain message writes and checkpoint commits are not
+automatically one transaction.
 
 Revisions prevent lost updates; they do not stop two workers from executing tools
 before one loses the write race. Applications must serialize execution for each
@@ -134,7 +194,7 @@ pending structured work with
 `agent.session(id="...", restore_outputs=[YourOutputTypeOrContract])`. Restoration
 matches validator identity and schema; stored JSON never imports Python code.
 
-Execution checkpoints have format **1** and contain a conversation snapshot plus
+Execution checkpoints have format **2** and contain a conversation snapshot plus
 the current execution suffix, queue, grants and resources. They are distinct from
 `SessionState` JSON and old JSONL archives; formats are not automatically migrated.
 Supplying both `state=` and an existing stored ID fails instead of overwriting it.
