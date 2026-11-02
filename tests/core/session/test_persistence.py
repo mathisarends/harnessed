@@ -23,7 +23,7 @@ from harnessed.events import ApprovalRequestedEvent, ContextMessageEvent
 from harnessed.integrations.json import JsonSessionStore
 from harnessed.plugins import ContextValue, Spill
 from harnessed.plugins.spill import SpillStore
-from harnessed.sessions import SessionCheckpoint, SessionStore, StoredSession
+from harnessed.sessions import SessionCheckpoint, SessionCommit, SessionStore, StoredSession
 from harnessed.testing import ScriptedModel, call
 
 
@@ -36,16 +36,16 @@ class ConversationRepository:
         return self.rows.get(conversation_id)
 
     async def save_session(
-        self, conversation_id: str, checkpoint: SessionCheckpoint, *, expected_revision: int | None
+        self, conversation_id: str, commit: SessionCommit, *, expected_revision: int | None
     ) -> int:
         if self.before_save is not None:
-            self.before_save(checkpoint)
+            self.before_save(commit.checkpoint)
         current = self.rows.get(conversation_id)
         revision = current.revision if current is not None else None
         if revision != expected_revision:
             raise SessionWriteConflict(conversation_id)
         revision = 1 if revision is None else revision + 1
-        self.rows[conversation_id] = StoredSession(checkpoint, revision)
+        self.rows[conversation_id] = StoredSession(commit.checkpoint, revision)
         return revision
 
 
@@ -197,14 +197,14 @@ async def test_cancelled_write_finishes_before_cancellation_is_delivered(monkeyp
         async def save_session(
             self,
             conversation_id: str,
-            checkpoint: SessionCheckpoint,
+            commit: SessionCommit,
             *,
             expected_revision: int | None,
         ) -> int:
             entered.set()
             await release.wait()
             return await super().save_session(
-                conversation_id, checkpoint, expected_revision=expected_revision
+                conversation_id, commit, expected_revision=expected_revision
             )
 
     repository = SlowRepository()

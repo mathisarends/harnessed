@@ -11,6 +11,7 @@ from pydantic.dataclasses import dataclass
 
 from harnessed.core.errors import SessionFormatError, SessionWriteConflict
 from harnessed.core.session.checkpoint import SessionCheckpoint
+from harnessed.core.session.commit import SessionCommit
 from harnessed.core.session.store import StoredSession
 from harnessed.kernel import run_sync
 
@@ -38,7 +39,7 @@ class JsonSessionStore:
     async def save_session(
         self,
         conversation_id: str,
-        checkpoint: SessionCheckpoint,
+        commit: SessionCommit,
         *,
         expected_revision: int | None,
     ) -> int:
@@ -46,9 +47,11 @@ class JsonSessionStore:
             type(expected_revision) is not int or expected_revision < 1
         ):
             raise ValueError("Expected revisions must be positive integers or None")
-        if not isinstance(checkpoint, SessionCheckpoint):
-            raise TypeError("Session stores require a SessionCheckpoint")
-        return await run_sync(partial(self._save, conversation_id, checkpoint, expected_revision))
+        if not isinstance(commit, SessionCommit):
+            raise TypeError("Session stores require a SessionCommit")
+        return await run_sync(
+            partial(self._save, conversation_id, commit.checkpoint, expected_revision)
+        )
 
     def _path(self, conversation_id: str) -> Path:
         if not isinstance(conversation_id, str) or not conversation_id.strip():

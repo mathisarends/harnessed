@@ -5,7 +5,8 @@ from typing import Protocol
 
 from harnessed.core.errors import SessionStateError
 
-from .checkpoint import SessionCheckpoint
+from .checkpoint import CheckpointExtension, SessionCheckpoint
+from .commit import SessionChange, SessionCommit
 from .events import (
     AgentControlChangedEvent,
     ApprovalRequestedEvent,
@@ -13,11 +14,9 @@ from .events import (
     ApprovalRevokedEvent,
     CompactionAppliedEvent,
     ContextValueChangedEvent,
-    DurableEvent,
     InboxAddedEvent,
     InboxRemovedEvent,
     ModelRequestedEvent,
-    SessionEvent,
     ToolCallFinishedEvent,
     ToolExecutionFinishedEvent,
     ToolExecutionStartedEvent,
@@ -44,8 +43,10 @@ class SessionStore(Protocol):
 
     None expects a missing entry. Successful saves return the next positive
     revision; conflicts raise SessionWriteConflict. Acknowledgement means the
-    write committed. Applications coordinate active workers separately: revision
-    checks prevent lost updates, not duplicate external tool side effects.
+    checkpoint and any application projection of its changes committed together.
+    Stores may ignore changes when no projection is needed. Applications coordinate
+    active workers separately: revision checks prevent lost updates, not duplicate
+    external tool side effects.
     """
 
     async def load_session(self, conversation_id: str) -> StoredSession | None: ...
@@ -53,7 +54,7 @@ class SessionStore(Protocol):
     async def save_session(
         self,
         conversation_id: str,
-        checkpoint: SessionCheckpoint,
+        commit: SessionCommit,
         *,
         expected_revision: int | None,
     ) -> int: ...
@@ -62,8 +63,8 @@ class SessionStore(Protocol):
 class SessionPersistence:
     """Coalesce intermediate state behind explicit durability barriers.
 
-    The log owns serialization and the write lock. One delayed task requests the
-    latest state, so intermediate events never enqueue copies of checkpoints.
+    The log owns state capture and the write lock. One delayed task requests the
+    latest state; pending changes retain event references, not checkpoint copies.
     A failed write poisons the binding and notifies the active runtime.
     """
 
@@ -73,7 +74,7 @@ class SessionPersistence:
         self._revision = revision
         self._failure: Exception | None = None
         self._reported = False
-        self._dirty = False
+        self._changes: list[SessionChange] = []
         self._closing = False
         self._wake = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
@@ -96,15 +97,15 @@ class SessionPersistence:
                 self._reported = True
             raise self._failure
 
-    def record(self, event: SessionEvent) -> bool:
+    def record(self, change: SessionChange) -> bool:
         self.check()
-        self._dirty = True
+        self._changes.append(change)
         if self._closing:
             # Kernel-owned teardown can still remove named facts after the runtime
             # closes. Commit those changes inline without restarting the timer.
             return True
         if isinstance(
-            event,
+            change.event,
             InboxAddedEvent
             | InboxRemovedEvent
             | ModelRequestedEvent
@@ -118,7 +119,7 @@ class SessionPersistence:
             | ApprovalRevokedEvent
             | ContextValueChangedEvent
             | CompactionAppliedEvent
-            | DurableEvent,
+            | CheckpointExtension,
         ):
             return True
         self._schedule()
@@ -127,18 +128,18 @@ class SessionPersistence:
     async def flush(self, capture: Callable[[], SessionCheckpoint], *, report: bool = True) -> None:
         """Commit the latest dirty state while the owning log holds its lock."""
         self.check(report=report)
-        if not self._dirty:
+        if not self._changes:
             return
         try:
-            checkpoint = capture()
+            commit = SessionCommit(capture(), tuple(self._changes))
             revision = await self._store.save_session(
-                self._conversation_id, checkpoint, expected_revision=self._revision
+                self._conversation_id, commit, expected_revision=self._revision
             )
             expected = 1 if self._revision is None else self._revision + 1
             if type(revision) is not int or revision != expected:
                 raise SessionStateError("A session store must return the next revision")
             self._revision = revision
-            self._dirty = False
+            self._changes.clear()
         except Exception as error:
             self._failure = error
             if report:
@@ -184,7 +185,7 @@ class SessionPersistence:
                 callback(error)
         finally:
             self._task = None
-            if self._dirty and self._failure is None:
+            if self._changes and self._failure is None:
                 self._schedule()
 
 

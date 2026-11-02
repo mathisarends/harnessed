@@ -150,9 +150,15 @@ plugin_validation=PluginValidation.ERROR, store=None)` resolves reusable configu
 | agent.run(prompt, state=None, **options) | Run one turn and return its terminal result and state |
 | SessionState.from_json(payload) / state.to_json() | Validate or encode the canonical conversation snapshot in memory |
 
-`SessionCheckpoint`, `SessionStore` and `StoredSession(checkpoint: SessionCheckpoint, revision: int)`
+`SessionCommit`, `SessionChange`, `SessionCheckpoint`, `SessionStore` and
+`StoredSession(checkpoint: SessionCheckpoint, revision: int)`
 are exported from `harnessed.sessions`. Implement `load_session(conversation_id) -> StoredSession | None`
-and `save_session(conversation_id, checkpoint, *, expected_revision) -> int`.
+and `save_session(conversation_id, commit, *, expected_revision) -> int`.
+`SessionCommit.checkpoint` is recovery state; `SessionCommit.changes` contains
+ordered `SessionChange(sequence, event)` values since the previous acknowledged
+save. Map domain changes and checkpoint in one application-owned transaction.
+Old changes are not emitted again on restore. Token deltas are excluded. The JSON
+store ignores changes and retains its existing format-2 checkpoint envelope.
 Checkpoints are frozen Pydantic dataclasses with typed state, execution events,
 controls and resources. Adapters map them to application-owned repository models;
 the SDK defines no database schema. `to_json()` / `from_json()` provide optional
