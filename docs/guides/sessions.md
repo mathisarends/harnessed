@@ -1,9 +1,144 @@
-# Conversations and explicit state
+# Conversations, persistence and explicit state
 
 `Agent` holds reusable configuration. `Agent.session()` opens a live conversation;
 `SessionState` is an immutable value that your application can save and inject
-into another session. Harnessed keeps conversation state in memory and does not
-create session files, maintain an archive or look up conversations by ID.
+into another session. Sessions are in memory by default. Supplying an explicit
+`SessionStore` enables automatic checkpoints and reopening by application-owned ID.
+
+## Opt into JSON persistence
+
+```python
+from pathlib import Path
+
+from harnessed import Agent
+from harnessed.integrations.json import JsonSessionStore
+
+agent = Agent(
+    model=model,
+    instructions="Include source URLs.",
+    store=JsonSessionStore(root=Path(".harnessed/sessions")),
+)
+
+async with agent.session(id="voyager") as session:
+    result = await session.run("Compare the Voyager missions.", max_steps=20)
+
+# A later request or process opens the same conversation.
+async with agent.session(id="voyager") as session:
+    result = await session.run("Explain their different trajectories.")
+```
+
+The JSON implementation ships in the base package and requires no extra. It
+creates its directory on the first save. Without `store=`, no session directory
+is created and an explicit `id=` raises `ConfigError`. With a store, omitting
+`id` generates a fresh ID; retain `session.id` if it must be reopened.
+
+The session owns one background writer. Intermediate changes mark its latest state
+dirty and are coalesced into a checkpoint requested after 100 ms; no separate queue
+of checkpoint copies grows with the event rate. Checkpoint JSON encoding and file
+I/O run in workers. Model and tool activity can overlap a background save; state
+admission and writes remain serialized within each session.
+
+Durability barriers await committed state: input admission/removal, model request
+intent, tool execution intent and receipts, reviewed tool results, turn completion,
+controls, approval changes, named facts, compaction and custom durable events.
+Thus an awaited `run()` has saved its final reply, and `pause()` waits for the
+completed step's checkpoint. Transient token notifications and unrecorded
+observations are not saved. Intermediate internal events may be lost in a crash
+before the next checkpoint, while external-action intent and acknowledged results
+retain their commit guarantees.
+
+Use `await session.flush()` to commit pending state explicitly. Closing drains the
+writer before releasing its resources. Without a store, `flush()` performs no I/O.
+The writer reuses image and text bytes already present in its conversation baseline
+instead of embedding a second copy in the same checkpoint.
+
+A failed background save stops further admissions, cancels active work for cleanup
+and reaches `run()`, `RunHandle.result()` or the stream iterator. A previously
+unobserved idle failure is also reported when closing. Applications map these
+exceptions to their HTTP, SSE, WebSocket or job-status API; ignoring a submitted
+handle does not create a frontend notification channel. Reopen after resolving
+the storage failure.
+
+JSON stores use hashed filenames, a revision envelope, a flushed temporary file
+and atomic replacement. An OS writer lock protects revision checking and writing
+across local processes. Lock files remain in place. Choose a local filesystem
+supporting locking and atomic replacement; this is not a distributed lease or a
+network-filesystem coordination service. Each update serializes the current
+checkpoint, including resource bytes, rather than appending an audit log.
+
+## Use an existing conversation repository
+
+Import `SessionStore` and `StoredSession` from `harnessed.sessions`. A repository implements
+the protocol structurally; no base class, plugin or database dependency is required:
+
+```python
+class ConversationRepository:
+    async def load_session(self, conversation_id: str) -> StoredSession | None: ...
+
+    async def save_session(
+        self,
+        conversation_id: str,
+        payload: str,
+        *,
+        expected_revision: int | None,
+    ) -> int: ...
+
+
+agent = Agent(model=model, store=ConversationRepository(...))
+```
+
+`StoredSession(payload, revision)` contains an opaque Harnessed JSON checkpoint
+and a positive revision. Harnessed owns checkpoint encoding and validation; the
+application owns SQL, pools, transactions, conversation identity, authorization,
+retention and deletion. A thin adapter can map an existing repository's methods
+to this protocol. The agent never closes an application-owned store or pool.
+
+Saving must atomically compare the stored revision with `expected_revision`.
+None requires a missing entry and returns revision 1; an update returns the
+previous revision plus one. Raise `SessionWriteConflict` from `harnessed.errors`
+when the expected revision does not match. Return only after commit. Keep database
+transactions local to each store call, outside model and tool execution.
+
+Revisions prevent lost updates; they do not stop two workers from executing tools
+before one loses the write race. Applications must serialize execution for each
+conversation through their job runner or distributed ownership mechanism. Do not
+automatically retry a conflicted run: its external actions may already have happened.
+
+## Persist a deliberate pause
+
+```python
+async with agent.session(id="investigation") as session:
+    handle = await session.submit("Investigate the outage.", max_steps=20)
+    await session.pause()
+    await session.context.set("ci", "Checks passed.")
+
+# The previous Python handles close; the persisted execution remains paused.
+async with agent.session(id="investigation") as session:
+    await session.resume()
+    await session.wait_until_idle()
+    print(session.messages[-1].text)
+```
+
+Closing a persistent paused session preserves its open turn, completed steps,
+limits, queued inputs and active approval grants. Reopening keeps it paused until
+`resume()`; committed tools are not replayed. Live result handles, Python stacks,
+plugin counters, processes and connections do not survive closure. Closing an
+unpaused session still aborts and cleans up its unfinished work.
+
+After an unexpected interruption, reopening repairs incomplete model calls and
+tool batches before starting work. An active interrupted turn is ended as aborted.
+An interrupted tool's external outcome may be unknown; it is not automatically
+executed again. Pending approval waiters are interrupted rather than resurrected.
+Register the same custom event classes and explicitly supply validators for
+pending structured work with
+`agent.session(id="...", restore_outputs=[YourOutputTypeOrContract])`. Restoration
+matches validator identity and schema; stored JSON never imports Python code.
+
+Execution checkpoints have format **1** and contain a conversation snapshot plus
+the current execution suffix, queue, grants and resources. They are distinct from
+`SessionState` JSON and old JSONL archives; formats are not automatically migrated.
+Supplying both `state=` and an existing stored ID fails instead of overwriting it.
+To create an independent branch, supply a terminal `SessionState` and a new ID.
 
 ## Continue from application-owned state
 
@@ -22,7 +157,7 @@ print(result.text)
 ```
 
 Omit `state` to start empty. Supply a `SessionState` to continue its conversation.
-Each open session has a fresh runtime ID for correlation. Your application owns
+Without a store, each open session has a fresh runtime ID for correlation. Your application owns
 conversation keys, authorization, revisions, deletion and expiration. Coordinate
 concurrent writes through your repository, for example with revision checks.
 

@@ -56,6 +56,7 @@ runpy.run_module(module, run_name="__main__", alter_sys=True)
         "examples.35_background_shell",
         "examples.36_plugin_kits",
         "examples.37_plugin_recipes",
+        "examples.38_session_store",
     ],
 )
 def test_offline_sdk_example_runs(module):

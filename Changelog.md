@@ -4,6 +4,22 @@
 
 ### Added
 
+- Add opt-in `Agent(store=...)` and `agent.session(id=..., restore_outputs=...)`.
+  Import `SessionStore` and `StoredSession` from `harnessed.sessions` to keep the
+  root SDK small. Applications implement the structural contract directly in their
+  conversation repository, with `StoredSession` values and atomic revision checks.
+- Ship `harnessed.integrations.json.JsonSessionStore(root=...)` without an extra.
+  Hashed IDs, atomic replacement and OS locks protect local checkpoint updates.
+  No session files are written without an explicitly configured store.
+- Coalesce intermediate state with one owned background writer, offload JSON
+  encoding and acknowledge input, model/tool intent, receipt, pause and terminal
+  barriers only after commit. `session.flush()` explicitly commits pending state;
+  closing drains the writer. Background failures reach live callers and streams.
+- Avoid duplicating image and text resources already present in the checkpoint
+  baseline. Restore deliberately paused
+  turns, limits, queues, approval grants, images and spilled text. Interrupted
+  active work is repaired without automatically repeating external tool actions.
+
 - Capture OpenTelemetry conversation and tool content with
   `capture_content=ContentCapture.redacted(*secrets)`. Register strings or
   `SecretText` wrappers, including Pydantic `SecretStr`, without a settings
@@ -17,6 +33,19 @@
   content with a marker while preserving the agent's outcome.
 - Expose `Kit.resolve()` with explicit `KitPromptPolicy` and a frozen
   `ResolvedKit` containing resolved plugins and composition provenance.
+
+### API and storage boundaries
+
+- Stored sessions use a new execution-checkpoint format **1**, distinct from
+  terminal `SessionState` format **1** and audit-event envelope **3**. Raw state
+  JSON and former JSONL archives cannot be opened as execution checkpoints; there
+  are no legacy migrations or `MemorySessions` / `JsonlSessions` aliases.
+- A persistent paused session now remains recoverable after closure. Its live
+  handles still close; reopen by ID and call `resume()`. Ephemeral session closure
+  continues to discard queued and paused work. Python stacks and plugin state are
+  not restored. Pending structured work requires explicit validator registration.
+- Revision checks prevent lost updates, not concurrent external side effects.
+  API servers own per-conversation execution coordination and store/pool lifetime.
 
 ## 0.10.0 (2026-11-01)
 

@@ -23,6 +23,7 @@ from harnessed.core.runtime.result import RunResult
 from harnessed.core.runtime.services import RuntimeServices
 from harnessed.core.runtime.session import Session
 from harnessed.core.session.state import SessionState
+from harnessed.core.session.store import SessionStore
 from harnessed.core.tools.output_limit import ToolOutputLimit
 from harnessed.core.tracing import NoopTracer
 from harnessed.kernel import Context, PluginLike
@@ -44,8 +45,10 @@ class Agent:
         prompt: SystemPrompt | None = None,
         plugins: Iterable[PluginInput | None] = (),
         plugin_validation: PluginValidation = PluginValidation.ERROR,
+        store: SessionStore | None = None,
     ) -> None:
         self.plugin_validation = PluginValidation(plugin_validation)
+        self.store = store
         supplied: list[PluginInput] = [value for value in plugins if value is not None]
         if prompt is not None:
             supplied.insert(0, PromptRenderer(prompt))
@@ -101,15 +104,21 @@ class Agent:
         self,
         *,
         state: SessionState | None = None,
+        id: str | None = None,
+        restore_outputs: Iterable[type[Any] | OutputContract[Any]] = (),
     ) -> AsyncGenerator[Session]:
         """Open a live conversation, optionally initialized from an immutable state."""
         async with Context() as ctx:
             ctx.provide(EventRegistry, self._events.copy())
             # Validators are per session, so dynamic output types never leak between them.
             outputs = OutputTypes()
+            for output in restore_outputs:
+                outputs.register(output)
             ctx.provide(OutputTypes, outputs)
             await ctx.install(self.plugins, settle=True)
-            yield await open_session(ctx, state, plugin_validation=self.plugin_validation)
+            yield await open_session(
+                ctx, state, plugin_validation=self.plugin_validation, store=self.store, id=id
+            )
 
     @overload
     async def run[T](

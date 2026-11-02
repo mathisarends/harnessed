@@ -89,7 +89,7 @@ class Session:
         self._close_task: asyncio.Task[None] | None = None
         self.id = session.id
         self.context = DynamicContext(session)
-        self._boundary_state = session.snapshot()
+        self._boundary_state = session.boundary_state
         self._compaction = CompactionManager(ctx, session, context_window=options.context_window)
         self.control = SessionControl(session, self._drive, lambda: _driving.get() is self)
         self._live_approvals = LiveApprovals()
@@ -121,6 +121,7 @@ class Session:
             self,
         )
         self._runner = TurnRunner(ctx, session, options, self.control, self._steps, self)
+        session.set_persistence_error_handler(self._persistence_failed)
         ctx.on(SessionAppended, self._session_event)
         ctx.on(SessionPublished, self._stream_event)
 
@@ -161,6 +162,11 @@ class Session:
     async def emit(self, event: SessionEvent | TransientEvent) -> None:
         self.control.check_open()
         await self.log.emit(event)
+
+    async def flush(self) -> None:
+        """Wait for the latest checkpoint; no I/O occurs without a configured store."""
+        self.control.check_open()
+        await self.log.flush()
 
     async def subscribe(
         self, *, transient: bool = False, buffer_size: int = 256
@@ -354,6 +360,10 @@ class Session:
     def _stream_event(self, event: SessionPublished) -> None:
         if event.log is self.log:
             self._publish(event.event)
+
+    def _persistence_failed(self, error: Exception) -> None:
+        self.control.fail(error)
+        self._publish(None)
 
     @overload
     async def run[T](
@@ -553,13 +563,16 @@ class Session:
 
     async def _close(self) -> None:
         try:
-            await self.control.close()
+            await self.control.close(preserve_paused=self.log.persistent)
         finally:
             try:
                 if self.control.closing:
                     await self.ctx.dispatch(SessionClosing(self))
             finally:
-                self._publish(None)
+                try:
+                    await self.log.close_persistence()
+                finally:
+                    self._publish(None)
 
     async def _drive(self) -> None:
         token = _driving.set(self)
@@ -570,7 +583,8 @@ class Session:
                     break
         except (StopAtBoundary, asyncio.CancelledError):
             try:
-                await self.control.finish_termination()
+                if not self.control.suspending:
+                    await self.control.finish_termination()
             except Exception as exc:
                 self.control.error = exc
         except Exception as exc:
@@ -578,9 +592,10 @@ class Session:
             try:
                 await self.control.finish_termination()
             except Exception as repair_error:
-                self.control.error = ExceptionGroup(
-                    "Driver and session repair failed", [exc, repair_error]
-                )
+                if repair_error is not exc:
+                    self.control.error = ExceptionGroup(
+                        "Driver and session repair failed", [exc, repair_error]
+                    )
         finally:
             try:
                 await self.control.finish_driver()

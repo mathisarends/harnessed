@@ -13,10 +13,10 @@ candidates for discussion, not committed APIs or release dates.
 
 ## Conversation state follow-ups
 
-Applications now own persistence through `SessionState`; see the
-[session guide](../guides/sessions.md). Potential future additions include an
-explicit contract for paused execution and application-supplied blob storage for
-large snapshots. Neither is required for ordinary conversation continuation.
+Applications own persistence through `SessionState` or an explicit `SessionStore`;
+see the [session guide](../guides/sessions.md). Stores now support checkpoints for
+paused execution. Application-supplied blob storage for large checkpoints remains
+a future candidate; current checkpoints include their resource bytes.
 
 The optional [MCP client](../guides/mcp.md) now exposes tools over stdio and
 Streamable HTTP. Resources, prompts, sampling, elicitation and live catalog

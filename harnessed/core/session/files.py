@@ -76,7 +76,8 @@ class MemoryFiles:
             value.key: (value.text, value.modified_ns) for value in values
         }
 
-    def snapshot(self, keys: set[str]) -> tuple[TextValue, ...]:
+    def snapshot(self, keys: set[str] | None = None) -> tuple[TextValue, ...]:
+        keys = set(self._values) if keys is None else keys
         return tuple(
             TextValue(key, *self._values[key]) for key in sorted(keys) if key in self._values
         )

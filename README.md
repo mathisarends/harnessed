@@ -229,7 +229,11 @@ session's system prompt stays fixed. Each activation has its own lifetime and
 can keep mutable data in `PluginState`.
 
 Sessions also expose named context, steering, pause/resume and immutable
-`SessionState` snapshots for application-owned persistence. See
+`SessionState` snapshots. Opt into automatic persistence with
+`Agent(store=JsonSessionStore(root=...))`, importing the JSON store from
+`harnessed.integrations.json`, or implement `SessionStore` in your conversation
+repository. Stored conversations reopen with `agent.session(id=...)`; the default
+remains in memory. See
 [sessions](https://github.com/mathisarends/harnessed/blob/main/docs/guides/sessions.md) and
 [context](https://github.com/mathisarends/harnessed/blob/main/docs/guides/context.md) for those controls.
 

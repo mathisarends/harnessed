@@ -133,7 +133,7 @@ Run-only backends explicitly reject background starts. See
 ## Agent
 
 `Agent(*, model=None, instructions=None, prompt=None, plugins=(),
-plugin_validation=PluginValidation.ERROR)` resolves reusable configuration.
+plugin_validation=PluginValidation.ERROR, store=None)` resolves reusable configuration.
 
 | Member | Behavior |
 | --- | --- |
@@ -145,9 +145,28 @@ plugin_validation=PluginValidation.ERROR)` resolves reusable configuration.
 | agent.plugins | Tuple of resolved plugins |
 | agent.describe() | Immutable CompositionDescription with configured order, kit origins, replacement histories and exclusions |
 | agent.prompt | Inspectable PromptComposition with final order, origins and format |
-| agent.session(*, state=None) | Open a fresh live Session from optional immutable SessionState |
+| store | Optional application-owned SessionStore; None keeps sessions ephemeral |
+| agent.session(*, state=None, id=None, restore_outputs=()) | Open a Session from explicit state or a stored conversation; id requires a store |
 | agent.run(prompt, state=None, **options) | Run one turn and return its terminal result and state |
 | SessionState.from_json(payload) / state.to_json() | Validate or encode the canonical conversation snapshot in memory |
+
+`SessionStore` and `StoredSession(payload: str, revision: int)` are exported from
+`harnessed.sessions`. Implement `load_session(conversation_id) -> StoredSession | None`
+and `save_session(conversation_id, payload, *, expected_revision) -> int`.
+Writes atomically compare revisions and return the next integer; None expects
+absence. Conflicts raise `SessionWriteConflict` from `harnessed.errors`.
+The application owns pool lifetime and coordinates active workers per ID.
+
+`harnessed.integrations.json.JsonSessionStore(*, root)` ships without an extra.
+It uses atomic JSON replacement and OS locks for revision checks on a local
+filesystem. Persistence remains opt-in. An owned writer coalesces intermediate
+state in the background and awaits commits at input, model/tool intent, result,
+pause and turn-end barriers. `session.flush()` explicitly commits pending state;
+closing drains the writer. Background failures reach run/result/stream consumers.
+Closing a persistent paused session preserves
+its execution; reopening it remains paused. Explicit `SessionState` values still
+contain terminal conversation state only. See [sessions](../guides/sessions.md)
+for recovery, output-validator restoration and checkpoint format boundaries.
 
 Import `PluginValidation` from `harnessed`. Session startup checks all waiting
 plugins after publishing session services and settling their setup, before
@@ -257,6 +276,7 @@ See the [context guide](../guides/context.md).
 | use(plugin, section_delivery=SectionDelivery.ERROR) | Mount a reversible capability; CONTEXT owns guidance per activation, IGNORE skips sections |
 | compact() | Summarize completed history while idle or paused; return its record or None |
 | snapshot() | Export immutable conversation state at an idle boundary |
+| flush() | Await pending checkpoint persistence; no I/O without a store |
 | subscribe(transient=False) | Independent raw log subscription |
 | events / turns | Current-turn execution buffers, released after terminal delivery |
 | messages / usage / last(Event) | Retained working context, live-session usage and recent diagnostics |
