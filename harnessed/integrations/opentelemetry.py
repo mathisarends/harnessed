@@ -1,8 +1,10 @@
 import asyncio
 import json
-from collections.abc import AsyncGenerator, Generator, Mapping
+from collections.abc import AsyncGenerator, Callable, Generator, Mapping
 from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 from opentelemetry import trace
@@ -11,7 +13,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.util.types import AttributeValue
-from pydantic import Field
+from pydantic import Field, JsonValue
 
 from harnessed.core.messages import (
     AssistantMessage,
@@ -74,6 +76,31 @@ async def otlp_provider(
         await asyncio.to_thread(provider.shutdown)
 
 
+class TraceContentKind(StrEnum):
+    MODEL_INPUT = "model.input"
+    MODEL_OUTPUT = "model.output"
+    TOOL_ARGUMENTS = "tool.arguments"
+    TOOL_RESULT = "tool.result"
+    EXCEPTION_MESSAGE = "exception.message"
+
+
+@dataclass(frozen=True, slots=True)
+class TraceContent:
+    """Portable export content, detached from the agent's messages and tool values.
+
+    Filters may edit the copied JSON containers or return a replacement value.
+    Exception messages must remain strings. Kind and tool identity describe the
+    original field and cannot be changed by a filter.
+    """
+
+    kind: TraceContentKind
+    value: JsonValue
+    tool_name: str | None = None
+
+
+type TraceContentFilter = Callable[[TraceContent], TraceContent | None]
+
+
 class OpenTelemetryConfig(PluginConfig):
     capture_content: bool = False
     max_content_length: int = Field(default=16_384, ge=1)
@@ -94,6 +121,7 @@ class OpenTelemetryTracer(Plugin[OpenTelemetryConfig], slot="tracer"):
         tracer_provider: trace.TracerProvider | None = None,
         capture_content: bool = False,
         max_content_length: int = 16_384,
+        content_filter: TraceContentFilter | None = None,
     ) -> None:
         super().__init__(
             config=OpenTelemetryConfig(
@@ -101,6 +129,9 @@ class OpenTelemetryTracer(Plugin[OpenTelemetryConfig], slot="tracer"):
             )
         )
         self.tracer_provider = tracer_provider
+        if content_filter is not None and not callable(content_filter):
+            raise TypeError("content_filter must be a synchronous callable or None")
+        self.content_filter = content_filter
 
     async def setup(self, ctx: Context) -> None:
         self._tracer = trace.get_tracer("harnessed", tracer_provider=self.tracer_provider)
@@ -120,7 +151,13 @@ class OpenTelemetryTracer(Plugin[OpenTelemetryConfig], slot="tracer"):
                 kind, observation = _KINDS.get(name, ("CHAIN", "span"))
                 native.set_attribute("openinference.span.kind", kind)
                 native.set_attribute("langfuse.observation.type", observation)
-                current = _Span(native, self.config)
+                tool_name = attributes.get("tool")
+                current = _Span(
+                    native,
+                    self.config,
+                    self.content_filter,
+                    tool_name=tool_name if isinstance(tool_name, str) else None,
+                )
                 for key, value in {**correlation, **attributes}.items():
                     current.set_attribute(key, value)
                 try:
@@ -138,9 +175,18 @@ class OpenTelemetryTracer(Plugin[OpenTelemetryConfig], slot="tracer"):
 
 
 class _Span:
-    def __init__(self, native: trace.Span, config: OpenTelemetryConfig) -> None:
+    def __init__(
+        self,
+        native: trace.Span,
+        config: OpenTelemetryConfig,
+        content_filter: TraceContentFilter | None,
+        *,
+        tool_name: str | None,
+    ) -> None:
         self.native = native
         self.config = config
+        self.content_filter = content_filter
+        self.tool_name = tool_name
 
     def set_attribute(self, name: str, value: Any) -> None:
         if not self.native.is_recording():
@@ -149,15 +195,19 @@ class _Span:
             if value.settings.max_tokens is not None:
                 self.native.set_attribute("gen_ai.request.max_tokens", value.settings.max_tokens)
             if self.config.capture_content:
-                self.content("input", [_message(message) for message in value.messages])
+                self.content(
+                    "input",
+                    TraceContentKind.MODEL_INPUT,
+                    [_message(message) for message in value.messages],
+                )
         elif isinstance(value, ModelUsage):
             self.usage(value)
         elif isinstance(value, AssistantMessage):
             if self.config.capture_content:
-                self.content("output", _message(value))
+                self.content("output", TraceContentKind.MODEL_OUTPUT, _message(value))
         elif isinstance(value, ToolCall):
             if self.config.capture_content:
-                self.content("input", value.arguments)
+                self.content("input", TraceContentKind.TOOL_ARGUMENTS, value.arguments)
         elif isinstance(value, ToolResult):
             self.native.set_attribute("harnessed.tool.status", value.status.value)
             self.native.set_attribute("harnessed.tool.is_error", value.is_error)
@@ -169,7 +219,7 @@ class _Span:
                 )
                 self.native.set_status(trace.StatusCode.ERROR, description)
             if self.config.capture_content:
-                self.content("output", value.content)
+                self.content("output", TraceContentKind.TOOL_RESULT, value.content)
         elif isinstance(value, str | bool | int | float):
             self.native.set_attribute(f"harnessed.{name}", value)
             if name == "session_id":
@@ -197,10 +247,13 @@ class _Span:
             if value is not None:
                 self.native.set_attribute(key, value)
 
-    def content(self, direction: str, value: Any) -> None:
+    def content(self, direction: str, kind: TraceContentKind, value: Any) -> None:
+        captured = self._capture(kind, value, field=direction)
+        if captured is None:
+            return
         try:
-            serialized = json.dumps(to_dict(value), ensure_ascii=False, allow_nan=False)
-        except (TypeError, ValueError):
+            serialized = json.dumps(captured.value, ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError, RecursionError):
             self.native.set_attribute(f"harnessed.{direction}.serialization_error", True)
             return
         truncated = len(serialized) > self.config.max_content_length
@@ -214,17 +267,43 @@ class _Span:
             self.native.set_attribute(f"harnessed.{direction}.truncated", True)
 
     def error(self, error: BaseException) -> None:
+        if not self.native.is_recording():
+            return
         self.native.set_status(trace.StatusCode.ERROR, type(error).__name__)
-        if self.config.capture_content:
-            # Bound messages like other captured fields; stack traces may contain
-            # arbitrary application data and are never collected here.
-            message = str(error)[: self.config.max_content_length]
-        else:
-            message = ""
         attributes = {"exception.type": f"{type(error).__module__}.{type(error).__qualname__}"}
-        if message:
-            attributes["exception.message"] = message
+        if self.config.capture_content:
+            captured = self._capture(
+                TraceContentKind.EXCEPTION_MESSAGE, str(error), field="exception"
+            )
+            if captured is not None and isinstance(captured.value, str) and captured.value:
+                attributes["exception.message"] = captured.value[: self.config.max_content_length]
         self.native.add_event("exception", attributes)
+
+    def _capture(self, kind: TraceContentKind, value: Any, *, field: str) -> TraceContent | None:
+        try:
+            captured = TraceContent(kind, to_dict(value), self.tool_name)
+        except (TypeError, ValueError, RecursionError):
+            self.native.set_attribute(f"harnessed.{field}.serialization_error", True)
+            return None
+        if self.content_filter is None:
+            return captured
+        try:
+            filtered = self.content_filter(captured)
+            if filtered is not None:
+                if not isinstance(filtered, TraceContent):
+                    raise TypeError("Content filters must return TraceContent or None")
+                if filtered.kind is not kind or filtered.tool_name != self.tool_name:
+                    raise ValueError("Content filters cannot change the field's identity")
+                if kind is TraceContentKind.EXCEPTION_MESSAGE and not isinstance(
+                    filtered.value, str
+                ):
+                    raise TypeError("Filtered exception messages must be strings")
+            return filtered
+        except Exception:
+            # A redaction failure must never fall back to exporting the original
+            # value or leak the filter's own exception message.
+            self.native.set_attribute(f"harnessed.{field}.filter_error", True)
+            return None
 
 
 def _message(message: Message) -> dict[str, Any]:
@@ -241,4 +320,11 @@ def _message(message: Message) -> dict[str, Any]:
     return value
 
 
-__all__ = ["OpenTelemetryConfig", "OpenTelemetryTracer", "otlp_provider"]
+__all__ = [
+    "OpenTelemetryConfig",
+    "OpenTelemetryTracer",
+    "TraceContent",
+    "TraceContentFilter",
+    "TraceContentKind",
+    "otlp_provider",
+]

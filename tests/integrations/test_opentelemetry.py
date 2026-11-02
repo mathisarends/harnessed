@@ -5,12 +5,14 @@ import subprocess
 import sys
 from collections.abc import Generator
 from contextlib import nullcontext
+from dataclasses import replace
 from http.client import HTTPMessage
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from threading import Thread, get_ident
 
 import pytest
+from pydantic import JsonValue
 
 from harnessed.models import ProviderState
 
@@ -29,7 +31,12 @@ from harnessed.core.messages import AssistantMessage, ToolResult, ToolStatus
 from harnessed.core.model import ModelChunk, ModelUsage
 from harnessed.core.session.events import AgentControlChangedEvent, ControlState
 from harnessed.core.tracing import Tracer
-from harnessed.integrations.opentelemetry import OpenTelemetryTracer, otlp_provider
+from harnessed.integrations.opentelemetry import (
+    OpenTelemetryTracer,
+    TraceContent,
+    TraceContentKind,
+    otlp_provider,
+)
 from harnessed.plugins import Approvals, Compaction, every_turns
 from harnessed.testing import CallbackModel, ScriptedModel, reply
 
@@ -154,6 +161,157 @@ async def test_content_is_explicit_bounded_and_excludes_opaque_state(telemetry):
     assert len(model.attributes["input.value"]) == 8
     assert model.attributes["harnessed.input.truncated"] is True
     assert model.attributes["input.mime_type"] == "text/plain"
+
+
+async def test_content_filter_redacts_model_history_and_tool_fields(telemetry):
+    provider, exporter = telemetry
+    seen = []
+
+    def redact_value(value: JsonValue) -> JsonValue:
+        if isinstance(value, dict):
+            return {key: redact_value(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [redact_value(item) for item in value]
+        return value.replace("secret", "[redacted]") if isinstance(value, str) else value
+
+    def redact(content: TraceContent) -> TraceContent:
+        seen.append((content.kind, content.tool_name))
+        return replace(content, value=redact_value(content.value))
+
+    class Work(Plugin):
+        @tool(readonly=True)
+        def work(self, api_key: str) -> str:
+            return f"tool result {api_key}"
+
+    call = ToolCall("work", {"api_key": "secret"})
+    model = ScriptedModel([[ModelChunk(tool_call=call)], "secret answer"])
+    result = await Agent(
+        model=model,
+        plugins=[
+            Work(),
+            OpenTelemetryTracer(
+                tracer_provider=provider, capture_content=True, content_filter=redact
+            ),
+        ],
+    ).run("secret prompt")
+    spans = exporter.get_finished_spans()
+    assert result.text == "secret answer" and result.tool_calls[0][1].text == "tool result secret"
+    assert (TraceContentKind.TOOL_ARGUMENTS, "work") in seen
+    assert (TraceContentKind.TOOL_RESULT, "work") in seen
+    assert (TraceContentKind.MODEL_INPUT, None) in seen
+    assert (TraceContentKind.MODEL_OUTPUT, None) in seen
+    assert "secret" not in str([span.attributes for span in spans])
+    tool_span = next(span for span in spans if span.name == "harnessed.tool")
+    assert json.loads(tool_span.attributes["input.value"]) == {"api_key": "[redacted]"}
+    models = [span for span in spans if span.name == "harnessed.model"]
+    history = json.loads(models[-1].attributes["input.value"])
+    assistant = next(message for message in history if message["role"] == "assistant")
+    assert assistant["tool_calls"][0]["arguments"] == {"api_key": "[redacted]"}
+    assert json.loads(models[-1].attributes["output.value"])["content"] == "[redacted] answer"
+
+
+async def test_content_filter_can_mutate_a_detached_copy(telemetry):
+    provider, exporter = telemetry
+
+    def redact(content: TraceContent) -> TraceContent:
+        if content.kind is TraceContentKind.TOOL_ARGUMENTS:
+            assert isinstance(content.value, dict)
+            content.value["api_key"] = "[redacted]"
+        return content
+
+    tracer = OpenTelemetryTracer(
+        tracer_provider=provider, capture_content=True, content_filter=redact
+    )
+    call = ToolCall("work", {"api_key": "secret"})
+    async with Agent(model=ScriptedModel([]), plugins=[tracer]).session() as session:
+        with session.ctx[Tracer].span("tool", tool="work") as span:
+            span.set_attribute("input", call)
+    assert dict(call.arguments) == {"api_key": "secret"}
+    captured = exporter.get_finished_spans()[0]
+    assert json.loads(captured.attributes["input.value"]) == {"api_key": "[redacted]"}
+
+
+@pytest.mark.parametrize("fail_filter", [False, True])
+async def test_dropped_or_failed_filters_omit_content_and_preserve_original_failures(
+    telemetry, fail_filter
+):
+    provider, exporter = telemetry
+    seen = []
+
+    def redact(content: TraceContent) -> None:
+        seen.append(content.kind)
+        if fail_filter:
+            raise ValueError("filter secret")
+        return None
+
+    async def fail(request):
+        yield ModelChunk(text="partial secret")
+        raise RuntimeError("source secret")
+
+    with pytest.raises(RuntimeError, match="source secret"):
+        await Agent(
+            model=CallbackModel(fail),
+            plugins=[
+                OpenTelemetryTracer(
+                    tracer_provider=provider, capture_content=True, content_filter=redact
+                )
+            ],
+        ).run("secret prompt")
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 3
+    assert TraceContentKind.MODEL_INPUT in seen and TraceContentKind.EXCEPTION_MESSAGE in seen
+    assert all("input.value" not in span.attributes for span in spans)
+    assert all("output.value" not in span.attributes for span in spans)
+    assert all("exception.message" not in span.events[0].attributes for span in spans)
+    assert all(span.status.status_code == trace.StatusCode.ERROR for span in spans)
+    assert "secret" not in str([(span.attributes, span.events) for span in spans])
+    if fail_filter:
+        assert spans[0].attributes["harnessed.input.filter_error"] is True
+        assert all(span.attributes["harnessed.exception.filter_error"] for span in spans)
+
+
+async def test_filter_runs_before_serialization_and_truncation(telemetry):
+    provider, exporter = telemetry
+    seen = []
+
+    def redact(content: TraceContent) -> TraceContent:
+        seen.append(content)
+        return replace(
+            content, value="safe" if content.kind is TraceContentKind.EXCEPTION_MESSAGE else {}
+        )
+
+    tracer = OpenTelemetryTracer(
+        tracer_provider=provider, capture_content=True, content_filter=redact, max_content_length=4
+    )
+    async with Agent(model=ScriptedModel([]), plugins=[tracer]).session() as session:
+        with pytest.raises(RuntimeError, match="secret error"):
+            with session.ctx[Tracer].span("tool", tool="work") as span:
+                span.set_attribute("input", ToolCall("work", {"api_key": "long secret value"}))
+                raise RuntimeError("secret error beyond the limit")
+    assert [item.value for item in seen] == [
+        {"api_key": "long secret value"},
+        "secret error beyond the limit",
+    ]
+    captured = exporter.get_finished_spans()[0]
+    assert captured.attributes["input.value"] == "{}"
+    assert captured.attributes["input.mime_type"] == "application/json"
+    assert "harnessed.input.truncated" not in captured.attributes
+    assert captured.events[0].attributes["exception.message"] == "safe"
+
+
+async def test_content_filter_is_not_called_when_capture_is_disabled(telemetry):
+    provider, exporter = telemetry
+
+    def redact(content: TraceContent) -> TraceContent:
+        pytest.fail("Content capture is disabled")
+
+    await Agent(
+        model=ScriptedModel(["answer"]),
+        plugins=[OpenTelemetryTracer(tracer_provider=provider, content_filter=redact)],
+    ).run("secret prompt")
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 3
+    assert all("input.value" not in span.attributes for span in spans)
 
 
 async def test_parallel_tools_are_siblings_and_inherit_context(telemetry):

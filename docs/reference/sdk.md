@@ -21,12 +21,21 @@ Headers, timeouts and sampling remain configured through standard OTel settings.
 Shutdown attempts to drain batches and does not confirm destination ingestion.
 
 `harnessed.integrations.opentelemetry.OpenTelemetryTracer(*, tracer_provider=None,
-capture_content=False, max_content_length=16384)` replaces the `tracer` slot and
+capture_content=False, max_content_length=16384, content_filter=None)` replaces the `tracer` slot and
 requires `harnessed[otel]`. It emits nested runtime spans through the application's
 OpenTelemetry provider, without owning its exporters or shutdown. Import the
 integration explicitly; public SDK facades remain usable without the extra.
 Pass an existing application provider directly when one is already configured;
 the helper is optional. Content capture and limits stay on the plugin.
+`content_filter` is a synchronous `TraceContentFilter`, taking `TraceContent` and
+returning `TraceContent | None`. These types and `TraceContentKind` are exported
+by the optional integration. The callback receives a detached portable JSON value
+before serialization or truncation, with its kind and optional tool name. It
+covers model input/output, tool arguments/results and exception messages. Return
+None to omit a field, or replace its value while preserving its identity;
+exception messages must remain strings. Filter failures omit the field, set a
+content-free marker and preserve the agent's original outcome. Capture must be
+enabled; metadata remains outside the content filter.
 See [tracing](../guides/tracing.md) for Phoenix and Langfuse configuration,
 content capture, parent context and the emitted attributes.
 

@@ -192,9 +192,76 @@ The limit counts characters per serialized input/output field and exception
 message. Truncated fields are marked and use `text/plain`; complete fields use
 `application/json`. Serialization failures omit the field and set a marker.
 Opaque provider state, reasoning and stack traces are excluded even with capture
-enabled. Content capture does not redact secrets: enable it only where the
-application's data policy permits export. Independently installed HTTP or model
-instrumentors have their own capture settings.
+enabled. Content capture has no built-in redaction. Supply `content_filter` to
+apply application rules before JSON serialization and size limits:
+
+```python
+from dataclasses import replace
+
+from pydantic import JsonValue
+
+from harnessed.integrations.opentelemetry import (
+    OpenTelemetryTracer,
+    TraceContent,
+    TraceContentKind,
+)
+
+
+def redact_fields(value: JsonValue) -> JsonValue:
+    if isinstance(value, dict):
+        return {
+            key: "[redacted]" if key == "api_key" else redact_fields(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [redact_fields(item) for item in value]
+    return value
+
+
+def redact(content: TraceContent) -> TraceContent | None:
+    if content.kind is TraceContentKind.EXCEPTION_MESSAGE:
+        return None
+    return replace(content, value=redact_fields(content.value))
+
+
+tracer = OpenTelemetryTracer(
+    tracer_provider=provider,
+    capture_content=True,
+    content_filter=redact,
+)
+```
+
+`TraceContentFilter` is a synchronous callable taking `TraceContent` and returning
+`TraceContent | None`. It runs inline only when capture is enabled and the span
+is recording. The frozen wrapper exposes `kind`, JSON-compatible `value` and
+optional `tool_name`. Its JSON containers are detached copies: editing them
+does not change model requests, tool arguments, results or session history.
+Return `None` to omit the entire field, or return the same wrapper or a replacement
+with an edited value. Preserve `kind` and `tool_name`; exception replacements
+must remain strings. A JSON null is represented by `TraceContent(..., value=None)`
+and is distinct from returning `None` to omit a field.
+
+| Kind | Value before filtering |
+| --- | --- |
+| `MODEL_INPUT` (`model.input`) | Portable message list, including historical tool-call arguments and tool results |
+| `MODEL_OUTPUT` (`model.output`) | Portable assistant message, including tool-call arguments |
+| `TOOL_ARGUMENTS` (`tool.arguments`) | Arguments object; `tool_name` identifies the executing tool |
+| `TOOL_RESULT` (`tool.result`) | Tool content; `tool_name` identifies the executing tool |
+| `EXCEPTION_MESSAGE` (`exception.message`) | Full exception message before truncation |
+
+Each captured field passes through the filter independently, so tool arguments
+can appear in both a model message and a tool span. The filter sees the complete
+portable value before serialization and truncation. Provider state and reasoning
+are already excluded. IDs, names, timings, usage and error types remain metadata
+outside this content filter.
+
+A filter exception or invalid return omits the field and sets
+`harnessed.input.filter_error`, `harnessed.output.filter_error` or
+`harnessed.exception.filter_error`. Neither the original content nor the filter
+exception message is exported as a fallback, and the agent's operation retains
+its original outcome. Invalid JSON output is omitted with the existing
+serialization-error marker. Independent HTTP or model instrumentors have their
+own capture settings and do not use this callback.
 
 Custom tracer implementations still use the provider-independent
 `harnessed.core.tracing.Tracer` and `Span` protocols. `span(name, **attributes)`
