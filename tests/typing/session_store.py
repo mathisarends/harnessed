@@ -1,7 +1,8 @@
 from typing import assert_type
 
-from harnessed import Agent, OutputContract, SessionStore, StoredSession
+from harnessed import Agent, OutputContract
 from harnessed.integrations.json import JsonSessionStore
+from harnessed.sessions import SessionStore, StoredSession
 
 
 async def repository_consumer(store: SessionStore) -> None:

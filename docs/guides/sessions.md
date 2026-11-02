@@ -49,7 +49,7 @@ checkpoint, including resource bytes, rather than appending an audit log.
 
 ## Use an existing conversation repository
 
-Import `SessionStore` and `StoredSession` from `harnessed`. A repository implements
+Import `SessionStore` and `StoredSession` from `harnessed.sessions`. A repository implements
 the protocol structurally; no base class, plugin or database dependency is required:
 
 ```python

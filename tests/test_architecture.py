@@ -129,6 +129,7 @@ def test_validation_is_explicit_and_otel_is_optional_and_isolated():
         "harnessed.hooks",
         "harnessed.models",
         "harnessed.plugins",
+        "harnessed.sessions",
     ],
 )
 def test_public_exports_resolve_to_their_canonical_classes_and_functions(module):
@@ -206,6 +207,7 @@ def test_package_root_has_only_public_entrypoints_and_no_transition_modules():
         "agent.py",
         "errors.py",
         "hooks.py",
+        "sessions.py",
     }
     assert (PACKAGE / "events" / "__init__.py").is_file()
     assert not (PACKAGE / "std").exists()

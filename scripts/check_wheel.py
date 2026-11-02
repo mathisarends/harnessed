@@ -23,8 +23,11 @@ from harnessed import (
 from harnessed.errors import ConfigError
 from harnessed.events import TextDeltaEvent, TurnFinishedEvent
 from harnessed.plugins import Service, Skill, Skills
+from harnessed.integrations.json import JsonSessionStore
+from harnessed.sessions import StoredSession
 from harnessed.testing import ScriptedModel, call, reply, assert_tool_called, mount_plugin
 from pydantic import BaseModel
+from tempfile import TemporaryDirectory
 import harnessed
 
 package = Path(harnessed.__file__).resolve()
@@ -97,6 +100,18 @@ async def main():
     next_turn = await continuation.run("continue", state=state)
     assert len(next_turn.state.history) == 4
     assert not hasattr(continuation, "sessions")
+
+    with TemporaryDirectory(prefix='wheel-sessions-') as directory:
+        store = JsonSessionStore(root=directory)
+        persistent = Agent(model=ScriptedModel(['persisted', 'restored']), store=store)
+        async with persistent.session(id='wheel-conversation') as session:
+            await session.context.set('customer', 'Ada')
+            await session.run('Remember the customer.')
+        record = await store.load_session('wheel-conversation')
+        assert isinstance(record, StoredSession)
+        async with persistent.session(id='wheel-conversation') as session:
+            assert session.context.values == {'customer': 'Ada'}
+            assert (await session.run('Continue.')).text == 'restored'
 
     guidance = Guidance()
     for unplaced in (None, 'Role.'):

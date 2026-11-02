@@ -1,8 +1,8 @@
 from typing import assert_type
 
-from harnessed import Agent, CompositionDescription, Kit, Plugin
+from harnessed import Agent, CompositionDescription, Kit, KitPromptPolicy, Plugin, ResolvedKit
 from harnessed.core.composition import PluginDescription, PluginInput, PluginRemoval
-from harnessed.kernel import Context, plugin
+from harnessed.kernel import Context, PluginLike, plugin
 from harnessed.plugins import AgentLoop
 
 
@@ -18,6 +18,12 @@ async def configured(ctx: Context):
 kit = Kit("library", [OptionalFeature(), configured, AgentLoop(max_steps=12)])
 assert_type(kit.plugins, tuple[PluginInput, ...])
 assert_type(kit.without(OptionalFeature), Kit)
+resolved = kit.resolve(prompt=KitPromptPolicy.OMIT)
+assert_type(resolved, ResolvedKit)
+assert_type(resolved.plugins, tuple[PluginLike, ...])
+assert_type(resolved.description, CompositionDescription)
+Agent(plugins=resolved.plugins)
+kit.resolve(prompt=False)  # ty: ignore[invalid-argument-type]
 agent = Agent(plugins=[kit, AgentLoop(max_steps=6)])
 assert_type(agent.describe(), CompositionDescription)
 assert_type(agent.describe().plugins, tuple[PluginDescription, ...])

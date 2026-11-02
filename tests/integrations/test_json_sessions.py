@@ -5,9 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from harnessed import Agent, Plugin, StoredSession, tool
+from harnessed import Agent, Plugin, tool
 from harnessed.errors import SessionFormatError, SessionWriteConflict
 from harnessed.integrations.json import JsonSessionStore
+from harnessed.sessions import StoredSession
 from harnessed.testing import ScriptedModel
 
 

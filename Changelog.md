@@ -5,7 +5,8 @@
 ### Added
 
 - Add opt-in `Agent(store=...)` and `agent.session(id=..., restore_outputs=...)`.
-  Applications implement the structural `SessionStore` contract directly in their
+  Import `SessionStore` and `StoredSession` from `harnessed.sessions` to keep the
+  root SDK small. Applications implement the structural contract directly in their
   conversation repository, with `StoredSession` values and atomic revision checks.
 - Ship `harnessed.integrations.json.JsonSessionStore(root=...)` without an extra.
   Hashed IDs, atomic replacement and OS locks protect local checkpoint updates.

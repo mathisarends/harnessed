@@ -3,7 +3,9 @@ from harnessed.core.attachments import File as File
 from harnessed.core.attachments import Image as Image
 from harnessed.core.composition import CompositionDescription as CompositionDescription
 from harnessed.core.composition import Kit as Kit
+from harnessed.core.composition import KitPromptPolicy as KitPromptPolicy
 from harnessed.core.composition import PluginValidation as PluginValidation
+from harnessed.core.composition import ResolvedKit as ResolvedKit
 from harnessed.core.errors import PluginConflict as PluginConflict
 from harnessed.core.errors import SessionClosed as SessionClosed
 from harnessed.core.errors import StreamOverflow as StreamOverflow
@@ -30,8 +32,6 @@ from harnessed.core.runtime.result import RunResult as RunResult
 from harnessed.core.runtime.session import Session as Session
 from harnessed.core.session.session import SessionLog as SessionLog
 from harnessed.core.session.state import SessionState as SessionState
-from harnessed.core.session.store import SessionStore as SessionStore
-from harnessed.core.session.store import StoredSession as StoredSession
 from harnessed.core.tools.context import ToolContext as ToolContext
 from harnessed.core.tools.decorator import tool as tool
 from harnessed.core.tools.info import ToolChain as ToolChain
@@ -56,6 +56,7 @@ __all__ = [
     "ImageDetail",
     "Inject",
     "Kit",
+    "KitPromptPolicy",
     "Observation",
     "OutputContract",
     "Plugin",
@@ -64,6 +65,7 @@ __all__ = [
     "PluginValidation",
     "PolicyDecision",
     "Role",
+    "ResolvedKit",
     "RunHandle",
     "RunResult",
     "PromptFormat",
@@ -75,8 +77,6 @@ __all__ = [
     "SessionClosed",
     "SessionLog",
     "SessionState",
-    "SessionStore",
-    "StoredSession",
     "SessionStatus",
     "StopReason",
     "StreamOverflow",

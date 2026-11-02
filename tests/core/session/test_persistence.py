@@ -13,8 +13,6 @@ from harnessed import (
     Plugin,
     PluginOrder,
     SessionStatus,
-    SessionStore,
-    StoredSession,
     SystemPrompt,
     ToolCall,
     tool,
@@ -25,6 +23,7 @@ from harnessed.events import ApprovalRequestedEvent
 from harnessed.integrations.json import JsonSessionStore
 from harnessed.plugins import Spill
 from harnessed.plugins.spill import SpillStore
+from harnessed.sessions import SessionStore, StoredSession
 from harnessed.testing import ScriptedModel, call
 
 
@@ -153,7 +152,8 @@ async def test_stale_worker_cannot_overwrite_a_new_revision(store):
         assert restored.context.values == {"owner": "first"}
 
 
-async def test_storage_failure_reaches_the_run_caller_without_returning_success():
+@pytest.mark.parametrize("mode", ["run", "stream"])
+async def test_storage_failure_reaches_the_run_caller_without_returning_success(mode):
     repository = ConversationRepository()
 
     def fail_terminal(payload: str) -> None:
@@ -166,7 +166,11 @@ async def test_storage_failure_reaches_the_run_caller_without_returning_success(
         id="failure"
     ) as session:
         with pytest.raises(OSError, match="storage unavailable"):
-            await session.run("Work")
+            if mode == "run":
+                await session.run("Work")
+            else:
+                async for _event in session.stream("Work"):
+                    pass
 
 
 async def test_cancelled_write_finishes_before_cancellation_is_delivered():
