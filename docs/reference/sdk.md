@@ -27,15 +27,31 @@ OpenTelemetry provider, without owning its exporters or shutdown. Import the
 integration explicitly; public SDK facades remain usable without the extra.
 Pass an existing application provider directly when one is already configured;
 the helper is optional. Content capture and limits stay on the plugin.
+`capture_content` accepts a boolean or `ContentCapture`. Use
+`ContentCapture.redacted(*secrets, include_exception_messages=False)` to capture
+portable conversation and tool content while masking registered literal text
+values, including their occurrences in subsequent model history. Each secret
+is a string or a `SecretText` wrapper with `get_secret_value() -> str`, such as
+Pydantic `SecretStr`. No settings framework is required. Values are snapshotted
+at policy creation, omitted from its repr and rejected when empty or invalid.
+Recreate the policy on credential rotation. Matching is case-sensitive and
+covers substrings and object keys, including overlaps; encoded copies and
+unknown secrets require application rules. Exception text requires the policy's
+explicit opt-in. The boolean `True` retains plain content capture, including
+exception text. Wrapped text secrets and Pydantic `SecretBytes` encountered
+during portable conversion are masked in either mode.
 `content_filter` is a synchronous `TraceContentFilter`, taking `TraceContent` and
 returning `TraceContent | None`. These types and `TraceContentKind` are exported
 by the optional integration. The callback receives a detached portable JSON value
 before serialization or truncation, with its kind and optional tool name. It
 covers model input/output, tool arguments/results and exception messages. Return
 None to omit a field, or replace its value while preserving its identity;
-exception messages must remain strings. Filter failures omit the field, set a
-content-free marker and preserve the agent's original outcome. Capture must be
-enabled; metadata remains outside the content filter.
+exception messages must remain strings. Registered literals are masked after
+the callback, including in replacement values, and before serialization and
+limits. Filter and redaction failures omit the field, set a content-free marker
+and preserve the agent's original outcome. Capture must be enabled; metadata
+remains outside content filtering and redaction. `ContentCapture` and
+`SecretText` are exported by the optional integration alongside the filter types.
 See [tracing](../guides/tracing.md) for Phoenix and Langfuse configuration,
 content capture, parent context and the emitted attributes.
 

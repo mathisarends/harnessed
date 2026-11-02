@@ -5,14 +5,14 @@ import subprocess
 import sys
 from collections.abc import Generator
 from contextlib import nullcontext
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from http.client import HTTPMessage
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from threading import Thread, get_ident
 
 import pytest
-from pydantic import JsonValue
+from pydantic import JsonValue, SecretStr
 
 from harnessed.models import ProviderState
 
@@ -32,6 +32,7 @@ from harnessed.core.model import ModelChunk, ModelUsage
 from harnessed.core.session.events import AgentControlChangedEvent, ControlState
 from harnessed.core.tracing import Tracer
 from harnessed.integrations.opentelemetry import (
+    ContentCapture,
     OpenTelemetryTracer,
     TraceContent,
     TraceContentKind,
@@ -312,6 +313,233 @@ async def test_content_filter_is_not_called_when_capture_is_disabled(telemetry):
     spans = exporter.get_finished_spans()
     assert len(spans) == 3
     assert all("input.value" not in span.attributes for span in spans)
+
+
+@pytest.mark.parametrize("wrapped", [False, True])
+async def test_registered_secrets_are_redacted_across_runtime_and_history(telemetry, wrapped):
+    provider, exporter = telemetry
+    token = "billing-token-xyz"
+    capture = ContentCapture.redacted(SecretStr(token) if wrapped else token)
+
+    class Billing(Plugin):
+        @tool(readonly=True)
+        def lookup(self, invoice_id: str, authorization: str) -> str:
+            assert authorization == f"Bearer {token}"
+            return f"{invoice_id}: paid; Authorization: {authorization}"
+
+    call = ToolCall("lookup", {"invoice_id": "INV-42", "authorization": f"Bearer {token}"})
+    model = ScriptedModel([[ModelChunk(tool_call=call)], f"Paid using {token}"])
+    async with Agent(
+        model=model,
+        plugins=[Billing(), OpenTelemetryTracer(tracer_provider=provider, capture_content=capture)],
+    ).session() as session:
+        result = await session.run(f"Check INV-42 with {token}")
+        assert result.text == f"Paid using {token}"
+        assert result.tool_calls[0][1].text == f"INV-42: paid; Authorization: Bearer {token}"
+        assert token in str(session.messages)
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 6
+    assert token not in str([span.attributes for span in spans])
+    tool_span = next(span for span in spans if span.name == "harnessed.tool")
+    assert json.loads(tool_span.attributes["input.value"]) == {
+        "invoice_id": "INV-42",
+        "authorization": "Bearer [redacted]",
+    }
+    assert json.loads(tool_span.attributes["output.value"]) == (
+        "INV-42: paid; Authorization: Bearer [redacted]"
+    )
+    models = [span for span in spans if span.name == "harnessed.model"]
+    assert json.loads(models[0].attributes["input.value"])[0]["content"] == (
+        "Check INV-42 with [redacted]"
+    )
+    history = json.loads(models[-1].attributes["input.value"])
+    assert history[1]["tool_calls"][0]["arguments"]["authorization"] == "Bearer [redacted]"
+    assert history[2]["content"] == "INV-42: paid; Authorization: Bearer [redacted]"
+    assert json.loads(models[-1].attributes["output.value"])["content"] == ("Paid using [redacted]")
+
+
+async def test_custom_secret_wrapper_is_snapshotted_and_hidden(telemetry):
+    provider, exporter = telemetry
+
+    @dataclass
+    class Credential:
+        value: str
+
+        def get_secret_value(self) -> str:
+            return self.value
+
+    credential = Credential("original-token")
+    capture = ContentCapture.redacted(credential)
+    credential.value = "rotated-token"
+    tracer = OpenTelemetryTracer(tracer_provider=provider, capture_content=capture)
+    assert "original-token" not in repr(capture)
+    assert "original-token" not in repr(tracer)
+    assert "original-token" not in repr(tracer.config.model_dump())
+    await Agent(model=ScriptedModel(["answer"]), plugins=[tracer]).run("original-token")
+    model = next(span for span in exporter.get_finished_spans() if span.name == "harnessed.model")
+    assert json.loads(model.attributes["input.value"])[0]["content"] == "[redacted]"
+
+
+@pytest.mark.parametrize(
+    ("secrets", "text", "expected"),
+    [
+        (("abc", "abcdef"), "abcdef", "[redacted]"),
+        (("abc", "bcdef"), "abcdef", "[redacted]"),
+        (("abc", "abc"), "abcabc", "[redacted][redacted]"),
+        (("a.*[x]",), "a.*[x] aZZx", "[redacted] aZZx"),
+        (("密钥🔑",), "value=密钥🔑", "value=[redacted]"),
+        ((), "ordinary text", "ordinary text"),
+    ],
+)
+async def test_redaction_is_literal_and_covers_overlapping_values(
+    telemetry, secrets, text, expected
+):
+    provider, exporter = telemetry
+    tracer = OpenTelemetryTracer(
+        tracer_provider=provider, capture_content=ContentCapture.redacted(*secrets)
+    )
+    await Agent(model=ScriptedModel([text]), plugins=[tracer]).run("question")
+    model = next(span for span in exporter.get_finished_spans() if span.name == "harnessed.model")
+    assert json.loads(model.attributes["output.value"])["content"] == expected
+
+
+@pytest.mark.parametrize("include_exception_messages", [False, True])
+async def test_redacted_exception_text_is_separately_enabled(telemetry, include_exception_messages):
+    provider, exporter = telemetry
+    capture = ContentCapture.redacted(
+        "token-xyz", include_exception_messages=include_exception_messages
+    )
+    tracer = OpenTelemetryTracer(tracer_provider=provider, capture_content=capture)
+    async with Agent(model=ScriptedModel([]), plugins=[tracer]).session() as session:
+        with pytest.raises(RuntimeError, match="Bearer token-xyz"):
+            with session.ctx[Tracer].span("tool", tool="billing"):
+                raise RuntimeError("Authorization: Bearer token-xyz")
+    span = exporter.get_finished_spans()[0]
+    attributes = span.events[0].attributes
+    assert attributes["exception.type"] == "builtins.RuntimeError"
+    assert span.status.status_code == trace.StatusCode.ERROR
+    if include_exception_messages:
+        assert attributes["exception.message"] == "Authorization: Bearer [redacted]"
+    else:
+        assert "exception.message" not in attributes
+
+
+async def test_redaction_covers_filter_output_and_runs_before_limits(telemetry):
+    provider, exporter = telemetry
+
+    def transform(content: TraceContent) -> TraceContent:
+        return replace(content, value={"secret-token": ["prefix secret-token suffix"]})
+
+    tracer = OpenTelemetryTracer(
+        tracer_provider=provider,
+        capture_content=ContentCapture.redacted("secret-token"),
+        content_filter=transform,
+        max_content_length=28,
+    )
+    await Agent(model=ScriptedModel(["answer"]), plugins=[tracer]).run("question")
+    model = next(span for span in exporter.get_finished_spans() if span.name == "harnessed.model")
+    assert model.attributes["output.value"] == '{"[redacted]": ["prefix [red'
+    assert model.attributes["output.mime_type"] == "text/plain"
+    assert model.attributes["harnessed.output.truncated"] is True
+
+
+async def test_redaction_failure_omits_content_without_changing_agent_result(telemetry):
+    provider, exporter = telemetry
+
+    def invalid_content(content: TraceContent) -> TraceContent:
+        value = {}
+        value["recursive"] = value
+        return replace(content, value=value)
+
+    tracer = OpenTelemetryTracer(
+        tracer_provider=provider,
+        capture_content=ContentCapture.redacted("secret-token"),
+        content_filter=invalid_content,
+    )
+    result = await Agent(model=ScriptedModel(["answer"]), plugins=[tracer]).run("secret-token")
+    assert result.text == "answer"
+    model = next(span for span in exporter.get_finished_spans() if span.name == "harnessed.model")
+    assert "input.value" not in model.attributes
+    assert "output.value" not in model.attributes
+    assert model.attributes["harnessed.input.filter_error"] is True
+    assert model.attributes["harnessed.output.filter_error"] is True
+    assert "secret-token" not in str(model.attributes)
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [("secret-token",), {"secret-token": 1, "other-token": 2}],
+)
+async def test_redaction_rejects_invalid_values_and_key_collisions(telemetry, replacement):
+    provider, exporter = telemetry
+    tracer = OpenTelemetryTracer(
+        tracer_provider=provider,
+        capture_content=ContentCapture.redacted("secret-token", "other-token"),
+        content_filter=lambda content: replace(content, value=replacement),
+    )
+    result = await Agent(model=ScriptedModel(["answer"]), plugins=[tracer]).run("question")
+    assert result.text == "answer"
+    model = next(span for span in exporter.get_finished_spans() if span.name == "harnessed.model")
+    assert "output.value" not in model.attributes
+    assert model.attributes["harnessed.output.filter_error"] is True
+
+
+async def test_redacted_content_is_exported_without_registered_secret(otlp_collector: Collector):
+    base_url, requests = otlp_collector
+    async with otlp_provider(service_name="billing", endpoint=f"{base_url}/v1/traces") as provider:
+        result = await Agent(
+            model=ScriptedModel(["Paid using wire-secret-token"]),
+            plugins=[
+                OpenTelemetryTracer(
+                    tracer_provider=provider,
+                    capture_content=ContentCapture.redacted("wire-secret-token"),
+                )
+            ],
+        ).run("INV-42; Authorization: Bearer wire-secret-token")
+    assert result.text == "Paid using wire-secret-token"
+    assert requests
+    spans = [
+        span
+        for _, _, body in requests
+        for resource in ExportTraceServiceRequest.FromString(body).resource_spans
+        for scope in resource.scope_spans
+        for span in scope.spans
+    ]
+    assert len(spans) == 3
+    model = next(span for span in spans if span.name == "harnessed.model")
+    attributes = {attribute.key: attribute.value.string_value for attribute in model.attributes}
+    assert json.loads(attributes["input.value"])[0]["content"] == (
+        "INV-42; Authorization: Bearer [redacted]"
+    )
+    assert json.loads(attributes["output.value"])["content"] == "Paid using [redacted]"
+    assert "wire-secret-token" not in str(spans)
+
+
+@pytest.mark.parametrize("secret", ["", SecretStr(""), b"bytes", None, 42])
+def test_invalid_secrets_are_rejected_without_echoing_values(secret):
+    with pytest.raises((TypeError, ValueError)) as error:
+        ContentCapture.redacted(secret)
+    assert str(error.value) in {
+        "Secret values must not be empty",
+        "Secrets must be strings or SecretText wrappers",
+    }
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_invalid_secret_wrappers_raise_without_exposing_their_contents(failure):
+    class InvalidSecret:
+        def get_secret_value(self):
+            if failure:
+                raise RuntimeError("private-token")
+            return b"private-token"
+
+    with pytest.raises((TypeError, ValueError)) as error:
+        ContentCapture.redacted(InvalidSecret())
+    assert "private-token" not in str(error.value)
+    assert str(error.value) in {
+        "Could not read a text secret",
+        "SecretText wrappers must return strings",
+    }
 
 
 async def test_parallel_tools_are_siblings_and_inherit_context(telemetry):

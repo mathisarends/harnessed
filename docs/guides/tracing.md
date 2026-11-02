@@ -177,57 +177,88 @@ same Harnessed request.
 ## Content capture
 
 By default, spans contain IDs, timings, model/tool names, counters, outcomes and
-exception types. They exclude prompts, completions, tool arguments/results,
-exception messages and stack traces. To capture portable conversation content:
+exception types. Enable conversation and tool content with a redaction policy.
+Register the application's text credentials directly, wherever they come from.
 
 ```python
-OpenTelemetryTracer(
+import os
+
+from harnessed.integrations.opentelemetry import ContentCapture, OpenTelemetryTracer
+
+tracer = OpenTelemetryTracer(
     tracer_provider=provider,
-    capture_content=True,
+    capture_content=ContentCapture.redacted(os.environ["BILLING_TOKEN"]),
     max_content_length=16_384,
 )
 ```
+
+This captures portable model inputs and outputs, tool-call arguments and tool
+results, including copies in subsequent model history. For example, if a tool
+returns `Authorization: Bearer <token>`, both its result span and the next model
+input contain `Authorization: Bearer [redacted]`. Execution and session history
+retain their original values.
+
+`ContentCapture.redacted(*secrets, include_exception_messages=False)` accepts
+strings and `SecretText` wrappers with a `get_secret_value() -> str` method.
+Pydantic's `SecretStr` satisfies that protocol, as can application-owned wrappers.
+Pass individual credentials from any configuration system.
+
+```python
+capture = ContentCapture.redacted(config.billing_token, config.crm_token)
+```
+
+Harnessed does not inspect settings objects or scan environment variables.
+`pydantic-settings` is not required. Values are read once when the policy is
+created, so recreate it when credentials rotate. Empty values, unsupported
+types and wrappers returning non-strings raise errors without echoing values.
+The policy's representation and the tracer's serializable configuration omit
+registered values. `redacted()` with no arguments registers no literal secrets.
+
+Matching is literal and case-sensitive. It masks occurrences inside strings,
+nested arrays and objects, including object keys. Overlapping values are fully
+masked. Encoded or transformed copies and unknown secrets require application
+rules. Wrapped `SecretText` and Pydantic `SecretBytes` values encountered while
+copying portable runtime data become `[redacted]` even without registration.
+The trace conversion does not invoke application serializers.
+
+Exception types and failure status are always available. Enable exception text
+with `ContentCapture.redacted(token, include_exception_messages=True)` to apply
+the same literal redaction before its length limit. `capture_content=True`
+retains the plain boolean opt-in, including exception text, with no registered
+literal secrets. Both forms mask wrapped secrets encountered during conversion.
 
 The limit counts characters per serialized input/output field and exception
 message. Truncated fields are marked and use `text/plain`; complete fields use
 `application/json`. Serialization failures omit the field and set a marker.
 Opaque provider state, reasoning and stack traces are excluded even with capture
-enabled. Content capture has no built-in redaction. Supply `content_filter` to
-apply application rules before JSON serialization and size limits:
+enabled.
+
+### Application filtering
+
+Supply `content_filter` for additional application rules, such as omitting a
+particular tool's result. The callback runs after the detached portable copy is
+created and before registered secret values are masked, JSON serialization and
+size limits. Registered values are masked in callback replacements as well.
 
 ```python
-from dataclasses import replace
-
-from pydantic import JsonValue
-
 from harnessed.integrations.opentelemetry import (
+    ContentCapture,
     OpenTelemetryTracer,
     TraceContent,
     TraceContentKind,
 )
 
 
-def redact_fields(value: JsonValue) -> JsonValue:
-    if isinstance(value, dict):
-        return {
-            key: "[redacted]" if key == "api_key" else redact_fields(item)
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [redact_fields(item) for item in value]
-    return value
-
-
-def redact(content: TraceContent) -> TraceContent | None:
-    if content.kind is TraceContentKind.EXCEPTION_MESSAGE:
+def omit_patient_result(content: TraceContent) -> TraceContent | None:
+    if content.kind is TraceContentKind.TOOL_RESULT and content.tool_name == "lookup_patient":
         return None
-    return replace(content, value=redact_fields(content.value))
+    return content
 
 
 tracer = OpenTelemetryTracer(
     tracer_provider=provider,
-    capture_content=True,
-    content_filter=redact,
+    capture_content=ContentCapture.redacted(config.billing_token),
+    content_filter=omit_patient_result,
 )
 ```
 
@@ -253,9 +284,11 @@ Each captured field passes through the filter independently, so tool arguments
 can appear in both a model message and a tool span. The filter sees the complete
 portable value before serialization and truncation. Provider state and reasoning
 are already excluded. IDs, names, timings, usage and error types remain metadata
-outside this content filter.
+outside content filtering and redaction. Omitting a tool-result field leaves
+copies in model history available to separate filtering. For sensitive tool
+data, apply rules to model input/output as well.
 
-A filter exception or invalid return omits the field and sets
+A filter or redaction exception or invalid return omits the field and sets
 `harnessed.input.filter_error`, `harnessed.output.filter_error` or
 `harnessed.exception.filter_error`. Neither the original content nor the filter
 exception message is exported as a fallback, and the agent's operation retains

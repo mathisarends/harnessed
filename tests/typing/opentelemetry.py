@@ -2,11 +2,13 @@ from dataclasses import replace
 from typing import assert_type
 
 from opentelemetry.sdk.trace import TracerProvider
-from pydantic import JsonValue
+from pydantic import JsonValue, SecretStr
 
 from harnessed import Agent
 from harnessed.integrations.opentelemetry import (
+    ContentCapture,
     OpenTelemetryTracer,
+    SecretText,
     TraceContent,
     TraceContentFilter,
     TraceContentKind,
@@ -26,6 +28,20 @@ def redact(content: TraceContent) -> TraceContent | None:
 content_filter: TraceContentFilter = redact
 OpenTelemetryTracer(content_filter=content_filter)
 OpenTelemetryTracer(content_filter=lambda content: "invalid")  # ty: ignore[invalid-argument-type]
+
+
+class Credential:
+    def get_secret_value(self) -> str:
+        return "custom-token"
+
+
+secret: SecretText = Credential()
+capture = ContentCapture.redacted("raw-token", SecretStr("pydantic-token"), secret)
+assert_type(capture, ContentCapture)
+OpenTelemetryTracer(capture_content=capture, content_filter=content_filter)
+ContentCapture.redacted(include_exception_messages=True)
+ContentCapture.redacted(b"bytes")  # ty: ignore[invalid-argument-type]
+ContentCapture.redacted(object())  # ty: ignore[invalid-argument-type]
 
 
 async def configure() -> None:

@@ -1,11 +1,12 @@
 import asyncio
 import json
+import re
 from collections.abc import AsyncGenerator, Callable, Generator, Mapping
 from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field, fields, is_dataclass, replace
 from enum import StrEnum
-from typing import Any
+from typing import Any, Protocol, Self, runtime_checkable
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -13,7 +14,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.util.types import AttributeValue
-from pydantic import Field, JsonValue
+from pydantic import Field, JsonValue, SecretBytes
 
 from harnessed.core.messages import (
     AssistantMessage,
@@ -21,7 +22,6 @@ from harnessed.core.messages import (
     ToolCall,
     ToolResult,
     ToolStatus,
-    to_dict,
 )
 from harnessed.core.model import ModelRequest, ModelUsage
 from harnessed.core.plugin import Plugin, PluginConfig
@@ -101,6 +101,88 @@ class TraceContent:
 type TraceContentFilter = Callable[[TraceContent], TraceContent | None]
 
 
+@runtime_checkable
+class SecretText(Protocol):
+    """A text secret wrapper, including Pydantic's ``SecretStr``."""
+
+    def get_secret_value(self) -> str: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ContentCapture:
+    """Capture portable conversation and tool content with exact-value redaction.
+
+    Secret values are snapshotted when the policy is created. Matching is literal
+    and case-sensitive, including substrings and JSON object keys. Encoded or
+    transformed copies and unknown secrets require application filtering.
+    """
+
+    include_exception_messages: bool = False
+    _pattern: re.Pattern[str] | None = field(default=None, repr=False)
+
+    @classmethod
+    def redacted(cls, *secrets: str | SecretText, include_exception_messages: bool = False) -> Self:
+        """Register nonempty secret values without inspecting application settings.
+
+        Wrappers are unwrapped once. Empty values and invalid wrapper results
+        raise without including their values in the error message. Recreate the
+        policy when credentials rotate. The policy's repr omits secret values.
+        """
+        values: set[str] = set()
+        for secret in secrets:
+            if isinstance(secret, str):
+                value = secret
+            elif isinstance(secret, SecretText):
+                try:
+                    value = secret.get_secret_value()
+                except Exception:
+                    raise ValueError("Could not read a text secret") from None
+            else:
+                raise TypeError("Secrets must be strings or SecretText wrappers")
+            if not isinstance(value, str):
+                raise TypeError("SecretText wrappers must return strings")
+            if not value:
+                raise ValueError("Secret values must not be empty")
+            values.add(value)
+        # Lookahead finds overlapping values. Prefer the longest at each position
+        # so a shorter registered prefix cannot leave a credential suffix behind.
+        alternatives = "|".join(re.escape(value) for value in sorted(values, key=len, reverse=True))
+        pattern = re.compile(f"(?=({alternatives}))") if values else None
+        return cls(include_exception_messages=include_exception_messages, _pattern=pattern)
+
+    def _redact(self, value: JsonValue) -> JsonValue:
+        match value:
+            case str():
+                return self._redact_text(value)
+            case dict():
+                redacted: dict[str, JsonValue] = {}
+                for key, item in value.items():
+                    redacted_key = self._redact_text(key)
+                    if redacted_key in redacted:
+                        raise ValueError("Redaction produced duplicate object keys")
+                    redacted[redacted_key] = self._redact(item)
+                return redacted
+            case list():
+                return [self._redact(item) for item in value]
+            case None | bool() | int() | float():
+                return value
+            case _:
+                raise TypeError("Redacted content must contain only JSON values")
+
+    def _redact_text(self, value: str) -> str:
+        if self._pattern is None:
+            return value
+        parts: list[str] = []
+        end = 0
+        for found in self._pattern.finditer(value):
+            start = found.start()
+            if start >= end:
+                parts.extend((value[end:start], "[redacted]"))
+            end = max(end, start + len(found[1]))
+        parts.append(value[end:])
+        return "".join(parts)
+
+
 class OpenTelemetryConfig(PluginConfig):
     capture_content: bool = False
     max_content_length: int = Field(default=16_384, ge=1)
@@ -119,16 +201,22 @@ class OpenTelemetryTracer(Plugin[OpenTelemetryConfig], slot="tracer"):
         self,
         *,
         tracer_provider: trace.TracerProvider | None = None,
-        capture_content: bool = False,
+        capture_content: bool | ContentCapture = False,
         max_content_length: int = 16_384,
         content_filter: TraceContentFilter | None = None,
     ) -> None:
         super().__init__(
             config=OpenTelemetryConfig(
-                capture_content=capture_content, max_content_length=max_content_length
+                capture_content=True
+                if isinstance(capture_content, ContentCapture)
+                else capture_content,
+                max_content_length=max_content_length,
             )
         )
         self.tracer_provider = tracer_provider
+        self._capture_policy = (
+            capture_content if isinstance(capture_content, ContentCapture) else None
+        )
         if content_filter is not None and not callable(content_filter):
             raise TypeError("content_filter must be a synchronous callable or None")
         self.content_filter = content_filter
@@ -156,6 +244,7 @@ class OpenTelemetryTracer(Plugin[OpenTelemetryConfig], slot="tracer"):
                     native,
                     self.config,
                     self.content_filter,
+                    self._capture_policy,
                     tool_name=tool_name if isinstance(tool_name, str) else None,
                 )
                 for key, value in {**correlation, **attributes}.items():
@@ -180,6 +269,7 @@ class _Span:
         native: trace.Span,
         config: OpenTelemetryConfig,
         content_filter: TraceContentFilter | None,
+        capture_policy: ContentCapture | None,
         *,
         tool_name: str | None,
     ) -> None:
@@ -187,6 +277,7 @@ class _Span:
         self.config = config
         self.content_filter = content_filter
         self.tool_name = tool_name
+        self.capture_policy = capture_policy
 
     def set_attribute(self, name: str, value: Any) -> None:
         if not self.native.is_recording():
@@ -271,7 +362,9 @@ class _Span:
             return
         self.native.set_status(trace.StatusCode.ERROR, type(error).__name__)
         attributes = {"exception.type": f"{type(error).__module__}.{type(error).__qualname__}"}
-        if self.config.capture_content:
+        if self.config.capture_content and (
+            self.capture_policy is None or self.capture_policy.include_exception_messages
+        ):
             captured = self._capture(
                 TraceContentKind.EXCEPTION_MESSAGE, str(error), field="exception"
             )
@@ -281,14 +374,12 @@ class _Span:
 
     def _capture(self, kind: TraceContentKind, value: Any, *, field: str) -> TraceContent | None:
         try:
-            captured = TraceContent(kind, to_dict(value), self.tool_name)
+            captured = TraceContent(kind, _trace_value(value), self.tool_name)
         except (TypeError, ValueError, RecursionError):
             self.native.set_attribute(f"harnessed.{field}.serialization_error", True)
             return None
-        if self.content_filter is None:
-            return captured
         try:
-            filtered = self.content_filter(captured)
+            filtered = captured if self.content_filter is None else self.content_filter(captured)
             if filtered is not None:
                 if not isinstance(filtered, TraceContent):
                     raise TypeError("Content filters must return TraceContent or None")
@@ -298,6 +389,8 @@ class _Span:
                     filtered.value, str
                 ):
                     raise TypeError("Filtered exception messages must be strings")
+                if self.capture_policy is not None:
+                    filtered = replace(filtered, value=self.capture_policy._redact(filtered.value))
             return filtered
         except Exception:
             # A redaction failure must never fall back to exporting the original
@@ -306,13 +399,27 @@ class _Span:
             return None
 
 
+def _trace_value(value: Any) -> Any:
+    # This export boundary copies supported runtime values without invoking
+    # application serializers, which may deliberately expose wrapped secrets.
+    if isinstance(value, SecretText | SecretBytes):
+        return "[redacted]"
+    if is_dataclass(value) and not isinstance(value, type):
+        return {item.name: _trace_value(getattr(value, item.name)) for item in fields(value)}
+    if isinstance(value, Mapping):
+        return {key: _trace_value(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_trace_value(item) for item in value]
+    return value
+
+
 def _message(message: Message) -> dict[str, Any]:
     # Provider state and reasoning can include opaque or signed payloads; capture
     # only the portable conversation and tool arguments.
-    value: dict[str, Any] = {"role": message.role.value, "content": to_dict(message.content)}
+    value: dict[str, Any] = {"role": message.role.value, "content": message.content}
     if message.tool_calls:
         value["tool_calls"] = [
-            {"id": call.id, "name": call.name, "arguments": to_dict(call.arguments)}
+            {"id": call.id, "name": call.name, "arguments": call.arguments}
             for call in message.tool_calls
         ]
     if message.tool_call_id is not None:
@@ -321,8 +428,10 @@ def _message(message: Message) -> dict[str, Any]:
 
 
 __all__ = [
+    "ContentCapture",
     "OpenTelemetryConfig",
     "OpenTelemetryTracer",
+    "SecretText",
     "TraceContent",
     "TraceContentFilter",
     "TraceContentKind",
