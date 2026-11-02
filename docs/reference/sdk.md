@@ -30,6 +30,17 @@ the helper is optional. Content capture and limits stay on the plugin.
 See [tracing](../guides/tracing.md) for Phoenix and Langfuse configuration,
 content capture, parent context and the emitted attributes.
 
+## Kit resolution
+
+`Kit.resolve(*, prompt=KitPromptPolicy.INCLUDE) -> ResolvedKit` resolves one kit
+without agent defaults, plugin mounts or instruction rendering. Import these
+types from `harnessed`. The frozen result exposes a flat `plugins` tuple and a
+`CompositionDescription` in `description`, preserving original origins,
+replacements and exclusions. `KitPromptPolicy.OMIT` recursively skips `Kit.prompt`
+declarations before conflict resolution; explicit prompt plugins and selected
+plugins' instruction contributions remain. Flattened plugins become direct
+inputs when passed to an Agent. See [kit resolution](../guides/plugins.md#resolve-a-kit-into-flat-recipes).
+
 ## MCP client
 
 Install `harnessed[mcp]` and import `MCP` from `harnessed.plugins.mcp`.
