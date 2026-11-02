@@ -20,6 +20,20 @@
   turns, limits, queues, approval grants, images and spilled text. Interrupted
   active work is repaired without automatically repeating external tool actions.
 
+- Capture OpenTelemetry conversation and tool content with
+  `capture_content=ContentCapture.redacted(*secrets)`. Register strings or
+  `SecretText` wrappers, including Pydantic `SecretStr`, without a settings
+  dependency. Literal values are masked throughout captured messages, tool
+  arguments/results and subsequent model history before size limits. Exception
+  text is separately enabled. Registered values are snapshotted and omitted from
+  the policy's representation.
+- Add a synchronous OpenTelemetry `content_filter` for application-specific
+  transformations and field omission. Filters receive detached `TraceContent`
+  values. Redaction also covers their replacements. Processing failures omit
+  content with a marker while preserving the agent's outcome.
+- Expose `Kit.resolve()` with explicit `KitPromptPolicy` and a frozen
+  `ResolvedKit` containing resolved plugins and composition provenance.
+
 ### API and storage boundaries
 
 - Stored sessions use a new execution-checkpoint format **1**, distinct from

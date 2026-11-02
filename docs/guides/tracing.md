@@ -177,24 +177,124 @@ same Harnessed request.
 ## Content capture
 
 By default, spans contain IDs, timings, model/tool names, counters, outcomes and
-exception types. They exclude prompts, completions, tool arguments/results,
-exception messages and stack traces. To capture portable conversation content:
+exception types. Enable conversation and tool content with a redaction policy.
+Register the application's text credentials directly, wherever they come from.
 
 ```python
-OpenTelemetryTracer(
+import os
+
+from harnessed.integrations.opentelemetry import ContentCapture, OpenTelemetryTracer
+
+tracer = OpenTelemetryTracer(
     tracer_provider=provider,
-    capture_content=True,
+    capture_content=ContentCapture.redacted(os.environ["BILLING_TOKEN"]),
     max_content_length=16_384,
 )
 ```
+
+This captures portable model inputs and outputs, tool-call arguments and tool
+results, including copies in subsequent model history. For example, if a tool
+returns `Authorization: Bearer <token>`, both its result span and the next model
+input contain `Authorization: Bearer [redacted]`. Execution and session history
+retain their original values.
+
+`ContentCapture.redacted(*secrets, include_exception_messages=False)` accepts
+strings and `SecretText` wrappers with a `get_secret_value() -> str` method.
+Pydantic's `SecretStr` satisfies that protocol, as can application-owned wrappers.
+Pass individual credentials from any configuration system.
+
+```python
+capture = ContentCapture.redacted(config.billing_token, config.crm_token)
+```
+
+Harnessed does not inspect settings objects or scan environment variables.
+`pydantic-settings` is not required. Values are read once when the policy is
+created, so recreate it when credentials rotate. Empty values, unsupported
+types and wrappers returning non-strings raise errors without echoing values.
+The policy's representation and the tracer's serializable configuration omit
+registered values. `redacted()` with no arguments registers no literal secrets.
+
+Matching is literal and case-sensitive. It masks occurrences inside strings,
+nested arrays and objects, including object keys. Overlapping values are fully
+masked. Encoded or transformed copies and unknown secrets require application
+rules. Wrapped `SecretText` and Pydantic `SecretBytes` values encountered while
+copying portable runtime data become `[redacted]` even without registration.
+The trace conversion does not invoke application serializers.
+
+Exception types and failure status are always available. Enable exception text
+with `ContentCapture.redacted(token, include_exception_messages=True)` to apply
+the same literal redaction before its length limit. `capture_content=True`
+retains the plain boolean opt-in, including exception text, with no registered
+literal secrets. Both forms mask wrapped secrets encountered during conversion.
 
 The limit counts characters per serialized input/output field and exception
 message. Truncated fields are marked and use `text/plain`; complete fields use
 `application/json`. Serialization failures omit the field and set a marker.
 Opaque provider state, reasoning and stack traces are excluded even with capture
-enabled. Content capture does not redact secrets: enable it only where the
-application's data policy permits export. Independently installed HTTP or model
-instrumentors have their own capture settings.
+enabled.
+
+### Application filtering
+
+Supply `content_filter` for additional application rules, such as omitting a
+particular tool's result. The callback runs after the detached portable copy is
+created and before registered secret values are masked, JSON serialization and
+size limits. Registered values are masked in callback replacements as well.
+
+```python
+from harnessed.integrations.opentelemetry import (
+    ContentCapture,
+    OpenTelemetryTracer,
+    TraceContent,
+    TraceContentKind,
+)
+
+
+def omit_patient_result(content: TraceContent) -> TraceContent | None:
+    if content.kind is TraceContentKind.TOOL_RESULT and content.tool_name == "lookup_patient":
+        return None
+    return content
+
+
+tracer = OpenTelemetryTracer(
+    tracer_provider=provider,
+    capture_content=ContentCapture.redacted(config.billing_token),
+    content_filter=omit_patient_result,
+)
+```
+
+`TraceContentFilter` is a synchronous callable taking `TraceContent` and returning
+`TraceContent | None`. It runs inline only when capture is enabled and the span
+is recording. The frozen wrapper exposes `kind`, JSON-compatible `value` and
+optional `tool_name`. Its JSON containers are detached copies: editing them
+does not change model requests, tool arguments, results or session history.
+Return `None` to omit the entire field, or return the same wrapper or a replacement
+with an edited value. Preserve `kind` and `tool_name`; exception replacements
+must remain strings. A JSON null is represented by `TraceContent(..., value=None)`
+and is distinct from returning `None` to omit a field.
+
+| Kind | Value before filtering |
+| --- | --- |
+| `MODEL_INPUT` (`model.input`) | Portable message list, including historical tool-call arguments and tool results |
+| `MODEL_OUTPUT` (`model.output`) | Portable assistant message, including tool-call arguments |
+| `TOOL_ARGUMENTS` (`tool.arguments`) | Arguments object; `tool_name` identifies the executing tool |
+| `TOOL_RESULT` (`tool.result`) | Tool content; `tool_name` identifies the executing tool |
+| `EXCEPTION_MESSAGE` (`exception.message`) | Full exception message before truncation |
+
+Each captured field passes through the filter independently, so tool arguments
+can appear in both a model message and a tool span. The filter sees the complete
+portable value before serialization and truncation. Provider state and reasoning
+are already excluded. IDs, names, timings, usage and error types remain metadata
+outside content filtering and redaction. Omitting a tool-result field leaves
+copies in model history available to separate filtering. For sensitive tool
+data, apply rules to model input/output as well.
+
+A filter or redaction exception or invalid return omits the field and sets
+`harnessed.input.filter_error`, `harnessed.output.filter_error` or
+`harnessed.exception.filter_error`. Neither the original content nor the filter
+exception message is exported as a fallback, and the agent's operation retains
+its original outcome. Invalid JSON output is omitted with the existing
+serialization-error marker. Independent HTTP or model instrumentors have their
+own capture settings and do not use this callback.
 
 Custom tracer implementations still use the provider-independent
 `harnessed.core.tracing.Tracer` and `Span` protocols. `span(name, **attributes)`
