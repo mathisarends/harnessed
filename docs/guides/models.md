@@ -6,11 +6,39 @@ native HTTP client, retry base class or SSE parser to configure.
 
 ## Choose a model
 
-`Agent(model=...)` accepts a provider string or an object implementing the structural
-`harnessed.models.Model` contract. Strings select the PydanticAI adapter. Wrap an
-existing native model explicitly with `PydanticAIModel(native_model)`. Optional
-extras are `harnessed[openai]`, `harnessed[anthropic]` and `harnessed[google]`.
-DeepSeek uses the OpenAI-compatible integration and the `openai` extra.
+Start with a `provider:model` string. Harnessed selects the PydanticAI adapter
+automatically; no PydanticAI imports or model constructors are needed:
+
+```python
+import asyncio
+
+from harnessed import Agent
+
+
+async def main() -> None:
+    agent = Agent(model="openai-responses:gpt-6.1-terra")
+    result = await agent.run("Explain the Voyager missions.")
+    print(result.text)
+
+
+asyncio.run(main())
+```
+
+Install `harnessed[openai]` and set `OPENAI_API_KEY` for this example. Other
+provider extras are `harnessed[anthropic]` and `harnessed[google]`. DeepSeek uses
+the OpenAI-compatible integration and the `openai` extra.
+
+Choose the configuration form that fits your application:
+
+| Need | Configuration |
+| --- | --- |
+| Select a provider and model | `Agent(model="openai-responses:gpt-6.1-terra")` |
+| Configure generation defaults or adapter options | `PydanticAIModel("provider:model", settings=GenerationSettings(...))` |
+| Configure a native provider or client | `PydanticAIModel(native_model)` |
+
+Import `PydanticAIModel` and `GenerationSettings` from `harnessed.models` when
+you need them. `Agent` also accepts an object implementing the structural
+`harnessed.models.Model` contract for custom integrations and test models.
 
 Use `PydanticAIModel(native_or_string, context_window=...)` when you need to
 explicitly override context-window metadata. Otherwise the adapter uses the native
@@ -24,25 +52,6 @@ context window continues to take precedence; removing the replacement restores
 the previous model's metadata. Model selection belongs to this configured object,
 not to `ModelRequest`. Each `ModelRequestedEvent.model` records the selected
 `ModelInfo` snapshot; changing a request cannot change the configured model.
-
-## Provider-native tools
-
-Some providers run tools on their own servers, such as web search or code
-execution. Pass PydanticAI's native tool objects to the adapter:
-
-```python
-from pydantic_ai.native_tools import WebSearchTool
-
-from harnessed.models import PydanticAIModel
-
-model = PydanticAIModel("anthropic:claude-sonnet-5-5", native_tools=[WebSearchTool()])
-```
-
-They are sent with every request. The provider executes them inside one model
-response, so they never become harnessed tool calls: no policy, approval or
-`tool.*` events apply. Their calls and results are stored in the assistant
-message's provider state and replayed unchanged in later requests. Which tools a
-provider supports is decided by PydanticAI and the provider.
 
 ## Settings and ownership
 
@@ -88,13 +97,9 @@ Session scopes enter and exit the native model's resource context for both provi
 strings and explicitly wrapped PydanticAI models:
 
 ```python
-from pydantic_ai.models.openai import OpenAIResponsesModel
-
 from harnessed import Agent
-from harnessed.models import PydanticAIModel
 
-model = PydanticAIModel(OpenAIResponsesModel("gpt-6.1-terra"))
-async with Agent(model=model).session() as session:
+async with Agent(model="openai-responses:gpt-6.1-terra").session() as session:
     result = await session.run("Explain this repository.")
 ```
 
@@ -119,6 +124,52 @@ These controls are covered by offline native-provider request tests. Usage keeps
 input, output, cache-read, cache-write and available reasoning counters separate.
 A cache hit rate is cache-read tokens divided by input tokens; a cache write is not
 a cache miss. Missing optional counters remain unknown when usages are combined.
+
+## Native provider configuration
+
+Construct a native PydanticAI model when you need to configure a provider or
+supply your own client, then wrap it explicitly:
+
+```python
+from pydantic_ai.models.openai import OpenAIResponsesModel
+from pydantic_ai.providers.openai import OpenAIProvider
+
+from harnessed import Agent
+from harnessed.models import PydanticAIModel
+
+native_model = OpenAIResponsesModel(
+    "gpt-6.1-terra",
+    provider=OpenAIProvider(base_url="https://gateway.example.com/v1"),
+)
+agent = Agent(model=PydanticAIModel(native_model))
+```
+
+Replace the example gateway URL with your OpenAI-compatible endpoint and set
+`OPENAI_API_KEY` for that endpoint. For model selection alone, use the string
+form shown above. Native models must
+be wrapped before passing them to `Agent`. See [provider failures and retries](#provider-failures-and-retries)
+for an example with a caller-owned client.
+
+## Provider-native tools
+
+Some providers run tools on their own servers, such as web search or code
+execution. Pass PydanticAI's native tool objects to the adapter:
+
+```python
+from pydantic_ai.native_tools import WebSearchTool
+
+from harnessed.models import PydanticAIModel
+
+model = PydanticAIModel("anthropic:claude-sonnet-5-5", native_tools=[WebSearchTool()])
+```
+
+They are sent with every request. The provider executes them inside one model
+response, so they never become harnessed tool calls: no policy, approval or
+`tool.*` events apply. Their calls and results are stored in the assistant
+message's provider state and replayed unchanged in later requests. Which tools a
+provider supports is decided by PydanticAI and the provider.
+
+## Custom models
 
 Custom `Model` implementations expose `info: ModelInfo`, immutable
 `settings: GenerationSettings`, `request(ModelRequest) -> ModelResponse`, and
