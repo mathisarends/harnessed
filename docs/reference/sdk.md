@@ -220,6 +220,12 @@ recipes contribute prompts and event types. Kits are not kernel plugin recipes
 and cannot be mounted with `session.use()`.
 See [library defaults](../guides/plugins.md#publish-library-defaults-with-kit).
 
+Start with `Agent(model="openai-responses:gpt-6.1-terra")` to select a model.
+Provider strings automatically select the PydanticAI adapter. Use an explicit
+`PydanticAIModel` for generation defaults or adapter options; wrap a native
+PydanticAI model when configuring its provider or client. See
+[model configuration](../guides/models.md#choose-a-model).
+
 Model generation defaults live on `model.settings: GenerationSettings`, exported
 from `harnessed.models`. Configure `PydanticAIModel(..., settings=GenerationSettings(...))`
 and optionally override concrete values with `session.run(..., settings=...)`.
