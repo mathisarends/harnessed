@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from harnessed import Agent as Application
 from harnessed import (
     File,
@@ -10,6 +12,7 @@ from harnessed import (
     Plugin,
     PolicyDecision,
     Session,
+    SessionState,
     ToolCall,
     tool,
 )
@@ -23,6 +26,7 @@ from harnessed.core.session.events import (
     ModelRequestedEvent,
     ObservationRecordedEvent,
 )
+from harnessed.errors import SessionClosed
 from harnessed.kernel import hook
 from harnessed.plugins import Approvals, Service
 from harnessed.plugins.filesystem import FileSystemBackend, LocalFileSystem
@@ -93,23 +97,66 @@ async def test_steering_carries_attachments_like_a_run(tmp_path):
         assert "File: failure.log\nAssertionError: login" in message.text
 
 
-async def test_quiet_context_survives_prompt_updates_and_typed_user_steering():
+async def test_added_context_is_additive_quiet_and_retained_across_turns():
     model = ScriptedModel(["first", "second"])
     async with Application(
         model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
     ).session() as agent:
-        await agent.context.set("change", "External change")
+        await agent.add_context("External change")
+        await agent.add_context("External change")
         await agent.control.join()
         assert model.requests == []
+        assert not agent.inbox.pending
+        assert agent.snapshot().turns == ()
+        assert not hasattr(agent, "context")
         await agent.steer(user("Check auth"))
         await agent.control.join()
         assert [m.text for m in model.requests[0].messages] == [
-            '<context name="change">External change</context>',
+            "External change",
+            "External change",
             "Check auth",
         ]
-        await agent.context.set("project", "Updated project facts")
+        assert all(message.role == Role.USER for message in model.requests[0].messages)
+        await agent.add_context("Updated project facts")
         await agent.run("another turn")
-        assert any("External change" in m.text for m in model.requests[-1].messages)
+        texts = [message.text for message in model.requests[-1].messages]
+        assert texts.count("External change") == 2
+        assert texts[-2:] == ["Updated project facts", "another turn"]
+
+
+@pytest.mark.parametrize("content", [None, 42, {"constraints": "Include URLs."}])
+async def test_added_context_rejects_non_text_without_changing_history(content):
+    model = ScriptedModel([])
+    async with Application(model=model).session() as session:
+        with pytest.raises(TypeError, match="Context content must be a string"):
+            await session.add_context(content)
+        assert not session.messages and not model.requests
+
+
+async def test_added_context_rejects_closed_sessions():
+    model = ScriptedModel([])
+    async with Application(model=model).session() as session:
+        pass
+    with pytest.raises(SessionClosed):
+        await session.add_context("Too late")
+    assert not session.messages and not model.requests
+
+
+async def test_added_context_roundtrips_through_an_explicit_snapshot():
+    model = ScriptedModel(["Remembered", "Continued"])
+    app = Application(model=model)
+    async with app.session() as session:
+        await session.add_context("Include source URLs.")
+        saved = SessionState.from_json(session.snapshot().to_json())
+    async with app.session(state=saved) as restored:
+        await restored.add_context("Use a comparison table.")
+        await restored.run("Compare the missions.")
+    assert [message.text for message in model.requests[0].messages] == [
+        "Include source URLs.",
+        "Use a comparison table.",
+        "Compare the missions.",
+    ]
+    assert saved.history[0].message.text == "Include source URLs."
 
 
 async def test_push_context_from_pre_step_is_in_the_current_request():
@@ -120,7 +167,7 @@ async def test_push_context_from_pre_step_is_in_the_current_request():
         async def recall(self, event, next_, agent: Inject[Session]):
             seen.append((event.is_turn_start, event.latest_user_text))
             if event.is_turn_start:
-                await agent.context.set("memory", "Relevant memory: prefers Python")
+                await agent.add_context("Relevant memory: prefers Python")
             return await next_()
 
     model = ScriptedModel(["done"])

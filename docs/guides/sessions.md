@@ -248,7 +248,7 @@ automatically retry a conflicted run: its external actions may already have happ
 async with agent.session(id="investigation") as session:
     handle = await session.submit("Investigate the outage.", max_steps=20)
     await session.pause()
-    await session.context.set("ci", "Checks passed.")
+    await session.add_context("Checks passed.")
 
 # The previous Python handles close; the persisted execution remains paused.
 async with agent.session(id="investigation") as session:
@@ -403,8 +403,8 @@ cancel the queued or executing run. Repeated waits return the same result and
 validated output. Closing fails unfinished live handles with `SessionClosed`.
 
 `steer(text)` adds input to the next step of an active turn, or starts a new turn
-while idle. `context.set(name, value)` supplies a quiet named fact; it starts no
-work. `observe(observation)` buffers the latest pending snapshot per source until
+while idle. `add_context(content)` appends quiet background for subsequent model
+requests without starting work. `observe(observation)` buffers the latest pending snapshot per source until
 the next step records it. Unrecorded observations are not exported. Use these
 operations from hooks as described in [context](context.md).
 
@@ -413,7 +413,7 @@ operations from hooks as described in [context](context.md).
 ```python
 handle = await session.submit("Investigate the outage.")
 await session.pause()
-await session.context.set("ci", "Checks passed.")
+await session.add_context("Checks passed.")
 await session.resume()
 result = await handle.result()
 await session.wait_until_idle()

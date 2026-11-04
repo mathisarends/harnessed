@@ -1,7 +1,8 @@
 # System prompts and changing context
 
-Use system instructions for persistent rules, named context for changing facts,
-steering for course corrections, and tools for knowledge retrieved on demand.
+Use system instructions for persistent rules, `session.add_context(...)` for
+additional background, `ContextValue` plugins for changing named facts, steering
+for course corrections, and tools for knowledge retrieved on demand.
 
 ## Declare one instruction block per plugin
 
@@ -141,7 +142,8 @@ session-dependent content sources run once per opened session.
 previews. Files and factories show paths or descriptions. Inside a session,
 `await session.prompt.render()` returns the actual fixed text. The system prompt
 is an immutable session snapshot, including while a plugin waits for dependencies
-or is suspended. `session.context.values` exposes changing named context.
+or is suspended. `session.messages` exposes retained conversation input;
+`session.snapshot().context` contains current durable plugin-owned named facts.
 
 ## Runtime section delivery
 
@@ -158,7 +160,7 @@ await handle.aclose()
 
 `CONTEXT` evaluates configuration providers and session factories once per mount
 activation and owns their guidance on that mount. The guidance is immediately
-available through `session.context.values` and subsequent model requests, and
+available to subsequent model requests, and
 disappears from active context on unmount or dependency suspension. A restart
 evaluates it again. Setup, provider, file or factory failures roll back the mount's
 registrations and resources. Factory effects belong to the mount too.
@@ -176,13 +178,37 @@ tool's description. Use sections for rules spanning multiple tools, workflows or
 the whole agent. Use `ContextValue` for changing runtime facts.
 
 
-## Facts and automatic context
+## Add context without running the agent
 
-Inside an async session, `await session.context.set("ci", "Tests passed.")` records
-a changed fact, and `await session.context.remove("ci")` records its removal.
-Duplicate values do not append duplicate records. Changes never wake an idle
-session; the next ordinary step sees them. They use separate context blocks,
-leaving the fixed system prompt unchanged.
+```python
+async with agent.session() as session:
+    await session.add_context("Include source URLs.")
+    await session.add_context("The project uses Python 3.12+.")
+    result = await session.run("Review the project.")
+```
+
+`add_context(content: str) -> None` appends a user-role text contribution to
+conversation history. It does not start a turn, wake an idle session or invoke
+the model. Await it before starting work that must see the contribution. During
+active work, requests assembled after the write see it; an already assembled or
+in-flight request is unchanged. A `PreStep` hook can await `add_context` to include
+background in that step's request.
+
+Every call appends, including identical text. There are no names, replacement or
+removal operations. Contributions remain available across turns and through
+`SessionState` or stored-session restoration, subject to ordinary history
+compaction. Older contributions may be summarized rather than retained verbatim.
+They do not change the fixed system prompt. Inspect retained contributions through
+`session.messages` or `session.snapshot().history`. A configured session store
+commits the contribution before the method returns; without a store it remains
+in memory. Calls after closure raise `SessionClosed`.
+
+The former `session.context.set(name, value)` and `session.context.remove(name)`
+API has been removed. Replace a quiet contribution with `add_context(value)`;
+this changes keyed updates into additive history. Put fixed rules in
+`Agent(instructions=...)`, or use a `ContextValue` plugin for changing named facts.
+
+## Facts and automatic context
 
 ```python
 from harnessed.plugins import ContextValue

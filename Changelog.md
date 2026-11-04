@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Breaking changes
+
+- Replace the public `session.context` service with
+  `await session.add_context(content: str)`. It appends a user-role text
+  contribution for subsequent model requests without starting a turn, waking an
+  idle agent or invoking the model. Await the write before starting dependent
+  work; configured stores commit it before the method returns.
+- Migrate `await session.context.set("constraints", "Include source URLs.")` to
+  `await session.add_context("Include source URLs.")`. Contributions are additive:
+  repeated text creates separate messages, with no names, replacement, removal or
+  deduplication. They persist in conversation history across turns and restoration,
+  and follow ordinary compaction rather than preserving an exact latest value.
+  Use `Agent(instructions=...)` for fixed rules and `ContextValue` plugins for
+  changing named facts. Inspect retained input through `session.messages` or
+  `session.snapshot().history`; plugin-owned named facts remain in snapshot
+  `context`. The old session API has no compatibility alias. Storage formats
+  remain unchanged.
+
 ## 0.11.0 (2026-11-02)
 
 This minor release adds opt-in session persistence, atomic application-owned

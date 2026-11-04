@@ -284,7 +284,7 @@ See the [context guide](../guides/context.md).
 | stream(prompt, output=None, ...) | Typed UI and custom events, ending with TurnFinishedEvent |
 | steer(content, attachments=()) | Send a next-step correction and return its InboxItem |
 | observe(observation) | Buffer the latest text/image snapshot per source for the next step; recorded snapshots stay unchanged until compaction or an explicit retention policy |
-| context.set(name, value) / remove(name) | Await an admitted changed fact/removal |
+| add_context(content: str) | Append text for subsequent model requests without starting a turn or invoking the model; commit before returning when a store is configured |
 | inbox.pending / remove(id) | Frozen in-memory queued input / admitted removal |
 | pause() / resume() | Pause at a committed step boundary / continue |
 | stop(keep_inbox=False) | Finish this step, end its turn, return to idle |

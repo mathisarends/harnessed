@@ -73,14 +73,16 @@ async def main() -> None:
             print(await session.prompt.render())
             print((await session.run("Inspect the page.")).text)
 
-    async with Agent(
-        model=ScriptedModel(["Ready."]), instructions="Fixed role."
-    ).session() as session:
+    model = ScriptedModel(["Ready.", "Unmounted."])
+    async with Agent(model=model, instructions="Fixed role.").session() as session:
         handle = await session.use(interaction, section_delivery=SectionDelivery.CONTEXT)
-        print(session.context.values)
         print((await session.run("Use current refs.")).text)
+        assert any("Use element refs" in message.text for message in model.requests[-1].messages)
         await handle.aclose()
-        assert not session.context.values
+        await session.run("Continue without interaction guidance.")
+        assert all(
+            "Use element refs" not in message.text for message in model.requests[-1].messages
+        )
         assert await session.prompt.render() == "Fixed role."
 
 
