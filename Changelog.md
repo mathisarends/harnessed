@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.12.0 (2026-11-04)
+
+This minor release adds parent-owned subagent sessions and replaces the named
+session context service with additive conversation input. It includes a breaking
+API change from 0.11.0. Conversation snapshots remain state format **1**,
+execution checkpoints and JSON-store envelopes remain format **2**, and standalone
+audit envelopes remain version **3**. No storage migration is required.
 
 ### Breaking changes
 
@@ -36,6 +42,35 @@
   `session.children`, `session.parent` and recorded `session.tree_usage` inspection.
   Interrupted delegations are marked without automatically replaying child tools.
 - Add a core child-session factory protocol, an offline example and a guide.
+
+### Documentation
+
+- Lead model configuration with `provider:model` strings. Explain when to use
+  `PydanticAIModel` for generation defaults or wrap a native provider model.
+- Document additive context, subagent ownership, approvals, background controls,
+  persistence and recovery, with executable offline examples.
+
+### Upgrade from 0.11.0
+
+1. Replace `session.context.set(name, value)` with
+   `await session.add_context(value)` when the value is additive conversation
+   input. Await it before starting dependent work. Use `ContextValue` plugins
+   for changing named facts and `Agent(instructions=...)` for fixed rules;
+   `session.context.remove(name)` has no additive equivalent.
+2. Keep existing snapshots and stores. The storage format versions are unchanged;
+   context input lives in retained message history rather than the snapshot's
+   plugin-owned named `context` mapping. Ordinary compaction applies.
+3. Configure `Subagents` explicitly to enable delegation. Give each specialist
+   the required task context and its own plugins and tool policies. Use an
+   explicit parent session scope for background tasks; closing that scope
+   cancels and drains its children. A restored parent marks unfinished children
+   interrupted instead of replaying their tools.
+
+See [context](docs/guides/context.md#add-context-without-running-the-agent),
+[subagents](docs/guides/subagents.md) and the
+[release notes](docs/releases.md#upgrade-from-0110).
+Run `uv run python -m examples.41_subagents` and
+`uv run python -m examples.42_background_subagents` for offline delegation examples.
 
 ## 0.11.0 (2026-11-02)
 

@@ -83,6 +83,11 @@ and development tools stay outside the distribution and its runtime dependencies
 
 ## Prepare a release
 
+Review changes since the last published tag and open issues and pull requests
+before choosing the version. During 0.x, use a minor release for breaking API or
+storage changes and document the migration. Check the chosen version against both
+GitHub releases and PyPI; do not reuse an already published version.
+
 Set the package version in `pyproject.toml` and run `uv lock` to synchronize the
 project version in `uv.lock` without upgrading dependencies. Update both the
 [release notes](../releases.md) and the repository
@@ -92,6 +97,14 @@ with all provider extras. Keep both entries marked unreleased until publication.
 The build produces `dist/harnessed-<version>.tar.gz` and
 `dist/harnessed-<version>-py3-none-any.whl`.
 Use a clean `dist/` directory so the wheel smoke check selects exactly one version.
+
+Release blockers include failing static checks or tests, broken documentation
+links, missing upgrade instructions, inconsistent versions or an unverified
+distribution. Require the full CI matrix on the final release source, including
+the native Docker test on Linux. Local skips for unavailable optional sandbox
+backends are expected; review their reasons instead of treating them as coverage.
+The release dry run below verifies the matrix and distributions together before
+publication.
 
 Validate both artifacts and the rendered package description before uploading:
 

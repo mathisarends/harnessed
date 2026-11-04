@@ -159,6 +159,14 @@ forwarding methods or cached aliases solely to silence them would not establish 
 better boundary. Keep these hints visible for changes that alter those ownership
 contracts, and review new findings on their merits.
 
+The 0.12.0 release review covers 31 findings, including the child-session driver
+and routed approvals. Parent log writes and flushes preserve the parent's durable
+relationship records; child inbox steering uses atomic run admission. Runtime
+control and approval services retain their owning session's lifecycle. These
+paths remain within core runtime ownership and do not expose private kernel
+registration state to higher layers. They remain advisory hints without new
+suppressions.
+
 Smelt 0.4.0 recognizes the guarded lazy SDK export table for member analysis.
 General import-style enforcement still prefers
 relative imports into child packages; Ruff retains the exact parent-relative ban
