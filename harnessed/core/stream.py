@@ -24,6 +24,12 @@ from harnessed.core.session.events import (
     ModelRequestFailedEvent,
     SpillCreatedEvent,
     SpillExpiredEvent,
+    SubagentApprovalRequestedEvent,
+    SubagentFinishedEvent,
+    SubagentLinkedEvent,
+    SubagentMessageSentEvent,
+    SubagentStartedEvent,
+    SubagentUpdatedEvent,
     ToolCallFinishedEvent,
     ToolCallRequestedEvent,
     ToolProgressEvent,
@@ -214,6 +220,12 @@ type StreamEvent[T] = Annotated[
         | ModelRequestFailedEvent
         | SpillCreatedEvent
         | SpillExpiredEvent
+        | SubagentLinkedEvent
+        | SubagentStartedEvent
+        | SubagentFinishedEvent
+        | SubagentApprovalRequestedEvent
+        | SubagentUpdatedEvent
+        | SubagentMessageSentEvent
     ),
     Field(discriminator="type"),
 ]

@@ -436,6 +436,11 @@ a signature breaks those checks too. Equal priorities retain registration order;
 lower priorities run first. Use `Priority.GUARD` for approval/policy gates and
 `Priority.OBSERVE` for measurements around actual execution.
 
+`harnessed.hooks.SessionAborting` lets an opt-in plugin drain background work before
+an interruption repairs its log, including when the parent is idle. The hook carries
+the owning `SessionLog`. Cleanup must be idempotent: abort and failure paths can both
+dispatch it. A plugin should also own cleanup as a Context effect for rollback.
+
 `harnessed.hooks.SessionClosing` lets an opt-in plugin release live resources when
 `session.aclose()` shuts down the driver, before plugin disposal. It receives the
 closing session and runs once per explicit close. Also register cleanup with

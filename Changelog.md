@@ -20,6 +20,23 @@
   `context`. The old session API has no compatibility alias. Storage formats
   remain unchanged.
 
+### Subagents
+
+- Add optional `spawn`, `status`, `send`, `wait` and `cancel` tools. Spawned tasks
+  can outlive a coordinator turn within the parent session and notify its inbox
+  on completion. Status requests ask the child explicitly, share pending requests
+  and forward late answers without completing its task or opening another driver.
+- Retain bounded runtime snapshots and guidance events through persistence and
+  idle parent boundaries. Drain background work on parent abort, failure, close
+  and plugin removal. Keep `max_depth=1` as the configurable default; children
+  cannot raise an ancestor's limit.
+- Add `Subagents` with parallel delegation to isolated child sessions, explicit
+  task context, depth/call/turn limits and parent-owned cancellation and cleanup.
+- Add durable parent/child links, lifecycle events, routed approvals and progress,
+  `session.children`, `session.parent` and recorded `session.tree_usage` inspection.
+  Interrupted delegations are marked without automatically replaying child tools.
+- Add a core child-session factory protocol, an offline example and a guide.
+
 ## 0.11.0 (2026-11-02)
 
 This minor release adds opt-in session persistence, atomic application-owned

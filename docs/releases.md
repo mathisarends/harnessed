@@ -28,6 +28,17 @@ integrations are optional extras; the standalone kernel uses only the standard
 library. Harnessed is distributed under the
 [MIT License](https://github.com/mathisarends/harnessed/blob/main/LICENSE).
 
+## Unreleased
+
+`Subagents` from `harnessed.plugins` delegates explicit tasks to configured
+specialists in isolated child sessions. Optional spawn/status/send/wait/cancel tools
+let the coordinator continue while children work and explicitly request reports.
+The default depth limit is one; applications may explicitly raise it.
+Parent-owned lifetimes, routed approvals,
+durable relationships and recorded child receipts keep delegations inspectable
+through completion, cancellation and checkpoint recovery. See
+[subagents](guides/subagents.md).
+
 ## 0.11.0 (2026-11-02)
 
 This minor release adds opt-in session persistence, atomic application-owned

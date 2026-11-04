@@ -75,6 +75,7 @@ class InboxWriter:
         output_schema: OutputSchema | None = None,
         limits: TurnLimits | None = None,
         prepared: Callable[[InboxAddedEvent], None] | None = None,
+        during_run: str | None = None,
     ) -> InboxItem:
         async with self._sending():
             self.control.check_open()
@@ -101,7 +102,7 @@ class InboxWriter:
                     prepared(event)
                 self.control.wake()
 
-            await self.log.append(event, on_committed=committed)
+            await self.log.append(event, on_committed=committed, during_run=during_run)
             return _item(event)
 
 
@@ -130,6 +131,16 @@ class SessionInbox:
             raise
 
     async def steer(
-        self, content: str | Message, *, attachments: Iterable[Attachment] = ()
+        self,
+        content: str | Message,
+        *,
+        attachments: Iterable[Attachment] = (),
+        during_run: str | None = None,
     ) -> InboxItem:
-        return await self._writer.send(content, InboxMode.STEER, attachments=attachments)
+        """Steer input; during_run atomically rejects delivery after that run ends."""
+        return await self._writer.send(
+            content,
+            InboxMode.STEER,
+            attachments=attachments,
+            during_run=during_run,
+        )

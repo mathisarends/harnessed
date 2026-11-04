@@ -39,6 +39,12 @@ events. Live approval questions need an answer or a configured approver.
 | `CompactionFinishedEvent` | `compaction.finished` | No | Outcome of `compaction_id`, including discarded, failed and cancelled attempts |
 | `SpillCreatedEvent` | `spill.created` | Yes | Artifact `ref` created for a tool's `call_id` |
 | `SpillExpiredEvent` | `spill.expired` | Yes | Artifact `ref` expired for the given `reason` |
+| `SubagentLinkedEvent` | `subagent.linked` | Yes | Child origin: parent session, turn and delegation call, with inherited depth limit |
+| `SubagentStartedEvent` | `subagent.started` | Yes | Parent reference for `child_session_id`, specialist, task and delegation `call_id` |
+| `SubagentFinishedEvent` | `subagent.finished` | Yes | Terminal receipt for `child_session_id`, including answer and descendant usage |
+| `SubagentApprovalRequestedEvent` | `subagent.approval.requested` | Yes | Link a forwarded parent call to the child's original approval request |
+| `SubagentUpdatedEvent` | `subagent.updated` | Yes | Bounded child runtime state and correlated on-demand report |
+| `SubagentMessageSentEvent` | `subagent.message.sent` | Yes | Parent-acknowledged guidance for a running or queued child |
 
 Structured-output control calls do not produce application tool lifecycle
 notifications. Generation previews may still include `final_answer`. Transient

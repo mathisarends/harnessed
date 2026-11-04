@@ -16,9 +16,37 @@ from harnessed.core.session.events import (
     UserMessageEvent,
 )
 from harnessed.core.session.inbox import Inbox
+from harnessed.errors import SessionStateError
 from harnessed.plugins import Approvals
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit
+
+
+async def test_run_scoped_steering_rejects_input_after_completion():
+    entered, release = asyncio.Event(), asyncio.Event()
+    calls = 0
+
+    async def respond(request):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            entered.set()
+            await asyncio.wait_for(release.wait(), 3)
+        yield ModelChunk(text="Done")
+
+    model = CallbackModel(respond)
+    async with Application(model=model).session() as session:
+        handle = await session.submit("Original task")
+        await asyncio.wait_for(entered.wait(), 2)
+        await session.inbox.steer("Additional guidance", during_run=handle.id)
+        release.set()
+        await asyncio.wait_for(handle.result(), 2)
+        assert calls == 2
+        assert any(message.text == "Additional guidance" for message in model.requests[1].messages)
+        with pytest.raises(SessionStateError, match="already finished"):
+            await session.inbox.steer("Too late", during_run=handle.id)
+        assert session.inbox.pending == ()
+        assert calls == 2
 
 
 @pytest.mark.parametrize(("mode", "target"), [("followup", "next-turn"), ("steer", "next-step")])

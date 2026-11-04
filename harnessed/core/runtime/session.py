@@ -45,6 +45,7 @@ from harnessed.core.runtime.result import RunResult, RunResults
 from harnessed.core.runtime.stepper import StepRunner
 from harnessed.core.runtime.streaming import StreamApprovals, project_stream_events
 from harnessed.core.runtime.turns import TurnRunner
+from harnessed.core.session.children import ChildSession
 from harnessed.core.session.events import (
     AgentControlChangedEvent,
     CompactionAppliedEvent,
@@ -53,6 +54,7 @@ from harnessed.core.session.events import (
     InboxMode,
     InboxRemovedEvent,
     SessionEvent,
+    SubagentLinkedEvent,
     TurnEndedEvent,
     TurnLimits,
     TurnStartedEvent,
@@ -141,6 +143,19 @@ class Session:
     @property
     def usage(self) -> ModelUsage:
         return self.log.usage
+
+    @property
+    def tree_usage(self) -> ModelUsage:
+        """Local usage plus acknowledged child receipts; active children may lag."""
+        return self.log.tree_usage
+
+    @property
+    def children(self) -> tuple[ChildSession, ...]:
+        return self.log.children
+
+    @property
+    def parent(self) -> SubagentLinkedEvent | None:
+        return self.log.parent
 
     @property
     def turns(self) -> tuple[Turn, ...]:

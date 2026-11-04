@@ -77,6 +77,20 @@ a local server. Both accept `include_tools=None`, `readonly_tools=()`,
 Each mount owns one connection and a fixed catalog of namespaced tools. See
 [MCP tools](../guides/mcp.md) for approvals, results and cancellation boundaries.
 
+## Subagents
+
+`Subagents(agents, *, max_parallel=3, max_calls=16, max_depth=1, timeout=180.0,
+max_steps=8, token_budget=None)` from `harnessed.plugins` adds `spawn(agent, task)`,
+`status(child_id, timeout=10.0)`, `send(child_id, message)`,
+`wait(child_id, timeout=30.0)`, `cancel(child_id)` and `delegate(agent, task)`.
+These tools are absent without the plugin. Values in `agents` implement
+`ChildSessionFactory`, including `Agent`. `spawn` returns after admission;
+`delegate` waits for a receipt. `status` asks the child for an explicit report,
+coalesces pending requests and forwards late answers through the parent inbox.
+The default depth is one; children cannot raise an inherited limit.
+See [subagents](../guides/subagents.md) for approvals, limits,
+recovery and ownership.
+
 ## Sandbox integrations
 
 Import `DockerSandbox` from `harnessed.integrations.docker`, or
@@ -148,6 +162,7 @@ plugin_validation=PluginValidation.ERROR, store=None)` resolves reusable configu
 | store | Optional application-owned SessionStore; None keeps sessions ephemeral |
 | agent.session(*, state=None, id=None, restore_outputs=()) | Open a Session from explicit state or a stored conversation; id requires a store |
 | agent.run(prompt, state=None, **options) | Run one turn and return its terminal result and state |
+| agent.child_session(request) | Factory boundary for a fresh parent-owned child; application code normally uses Subagents |
 | SessionState.from_json(payload) / state.to_json() | Validate or encode the canonical conversation snapshot in memory |
 
 `SessionCommit`, `SessionChange`, `SessionCheckpoint`, `SessionStore` and
@@ -276,6 +291,16 @@ or reads files. Runtime delivery does not change the fixed system prompt.
 See the [context guide](../guides/context.md).
 
 ## Session
+
+`session.children` exposes immutable child snapshots; `session.parent` is the
+child's `SubagentLinkedEvent` or `None`. `session.usage` remains local;
+`session.tree_usage` adds recorded child receipts recursively. These inspection
+properties are also available on `SessionLog`. Running or interrupted children
+may have incomplete recorded usage.
+
+`session.inbox.steer(content, during_run=handle.id)` admits guidance only while
+that submitted run is queued or open. The check is atomic with inbox admission;
+after completion it raises `SessionStateError` instead of starting a new turn.
 
 | Member | Behavior |
 | --- | --- |
@@ -484,7 +509,8 @@ reaching into those implementations.
 `SessionState` is exported from `harnessed`. `state=None` starts a conversation
 without history. `SessionState.from_json(str_or_bytes)` validates format version
 1 and resource integrity; `state.to_json()` returns a string without I/O. State
-contains retained history and provenance, named context, compaction metadata and
+contains retained history and provenance, named context, compaction metadata,
+parent/child references and terminal child receipts, and
 referenced image/text resources. It contains no runtime handles, queued turns,
 Python validators, approval grants or historical request/event archive.
 

@@ -3,6 +3,7 @@ from collections.abc import AsyncGenerator, Callable, Coroutine
 from contextlib import asynccontextmanager
 
 from harnessed.core.errors import SessionClosed, SessionStateError
+from harnessed.core.hooks import SessionAborting
 from harnessed.core.session.control import SessionStatus as SessionStatus
 from harnessed.core.session.events import AgentControlChangedEvent, ControlState
 from harnessed.core.session.session import SessionLog
@@ -198,7 +199,9 @@ class SessionControl:
 
     async def finish_termination(self) -> None:
         self.finishing = True
-        await self.log.repair_interrupted()
+        if self.log.control.state not in (ControlState.STOPPING, ControlState.STOPPED):
+            await self._abort_owned_work()
+        await self.log.repair_interrupted(children=False)
         self.notify()
 
     async def finish_driver(self) -> None:
@@ -256,6 +259,8 @@ class SessionControl:
         async with self._request():
             if not during_close:
                 self.check_open()
+            if immediate:
+                await self._abort_owned_work()
             task = self.task
             if task is not None and (task.done() or self.finishing):
                 task = None
@@ -287,3 +292,7 @@ class SessionControl:
                     raise
                 await self.finish_termination()
         self.synchronize()
+
+    async def _abort_owned_work(self) -> None:
+        if self.log.ctx is not None:
+            await self.log.ctx.dispatch(SessionAborting(self.log))

@@ -17,7 +17,8 @@ from harnessed.core.messages import (
     freeze,
 )
 
-from .events import ContextLifetime, IncludedObservation
+from .children import ChildSession
+from .events import ContextLifetime, IncludedObservation, SubagentLinkedEvent
 from .files import TextValue
 
 _CONFIG = ConfigDict(
@@ -79,11 +80,19 @@ class SessionState:
     observation_limit: Annotated[int, Field(ge=1)] | None = None
     assets: tuple[AssetValue, ...] = ()
     files: tuple[TextValue, ...] = ()
+    children: tuple[ChildSession, ...] = ()
+    parent: SubagentLinkedEvent | None = None
 
     def __post_init__(self) -> None:
         if type(self.version) is not int:
             raise ValueError("State versions must be integers")
         object.__setattr__(self, "context", freeze(self.context))
+        if len({child.id for child in self.children}) != len(self.children) or len(
+            {child.call_id for child in self.children}
+        ) != len(self.children):
+            raise ValueError("Child and delegation call identities must be unique")
+        if self.parent is not None and not 1 <= self.parent.depth <= self.parent.depth_limit:
+            raise ValueError("A child requires one valid parent link")
         positions = [entry.position for entry in self.history]
         if len(set(positions)) != len(positions):
             raise ValueError("History positions must be unique")

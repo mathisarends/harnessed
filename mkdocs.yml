@@ -39,6 +39,7 @@ nav:
       - Background shell commands: guides/background-shell.md
       - Plugins: guides/plugins.md
       - MCP tools: guides/mcp.md
+      - Subagents: guides/subagents.md
       - Context: guides/context.md
       - Skills: guides/skills.md
       - Output limits and spill: guides/output.md

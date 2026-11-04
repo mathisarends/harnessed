@@ -106,3 +106,17 @@ through `ToolContext.emit`, and handles it in an independent observer with `@hoo
 The kit places its default `instructions` group without a `fragments` declaration.
 It also tests the same recipe's configuration and fake dependencies with
 `mount_plugin`, without an agent.
+
+## Subagents
+
+`uv run python -m examples.41_subagents` delegates a review to an isolated child,
+prints its durable receipt and inspects tree usage with scripted models. See
+[the source](https://github.com/mathisarends/harnessed/blob/main/examples/41_subagents.py)
+and [the subagent guide](subagents.md).
+
+## Background subagents
+
+`uv run python -m examples.42_background_subagents` starts a child without waiting,
+continues the coordinator, requests an explicit child status report and waits for
+the final result. Scripted callbacks keep the example offline; real models receive
+the same tools and report through `answer_status` in their normal child turn.

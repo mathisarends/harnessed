@@ -1,12 +1,14 @@
 from uuid import uuid4
 
 from harnessed.core.assets import AssetStore, _MemoryAssets
+from harnessed.core.children import ChildSessionRequest
 from harnessed.core.composition import PluginValidation, validate_plugins
 from harnessed.core.errors import ConfigError
 from harnessed.core.outputs import OutputTypes
 from harnessed.core.plugin import Service
 from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.runtime.agent_loop import AgentFactory
+from harnessed.core.runtime.child_reports import ChildReports
 from harnessed.core.runtime.session import Session
 from harnessed.core.session.events import TurnStartedEvent
 from harnessed.core.session.files import MemoryFiles, SessionFiles
@@ -30,10 +32,12 @@ async def open_session(
         raise ConfigError("state must be a SessionState or None")
     if id is not None and (not isinstance(id, str) or not id.strip()):
         raise ConfigError("Conversation IDs must be non-empty strings")
-    if id is not None and store is None:
+    if id is not None and store is None and ChildSessionRequest not in ctx:
         raise ConfigError("Opening a conversation by ID requires an explicit store")
     session_id = uuid4().hex if id is None else id
     stored = await store.load_session(session_id) if store is not None else None
+    if ChildSessionRequest in ctx and (stored is not None or state is not None):
+        raise ConfigError("A delegation cannot reopen an existing child session")
     if stored is not None and state is not None:
         raise ConfigError("An existing stored conversation cannot also receive state")
     checkpoint = stored.checkpoint if stored is not None else None
@@ -63,9 +67,14 @@ async def open_session(
     ctx.provide(SessionFiles, log.files)
     ctx.effect(log.close_resources)
     ctx.effect(log.finish_subscriptions)
+    if ChildSessionRequest in ctx:
+        await log.append(ctx[ChildSessionRequest].link)
+        await log.flush()
     if checkpoint is not None:
         await log.restore(checkpoint)
         _restore_output_schemas(ctx[OutputTypes], log)
+        await log.repair_interrupted()
+    elif selected is not None:
         await log.repair_interrupted()
     runtime = ctx[AgentFactory].create(ctx, log)
     try:
@@ -80,6 +89,10 @@ async def open_session(
         await runtime.aclose()
         raise
     ctx.effect(runtime.aclose)
+    if ChildSessionRequest in ctx:
+        reporter = ctx[ChildSessionRequest].reporter
+        if reporter is not None:
+            await ctx.plugin(ChildReports(reporter))
     await ctx.settle()
     validate_plugins(ctx, plugin_validation)
     ctx[ToolRegistry].validate_references()

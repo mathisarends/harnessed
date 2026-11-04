@@ -27,6 +27,7 @@ from harnessed.core.session.checkpoint import (
     CheckpointSeed,
     SessionCheckpoint,
 )
+from harnessed.core.session.children import ChildProjection, ChildSession
 from harnessed.core.session.commit import SessionChange
 from harnessed.core.session.control import RunControl
 from harnessed.core.session.events import (
@@ -39,6 +40,7 @@ from harnessed.core.session.events import (
     ControlState,
     DurableEvent,
     InboxAddedEvent,
+    InboxMode,
     InboxRemovalReason,
     InboxRemovedEvent,
     InboxTarget,
@@ -52,6 +54,9 @@ from harnessed.core.session.events import (
     StepEndedEvent,
     StepOutcome,
     StepStartedEvent,
+    SubagentFinishedEvent,
+    SubagentLinkedEvent,
+    SubagentStatus,
     ToolCallFinishedEvent,
     ToolExecutionFinishedEvent,
     ToolExecutionStartedEvent,
@@ -123,6 +128,9 @@ class SessionLog:
         self._open_executions: set[str] = set()
         self._request_snapshot: tuple[ModelRequest, ...] | None = None
         self._turns = TurnProjection()
+        self._children = ChildProjection(
+            state.children if state else (), state.parent if state else None
+        )
         self._turn_boundaries = [(turn.boundary, turn.id) for turn in state.turns] if state else []
         self._known_turns = {turn.id for turn in state.turns} if state else set()
         self._history = WorkingHistory(state)
@@ -326,11 +334,26 @@ class SessionLog:
             observation_limit=self._history.max_observations,
             assets=self._assets.snapshot(image_refs(entries)),
             files=self._files.snapshot(keys),
+            children=self.children,
+            parent=self.parent,
         )
 
     @property
     def usage(self) -> ModelUsage:
         return self._usage if self._usage is not None else ModelUsage(0)
+
+    @property
+    def children(self) -> tuple[ChildSession, ...]:
+        return self._children.snapshot()
+
+    @property
+    def parent(self) -> SubagentLinkedEvent | None:
+        return self._children.parent
+
+    @property
+    def tree_usage(self) -> ModelUsage:
+        """Local usage plus recorded child receipts, including their descendants."""
+        return sum_usage((self.usage, *(child.usage for child in self.children)))
 
     def _release_turn(self) -> None:
         """Release execution buffers after publishing the terminal result."""
@@ -499,7 +522,11 @@ class SessionLog:
             grants.pop(record.request_id, None)
 
     async def append(
-        self, event: SessionEvent, *, on_committed: Callable[[], None] | None = None
+        self,
+        event: SessionEvent,
+        *,
+        on_committed: Callable[[], None] | None = None,
+        during_run: str | None = None,
     ) -> None:
         self.registry.validate(event)
         cancelled = False
@@ -508,13 +535,14 @@ class SessionLog:
             ToolExecutionFinishedEvent
             | ToolCallFinishedEvent
             | AssistantMessageEvent
-            | ModelRequestFailedEvent,
+            | ModelRequestFailedEvent
+            | SubagentFinishedEvent,
         )
         if terminal:
             # An invocation/review already finished. Drain its checkpoint even if
             # abort arrives while another append owns the log lock. Observers stay
             # outside this shield so an unresponsive hook cannot block cancellation.
-            checkpoint = asyncio.create_task(self._append(event))
+            checkpoint = asyncio.create_task(self._append(event, during_run=during_run))
             while not checkpoint.done():
                 try:
                     await asyncio.shield(checkpoint)
@@ -522,7 +550,7 @@ class SessionLog:
                     cancelled = True
             seq, event = checkpoint.result()
         else:
-            seq, event = await self._append(event)
+            seq, event = await self._append(event, during_run=during_run)
         if cancelled and terminal:
             raise asyncio.CancelledError
         if on_committed is not None:
@@ -537,18 +565,34 @@ class SessionLog:
         if cancelled:
             raise asyncio.CancelledError
 
-    async def _append(self, event: SessionEvent) -> tuple[int, SessionEvent]:
+    async def _append(
+        self,
+        event: SessionEvent,
+        *,
+        during_run: str | None = None,
+    ) -> tuple[int, SessionEvent]:
         async with self._lock:
             self.registry.validate(event)
             if self._persistence is not None and not self._restoring:
                 self._persistence.check()
             event = await self._images.retain_event(event)
+            if during_run is not None:
+                if not isinstance(event, InboxAddedEvent) or event.mode is not InboxMode.STEER:
+                    raise ValueError("A run precondition requires steering input")
+                turn = self.open_turn
+                pending = self._pending.get(during_run)
+                if not (
+                    (turn is not None and turn.start.input_id == during_run)
+                    or (pending is not None and pending.mode is InboxMode.FOLLOWUP)
+                ):
+                    raise SessionStateError("The target run has already finished")
             if isinstance(event, InboxAddedEvent) and event.message.id in self._pending:
                 raise ValueError(f"Duplicate pending message id: {event.message.id}")
             if isinstance(event, InboxRemovedEvent) and event.message_id not in self._pending:
                 raise ValueError(f"Removing unknown inbox message: {event.message_id}")
             approval = approval_transition(self._approval_records, event)
             self._turns.validate(event)
+            self._children.validate(event)
             seq = self._sequence
             if isinstance(event, TurnStartedEvent):
                 self._turn_state = self.snapshot()
@@ -582,6 +626,7 @@ class SessionLog:
             self._last[type(event)] = (seq, event)
             self._snapshot = None
             self._turns.apply(event)
+            self._children.apply(event)
             if isinstance(event, TurnStartedEvent):
                 self._known_turns.add(event.turn_id)
             elif isinstance(event, TurnEndedEvent):
@@ -673,13 +718,22 @@ class SessionLog:
         else:
             raise TypeError("emit requires a durable or transient event")
 
-    async def repair_interrupted(self) -> None:
+    async def repair_interrupted(self, *, children: bool = True) -> None:
         """Close unfinished activity and answer tool calls after cancellation or resume."""
         async with self._repair_lock:
-            await self._repair_interrupted()
+            await self._repair_interrupted(children=children)
 
-    async def _repair_interrupted(self) -> None:
+    async def _repair_interrupted(self, *, children: bool) -> None:
         control = self.control
+        for child in self.children:
+            if children and child.status is SubagentStatus.RUNNING:
+                await self.append(
+                    SubagentFinishedEvent(
+                        child.id,
+                        SubagentStatus.INTERRUPTED,
+                        "Delegation interrupted; inspect the child log before retrying",
+                    )
+                )
         for request_id in self._requests_by_id:
             if request_id not in self._finished_requests:
                 await self.append(
