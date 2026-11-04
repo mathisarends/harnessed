@@ -13,6 +13,7 @@ from harnessed import (
 )
 from harnessed.core.errors import ConfigError
 from harnessed.core.messages import ToolStatus
+from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.tools.registry import ToolRegistry
 from harnessed.plugins import Compaction, Rules, Skill, Skills, Spill, ToolOutputLimit, when
 from harnessed.plugins.skills import SkillCatalog
@@ -294,7 +295,7 @@ async def test_loaded_instructions_survive_compaction_and_restart_from_the_log(t
     async with app.session() as session:
         await session.run("Run tests")
         assert await session.compact() is not None
-        assert session.context.values["skill:testing"] == original
+        assert session.ctx[DynamicContext].values["skill:testing"] == original
         state = session.snapshot()
     changed = Skill(
         name="testing", description="Changed description.", instructions="Changed source."
@@ -305,7 +306,7 @@ async def test_loaded_instructions_survive_compaction_and_restart_from_the_log(t
         model=ScriptedModel([]),
         plugins=[skills_10],
     ).session(state=state) as restored:
-        assert restored.context.values["skill:testing"] == original
+        assert restored.ctx[DynamicContext].values["skill:testing"] == original
         assert any(original in message.text for message in restored.messages)
 
 
@@ -318,7 +319,7 @@ async def test_runtime_mount_rejects_system_catalog_before_installing_tools():
         assert session.ctx[ToolRegistry].definitions == ()
         assert SkillCatalog not in session.ctx
         assert await session.prompt.render() == "Fixed rules."
-        assert not session.context.values
+        assert not session.ctx[DynamicContext].values
 
 
 async def test_discovery_is_not_recursive_and_resource_output_is_complete(tmp_path):
@@ -363,11 +364,11 @@ async def test_reloading_after_compaction_updates_the_retained_body_even_with_re
     ).session() as session:
         await session.run("Load")
         assert await session.compact() is not None
-        assert session.context.values["skill:pdf-forms"] == "Original instructions."
+        assert session.ctx[DynamicContext].values["skill:pdf-forms"] == "Original instructions."
         folder(tmp_path, body="Fresh instructions.")
         model.responses.extend([call("load_skill", name="pdf-forms"), "updated"])
         await session.run("Reload")
-        assert session.context.values["skill:pdf-forms"] == "Fresh instructions."
+        assert session.ctx[DynamicContext].values["skill:pdf-forms"] == "Fresh instructions."
 
 
 async def test_yaml_python_tags_are_rejected_as_configuration_errors(tmp_path):

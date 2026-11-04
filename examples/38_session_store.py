@@ -14,12 +14,12 @@ async def main() -> None:
         store = JsonSessionStore(root=Path(directory))
         agent = Agent(model=ScriptedModel(["Remembered.", "Continued."]), store=store)
         async with agent.session(id="support:4711") as session:
-            await session.context.set("customer", "Ada")
+            await session.add_context("The customer is Ada.")
             first = await session.run("Remember the customer.")
             print(first.text)
 
         async with agent.session(id="support:4711") as restored:
-            assert restored.context.values == {"customer": "Ada"}
+            assert restored.messages[0].text == "The customer is Ada."
             second = await restored.run("Continue our conversation.")
             print(second.text)
 

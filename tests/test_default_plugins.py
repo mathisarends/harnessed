@@ -7,6 +7,7 @@ from harnessed import Agent
 from harnessed.core.budget import ContextBudget
 from harnessed.core.errors import PluginConflict
 from harnessed.core.model import ModelChunk, ModelInfo, ModelUsage
+from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.runtime.services import RuntimeServices
 from harnessed.core.session.events import ModelRequestedEvent
 from harnessed.core.tokens import ApproximateTokenCounter, CalibratedTokenCounter, TokenCounter
@@ -69,10 +70,10 @@ async def test_context_plugin_is_inspectable_reversible_and_does_not_wake_idle_s
     assert "date: <evaluated per step>" in str(app.prompt)
     async with app.session() as session:
         mounted = await session.use(ContextValue("temporary", "value"))
-        await session.context.set("temporary", "value")
-        assert session.context.values == {"temporary": "value"}
+        await session.ctx[DynamicContext].set("temporary", "value")
+        assert session.ctx[DynamicContext].values == {"temporary": "value"}
         await mounted.aclose()
-        assert session.context.values == {} and not model.requests
+        assert session.ctx[DynamicContext].values == {} and not model.requests
 
 
 async def test_replacing_the_loop_slot_keeps_shared_tools_and_prompt():

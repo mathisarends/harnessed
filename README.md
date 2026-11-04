@@ -76,6 +76,12 @@ complete instruction blocks in resolved plugin-list order.
 `Agent` is reusable configuration. `agent.run()` opens a session for one turn;
 use `agent.session()` when several turns should share a conversation.
 
+Select a model with a `provider:model` string, such as
+`Agent(model="openai-responses:gpt-6.1-terra")` (`OPENAI_API_KEY`). Harnessed
+configures the PydanticAI adapter automatically. Use an explicit model object
+when you need generation defaults or native provider configuration; see
+[model configuration](docs/guides/models.md#choose-a-model).
+
 ## Stream typed events
 
 Using the agent above, handle the events your application needs with ordinary

@@ -17,6 +17,7 @@ from harnessed.core.hooks import (
 from harnessed.core.messages import (
     Message,
     Observation,
+    UserMessage,
 )
 from harnessed.core.model import (
     GenerationSettings,
@@ -48,6 +49,7 @@ from harnessed.core.session.children import ChildSession
 from harnessed.core.session.events import (
     AgentControlChangedEvent,
     CompactionAppliedEvent,
+    ContextMessageEvent,
     InboxAddedEvent,
     InboxMode,
     InboxRemovedEvent,
@@ -90,7 +92,6 @@ class Session:
         self._options = options
         self._close_task: asyncio.Task[None] | None = None
         self.id = session.id
-        self.context = DynamicContext(session)
         self._boundary_state = session.boundary_state
         self._compaction = CompactionManager(ctx, session, context_window=options.context_window)
         self.control = SessionControl(session, self._drive, lambda: _driving.get() is self)
@@ -261,6 +262,20 @@ class Session:
         """Add input to the running turn's next step, or start a turn while idle."""
         return await self.inbox.steer(content, attachments=attachments)
 
+    async def add_context(self, content: str) -> None:
+        """Append text for subsequent model requests without starting a turn.
+
+        Each call adds a user-role context message, including repeated text.
+        It follows ordinary history retention and may be summarized by compaction.
+        Await this method before starting work that must see the contribution.
+        A configured session store commits the contribution before this returns.
+        """
+        self.control.check_open()
+        if not isinstance(content, str):
+            raise TypeError("Context content must be a string")
+        await self.log.append(ContextMessageEvent(UserMessage(content)))
+        await self.log.flush()
+
     def observe(self, observation: Observation) -> None:
         """Buffer a text/image snapshot per source for the next step.
 
@@ -288,7 +303,7 @@ class Session:
         async with self.control.maintenance():
             model = self.ctx[Model]
             request = ModelRequest(
-                (*self.log.messages, *self.context.owned_messages),
+                (*self.log.messages, *self.ctx[DynamicContext].owned_messages),
                 self.ctx[ToolRegistry].visible_definitions(self.ctx),
             )
             request = resolve_request_settings(request, model.settings)

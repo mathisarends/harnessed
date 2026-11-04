@@ -96,6 +96,7 @@ async def test_isolated_sessions_progress_receipts_and_usage():
     )
     parent = coordinator(child)
     async with parent.session() as session:
+        await session.add_context("Private additive parent context")
         result = await session.run("Secret parent prompt")
         parent_id = session.id
         snapshot = session.children[0]
@@ -127,6 +128,7 @@ async def test_isolated_sessions_progress_receipts_and_usage():
     assert "Review this task" in rendered
     assert "Secret parent prompt" not in rendered
     assert "Private parent instructions" not in rendered
+    assert "Private additive parent context" not in rendered
     assert {tool.name for tool in child_model.requests[0].tools} == {"inspect"}
 
 

@@ -13,6 +13,7 @@ from harnessed.core.hooks import ConfigureRequest, PrepareRequest, PreStep, Step
 from harnessed.core.limits import FinalStepPolicy
 from harnessed.core.messages import AssistantMessage, Observation, Role, SystemMessage, UserMessage
 from harnessed.core.model import GenerationSettings, Model, ModelRequest, resolve_request_settings
+from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.prompt.system_prompt import SystemPromptStore
 from harnessed.core.runtime.control import SessionControl
 from harnessed.core.runtime.executor import ToolExecutor
@@ -137,7 +138,7 @@ class StepRunner:
             await self.log.append(ObservationRecordedEvent(observation, turn, step))
         model = self.ctx[Model]
         request = ModelRequest(
-            (*self.log.messages, *self.session.context.owned_messages),
+            (*self.log.messages, *self.ctx[DynamicContext].owned_messages),
             self.ctx[ToolRegistry].visible_definitions(self.ctx),
             settings=settings,
         )

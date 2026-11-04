@@ -32,7 +32,7 @@ async def pause_and_resume():
         await session.pause()  # Wait for the current step to commit.
         assert session.status is SessionStatus.PAUSED and not first.done()
         print("Paused after committing tool results:", active.finished)
-        await session.context.set("ci", "The latest checks passed.")  # Quiet, durable context.
+        await session.add_context("The latest checks passed.")  # Quiet, durable context.
         await session.resume()
         print((await first.result()).text, (await second.result()).text)
         await session.wait_until_idle()

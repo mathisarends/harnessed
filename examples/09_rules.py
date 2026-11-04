@@ -33,9 +33,7 @@ class TestDiscipline(Plugin, needs=(Session,)):
         if self.failures == 1:
             return result.with_note("Read the first failure before editing anything.")
         if self.failures == 3:
-            await session.context.set(
-                "test-discipline", "Tests failed three times. Reconsider your approach."
-            )
+            await session.add_context("Tests failed three times. Reconsider your approach.")
         if self.failures >= 5:
             await session.steer(user("Stop editing. Summarize what you tried and what is wrong."))
         return result
@@ -79,7 +77,7 @@ async def demo(name, policy):
         async for event in session.stream("Run the tests and investigate failures."):
             if isinstance(event, ToolCallFinishedEvent):
                 print(f"exit_code={event.result.exit_code}: {event.result.content}")
-        assert session.context.values
+        assert any("three times" in message.text for message in session.messages)
         assert any(
             isinstance(event, InboxAddedEvent) and event.mode == InboxMode.STEER
             for event in steering
