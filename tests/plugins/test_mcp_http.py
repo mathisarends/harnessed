@@ -1,6 +1,7 @@
 import asyncio
 import json
 import socket
+import sys
 from base64 import urlsafe_b64encode
 from contextlib import asynccontextmanager, suppress
 from hashlib import sha256
@@ -18,6 +19,7 @@ from mcp.client.auth import OAuthClientProvider
 from mcp.server.fastmcp import Context as MCPContext
 from mcp.server.fastmcp import FastMCP
 from mcp.shared.auth import OAuthClientMetadata, OAuthToken
+from mcp.types import Icon
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
@@ -25,6 +27,7 @@ from starlette.routing import Route
 
 import harnessed.plugins.mcp as mcp_plugin
 from harnessed import Agent, ToolCall
+from harnessed import ToolAnnotations as LocalToolAnnotations
 from harnessed.core.messages import ToolStatus
 from harnessed.core.model import ModelChunk
 from harnessed.core.tools.registry import ToolRegistry
@@ -86,7 +89,13 @@ async def test_native_fastmcp_http_with_bearer_auth(serve_http, stateless):
     calls = []
     authorization = []
 
-    @server.tool
+    @server.tool(
+        title="Echo documentation",
+        tags={"docs"},
+        icons=[Icon(src="data:image/png;base64,aA==", mimeType="image/png")],
+        annotations={"readOnlyHint": True, "idempotentHint": True},
+        meta={"category": "documentation"},
+    )
     async def echo(query: str) -> str:
         calls.append(query)
         return query
@@ -102,13 +111,56 @@ async def test_native_fastmcp_http_with_bearer_auth(serve_http, stateless):
         model = ScriptedModel(
             [[ModelChunk(tool_call=ToolCall("native__echo", {"query": "FastMCP works"}))], "done"]
         )
-        result = await Agent(
+        agent = Agent(
             model=model,
             plugins=[MCP.http("native", url=url, auth="native-token", readonly_tools=["echo"])],
-        ).run("echo")
+        )
+        async with agent.session() as session:
+            registry = session.ctx[ToolRegistry]
+            plan = registry.plan(ToolCall("native__echo", {"query": "FastMCP works"}))
+            presentation = plan.tool.presentation
+            assert presentation.title == "Echo documentation"
+            assert presentation.tags == frozenset({"docs"})
+            assert presentation.icons[0].mime_type == "image/png"
+            assert presentation.meta["category"] == "documentation"
+            assert presentation.annotations == LocalToolAnnotations(
+                read_only_hint=True, idempotent_hint=True
+            )
+            result = await session.run("echo")
     assert calls == ["FastMCP works"]
     assert result.tool_calls[0][1].text.splitlines()[0] == "FastMCP works"
     assert authorization and all(value == b"Bearer native-token" for value in authorization)
+
+
+async def test_mcp_example_consumes_an_external_server(serve_http):
+    server = FastMCPServer("example-fixture")
+    calls = []
+
+    @server.tool
+    async def search(query: str) -> str:
+        calls.append(query)
+        return "External documentation search result"
+
+    async with serve_http(server.http_app(path="/mcp")) as url:
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "examples.31_mcp",
+            "--url",
+            url,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            async with asyncio.timeout(30):
+                stdout, stderr = await process.communicate()
+        finally:
+            if process.returncode is None:
+                process.kill()
+                await asyncio.wait_for(process.wait(), 5)
+    assert process.returncode == 0, stderr.decode("utf-8", errors="replace")
+    assert calls == ["MCP"]
+    assert b"External documentation search result" in stdout
 
 
 @pytest.mark.parametrize("stateless", [False, True])

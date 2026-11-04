@@ -13,7 +13,6 @@ pytest.importorskip("jsonschema")
 
 import anyio
 import httpx
-from fastmcp import FastMCP as FastMCPServer
 from fastmcp.client.transports import ClientTransport
 from jsonschema import SchemaError
 from mcp import ClientSession
@@ -23,7 +22,6 @@ from mcp.shared.memory import create_client_server_memory_streams
 from mcp.types import (
     AudioContent,
     CallToolResult,
-    Icon,
     ImageContent,
     ListToolsRequest,
     ListToolsResult,
@@ -34,14 +32,13 @@ from mcp.types import (
 
 import harnessed.plugins.mcp as mcp_plugin
 from harnessed import Agent, ToolCall
-from harnessed import ToolAnnotations as LocalToolAnnotations
 from harnessed.core.errors import ToolNameConflict
 from harnessed.core.messages import PolicyDecision, ToolStatus, to_dict
 from harnessed.core.model import ModelChunk
 from harnessed.core.tools.registry import ToolRegistry
 from harnessed.events import ToolProgressEvent
 from harnessed.plugins import ApprovalGate, Approvals, ToolOutputLimit
-from harnessed.plugins.mcp import MCP, MCPConfig
+from harnessed.plugins.mcp import MCP
 from harnessed.testing import ScriptedModel
 
 SCHEMA = {
@@ -168,51 +165,6 @@ async def test_discovery_pagination_schemas_results_and_progress():
     assert definitions[0].description == "Search docs"
     assert to_dict(definitions[0].parameters) == SCHEMA
     assert any(isinstance(event, ToolProgressEvent) for event in result.events)
-
-
-async def test_native_fastmcp_in_memory_connections_preserve_metadata_and_lifetimes():
-    lifetimes = []
-
-    @asynccontextmanager
-    async def lifespan(server):
-        lifetimes.append("opened")
-        try:
-            yield {}
-        finally:
-            lifetimes.append("closed")
-
-    server = FastMCPServer("native", lifespan=lifespan)
-
-    @server.tool(
-        title="Search documentation",
-        tags={"docs", "search"},
-        icons=[Icon(src="data:image/png;base64,aA==", mimeType="image/png")],
-        annotations={"readOnlyHint": True, "idempotentHint": True},
-        meta={"category": "documentation"},
-    )
-    async def search(query: str) -> str:
-        return query
-
-    recipe = MCP.in_memory("docs", server=server)
-    assert isinstance(recipe.config, MCPConfig)
-    assert lifetimes == []
-    async with Agent(model=ScriptedModel(["unused"]), plugins=[recipe]).session() as first:
-        registry = first.ctx[ToolRegistry]
-        plan = registry.plan(ToolCall("docs__search", {"query": "native"}))
-        presentation = plan.tool.presentation
-        assert presentation.title == "Search documentation"
-        assert presentation.tags == frozenset({"docs", "search"})
-        assert presentation.icons[0].mime_type == "image/png"
-        assert presentation.meta["category"] == "documentation"
-        assert presentation.annotations == LocalToolAnnotations(
-            read_only_hint=True, idempotent_hint=True
-        )
-        assert not registry.is_readonly("docs__search")
-        async with Agent(model=ScriptedModel(["unused"]), plugins=[recipe]).session() as second:
-            assert second.ctx[ToolRegistry].definitions == registry.definitions
-        assert (await registry.execute(plan.call)).text.splitlines()[0] == "native"
-    assert lifetimes.count("opened") == lifetimes.count("closed")
-    assert lifetimes[0] == "opened" and lifetimes[-1] == "closed"
 
 
 @pytest.mark.parametrize("arguments", [{}, {"query": 1}, {"query": "ok", "extra": True}])
@@ -695,6 +647,38 @@ def test_invalid_configuration_does_not_open_a_connection(options):
     with pytest.raises((ValueError, TypeError)):
         MCP("docs", transport=transport, **options)
     assert transport.opened == 0
+
+
+def test_client_configuration_does_not_require_fastmcp_server_support():
+    code = """
+import importlib.abc
+import sys
+
+class BlockServerSupport(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, *args):
+        if fullname == 'fastmcp.server' or fullname.startswith('fastmcp.server.'):
+            raise ImportError('FastMCP server support must not be required by the MCP client')
+        if fullname.split('.')[0] in {'cyclopts', 'openapi_pydantic', 'griffelib'}:
+            raise ImportError('blocked server dependency')
+
+sys.meta_path.insert(0, BlockServerSupport())
+from fastmcp import Client
+from fastmcp.client.transports import StreamableHttpTransport
+from harnessed.plugins.mcp import MCP
+
+client = Client(StreamableHttpTransport('https://example.com/mcp'))
+assert not client.is_connected()
+assert MCP.http('docs', url='https://example.com/mcp').config.server_name == 'docs'
+assert not any(name.startswith('fastmcp.server') for name in sys.modules)
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=Path(__file__).resolve().parents[2],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_optional_import_isolation():

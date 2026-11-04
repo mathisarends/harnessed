@@ -69,11 +69,13 @@ inputs when passed to an Agent. See [pack resolution](../guides/plugins.md#resol
 ## MCP client
 
 Install `harnessed[mcp]` and import `MCP` from `harnessed.plugins.mcp`.
+The extra installs FastMCP's client dependencies. Harnessed consumes external MCP
+servers; server hosting and exporting Harnessed tools over MCP are outside this SDK.
 `MCP.http(name, *, url, headers=None, auth=None, ...)` connects over Streamable
 HTTP through FastMCP. `auth` accepts a bearer-token string, `"oauth"` or an
 `httpx.Auth` instance. `MCP.stdio(name, *, command, args=(), env=None, cwd=None, ...)`
-launches a local server. `MCP.in_memory(name, *, server, ...)` connects directly to
-a standalone `fastmcp.FastMCP` server. All accept `include_tools=None`, `readonly_tools=()`,
+connects to an installed stdio MCP server, managing its subprocess for the client.
+Both accept `include_tools=None`, `readonly_tools=()`,
 `startup_timeout=10.0`, `call_timeout=60.0`, `parallel=False` and `enabled=True`.
 `MCP(name, *, transport: MCPTransport, ...)` accepts a custom transport recipe
 implementing `create() -> fastmcp.client.transports.ClientTransport`.

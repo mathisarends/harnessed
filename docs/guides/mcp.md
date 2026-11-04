@@ -1,13 +1,15 @@
-# MCP tools
+# Consume MCP server tools
 
 Install `harnessed[mcp]` and import `MCP` from `harnessed.plugins.mcp`.
-The optional integration uses the standalone FastMCP client and its native
-transports. Local Python tools continue to use Harnessed's own `@tool` decorator.
+The optional integration uses `fastmcp-slim[client]` and its native client
+transports to consume existing MCP servers. Harnessed does not host MCP servers
+or publish local tools over MCP. Local Python tools use Harnessed's own `@tool`
+decorator and remain inside the agent runtime.
 Each plugin recipe describes one server. Opening a session connects it, discovers
 its tools and registers them on the normal Harnessed execution pipeline. Closing
 the mount releases its tools, client and any subprocess it launched.
 
-## Configure a server
+## Connect to a server
 
 ```python
 from harnessed import Agent
@@ -29,7 +31,7 @@ object such as a configured `fastmcp.client.auth.OAuth` or MCP `OAuthClientProvi
 Configure token storage and interactive authorization callbacks in the application.
 The plugin creates and closes its HTTP client for each mount.
 
-Launch a local server with an explicit argument vector:
+Connect to an installed stdio MCP server using its command and argument vector:
 
 ```python
 import sys
@@ -148,27 +150,6 @@ untrusted servers.
 
 ## Custom transports
 
-Use a standalone FastMCP server directly for tests or embedded applications:
-
-```python
-from fastmcp import FastMCP
-
-from harnessed.plugins.mcp import MCP
-
-server = FastMCP("documentation")
-
-
-@server.tool
-def search(query: str) -> str:
-    return f"Documentation for {query}"
-
-
-docs = MCP.in_memory("docs", server=server, readonly_tools=("search",))
-```
-
-`in_memory()` has the same filtering, timeouts, approvals and lifecycle as HTTP
-and stdio, without opening sockets or starting a subprocess.
-
 For other FastMCP transports, construct `MCP(name, transport=recipe)`. The exported
 `MCPTransport` protocol requires `create() -> fastmcp.client.transports.ClientTransport`.
 Each call must return a fresh transport: FastMCP transports can carry mutable
@@ -187,8 +168,9 @@ class DocsTransport:
 docs = MCP("docs", transport=DocsTransport())
 ```
 
-Run `uv run --extra mcp python -m examples.31_mcp` for a complete offline example
-using a real FastMCP stdio server and a scripted model. See the upstream
+Run `uv run --extra mcp python -m examples.31_mcp --url http://localhost:8000/mcp`
+to consume an existing read-only `search(query: str)` tool with a scripted model.
+The example requires an externally supplied MCP endpoint. See the upstream
 [FastMCP client](https://gofastmcp.com/clients/client) and
 [transport documentation](https://gofastmcp.com/clients/transports) for the native
 transport and authentication APIs.

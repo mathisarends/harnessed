@@ -11,10 +11,9 @@ from pathlib import Path
 from typing import Annotated, NoReturn, Protocol, Self, Unpack
 
 import httpx
-from fastmcp import Client, FastMCP
+from fastmcp import Client
 from fastmcp.client.transports import (
     ClientTransport,
-    FastMCPTransport,
     StdioTransport,
     StreamableHttpTransport,
 )
@@ -113,14 +112,6 @@ class _HTTP:
         return StreamableHttpTransport(
             self.url, headers=dict(self.headers), auth=self.auth, httpx_client_factory=_http_client
         )
-
-
-@dataclass(frozen=True)
-class _Memory:
-    server: FastMCP
-
-    def create(self) -> ClientTransport:
-        return FastMCPTransport(self.server)
 
 
 def _http_client(
@@ -338,7 +329,7 @@ class _RemoteTool:
 
 
 class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
-    """Expose one MCP server's tools through the standard Harnessed runtime.
+    """Consume one external MCP server's tools through the Harnessed runtime.
 
     Construction performs no I/O. Each session or runtime mount owns a fresh
     connection and a fixed tool catalog. Server annotations never grant local
@@ -390,7 +381,7 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
         parallel: bool = False,
         enabled: ToolEnabled = True,
     ) -> Self:
-        """Launch a local server with an argument vector, without a shell."""
+        """Consume an installed stdio server through a client-owned subprocess."""
         if isinstance(args, str):
             raise TypeError("MCP process args must be a collection, not a command string")
         transport = _Stdio(
@@ -432,31 +423,6 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
         return cls(
             name,
             transport=_HTTP(url, dict(headers if headers is not None else {}), auth),
-            include_tools=include_tools,
-            readonly_tools=readonly_tools,
-            startup_timeout=startup_timeout,
-            call_timeout=call_timeout,
-            parallel=parallel,
-            enabled=enabled,
-        )
-
-    @classmethod
-    def in_memory(
-        cls,
-        name: str,
-        *,
-        server: FastMCP,
-        include_tools: Iterable[str] | None = None,
-        readonly_tools: Iterable[str] = (),
-        startup_timeout: float = 10.0,
-        call_timeout: float = 60.0,
-        parallel: bool = False,
-        enabled: ToolEnabled = True,
-    ) -> Self:
-        """Connect directly to a FastMCP server without sockets or a subprocess."""
-        return cls(
-            name,
-            transport=_Memory(server),
             include_tools=include_tools,
             readonly_tools=readonly_tools,
             startup_timeout=startup_timeout,
