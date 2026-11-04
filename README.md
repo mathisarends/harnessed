@@ -16,9 +16,10 @@ Direct API.
 Harnessed 0.x is **alpha software**. APIs and persisted session formats may
 change in minor releases before 1.0. See the
 [release notes and compatibility policy](https://github.com/mathisarends/harnessed/blob/main/docs/releases.md).
-For opt-in persistence, atomic session commits and trace content filtering in
-0.11.0, follow the
-[upgrade from 0.10.0](https://github.com/mathisarends/harnessed/blob/main/docs/releases.md#upgrade-from-0100).
+For additive context input and parent-owned subagents in 0.12.0, follow the
+[upgrade from 0.11.0](https://github.com/mathisarends/harnessed/blob/main/docs/releases.md#upgrade-from-0110).
+Applications on 0.10.0 should also read the
+[0.11.0 persistence guide](https://github.com/mathisarends/harnessed/blob/main/docs/releases.md#upgrade-from-0100).
 The earlier [0.10.0 prompt migration](https://github.com/mathisarends/harnessed/blob/main/docs/releases.md#upgrade-from-090)
 remains available for applications upgrading from 0.9.0.
 
@@ -178,6 +179,12 @@ plugins, and `agent.describe()` shows their origins, replacements and exclusions
 
 Tools, approvals, output limits, compaction and tracing all compose through
 plugins. See [plugin composition](https://github.com/mathisarends/harnessed/blob/main/docs/guides/plugins.md) for nested-kit precedence and lifecycle rules.
+
+Use `Subagents` from `harnessed.plugins` to delegate explicit tasks to configured
+specialists in isolated child sessions. It supports both `delegate` until
+completion and background tasks with `spawn`, `status`, `send`, `wait` and `cancel`.
+The parent owns child cleanup and routes approvals. See
+[subagents](docs/guides/subagents.md) for configuration, limits and recovery.
 
 ## Inject services into tools
 

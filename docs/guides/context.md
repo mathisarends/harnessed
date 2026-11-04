@@ -295,6 +295,7 @@ that a provider accepted it or that the model perceived a particular detail.
 | --- | --- |
 | Role, rules, permanent guidance | SystemPrompt / Instructions |
 | Changing project facts | Named context / ContextValue |
+| Additive conversation input without starting a turn | await session.add_context(...) |
 | Task metadata and attachments | run(context=..., attachments=...) |
 | Course correction | steer(...) |
 | Current browser or workspace state | Observation |

@@ -28,16 +28,67 @@ integrations are optional extras; the standalone kernel uses only the standard
 library. Harnessed is distributed under the
 [MIT License](https://github.com/mathisarends/harnessed/blob/main/LICENSE).
 
-## Unreleased
+## 0.12.0 (2026-11-04)
+
+This minor release adds parent-owned subagent sessions and replaces
+`session.context` with additive `session.add_context()` input. It includes a
+breaking API change from 0.11.0. Conversation snapshots remain state format **1**,
+execution checkpoints and JSON-store envelopes remain format **2**, and standalone
+audit envelopes remain version **3**. No storage migration is required.
+
+### Additive context input (breaking)
+
+Use `await session.add_context("Include source URLs.")` to append a user-role
+text contribution without starting a turn, waking an idle agent or invoking the
+model. Await the method before dependent work; configured stores commit the
+contribution before it returns. Repeated input creates separate messages.
+
+The named `session.context.set(name, value)` and `.remove(name)` service is
+removed without a compatibility alias. Additive contributions persist in retained
+conversation history across turns and restoration and follow ordinary compaction.
+Use `Agent(instructions=...)` for fixed rules and `ContextValue` plugins for
+changing named facts. See [context](guides/context.md).
+
+### Parent-owned subagents
 
 `Subagents` from `harnessed.plugins` delegates explicit tasks to configured
-specialists in isolated child sessions. Optional spawn/status/send/wait/cancel tools
-let the coordinator continue while children work and explicitly request reports.
+specialists in isolated child sessions. `delegate` waits for a terminal receipt;
+`spawn`, `status`, `send`, `wait` and `cancel` let the coordinator continue while
+children work and explicitly request reports. All six tools require the plugin;
+there is no additional dependency extra.
 The default depth limit is one; applications may explicitly raise it.
 Parent-owned lifetimes, routed approvals,
 durable relationships and recorded child receipts keep delegations inspectable
 through completion, cancellation and checkpoint recovery. See
 [subagents](guides/subagents.md).
+
+Children receive the explicit task and later guidance, with their own configured
+model, instructions, plugins and store. They do not inherit the parent's history,
+tools or approval grants. Keep an explicit `async with agent.session()` scope open
+for background work: `Agent.run()` closes its session after one turn and cancels
+remaining children. Restoring a parent marks unfinished child references
+interrupted without reopening children or repeating external actions.
+
+### Upgrade from 0.11.0
+
+1. Replace `await session.context.set("constraints", "Include source URLs.")`
+   with `await session.add_context("Include source URLs.")` for additive input.
+   Move changing named facts to `ContextValue` plugins; there is no additive
+   replacement or removal operation. Read retained contributions through
+   `session.messages` or `session.snapshot().history`. The snapshot's `context`
+   mapping continues to contain plugin-owned named facts.
+2. Keep existing `SessionState` snapshots and `SessionStore` adapters; their
+   format versions are unchanged. Back up application-owned state before upgrading.
+3. Add `Subagents` only where delegation is needed. Configure specialist
+   capabilities, parent approval handling and limits explicitly. Background
+   children may request approval after the originating stream ends; configure a
+   session-wide parent approver for that case. Limits and usage are documented
+   in the [subagent guide](guides/subagents.md#limits-and-concurrency).
+
+Run `uv run python -m examples.41_subagents` and
+`uv run python -m examples.42_background_subagents` for offline delegation examples.
+The [model guide](guides/models.md#choose-a-model) now starts with provider strings
+and explains when explicit adapter or native provider configuration is needed.
 
 ## 0.11.0 (2026-11-02)
 
