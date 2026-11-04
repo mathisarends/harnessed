@@ -6,6 +6,21 @@ still evolving before 1.0.
 Detailed breaking changes and upgrade instructions are recorded in the repository
 [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md).
 
+## Unreleased
+
+### Breaking change: plugin packs
+
+Rename `Kit` to `PluginPack`, `KitPromptPolicy` to `PluginPackPromptPolicy`
+and `ResolvedKit` to `ResolvedPluginPack` in imports and type references.
+Composition descriptions now expose `PluginDescription.pack_path` instead of
+`kit_path`, including nested replacement and exclusion descriptions. The old
+names have no compatibility aliases. Composition behavior and storage formats
+are unchanged.
+
+See the [upgrade instructions](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0120)
+and [plugin pack guide](guides/plugins.md#publish-library-defaults-with-pluginpack).
+Run `uv run python -m examples.36_plugin_packs` for the renamed offline example.
+
 ## Compatibility policy
 
 - Minor releases during 0.x may introduce breaking API or storage changes. Release
@@ -142,7 +157,7 @@ composition provenance without mounting plugins or rendering instructions.
 `KitPromptPolicy.INCLUDE` retains kit prompt strategies; `OMIT` skips them
 recursively before slot conflict resolution. Explicit prompt plugins and selected
 recipes' instruction contributions remain intact. See
-[kit resolution](guides/plugins.md#resolve-a-kit-into-flat-recipes).
+[kit resolution](guides/plugins.md#resolve-a-pack-into-flat-recipes).
 
 ### Upgrade from 0.10.0
 
@@ -203,7 +218,7 @@ fragments are removed. A kit can now own the collection strategy through
 `Kit(prompt=...)`. Parent kit defaults override child defaults, explicit agent
 prompts override kit defaults and competing siblings require a direct choice.
 Caller text is prepended without replacing that strategy. See
-[kit composition](guides/plugins.md#publish-library-defaults-with-kit).
+[kit composition](guides/plugins.md#publish-library-defaults-with-pluginpack).
 
 Built-in Filesystem, Shell, BackgroundShell, Spill and Skills expose the same
 `instructions()` method; `.usage` / `.catalog` attributes are removed. Override
@@ -294,7 +309,7 @@ Place `kit.instructions` or named kit fragments to preserve library-owned
 instruction ordering through nesting and slot replacement. Prompts and event
 declarations are collected after recipe selection: discarded recipes contribute
 no metadata, and explicit references to them raise a configuration error.
-See [plugin composition](guides/plugins.md#publish-library-defaults-with-kit).
+See [plugin composition](guides/plugins.md#publish-library-defaults-with-pluginpack).
 
 ### Tools and hooks
 

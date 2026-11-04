@@ -49,15 +49,15 @@ Plugins return one complete content document through
 configuration helpers return actual content. Methods are pure and synchronous.
 `Instructions` holds literal text or session-owned file/factory sources.
 
-Applications and kits explicitly select collection with
+Applications and packs explicitly select collection with
 `SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED, format=...)`. The order
-argument is required. Resolve kit nesting, removals and slot replacements before
+argument is required. Resolve pack nesting, removals and slot replacements before
 calling selected providers once at the agent boundary. Preserve whole plugin
 blocks in resolved list order, independently of setup order. `None` parts and
 plugin-list entries are normalized away.
 
-`Kit(prompt=...)` provides a default in the existing instructions slot. Parent
-prompts override child defaults, and explicit `Agent(prompt=...)` overrides kit
+`PluginPack(prompt=...)` provides a default in the existing instructions slot. Parent
+prompts override child defaults, and explicit `Agent(prompt=...)` overrides pack
 defaults. `Agent(instructions="...")` prepends caller text without replacing the
 strategy. Selected instruction overrides without explicit collection fail before
 provider calls. Providers cannot return another collection strategy.

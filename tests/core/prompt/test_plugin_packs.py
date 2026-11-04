@@ -1,6 +1,6 @@
 import pytest
 
-from harnessed import Agent, Kit, Plugin, PluginOrder, PromptFormat, SystemPrompt
+from harnessed import Agent, Plugin, PluginOrder, PluginPack, PromptFormat, SystemPrompt
 from harnessed.errors import PluginConflict
 
 
@@ -19,13 +19,13 @@ class Done(Plugin):
         return SystemPrompt("Done.")
 
 
-async def test_nested_kits_expand_at_list_position_and_keep_completion_last():
-    kit = Kit(
+async def test_nested_packs_expand_at_list_position_and_keep_completion_last():
+    pack = PluginPack(
         "workspace",
-        [Browser(), Kit("files", [Files()]), Done()],
+        [Browser(), PluginPack("files", [Files()]), Done()],
         prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
-    agent = Agent(instructions="Role.", plugins=[kit])
+    agent = Agent(instructions="Role.", plugins=[pack])
     assert await agent.prompt.render() == "Role.\n\nBrowser.\n\nFiles.\n\nDone."
 
 
@@ -34,25 +34,25 @@ async def test_removals_and_slot_replacements_are_resolved_before_collection():
         def instructions(self) -> SystemPrompt:
             return SystemPrompt("Better files.")
 
-    kit = Kit(
+    pack = PluginPack(
         "workspace",
-        [Browser(), Kit("nested", [Files()]), Done()],
+        [Browser(), PluginPack("nested", [Files()]), Done()],
         prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
-    replaced = Agent(plugins=[BetterFiles(), kit])
+    replaced = Agent(plugins=[BetterFiles(), pack])
     assert await replaced.prompt.render() == "Browser.\n\nBetter files.\n\nDone."
-    reduced = Agent(plugins=[kit.without(Files)])
+    reduced = Agent(plugins=[pack.without(Files)])
     assert await reduced.prompt.render() == "Browser.\n\nDone."
-    assert await Agent(plugins=[kit]).prompt.render() == "Browser.\n\nFiles.\n\nDone."
+    assert await Agent(plugins=[pack]).prompt.render() == "Browser.\n\nFiles.\n\nDone."
 
 
 async def test_parent_and_explicit_agent_prompt_override_nested_defaults():
-    inner = Kit(
+    inner = PluginPack(
         "inner",
         [Browser()],
         prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED, format=PromptFormat.XML),
     )
-    outer = Kit(
+    outer = PluginPack(
         "outer",
         [inner, Files()],
         prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED, format=PromptFormat.MARKDOWN),
@@ -68,8 +68,12 @@ async def test_parent_and_explicit_agent_prompt_override_nested_defaults():
 
 
 def test_sibling_prompt_defaults_require_a_composition_decision():
-    one = Kit("one", [Browser()], prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED))
-    two = Kit("two", [Files()], prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED))
+    one = PluginPack(
+        "one", [Browser()], prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)
+    )
+    two = PluginPack(
+        "two", [Files()], prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)
+    )
     with pytest.raises(PluginConflict, match="instructions"):
         Agent(plugins=[one, two])
     agent = Agent(plugins=[one, two], prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED))
@@ -77,18 +81,18 @@ def test_sibling_prompt_defaults_require_a_composition_decision():
 
 
 async def test_optional_plugins_are_normalized_at_both_public_boundaries():
-    kit = Kit(
+    pack = PluginPack(
         "workspace",
         [None, Files(), None],
         prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
-    assert len(kit.plugins) == 1
-    assert await Agent(plugins=[None, kit, None]).prompt.render() == "Files."
-    assert await Agent(plugins=[kit.without(Files)]).prompt.render() == ""
+    assert len(pack.plugins) == 1
+    assert await Agent(plugins=[None, pack, None]).prompt.render() == "Files."
+    assert await Agent(plugins=[pack.without(Files)]).prompt.render() == ""
 
 
-def test_invalid_kit_prompts_and_removed_fragment_api():
-    with pytest.raises(TypeError, match="Kit prompt"):
-        Kit("invalid", [], prompt="text")
+def test_invalid_pack_prompts_and_removed_fragment_api():
+    with pytest.raises(TypeError, match="PluginPack prompt"):
+        PluginPack("invalid", [], prompt="text")
     with pytest.raises(TypeError):
-        Kit("invalid", [], fragments={})
+        PluginPack("invalid", [], fragments={})

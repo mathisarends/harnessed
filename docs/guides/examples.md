@@ -86,16 +86,16 @@ console mode remains offline.
 
 `uv run python -m examples.32_system_prompts` declares literal and
 configuration-dependent plugin blocks, explicitly selects
-`PluginOrder.AS_LISTED` through a kit, and renders the same document as plain
+`PluginOrder.AS_LISTED` through a pack, and renders the same document as plain
 text, XML and Markdown.
 See [system prompts and changing context](context.md).
 
-## Plugin kits
+## Plugin packs
 
-`uv run python -m examples.36_plugin_kits` publishes library defaults, nests them
-in a project kit, excludes optional tools and replaces a library capability by
+`uv run python -m examples.36_plugin_packs` publishes library defaults, nests them
+in a project pack, excludes optional tools and replaces a library capability by
 slot. It prints static provenance and runs the selected tool with a scripted model.
-See [library composition](plugins.md#publish-library-defaults-with-kit).
+See [library composition](plugins.md#publish-library-defaults-with-pluginpack).
 
 ## Plugin recipes and dependencies
 
@@ -103,7 +103,7 @@ See [library composition](plugins.md#publish-library-defaults-with-kit).
 dependencies, `Plugin[FileToolsConfig]` with an explicit frozen config object and
 activation-owned state. It declares `FILE_EVENTS`, emits a `DocumentReadEvent`
 through `ToolContext.emit`, and handles it in an independent observer with `@hook`.
-The kit places its default `instructions` group without a `fragments` declaration.
+The pack places its default `instructions` group without a `fragments` declaration.
 It also tests the same recipe's configuration and fake dependencies with
 `mount_plugin`, without an agent.
 

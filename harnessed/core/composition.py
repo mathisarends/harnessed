@@ -27,7 +27,7 @@ class PluginDescription:
     """A selected recipe's static declarations and composition history."""
 
     name: str
-    kit_path: tuple[str, ...]
+    pack_path: tuple[str, ...]
     slot: str | None
     needs: tuple[ServiceKey[Any], ...]
     provides: tuple[ServiceKey[Any], ...]
@@ -36,15 +36,17 @@ class PluginDescription:
 
     @property
     def origin(self) -> str:
-        """A readable path; an empty kit path denotes an explicit agent input."""
+        """A readable path; an empty pack path denotes an explicit agent input."""
         return (
-            " / ".join((*self.kit_path, self.name)) if self.kit_path else f"explicit / {self.name}"
+            " / ".join((*self.pack_path, self.name))
+            if self.pack_path
+            else f"explicit / {self.name}"
         )
 
 
 @dataclass(frozen=True, slots=True)
 class PluginRemoval:
-    """A recipe excluded by without(), including the kit that excluded it."""
+    """A recipe excluded by without(), including the pack that excluded it."""
 
     plugin: PluginDescription
     removed_by: tuple[str, ...]
@@ -84,15 +86,15 @@ class CompositionDescription:
         return "\n".join(lines)
 
 
-class KitPromptPolicy(StrEnum):
-    """Whether resolving a kit includes its declared prompt strategies."""
+class PluginPackPromptPolicy(StrEnum):
+    """Whether resolving a pack includes its declared prompt strategies."""
 
     INCLUDE = "include"
     OMIT = "omit"
 
 
 @dataclass(frozen=True, slots=True)
-class ResolvedKit:
+class ResolvedPluginPack:
     """Flat recipes and their original composition, without agent defaults or mounts."""
 
     plugins: tuple[PluginLike, ...]
@@ -102,14 +104,14 @@ class ResolvedKit:
 @dataclass(frozen=True, slots=True)
 class _Exclusion:
     plugin: PluginLike
-    kit_path: tuple[str, ...]
+    pack_path: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True, init=False)
-class Kit:
-    """An ordered, immutable bundle of defaults resolved before plugins mount.
+class PluginPack:
+    """A named, immutable composition of plugin defaults, resolved before mounting.
 
-    Direct recipes override child-kit contributions by slot. Sibling kits have
+    Direct recipes override child-pack contributions by slot. Sibling packs have
     equal precedence regardless of their internal nesting. Recipes without a
     slot are additive. Constructor inputs are captured once, not deep-copied.
     """
@@ -127,31 +129,33 @@ class Kit:
         prompt: SystemPrompt | None = None,
     ) -> None:
         if not isinstance(name, str):
-            raise TypeError("Kit name must be a string")
+            raise TypeError("PluginPack name must be a string")
         if not name.strip():
-            raise ValueError("Kit name must not be empty")
+            raise ValueError("PluginPack name must not be empty")
         object.__setattr__(self, "name", name)
         if prompt is not None and not isinstance(prompt, SystemPrompt):
-            raise TypeError("Kit prompt must be a SystemPrompt")
+            raise TypeError("PluginPack prompt must be a SystemPrompt")
         object.__setattr__(self, "plugins", tuple(value for value in plugins if value is not None))
         object.__setattr__(self, "prompt", prompt)
         object.__setattr__(self, "_excluded", ())
 
-    def resolve(self, *, prompt: KitPromptPolicy = KitPromptPolicy.INCLUDE) -> ResolvedKit:
+    def resolve(
+        self, *, prompt: PluginPackPromptPolicy = PluginPackPromptPolicy.INCLUDE
+    ) -> ResolvedPluginPack:
         """Resolve this scope without mounting plugins or rendering instructions.
 
-        OMIT skips Kit.prompt recursively, before resolving slot conflicts.
+        OMIT skips PluginPack.prompt recursively, before resolving slot conflicts.
         Explicit prompt plugins and selected recipes' instruction contributions
         remain intact. Flattened recipes become direct inputs when passed to an
-        Agent; this result's description retains their original kit provenance.
+        Agent; this result's description retains their original pack provenance.
         """
-        resolved = _resolve((self,), (), prompt=KitPromptPolicy(prompt))
-        return ResolvedKit(resolved.plugins, resolved.description)
+        resolved = _resolve((self,), (), prompt=PluginPackPromptPolicy(prompt))
+        return ResolvedPluginPack(resolved.plugins, resolved.description)
 
     def without(self, *types: type[object]) -> Self:
-        """Return a new kit excluding matching recipe types and their subclasses.
+        """Return a new pack excluding matching recipe types and their subclasses.
 
-        Search child kits recursively. Every requested type must match at least
+        Search child packs recursively. Every requested type must match at least
         one remaining recipe; no dependency providers are removed implicitly.
         """
         if not all(isinstance(kind, type) for kind in types):
@@ -159,10 +163,10 @@ class Kit:
         found: set[type[object]] = set()
         excluded: list[_Exclusion] = []
 
-        def exclude(kit: Kit, path: tuple[str, ...]) -> tuple[PluginInput, ...]:
+        def exclude(pack: PluginPack, path: tuple[str, ...]) -> tuple[PluginInput, ...]:
             plugins: list[PluginInput] = []
-            for value in kit.plugins:
-                if isinstance(value, Kit):
+            for value in pack.plugins:
+                if isinstance(value, PluginPack):
                     child = copy.copy(value)
                     object.__setattr__(child, "plugins", exclude(value, (*path, value.name)))
                     plugins.append(child)
@@ -179,7 +183,7 @@ class Kit:
         missing = [kind.__name__ for kind in types if kind not in found]
         if missing:
             raise ValueError(
-                f"Kit {self.name!r} contains no recipes matching: {', '.join(missing)}"
+                f"PluginPack {self.name!r} contains no recipes matching: {', '.join(missing)}"
             )
         result = copy.copy(self)
         object.__setattr__(result, "plugins", plugins)
@@ -187,7 +191,7 @@ class Kit:
         return result
 
 
-type PluginInput = PluginLike | Kit
+type PluginInput = PluginLike | PluginPack
 
 
 @dataclass(frozen=True, slots=True)
@@ -234,7 +238,7 @@ def _describe(spec: PluginSpec, path: tuple[str, ...]) -> PluginDescription:
 
 
 def _merge(candidates: list[tuple[_Entry, bool]]) -> tuple[_Entry, ...]:
-    """Resolve one scope; bool marks a direct recipe rather than a kit export."""
+    """Resolve one scope; bool marks a direct recipe rather than a pack export."""
     groups: dict[str, list[int]] = {}
     for index, (entry, _) in enumerate(candidates):
         if entry.description.slot is not None:
@@ -266,18 +270,18 @@ def _resolve(
     plugins: Iterable[PluginInput | None],
     path: tuple[str, ...],
     *,
-    prompt: KitPromptPolicy = KitPromptPolicy.INCLUDE,
+    prompt: PluginPackPromptPolicy = PluginPackPromptPolicy.INCLUDE,
 ) -> ResolvedComposition:
     candidates: list[tuple[_Entry, bool]] = []
     removed: list[PluginRemoval] = []
     for value in plugins:
         if value is None:
             continue
-        if isinstance(value, Kit):
+        if isinstance(value, PluginPack):
             child_path = (*path, value.name)
             children = (
                 (*value.plugins, PromptRenderer(value.prompt))
-                if value.prompt is not None and prompt is KitPromptPolicy.INCLUDE
+                if value.prompt is not None and prompt is PluginPackPromptPolicy.INCLUDE
                 else value.plugins
             )
             child = _resolve(children, child_path, prompt=prompt)
@@ -285,7 +289,7 @@ def _resolve(
             removed.extend(child.removed)
             removed.extend(
                 PluginRemoval(
-                    _describe(as_plugin_spec(item.plugin), (*child_path, *item.kit_path)),
+                    _describe(as_plugin_spec(item.plugin), (*child_path, *item.pack_path)),
                     child_path,
                 )
                 for item in value._excluded

@@ -145,7 +145,7 @@ class SystemPrompt:
     ) -> Self:
         """Append selected plugin blocks in resolved list order after fixed content.
 
-        Nested kits expand at their list position. Removals contribute nothing;
+        Nested packs expand at their list position. Removals contribute nothing;
         slot replacements retain the inherited position. Setup order is unrelated.
         The explicit order argument is required even when only AS_LISTED exists.
         """

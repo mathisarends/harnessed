@@ -32,23 +32,24 @@ An explicit slot replaces the default in that slot. Two explicit plugins with
 the same slot raise `PluginConflict`. A custom plugin declares its slot with
 `class CustomLoop(Plugin, slot="loop")`. No hidden preset adds capabilities.
 
-## Publish library defaults with Kit
+## Publish library defaults with PluginPack
 
-Import `Kit` from `harnessed` to offer an ordered bundle of defaults. A kit has
-no setup, teardown, hooks or tools of its own. Its factory may accept ordinary
-application configuration. A kit captures its name, recipes and an optional
-explicit prompt strategy.
+Import `PluginPack` from `harnessed` to publish a named, reusable composition of
+configured plugins and application defaults. A plugin pack captures its name,
+ordered recipes and an optional explicit prompt strategy. It has no setup,
+teardown, hooks or tools of its own. Its factory may accept ordinary application
+configuration.
 
 ```python
 from pathlib import Path
 
-from harnessed import Agent, Kit, PluginOrder, SystemPrompt
+from harnessed import Agent, PluginPack, PluginOrder, SystemPrompt
 from harnessed.plugins import AgentLoop, Compaction, Filesystem, Shell
 from harnessed.testing import ScriptedModel
 
 
-def project_kit(root: str | Path = ".") -> Kit:
-    return Kit(
+def project_pack(root: str | Path = ".") -> PluginPack:
+    return PluginPack(
         "project",
         [
             Filesystem(root),
@@ -60,7 +61,7 @@ def project_kit(root: str | Path = ".") -> Kit:
     )
 
 
-project = project_kit().without(Shell)
+project = project_pack().without(Shell)
 agent = Agent(
     model=ScriptedModel(["done"]),
     instructions="Help with the workspace.",
@@ -73,25 +74,25 @@ agent = Agent(
 print(agent.describe())
 ```
 
-The supplied `AgentLoop` and `Compaction` replace the kit recipes in their slots.
+The supplied `AgentLoop` and `Compaction` replace the pack recipes in their slots.
 The excluded Shell never mounts. Library defaults also replace Harnessed's
 built-in defaults; explicit agent inputs replace either. `model=` and
-`prompt=` are direct inputs, so they override kit-provided
+`prompt=` are direct inputs, so they override pack-provided
 `Service(Model, ...)` and `PromptRenderer(...)`. Supplying the same slot twice
 directly, including through a keyword and `plugins`, remains an error.
 
 ### Local precedence and ordering
 
 At each composition boundary, direct recipes override contributions exported by
-child kits with the same slot. Two direct recipes in one slot raise
-`PluginConflict`. Two child kits exporting the same slot also conflict unless
+child packs with the same slot. Two direct recipes in one slot raise
+`PluginConflict`. Two child packs exporting the same slot also conflict unless
 that boundary supplies a direct recipe to decide it. Messages identify the slot
-and competing kit paths.
+and competing pack paths.
 
 ```python
 from harnessed import PluginOrder
 
-research = Kit("research", [project_kit(), Compaction(keep_steps=6)])
+research = PluginPack("research", [project_pack(), Compaction(keep_steps=6)])
 agent = Agent(
     model=model,
     plugins=[research, Compaction(keep_steps=10)],
@@ -100,16 +101,16 @@ agent = Agent(
 ```
 
 Inside `research`, the six-step recipe overrides the project default. At the
-agent boundary, the ten-step recipe overrides the result. Each kit must resolve
+agent boundary, the ten-step recipe overrides the result. Each pack must resolve
 its own internal conflicts: an override at a parent boundary does not repair an
-invalid child kit. Sibling kits have equal precedence regardless of their
-internal nesting; adding a wrapper kit never silently settles their conflict.
+invalid child pack. Sibling packs have equal precedence regardless of their
+internal nesting; adding a wrapper pack never silently settles their conflict.
 The built-in defaults are the final fallback after supplied scopes are resolved.
 
 Recipes keep their configured order within each scope. A replacement occupies
 the first inherited position for its slot, even if the direct override appears
-before the kit. When overriding several sibling kits, the first contributing
-kit determines that position. Recipes without a slot remain additive; neither
+before the pack. When overriding several sibling packs, the first contributing
+pack determines that position. Recipes without a slot remain additive; neither
 their Python class nor their `provides` declarations cause implicit replacement.
 Namespaced slot strings such as `"my_library.observation"` avoid collisions with
 other libraries. Independent implementations can opt into the same slot without
@@ -117,47 +118,47 @@ inheriting from each other.
 
 ### Exclude recipes
 
-`kit.without(*types)` returns a new kit and recursively removes every recipe
+`pack.without(*types)` returns a new pack and recursively removes every recipe
 matching a requested type or subclass. Every requested type must match at least
 one remaining recipe, or it raises `ValueError`; non-type arguments raise
 `TypeError`. Chained calls search the remaining recipes. An empty call returns
-an equivalent kit. Inputs are captured as tuples, so generators can be reused
-through the resulting kit; recipes themselves remain shared configuration
+an equivalent pack. Inputs are captured as tuples, so generators can be reused
+through the resulting pack; recipes themselves remain shared configuration
 objects rather than deep copies.
 
-Only that kit and its children are affected. Exclusion does not remove dependents,
+Only that pack and its children are affected. Exclusion does not remove dependents,
 install providers, or disable Harnessed's fallback plugins. For example, excluding
 a library's `AgentLoop` restores the built-in loop unless another override is
 supplied. Missing service requirements are still reported at session startup.
 
-### Resolve a kit into flat recipes
+### Resolve a pack into flat recipes
 
-`kit.resolve(*, prompt=KitPromptPolicy.INCLUDE)` returns a frozen `ResolvedKit`
-with `plugins` and `description`. Import both public types and `KitPromptPolicy`
+`pack.resolve(*, prompt=PluginPackPromptPolicy.INCLUDE)` returns a frozen `ResolvedPluginPack`
+with `plugins` and `description`. Import both public types and `PluginPackPromptPolicy`
 from `harnessed`. Resolution applies the same nested slot, ordering and exclusion
 rules as Agent composition. It adds no agent defaults, mounts no plugins and
 does not evaluate instruction providers or render prompt files.
 
 ```python
-from harnessed import KitPromptPolicy
+from harnessed import PluginPackPromptPolicy
 
-resolved = project_kit().resolve(prompt=KitPromptPolicy.OMIT)
+resolved = project_pack().resolve(prompt=PluginPackPromptPolicy.OMIT)
 plugins = resolved.plugins
 print(resolved.description)
 ```
 
-`INCLUDE` keeps each `Kit.prompt` as a prompt-renderer recipe, including its
+`INCLUDE` keeps each `PluginPack.prompt` as a prompt-renderer recipe, including its
 normal slot conflicts. `OMIT` skips those declarations recursively before slot
 resolution. Explicit `PromptRenderer(...)` recipes remain present. Selected
 plugins retain their own instructions, descriptions, tools and event declarations;
 the embedding application's prompt strategy determines how instructions render.
-The source kit is unchanged.
+The source pack is unchanged.
 
-`resolved.description` retains the original kit paths, replacement histories and
+`resolved.description` retains the original pack paths, replacement histories and
 exclusions. Passing `resolved.plugins` to an Agent supplies a flat list of direct
-inputs: the new Agent has no original kit scope, and its descriptions reflect
-that. Pass the original kit when its precedence and provenance should remain
-part of the Agent composition. A `ResolvedKit` itself is an inspection result,
+inputs: the new Agent has no original pack scope, and its descriptions reflect
+that. Pass the original pack when its precedence and provenance should remain
+part of the Agent composition. A `ResolvedPluginPack` itself is an inspection result,
 not a mountable recipe or an Agent plugin input.
 
 ### Inspect the resolved composition
@@ -169,12 +170,12 @@ factories. Its fields are:
 | Field | Meaning |
 | --- | --- |
 | `plugins` | Tuple of plugin descriptions in final configured order, including built-in runtime services |
-| `removed` | Tuple of exclusions, each with a `plugin` description and `removed_by` kit path |
+| `removed` | Tuple of exclusions, each with a `plugin` description and `removed_by` pack path |
 
-Every plugin description exposes `name`, `kit_path`, `origin`, `slot`, `needs`,
+Every plugin description exposes `name`, `pack_path`, `origin`, `slot`, `needs`,
 `observes`, `provides` and `replaces`. The latter is a tuple of replaced plugin descriptions,
 preserving earlier replacement histories. Direct agent inputs have an empty
-`kit_path`; built-ins use `("harnessed",)`. Service declarations reflect the
+`pack_path`; built-ins use `("harnessed",)`. Service declarations reflect the
 recipe's metadata, not services dynamically published during setup.
 
 ```python
@@ -194,16 +195,16 @@ of waiting plugins and missing services.
 Composition completes before prompt contributions and event declarations are
 collected. Excluded and replaced recipes contribute no guidance, context metadata,
 events, hooks or tools. `SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)`
-explicitly collects complete instruction blocks in that final order. A kit may
+explicitly collects complete instruction blocks in that final order. A pack may
 publish this strategy with `prompt=`. Caller `instructions=` are prepended;
-explicit agent `prompt=` overrides kit defaults. A selected instruction override
+explicit agent `prompt=` overrides pack defaults. A selected instruction override
 without a collection strategy raises `ConfigError` before providers run.
 See [ordered plugin instructions](context.md#select-plugin-order-explicitly).
 
-Kits are accepted by `Agent(plugins=...)` and other kits, not by kernel
+Plugin packs are accepted by `Agent(plugins=...)` and other packs, not by kernel
 `Context.plugin()` / `install()` or live `session.use()`. Runtime dependency
 injection, binding overlays and plugin lifetimes retain their existing semantics.
-Run `uv run python -m examples.36_plugin_kits` for a complete offline example.
+Run `uv run python -m examples.36_plugin_packs` for a complete offline example.
 
 ## Per-mount state and cleanup
 

@@ -48,7 +48,7 @@ agent = Agent(
 ```
 
 `PluginOrder.AS_LISTED` collects complete instruction blocks in final configured
-plugin-list order. Nested kits expand at their list position. Removed and
+plugin-list order. Nested packs expand at their list position. Removed and
 replaced recipes are discarded before providers run. A slot replacement retains
 the inherited position. Dependency setup order never changes prompt order.
 Configuration providers run once when constructing the agent, after plugin
@@ -65,13 +65,13 @@ Plain plugins inheriting the empty base method require no prompt configuration.
 plugin blocks. No plugin is moved to the end by its type or name: put completion
 and policy components at their intended list positions.
 
-## Publish the strategy in a kit
+## Publish the strategy in a pack
 
 ```python
-from harnessed import Agent, Kit, PluginOrder, PromptFormat, SystemPrompt
+from harnessed import Agent, PluginPack, PluginOrder, PromptFormat, SystemPrompt
 from harnessed.plugins import Filesystem, Shell
 
-workspace = Kit(
+workspace = PluginPack(
     "workspace",
     plugins=[Filesystem(), Shell()],
     prompt=SystemPrompt.from_plugins(
@@ -85,16 +85,16 @@ agent = Agent(
 )
 ```
 
-The kit declares the strategy; the agent resolves it against the complete final
+The pack declares the strategy; the agent resolves it against the complete final
 plugin composition, including external plugins. `None` entries are skipped in
-both `Agent(plugins=...)` and `Kit(plugins=...)`. `without()` returns a new kit and
+both `Agent(plugins=...)` and `PluginPack(plugins=...)`. `without()` returns a new pack and
 preserves its prompt strategy.
 
-Kit prompts participate in the existing `instructions` slot: a parent kit's
-prompt overrides child defaults, and explicit `Agent(prompt=...)` overrides kit
+PluginPack prompts participate in the existing `instructions` slot: a parent pack's
+prompt overrides child defaults, and explicit `Agent(prompt=...)` overrides pack
 defaults. Competing sibling defaults require an explicit decision. Supplying
 `Agent(instructions=...)` adds caller text without replacing the selected strategy.
-See [kit composition](plugins.md#publish-library-defaults-with-kit).
+See [pack composition](plugins.md#publish-library-defaults-with-pluginpack).
 
 ## Compose content and select a renderer
 

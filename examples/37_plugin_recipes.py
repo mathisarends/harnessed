@@ -8,10 +8,10 @@ from typing import Literal, Protocol
 from harnessed import (
     Agent,
     Instructions,
-    Kit,
     Plugin,
     PluginConfig,
     PluginOrder,
+    PluginPack,
     SystemPrompt,
     ToolContext,
     tool,
@@ -84,7 +84,7 @@ class ReadObserver(Plugin):
 async def main() -> None:
     files = FileTools(config=FileToolsConfig(max_read_chars=200))
     backend = FakeDocuments()
-    workspace = Kit(
+    workspace = PluginPack(
         "workspace",
         (Service(Documents, backend), files),
     )

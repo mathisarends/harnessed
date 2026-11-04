@@ -275,4 +275,4 @@ retains registered codecs for later audit decoding.
 
 Run `uv run python -m examples.37_plugin_recipes` for one complete example of
 `Plugin[FileToolsConfig]`, explicit `config=FileToolsConfig(...)`, `FILE_EVENTS`,
-`ToolContext.emit(...)`, an independent observer and explicit kit instructions.
+`ToolContext.emit(...)`, an independent observer and explicit pack instructions.

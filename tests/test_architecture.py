@@ -165,7 +165,7 @@ def test_application_facade_stays_small_and_has_no_transitional_names():
         "Session",
         "SessionState",
         "Plugin",
-        "Kit",
+        "PluginPack",
         "CompositionDescription",
         "tool",
         "RunResult",

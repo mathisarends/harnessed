@@ -7,7 +7,7 @@
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-f59e0b?style=for-the-badge)](https://github.com/mathisarends/harnessed/blob/main/docs/releases.md)
 
 A composable Python agent SDK. Keep tools, instructions and event hooks together
-in plugins, combine them into reusable kits, and stream typed events from a live
+in plugins, combine them into reusable packs, and stream typed events from a live
 session. Harnessed owns the agent loop and plugin lifetimes.
 
 Python **3.12-3.14**, Pydantic v2. Optional provider integrations use PydanticAI's
@@ -138,18 +138,18 @@ and `TurnEndedEvent`, or declare their own event types.
 See the [event reference](https://github.com/mathisarends/harnessed/blob/main/docs/reference/events.md) for all events and delivery surfaces,
 and [streaming](https://github.com/mathisarends/harnessed/blob/main/docs/guides/streaming.md) for approval handling and stream cleanup.
 
-## Compose capabilities with Kit
+## Compose capabilities with PluginPack
 
-Bundle library defaults, nest kits, and replace individual policies at the
+Bundle library defaults, nest packs, and replace individual policies at the
 application boundary:
 
 ```python
-from harnessed import Agent, Kit, PluginOrder, SystemPrompt
+from harnessed import Agent, PluginPack, PluginOrder, SystemPrompt
 from harnessed.plugins import AgentLoop, Compaction, Filesystem, Shell
 
 
-def workspace_kit(root: str) -> Kit:
-    return Kit(
+def workspace_pack(root: str) -> PluginPack:
+    return PluginPack(
         "workspace",
         [
             Filesystem(root),
@@ -161,7 +161,7 @@ def workspace_kit(root: str) -> Kit:
     )
 
 
-workspace = workspace_kit(".").without(Shell)
+workspace = workspace_pack(".").without(Shell)
 agent = Agent(
     model="deepseek:deepseek-chat",
     plugins=[workspace, AgentLoop(max_steps=10)],
@@ -171,14 +171,14 @@ agent = Agent(
 print(agent.describe())
 ```
 
-`without(Shell)` removes that capability from the kit. The direct `AgentLoop`
-replaces the kit's loop through its `loop` slot; custom plugins can declare slots
+`without(Shell)` removes that capability from the pack. The direct `AgentLoop`
+replaces the pack's loop through its `loop` slot; custom plugins can declare slots
 with `class MyPolicy(Plugin, slot="my.policy")`. Unslotted plugins are additive.
 `SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)` follows the selected
 plugins, and `agent.describe()` shows their origins, replacements and exclusions before any session starts.
 
 Tools, approvals, output limits, compaction and tracing all compose through
-plugins. See [plugin composition](https://github.com/mathisarends/harnessed/blob/main/docs/guides/plugins.md) for nested-kit precedence and lifecycle rules.
+plugins. See [plugin composition](https://github.com/mathisarends/harnessed/blob/main/docs/guides/plugins.md) for nested-pack precedence and lifecycle rules.
 
 Use `Subagents` from `harnessed.plugins` to delegate explicit tasks to configured
 specialists in isolated child sessions. It supports both `delegate` until

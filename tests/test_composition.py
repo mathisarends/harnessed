@@ -9,11 +9,11 @@ from harnessed import (
     Context,
     Inject,
     Instructions,
-    Kit,
-    KitPromptPolicy,
     Plugin,
     PluginOrder,
-    ResolvedKit,
+    PluginPack,
+    PluginPackPromptPolicy,
+    ResolvedPluginPack,
     Session,
     SystemPrompt,
     plugin,
@@ -135,13 +135,13 @@ async def test_only_survivors_contribute_prompts_events_tools_and_lifetimes(remo
         def answer(self) -> str:
             return "selected"
 
-    kit = Kit("library", [Original()])
+    pack = PluginPack("library", [Original()])
     if remove:
-        kit = kit.without(Original)
+        pack = pack.without(Original)
     model = ScriptedModel([call("answer"), "done", call("answer"), "done"])
     agent = Agent(
         model=model,
-        plugins=[kit, Replacement()],
+        plugins=[pack, Replacement()],
         prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
     assert started == []
@@ -166,20 +166,20 @@ def test_replaced_recipe_providers_are_never_evaluated():
             return SystemPrompt("Replacement.")
 
     agent = Agent(
-        plugins=[Kit("library", [Feature()]), Replacement()],
+        plugins=[PluginPack("library", [Feature()]), Replacement()],
         prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
     assert [entry.section.text for entry in agent.prompt.entries] == ["Replacement."]
 
 
-async def test_model_and_system_prompt_keywords_override_kit_defaults():
+async def test_model_and_system_prompt_keywords_override_pack_defaults():
     library_model = ScriptedModel(["library"])
     model = ScriptedModel(["application"])
     agent = Agent(
         model=model,
         prompt=SystemPrompt("Application instructions."),
         plugins=[
-            Kit(
+            PluginPack(
                 "library",
                 [
                     Service(Model, library_model),
@@ -192,17 +192,17 @@ async def test_model_and_system_prompt_keywords_override_kit_defaults():
     assert result.text == "application" and not library_model.requests
     assert model.requests[0].messages[0].text == "Application instructions."
     rows = {item.slot: item for item in agent.describe().plugins if item.slot is not None}
-    assert rows["model"].replaces[0].kit_path == ("library",)
-    assert rows["instructions"].replaces[0].kit_path == ("library",)
+    assert rows["model"].replaces[0].pack_path == ("library",)
+    assert rows["instructions"].replaces[0].pack_path == ("library",)
     with pytest.raises(PluginConflict, match="model"):
         Agent(model=model, plugins=[Service(Model, library_model)])
 
 
-async def test_instructions_and_models_can_be_supplied_entirely_by_a_kit():
+async def test_instructions_and_models_can_be_supplied_entirely_by_a_pack():
     model = ScriptedModel(["library"])
     result = await Agent(
         plugins=[
-            Kit(
+            PluginPack(
                 "library",
                 [Service(Model, model), PromptRenderer(SystemPrompt("Library instructions."))],
             )
@@ -246,10 +246,10 @@ async def test_resolve_keeps_selected_tools_and_instructions_without_mounting(om
             return "feature result"
 
     feature = Feature()
-    prompt = SystemPrompt.from_plugins("Kit strategy.", order=PluginOrder.AS_LISTED)
-    kit = Kit("library", [feature], prompt=prompt)
-    resolved = kit.resolve(prompt=KitPromptPolicy.OMIT) if omit else kit.resolve()
-    assert isinstance(resolved, ResolvedKit)
+    prompt = SystemPrompt.from_plugins("PluginPack strategy.", order=PluginOrder.AS_LISTED)
+    pack = PluginPack("library", [feature], prompt=prompt)
+    resolved = pack.resolve(prompt=PluginPackPromptPolicy.OMIT) if omit else pack.resolve()
+    assert isinstance(resolved, ResolvedPluginPack)
     assert mounted == instructed == []
     assert resolved.plugins[0] is feature
     assert [row.origin for row in resolved.description.plugins] == (
@@ -270,24 +270,24 @@ async def test_resolve_keeps_selected_tools_and_instructions_without_mounting(om
     assert model.requests[0].messages[0].text == (
         "Application strategy.\n\nFeature instructions."
         if omit
-        else "Kit strategy.\n\nFeature instructions."
+        else "PluginPack strategy.\n\nFeature instructions."
     )
     assert mounted == instructed == [True]
-    assert kit.prompt is prompt and kit.plugins == (feature,)
+    assert pack.prompt is prompt and pack.plugins == (feature,)
 
 
-def test_resolve_omits_nested_kit_prompts_before_conflict_resolution():
+def test_resolve_omits_nested_pack_prompts_before_conflict_resolution():
     first, second = Plugin(name="first"), Plugin(name="second")
-    kit = Kit(
+    pack = PluginPack(
         "outer",
         [
-            Kit("first", [first], prompt=SystemPrompt("First strategy.")),
-            Kit("second", [second], prompt=SystemPrompt("Second strategy.")),
+            PluginPack("first", [first], prompt=SystemPrompt("First strategy.")),
+            PluginPack("second", [second], prompt=SystemPrompt("Second strategy.")),
         ],
     )
     with pytest.raises(PluginConflict, match="instructions"):
-        kit.resolve()
-    resolved = kit.resolve(prompt=KitPromptPolicy.OMIT)
+        pack.resolve()
+    resolved = pack.resolve(prompt=PluginPackPromptPolicy.OMIT)
     assert resolved.plugins == (first, second)
     assert [row.origin for row in resolved.description.plugins] == [
         "outer / first / first",
@@ -297,13 +297,13 @@ def test_resolve_omits_nested_kit_prompts_before_conflict_resolution():
 
 async def test_resolve_omit_keeps_explicit_prompt_plugins():
     explicit = PromptRenderer(SystemPrompt("Explicit instructions."))
-    kit = Kit(
+    pack = PluginPack(
         "outer",
-        [Kit("child", [explicit], prompt=SystemPrompt("Implicit strategy."))],
+        [PluginPack("child", [explicit], prompt=SystemPrompt("Implicit strategy."))],
     )
     with pytest.raises(PluginConflict, match="instructions"):
-        kit.resolve()
-    resolved = kit.resolve(prompt=KitPromptPolicy.OMIT)
+        pack.resolve()
+    resolved = pack.resolve(prompt=PluginPackPromptPolicy.OMIT)
     assert resolved.plugins == (explicit,)
     agent = Agent(model=ScriptedModel(["done"]), plugins=resolved.plugins)
     result = await agent.run("go")
@@ -319,9 +319,9 @@ def test_resolve_preserves_order_replacements_and_exclusions():
         pass
 
     excluded = Excluded()
-    child = Kit("child", [before, original, excluded, after]).without(Excluded)
-    kit = Kit("outer", [child, replacement, removed])
-    resolved = kit.resolve(prompt=KitPromptPolicy.OMIT)
+    child = PluginPack("child", [before, original, excluded, after]).without(Excluded)
+    pack = PluginPack("outer", [child, replacement, removed])
+    resolved = pack.resolve(prompt=PluginPackPromptPolicy.OMIT)
     assert resolved.plugins == (before, replacement, after, removed)
     row = resolved.description.plugins[1]
     assert row.origin == "outer / AgentLoop"
@@ -332,5 +332,5 @@ def test_resolve_preserves_order_replacements_and_exclusions():
 
 
 def test_resolve_rejects_unknown_prompt_policies():
-    with pytest.raises(ValueError, match="KitPromptPolicy"):
-        Kit("empty", []).resolve(prompt="unknown")
+    with pytest.raises(ValueError, match="PluginPackPromptPolicy"):
+        PluginPack("empty", []).resolve(prompt="unknown")
