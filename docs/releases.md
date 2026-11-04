@@ -31,7 +31,10 @@ library. Harnessed is distributed under the
 ## Unreleased
 
 `Subagents` from `harnessed.plugins` delegates explicit tasks to configured
-specialists in isolated child sessions. Parent-owned lifetimes, routed approvals,
+specialists in isolated child sessions. Optional spawn/status/send/wait/cancel tools
+let the coordinator continue while children work and explicitly request reports.
+The default depth limit is one; applications may explicitly raise it.
+Parent-owned lifetimes, routed approvals,
 durable relationships and recorded child receipts keep delegations inspectable
 through completion, cancellation and checkpoint recovery. See
 [subagents](guides/subagents.md).

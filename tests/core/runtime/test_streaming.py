@@ -243,11 +243,11 @@ async def test_answer_waits_for_admission_and_caller_cancellation_does_not_revok
     ).session() as session:
         original = session.log._append
 
-        async def append(event):
+        async def append(event, *, during_run=None):
             if isinstance(event, ApprovalResolvedEvent):
                 entered.set()
                 await release.wait()
-            return await original(event)
+            return await original(event, during_run=during_run)
 
         monkeypatch.setattr(session.log, "_append", append)
         stream = session.stream("Publish")

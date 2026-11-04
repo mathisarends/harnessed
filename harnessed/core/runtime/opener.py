@@ -8,6 +8,7 @@ from harnessed.core.outputs import OutputTypes
 from harnessed.core.plugin import Service
 from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.runtime.agent_loop import AgentFactory
+from harnessed.core.runtime.child_reports import ChildReports
 from harnessed.core.runtime.session import Session
 from harnessed.core.session.events import TurnStartedEvent
 from harnessed.core.session.files import MemoryFiles, SessionFiles
@@ -73,6 +74,8 @@ async def open_session(
         await log.restore(checkpoint)
         _restore_output_schemas(ctx[OutputTypes], log)
         await log.repair_interrupted()
+    elif selected is not None:
+        await log.repair_interrupted()
     runtime = ctx[AgentFactory].create(ctx, log)
     try:
         await ctx.install(
@@ -86,6 +89,10 @@ async def open_session(
         await runtime.aclose()
         raise
     ctx.effect(runtime.aclose)
+    if ChildSessionRequest in ctx:
+        reporter = ctx[ChildSessionRequest].reporter
+        if reporter is not None:
+            await ctx.plugin(ChildReports(reporter))
     await ctx.settle()
     validate_plugins(ctx, plugin_validation)
     ctx[ToolRegistry].validate_references()

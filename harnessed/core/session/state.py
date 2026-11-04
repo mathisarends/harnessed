@@ -18,7 +18,7 @@ from harnessed.core.messages import (
 )
 
 from .children import ChildSession
-from .events import ContextLifetime, IncludedObservation, SubagentLinkedEvent, SubagentStatus
+from .events import ContextLifetime, IncludedObservation, SubagentLinkedEvent
 from .files import TextValue
 
 _CONFIG = ConfigDict(
@@ -91,8 +91,6 @@ class SessionState:
             {child.call_id for child in self.children}
         ) != len(self.children):
             raise ValueError("Child and delegation call identities must be unique")
-        if any(child.status is SubagentStatus.RUNNING for child in self.children):
-            raise ValueError("A terminal conversation cannot contain running children")
         if self.parent is not None and not 1 <= self.parent.depth <= self.parent.depth_limit:
             raise ValueError("A child requires one valid parent link")
         positions = [entry.position for entry in self.history]

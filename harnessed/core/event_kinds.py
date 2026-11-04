@@ -55,3 +55,5 @@ class EventKind(StrEnum):
     SUBAGENT_STARTED = "subagent.started"
     SUBAGENT_FINISHED = "subagent.finished"
     SUBAGENT_APPROVAL_REQUESTED = "subagent.approval.requested"
+    SUBAGENT_UPDATED = "subagent.updated"
+    SUBAGENT_MESSAGE_SENT = "subagent.message.sent"

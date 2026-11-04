@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from pydantic import Field, PlainSerializer
 
+from harnessed.core.child_status import ChildRuntimeState
 from harnessed.core.diagnostics import RetryKind
 from harnessed.core.event_kinds import EventKind
 from harnessed.core.limits import FinalStepPolicy
@@ -802,6 +803,27 @@ class SubagentStartedEvent(SessionEvent):
     turn_id: Identifier
     call_id: Identifier
     depth: StepNumber
+    background: bool = False
+
+
+@dataclass(frozen=True)
+class SubagentUpdatedEvent(SessionEvent):
+    """A bounded runtime projection, including explicitly requested status reports."""
+
+    type: Literal[EventKind.SUBAGENT_UPDATED] = field(
+        default=EventKind.SUBAGENT_UPDATED, kw_only=True
+    )
+    child_session_id: Identifier
+    runtime: ChildRuntimeState
+
+
+@dataclass(frozen=True)
+class SubagentMessageSentEvent(SessionEvent):
+    type: Literal[EventKind.SUBAGENT_MESSAGE_SENT] = field(
+        default=EventKind.SUBAGENT_MESSAGE_SENT, kw_only=True
+    )
+    child_session_id: Identifier
+    message: UserMessage
 
 
 @dataclass(frozen=True)
@@ -875,6 +897,8 @@ type LogEvent = Annotated[
         | SubagentStartedEvent
         | SubagentFinishedEvent
         | SubagentApprovalRequestedEvent
+        | SubagentUpdatedEvent
+        | SubagentMessageSentEvent
     ),
     Field(discriminator="type"),
 ]

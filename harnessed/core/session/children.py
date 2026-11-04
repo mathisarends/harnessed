@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 
+from harnessed.core.child_status import ChildActivity, ChildReportState, ChildRuntimeState
 from harnessed.core.model import ModelUsage
 
 from .events import (
@@ -8,8 +9,10 @@ from .events import (
     SubagentApprovalRequestedEvent,
     SubagentFinishedEvent,
     SubagentLinkedEvent,
+    SubagentMessageSentEvent,
     SubagentStartedEvent,
     SubagentStatus,
+    SubagentUpdatedEvent,
 )
 
 
@@ -26,6 +29,8 @@ class ChildSession:
     status: SubagentStatus = SubagentStatus.RUNNING
     text: str = ""
     usage: ModelUsage = field(default_factory=lambda: ModelUsage(0))
+    background: bool = False
+    runtime: ChildRuntimeState = field(default_factory=ChildRuntimeState)
 
 
 class ChildProjection:
@@ -47,7 +52,13 @@ class ChildProjection:
         elif isinstance(event, SubagentStartedEvent):
             if event.child_session_id in self.children or event.call_id in self.calls:
                 raise ValueError("A delegation requires distinct child and call IDs")
-        elif isinstance(event, SubagentFinishedEvent | SubagentApprovalRequestedEvent):
+        elif isinstance(
+            event,
+            SubagentFinishedEvent
+            | SubagentApprovalRequestedEvent
+            | SubagentUpdatedEvent
+            | SubagentMessageSentEvent,
+        ):
             child = self.children.get(event.child_session_id)
             if child is None or child.status is not SubagentStatus.RUNNING:
                 raise ValueError("A child receipt or approval requires a running child")
@@ -62,13 +73,29 @@ class ChildProjection:
                 event.turn_id,
                 event.call_id,
                 event.depth,
+                background=event.background,
             )
         elif isinstance(event, SubagentFinishedEvent):
             child = self.children.get(event.child_session_id)
             if child is not None:
+                report = child.runtime.report
+                if report is not None and report.state is ChildReportState.PENDING:
+                    report = replace(report, state=ChildReportState.UNAVAILABLE)
                 self.children[child.id] = replace(
-                    child, status=event.status, text=event.text, usage=event.usage
+                    child,
+                    status=event.status,
+                    text=event.text,
+                    usage=event.usage,
+                    runtime=replace(
+                        child.runtime,
+                        activity=ChildActivity.FINISHED,
+                        active_tools=(),
+                        report=report,
+                    ),
                 )
+        elif isinstance(event, SubagentUpdatedEvent):
+            child = self.children[event.child_session_id]
+            self.children[child.id] = replace(child, runtime=event.runtime)
         elif isinstance(event, SubagentLinkedEvent):
             self.parent = event
 

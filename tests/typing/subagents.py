@@ -4,7 +4,14 @@ from harnessed import Agent, Session
 from harnessed.events import SubagentLinkedEvent, SubagentStatus
 from harnessed.models import ModelUsage
 from harnessed.plugins import Subagents
-from harnessed.plugins.subagents import ChildSession, ChildSessionFactory, ChildSessionRequest
+from harnessed.plugins.subagents import (
+    ChildActivity,
+    ChildReport,
+    ChildRuntimeState,
+    ChildSession,
+    ChildSessionFactory,
+    ChildSessionRequest,
+)
 
 
 def configure(agent: Agent) -> Subagents:
@@ -20,5 +27,8 @@ async def inspect(
     assert_type(session.tree_usage, ModelUsage)
     for child in session.children:
         assert_type(child.status, SubagentStatus)
+        assert_type(child.runtime, ChildRuntimeState)
+        assert_type(child.runtime.activity, ChildActivity)
+        assert_type(child.runtime.report, ChildReport | None)
     async with factory.child_session(request) as child:
         assert_type(child, Session)

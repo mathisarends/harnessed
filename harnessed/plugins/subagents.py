@@ -4,12 +4,19 @@ from typing import Annotated
 
 from pydantic import Field
 
+from harnessed.core.child_status import ChildActivity as ChildActivity
+from harnessed.core.child_status import ChildReport as ChildReport
+from harnessed.core.child_status import ChildReportState as ChildReportState
+from harnessed.core.child_status import ChildRuntimeState as ChildRuntimeState
+from harnessed.core.children import ChildLimits
 from harnessed.core.children import ChildSessionFactory as ChildSessionFactory
 from harnessed.core.children import ChildSessionRequest as ChildSessionRequest
+from harnessed.core.children import ChildStatusReporter as ChildStatusReporter
+from harnessed.core.hooks import SessionAborting, SessionClosing
 from harnessed.core.messages import ToolResult
 from harnessed.core.plugin import Plugin, PluginConfig
 from harnessed.core.prompt.values import SystemPrompt
-from harnessed.core.runtime.children import ChildLimits, ChildSessionSupervisor
+from harnessed.core.runtime.children import ChildSessionSupervisor
 from harnessed.core.runtime.session import Session
 from harnessed.core.session.children import ChildSession as ChildSession
 from harnessed.core.tools import ToolContext, tool
@@ -60,7 +67,11 @@ class Subagents(Plugin[SubagentsConfig], needs=(Session,)):
 
     def instructions(self) -> SystemPrompt:
         return SystemPrompt(
-            "Use delegate(agent, task) to give an explicit, self-contained task to a specialist. "
+            "Use spawn(agent, task) to start a specialist and continue working. "
+            "Use status(child_id, timeout) to ask it for a fresh report, send(child_id, message) "
+            "to steer it, wait(child_id, timeout) for its result, and cancel(child_id) to stop it. "
+            "Use delegate(agent, task) when you want to wait until completion immediately. "
+            "Spawned tasks send completion notifications to your inbox. "
             "Each child has its own instructions and tools and receives only the supplied task. "
             f"Available agents: {', '.join(self.agents)}."
         )
@@ -76,11 +87,50 @@ class Subagents(Plugin[SubagentsConfig], needs=(Session,)):
         )
         self._supervisor = ChildSessionSupervisor(session, self.agents, limits)
         ctx.effect(self._supervisor.aclose)
+        ctx.on(SessionAborting, self._supervisor.aborting)
+        ctx.on(SessionClosing, self._supervisor.closing)
 
     @tool(timeout=3600.0, parallel=True)
     async def delegate(self, agent: str, task: str, *, context: ToolContext) -> ToolResult:
         """Run a specialist and return its child ID, answer, status and usage."""
         return await self._supervisor.delegate(agent, task, context)
 
+    @tool(parallel=True)
+    async def spawn(self, agent: str, task: str, *, context: ToolContext) -> ToolResult:
+        """Start a specialist and return its child_id without waiting for its task."""
+        return await self._supervisor.spawn(agent, task, context)
 
-__all__ = ["ChildSession", "ChildSessionFactory", "ChildSessionRequest", "Subagents"]
+    @tool(timeout=3600.0, parallel=True, readonly=True)
+    async def status(self, child_id: str, timeout: float = 10.0) -> ToolResult:
+        """Ask the child for a fresh report; timeout returns pending without cancelling it."""
+        return await self._supervisor.status(child_id, timeout)
+
+    @tool(parallel=True)
+    async def send(
+        self, child_id: str, message: Annotated[str, Field(min_length=1, max_length=32768)]
+    ) -> ToolResult:
+        """Deliver additional guidance at the child's next step without starting a new task."""
+        return await self._supervisor.send(child_id, message)
+
+    @tool(timeout=3600.0, parallel=True, readonly=True)
+    async def wait(self, child_id: str, timeout: float = 30.0) -> ToolResult:
+        """Wait for a child receipt; timeout returns current state and leaves the child running."""
+        return await self._supervisor.wait(child_id, timeout)
+
+    @tool(timeout=3600.0, parallel=True)
+    async def cancel(self, child_id: str) -> ToolResult:
+        """Cancel a child and wait until its driver and plugin resources are drained."""
+        return await self._supervisor.cancel(child_id)
+
+
+__all__ = [
+    "ChildActivity",
+    "ChildReport",
+    "ChildReportState",
+    "ChildRuntimeState",
+    "ChildSession",
+    "ChildSessionFactory",
+    "ChildSessionRequest",
+    "ChildStatusReporter",
+    "Subagents",
+]

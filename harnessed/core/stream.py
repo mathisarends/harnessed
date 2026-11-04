@@ -27,7 +27,9 @@ from harnessed.core.session.events import (
     SubagentApprovalRequestedEvent,
     SubagentFinishedEvent,
     SubagentLinkedEvent,
+    SubagentMessageSentEvent,
     SubagentStartedEvent,
+    SubagentUpdatedEvent,
     ToolCallFinishedEvent,
     ToolCallRequestedEvent,
     ToolProgressEvent,
@@ -222,6 +224,8 @@ type StreamEvent[T] = Annotated[
         | SubagentStartedEvent
         | SubagentFinishedEvent
         | SubagentApprovalRequestedEvent
+        | SubagentUpdatedEvent
+        | SubagentMessageSentEvent
     ),
     Field(discriminator="type"),
 ]

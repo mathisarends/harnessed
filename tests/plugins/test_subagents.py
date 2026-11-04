@@ -129,7 +129,7 @@ async def test_isolated_sessions_progress_receipts_and_usage():
     assert "Secret parent prompt" not in rendered
     assert "Private parent instructions" not in rendered
     assert "Private additive parent context" not in rendered
-    assert {tool.name for tool in child_model.requests[0].tools} == {"inspect"}
+    assert {tool.name for tool in child_model.requests[0].tools} == {"inspect", "answer_status"}
 
 
 async def test_parent_stream_exposes_child_lifecycle_and_routes_approvals():
@@ -279,17 +279,23 @@ async def test_parallel_limit_and_session_call_limit():
         assert sum(value.status is ToolStatus.ERROR for _, value in result.tool_calls) == 2
 
 
-async def test_depth_limit_is_inherited_and_cannot_be_raised_by_child():
+@pytest.mark.parametrize("nested_tool", ["delegate", "spawn"])
+async def test_default_depth_limit_is_inherited_and_cannot_be_raised_by_child(nested_tool):
     leaf_model = ScriptedModel(["Leaf"])
     leaf = Agent(model=leaf_model)
     store = RecordingStore()
     middle = Agent(
         prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
-        model=ScriptedModel([[ModelChunk(tool_call=delegate("leaf"))], "Middle"]),
+        model=ScriptedModel(
+            [
+                [ModelChunk(tool_call=ToolCall(nested_tool, {"agent": "leaf", "task": "Task"}))],
+                "Middle",
+            ]
+        ),
         store=store,
         plugins=[Subagents({"leaf": leaf}, max_depth=10), Approvals(default=PolicyDecision.ALLOW)],
     )
-    parent = coordinator(middle, max_depth=1)
+    parent = coordinator(middle)
     await parent.run("Delegate")
     assert leaf_model.requests == []
     child_id = next(iter(store.rows))

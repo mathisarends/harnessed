@@ -80,10 +80,15 @@ Each mount owns one connection and a fixed catalog of namespaced tools. See
 ## Subagents
 
 `Subagents(agents, *, max_parallel=3, max_calls=16, max_depth=1, timeout=180.0,
-max_steps=8, token_budget=None)` from `harnessed.plugins` adds the parallel-capable
-`delegate(agent, task)` tool. Values in `agents` implement `ChildSessionFactory`,
-including `Agent`. Each call opens an isolated child, waits for its answer and
-returns a receipt. See [subagents](../guides/subagents.md) for approvals, limits,
+max_steps=8, token_budget=None)` from `harnessed.plugins` adds `spawn(agent, task)`,
+`status(child_id, timeout=10.0)`, `send(child_id, message)`,
+`wait(child_id, timeout=30.0)`, `cancel(child_id)` and `delegate(agent, task)`.
+These tools are absent without the plugin. Values in `agents` implement
+`ChildSessionFactory`, including `Agent`. `spawn` returns after admission;
+`delegate` waits for a receipt. `status` asks the child for an explicit report,
+coalesces pending requests and forwards late answers through the parent inbox.
+The default depth is one; children cannot raise an inherited limit.
+See [subagents](../guides/subagents.md) for approvals, limits,
 recovery and ownership.
 
 ## Sandbox integrations
@@ -292,6 +297,10 @@ child's `SubagentLinkedEvent` or `None`. `session.usage` remains local;
 `session.tree_usage` adds recorded child receipts recursively. These inspection
 properties are also available on `SessionLog`. Running or interrupted children
 may have incomplete recorded usage.
+
+`session.inbox.steer(content, during_run=handle.id)` admits guidance only while
+that submitted run is queued or open. The check is atomic with inbox admission;
+after completion it raises `SessionStateError` instead of starting a new turn.
 
 | Member | Behavior |
 | --- | --- |

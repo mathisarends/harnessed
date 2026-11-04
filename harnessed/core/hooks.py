@@ -128,6 +128,13 @@ class SessionAppended(Emit):
 
 
 @dataclass(frozen=True)
+class SessionAborting(Emit):
+    """Drain session-owned background work before interruption repairs the log."""
+
+    log: SessionLog
+
+
+@dataclass(frozen=True)
 class SessionClosing(Emit):
     """Release live resources after driver shutdown, before plugin disposal.
 
