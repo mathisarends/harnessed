@@ -1,7 +1,17 @@
 from dataclasses import dataclass
 from typing import assert_type
 
-from harnessed import Plugin, ToolChain, ToolInfo, ToolMetadata, ToolResult, tool
+from harnessed import (
+    Plugin,
+    ToolAnnotations,
+    ToolChain,
+    ToolIcon,
+    ToolInfo,
+    ToolMetadata,
+    ToolPresentation,
+    ToolResult,
+    tool,
+)
 from harnessed.hooks import ExecuteTool, Next, PreStep, ReviewToolResult, ToolPolicy
 from harnessed.kernel import hook
 from harnessed.plugins import AgentLoop, FinalStepPolicy
@@ -17,7 +27,15 @@ AgentLoop(final_step=FinalStepPolicy.SUMMARIZE)
 
 
 class Tools(Plugin):
-    @tool(metadata=(AuditTag("workspace"),), chain=ToolChain.STOP_AFTER)
+    @tool(
+        title="Switch workspace",
+        tags={"workspace"},
+        icons=(ToolIcon("https://example.com/icon.png", theme="light"),),
+        annotations=ToolAnnotations(idempotent_hint=True),
+        meta={"category": "workspace"},
+        metadata=(AuditTag("workspace"),),
+        chain=ToolChain.STOP_AFTER,
+    )
     async def switch(self) -> ToolResult:
         return ToolResult("new context", break_chain=True)
 
@@ -26,6 +44,11 @@ class Tools(Plugin):
         assert_type(event.tool, ToolInfo | None)
         if event.tool is not None:
             assert_type(event.tool.metadata.get(AuditTag), AuditTag | None)
+            assert_type(event.tool.presentation, ToolPresentation)
+            assert_type(event.tool.presentation.title, str | None)
+            assert_type(event.tool.presentation.tags, frozenset[str])
+            assert_type(event.tool.presentation.icons, tuple[ToolIcon, ...])
+            assert_type(event.tool.presentation.annotations, ToolAnnotations | None)
         return await next_()
 
 

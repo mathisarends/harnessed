@@ -1,6 +1,8 @@
 # MCP tools
 
 Install `harnessed[mcp]` and import `MCP` from `harnessed.plugins.mcp`.
+The optional integration uses the standalone FastMCP client and its native
+transports. Local Python tools continue to use Harnessed's own `@tool` decorator.
 Each plugin recipe describes one server. Opening a session connects it, discovers
 its tools and registers them on the normal Harnessed execution pipeline. Closing
 the mount releases its tools, client and any subprocess it launched.
@@ -21,9 +23,10 @@ docs = MCP.http(
 agent = Agent(model="openai:gpt-5.4", plugins=[docs])
 ```
 
-`http()` uses Streamable HTTP. It accepts `headers=` and an `httpx.Auth` object
-through `auth=`, including an application-configured MCP `OAuthClientProvider`.
-The application owns OAuth token storage and interactive authorization callbacks.
+`http()` uses Streamable HTTP. It accepts `headers=` and FastMCP's `auth=` options:
+a bearer-token string, `"oauth"` for its interactive OAuth helper, or an `httpx.Auth`
+object such as a configured `fastmcp.client.auth.OAuth` or MCP `OAuthClientProvider`.
+Configure token storage and interactive authorization callbacks in the application.
 The plugin creates and closes its HTTP client for each mount.
 
 Launch a local server with an explicit argument vector:
@@ -41,7 +44,8 @@ project = MCP.stdio(
 )
 ```
 
-`stdio()` delegates process startup and shutdown to the official MCP SDK. Its
+`stdio()` delegates process startup and shutdown to FastMCP's `StdioTransport`,
+with `keep_alive=False` so each mount releases its owned subprocess. Its
 `env` supplements the SDK's minimal inherited environment, rather than copying
 the application's entire environment. It never joins arguments into a shell
 command. Server stderr goes to the application's stderr.
@@ -144,14 +148,47 @@ untrusted servers.
 
 ## Custom transports
 
-For a custom or in-memory transport, construct `MCP(name, transport=transport)`.
-The exported `MCPTransport` protocol requires `connect()` to return an async
-context manager yielding a fresh, uninitialized `mcp.ClientSession`. Harnessed
-enters and exits it in the same dedicated task, then initializes it and owns its
-cleanup. This preserves the task ownership required by MCP's AnyIO transports.
+Use a standalone FastMCP server directly for tests or embedded applications:
+
+```python
+from fastmcp import FastMCP
+
+from harnessed.plugins.mcp import MCP
+
+server = FastMCP("documentation")
+
+
+@server.tool
+def search(query: str) -> str:
+    return f"Documentation for {query}"
+
+
+docs = MCP.in_memory("docs", server=server, readonly_tools=("search",))
+```
+
+`in_memory()` has the same filtering, timeouts, approvals and lifecycle as HTTP
+and stdio, without opening sockets or starting a subprocess.
+
+For other FastMCP transports, construct `MCP(name, transport=recipe)`. The exported
+`MCPTransport` protocol requires `create() -> fastmcp.client.transports.ClientTransport`.
+Each call must return a fresh transport: FastMCP transports can carry mutable
+connection state and must not be shared between mounts. FastMCP owns initialization
+and the session task; Harnessed owns the mount, availability and cleanup.
+
+```python
+from fastmcp.client.transports import ClientTransport, StreamableHttpTransport
+
+
+class DocsTransport:
+    def create(self) -> ClientTransport:
+        return StreamableHttpTransport("https://docs.example.com/mcp")
+
+
+docs = MCP("docs", transport=DocsTransport())
+```
 
 Run `uv run --extra mcp python -m examples.31_mcp` for a complete offline example
-using a real stdio server and a scripted model. The API follows the transport
-configuration and filtering approach of the
-[OpenAI Agents SDK](https://developers.openai.com/api/docs/guides/agents/integrations-observability),
-with lifetimes owned by Harnessed's reversible plugin mounts.
+using a real FastMCP stdio server and a scripted model. See the upstream
+[FastMCP client](https://gofastmcp.com/clients/client) and
+[transport documentation](https://gofastmcp.com/clients/transports) for the native
+transport and authentication APIs.

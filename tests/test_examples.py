@@ -67,7 +67,7 @@ def test_offline_sdk_example_runs(module):
     if module == "examples.29_tracing":
         pytest.importorskip("opentelemetry.sdk")
     if module == "examples.31_mcp":
-        pytest.importorskip("mcp")
+        pytest.importorskip("fastmcp")
     try:
         result = subprocess.run(
             [sys.executable, "-c", _RUN_EXAMPLE, module],

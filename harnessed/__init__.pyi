@@ -34,9 +34,12 @@ from harnessed.core.session.session import SessionLog as SessionLog
 from harnessed.core.session.state import SessionState as SessionState
 from harnessed.core.tools.context import ToolContext as ToolContext
 from harnessed.core.tools.decorator import tool as tool
+from harnessed.core.tools.info import ToolAnnotations as ToolAnnotations
 from harnessed.core.tools.info import ToolChain as ToolChain
+from harnessed.core.tools.info import ToolIcon as ToolIcon
 from harnessed.core.tools.info import ToolInfo as ToolInfo
 from harnessed.core.tools.info import ToolMetadata as ToolMetadata
+from harnessed.core.tools.info import ToolPresentation as ToolPresentation
 from harnessed.core.tools.registry import ToolError as ToolError
 from harnessed.kernel import Context as Context
 from harnessed.kernel import Inject as Inject
@@ -81,6 +84,9 @@ __all__ = [
     "StopReason",
     "StreamOverflow",
     "ToolCall",
+    "ToolAnnotations",
+    "ToolIcon",
+    "ToolPresentation",
     "ToolChain",
     "ToolContext",
     "ToolError",

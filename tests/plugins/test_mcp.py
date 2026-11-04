@@ -8,11 +8,13 @@ from pathlib import Path
 
 import pytest
 
-pytest.importorskip("mcp")
+pytest.importorskip("fastmcp")
 pytest.importorskip("jsonschema")
 
 import anyio
 import httpx
+from fastmcp import FastMCP as FastMCPServer
+from fastmcp.client.transports import ClientTransport
 from jsonschema import SchemaError
 from mcp import ClientSession
 from mcp.server import Server
@@ -21,6 +23,7 @@ from mcp.shared.memory import create_client_server_memory_streams
 from mcp.types import (
     AudioContent,
     CallToolResult,
+    Icon,
     ImageContent,
     ListToolsRequest,
     ListToolsResult,
@@ -31,13 +34,14 @@ from mcp.types import (
 
 import harnessed.plugins.mcp as mcp_plugin
 from harnessed import Agent, ToolCall
+from harnessed import ToolAnnotations as LocalToolAnnotations
 from harnessed.core.errors import ToolNameConflict
 from harnessed.core.messages import PolicyDecision, ToolStatus, to_dict
 from harnessed.core.model import ModelChunk
 from harnessed.core.tools.registry import ToolRegistry
 from harnessed.events import ToolProgressEvent
 from harnessed.plugins import ApprovalGate, Approvals, ToolOutputLimit
-from harnessed.plugins.mcp import MCP
+from harnessed.plugins.mcp import MCP, MCPConfig
 from harnessed.testing import ScriptedModel
 
 SCHEMA = {
@@ -62,8 +66,11 @@ class MemoryTransport:
         self.started = asyncio.Event()
         self.server_stopped = asyncio.Event()
 
+    def create(self):
+        return MemoryConnection(self)
+
     @asynccontextmanager
-    async def connect(self):
+    async def connect(self, **session_kwargs):
         self.opened += 1
         task = asyncio.current_task()
         server = Server("test")
@@ -112,7 +119,7 @@ class MemoryTransport:
                             self.server_stopped.set()
 
                     group.start_soon(run_server)
-                    async with ClientSession(*client_streams) as client:
+                    async with ClientSession(*client_streams, **session_kwargs) as client:
                         try:
                             yield client
                         finally:
@@ -120,6 +127,14 @@ class MemoryTransport:
         finally:
             assert asyncio.current_task() is task
             self.closed += 1
+
+
+class MemoryConnection(ClientTransport):
+    def __init__(self, recipe):
+        self.recipe = recipe
+
+    def connect_session(self, **session_kwargs):
+        return self.recipe.connect(**session_kwargs)
 
 
 async def run_tool(transport, arguments=None, **options):
@@ -153,6 +168,51 @@ async def test_discovery_pagination_schemas_results_and_progress():
     assert definitions[0].description == "Search docs"
     assert to_dict(definitions[0].parameters) == SCHEMA
     assert any(isinstance(event, ToolProgressEvent) for event in result.events)
+
+
+async def test_native_fastmcp_in_memory_connections_preserve_metadata_and_lifetimes():
+    lifetimes = []
+
+    @asynccontextmanager
+    async def lifespan(server):
+        lifetimes.append("opened")
+        try:
+            yield {}
+        finally:
+            lifetimes.append("closed")
+
+    server = FastMCPServer("native", lifespan=lifespan)
+
+    @server.tool(
+        title="Search documentation",
+        tags={"docs", "search"},
+        icons=[Icon(src="data:image/png;base64,aA==", mimeType="image/png")],
+        annotations={"readOnlyHint": True, "idempotentHint": True},
+        meta={"category": "documentation"},
+    )
+    async def search(query: str) -> str:
+        return query
+
+    recipe = MCP.in_memory("docs", server=server)
+    assert isinstance(recipe.config, MCPConfig)
+    assert lifetimes == []
+    async with Agent(model=ScriptedModel(["unused"]), plugins=[recipe]).session() as first:
+        registry = first.ctx[ToolRegistry]
+        plan = registry.plan(ToolCall("docs__search", {"query": "native"}))
+        presentation = plan.tool.presentation
+        assert presentation.title == "Search documentation"
+        assert presentation.tags == frozenset({"docs", "search"})
+        assert presentation.icons[0].mime_type == "image/png"
+        assert presentation.meta["category"] == "documentation"
+        assert presentation.annotations == LocalToolAnnotations(
+            read_only_hint=True, idempotent_hint=True
+        )
+        assert not registry.is_readonly("docs__search")
+        async with Agent(model=ScriptedModel(["unused"]), plugins=[recipe]).session() as second:
+            assert second.ctx[ToolRegistry].definitions == registry.definitions
+        assert (await registry.execute(plan.call)).text.splitlines()[0] == "native"
+    assert lifetimes.count("opened") == lifetimes.count("closed")
+    assert lifetimes[0] == "opened" and lifetimes[-1] == "closed"
 
 
 @pytest.mark.parametrize("arguments", [{}, {"query": 1}, {"query": "ok", "extra": True}])
@@ -262,9 +322,12 @@ async def test_call_timeout_and_abort_propagate_cancellation():
 async def test_startup_timeout_drains_connection_task():
     closed = asyncio.Event()
 
-    class SlowTransport:
+    class SlowTransport(ClientTransport):
+        def create(self):
+            return self
+
         @asynccontextmanager
-        async def connect(self):
+        async def connect_session(self, **session_kwargs):
             try:
                 await asyncio.sleep(30)
                 yield
@@ -340,7 +403,7 @@ async def test_reopening_session_does_not_replay_remote_calls(tmp_path):
 async def test_real_stdio_transport(tmp_path):
     server = tmp_path / "server.py"
     server.write_text(
-        """from mcp.server.fastmcp import FastMCP
+        """from fastmcp import FastMCP
 mcp = FastMCP("stdio-test")
 @mcp.tool()
 def echo(query: str) -> str:
@@ -368,7 +431,7 @@ async def test_stdio_environment_cwd_and_literal_arguments(tmp_path, monkeypatch
     server.write_text(
         """import os
 import sys
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 server = FastMCP("process-settings")
 @server.tool()
 def inspect() -> dict[str, object]:
@@ -408,7 +471,7 @@ async def test_stdio_failure_hides_tools_without_retry(tmp_path, failure):
         """import asyncio
 import os
 import sys
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 server = FastMCP("broken-process")
 @server.tool()
 async def fail() -> str:
@@ -640,13 +703,14 @@ import importlib.abc
 import sys
 class Block(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, *args):
-        if fullname.split('.')[0] in {'mcp', 'jsonschema'}:
+        if fullname.split('.')[0] in {'fastmcp', 'mcp', 'jsonschema'}:
             raise ImportError('blocked optional dependency')
 sys.meta_path.insert(0, Block())
 import harnessed
 import harnessed.plugins
 from harnessed.kernel import Context
 assert not any(name == 'mcp' or name.startswith('mcp.') for name in sys.modules)
+assert not any(name == 'fastmcp' or name.startswith('fastmcp.') for name in sys.modules)
 """
     result = subprocess.run(
         [sys.executable, "-c", code],

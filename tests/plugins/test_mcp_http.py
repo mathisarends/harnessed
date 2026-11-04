@@ -8,11 +8,12 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-pytest.importorskip("mcp")
+pytest.importorskip("fastmcp")
 pytest.importorskip("jsonschema")
 
 import httpx
 import uvicorn
+from fastmcp import FastMCP as FastMCPServer
 from mcp.client.auth import OAuthClientProvider
 from mcp.server.fastmcp import Context as MCPContext
 from mcp.server.fastmcp import FastMCP
@@ -37,6 +38,12 @@ async def no_leaked_connections():
     yield
     assert not [
         task for task in asyncio.all_tasks() if task.get_name().startswith("harnessed:mcp:")
+    ]
+    assert not [
+        task
+        for task in asyncio.all_tasks()
+        if task.get_coro().__qualname__
+        in {"Client._session_runner", "_stdio_transport_connect_task"}
     ]
 
 
@@ -71,6 +78,37 @@ def serve_http():
             listener.close()
 
     return serve
+
+
+@pytest.mark.parametrize("stateless", [False, True])
+async def test_native_fastmcp_http_with_bearer_auth(serve_http, stateless):
+    server = FastMCPServer("native-http")
+    calls = []
+    authorization = []
+
+    @server.tool
+    async def echo(query: str) -> str:
+        calls.append(query)
+        return query
+
+    inner = server.http_app(path="/mcp", stateless_http=stateless)
+
+    async def app(scope, receive, send):
+        if scope["type"] == "http":
+            authorization.append(dict(scope["headers"])[b"authorization"])
+        await inner(scope, receive, send)
+
+    async with serve_http(app) as url:
+        model = ScriptedModel(
+            [[ModelChunk(tool_call=ToolCall("native__echo", {"query": "FastMCP works"}))], "done"]
+        )
+        result = await Agent(
+            model=model,
+            plugins=[MCP.http("native", url=url, auth="native-token", readonly_tools=["echo"])],
+        ).run("echo")
+    assert calls == ["FastMCP works"]
+    assert result.tool_calls[0][1].text.splitlines()[0] == "FastMCP works"
+    assert authorization and all(value == b"Bearer native-token" for value in authorization)
 
 
 @pytest.mark.parametrize("stateless", [False, True])
@@ -133,9 +171,9 @@ async def test_http_startup_rejection_releases_connection(serve_http, status):
     app = Starlette(routes=[Route("/mcp", reject, methods=["POST"])])
     async with serve_http(app) as url:
         model = ScriptedModel(["unused"])
-        with pytest.raises(ExceptionGroup) as caught:
+        with pytest.raises(httpx.HTTPStatusError) as caught:
             await Agent(model=model, plugins=[MCP.http("web", url=url, startup_timeout=1)]).run("x")
-        assert caught.value.subgroup(httpx.HTTPStatusError) is not None
+        assert caught.value.response.status_code == status
         assert model.requests == []
     assert requests == ["POST"]
 
@@ -286,12 +324,12 @@ async def test_http_cross_origin_redirect_does_not_forward_credentials(serve_htt
 
         source = Starlette(routes=[Route("/mcp", redirect, methods=["POST"])])
         async with serve_http(source) as url:
-            with pytest.raises(ExceptionGroup) as caught:
+            with pytest.raises(httpx.HTTPStatusError) as caught:
                 await Agent(
                     model=ScriptedModel(["unused"]),
                     plugins=[MCP.http("web", url=url, headers={"Authorization": "Bearer secret"})],
                 ).run("x")
-            assert caught.value.subgroup(httpx.HTTPStatusError) is not None
+            assert caught.value.response.status_code == 307
     assert received == []
 
 

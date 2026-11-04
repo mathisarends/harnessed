@@ -79,7 +79,14 @@ def test_optional_integrations_and_features_are_isolated():
                     assert relative == "models/pydantic_ai.py", relative
                 if module == "yaml":
                     assert relative == "plugins/skills.py", relative
-                if module.split(".")[0] in {"mcp", "jsonschema", "referencing", "httpx", "anyio"}:
+                if module.split(".")[0] in {
+                    "fastmcp",
+                    "mcp",
+                    "jsonschema",
+                    "referencing",
+                    "httpx",
+                    "anyio",
+                }:
                     assert relative == "plugins/mcp.py", relative
                 if relative.startswith("plugins/") and relative != "plugins/__init__.py":
                     assert module != "harnessed.plugins", relative
@@ -159,7 +166,8 @@ def test_public_exports_resolve_to_their_canonical_classes_and_functions(module)
 def test_application_facade_stays_small_and_has_no_transitional_names():
     import harnessed
 
-    assert len(harnessed.__all__) <= 45
+    # Tool display values join the small SDK without importing the MCP integration.
+    assert len(harnessed.__all__) <= 48
     assert {
         "Agent",
         "Session",

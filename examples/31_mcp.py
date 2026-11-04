@@ -4,7 +4,7 @@ import asyncio
 import sys
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 
 from harnessed import Agent, ToolCall
 from harnessed.models import ModelChunk
