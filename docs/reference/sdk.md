@@ -55,16 +55,16 @@ remains outside content filtering and redaction. `ContentCapture` and
 See [tracing](../guides/tracing.md) for Phoenix and Langfuse configuration,
 content capture, parent context and the emitted attributes.
 
-## Kit resolution
+## PluginPack resolution
 
-`Kit.resolve(*, prompt=KitPromptPolicy.INCLUDE) -> ResolvedKit` resolves one kit
+`PluginPack.resolve(*, prompt=PluginPackPromptPolicy.INCLUDE) -> ResolvedPluginPack` resolves one pack
 without agent defaults, plugin mounts or instruction rendering. Import these
 types from `harnessed`. The frozen result exposes a flat `plugins` tuple and a
 `CompositionDescription` in `description`, preserving original origins,
-replacements and exclusions. `KitPromptPolicy.OMIT` recursively skips `Kit.prompt`
+replacements and exclusions. `PluginPackPromptPolicy.OMIT` recursively skips `PluginPack.prompt`
 declarations before conflict resolution; explicit prompt plugins and selected
 plugins' instruction contributions remain. Flattened plugins become direct
-inputs when passed to an Agent. See [kit resolution](../guides/plugins.md#resolve-a-kit-into-flat-recipes).
+inputs when passed to an Agent. See [pack resolution](../guides/plugins.md#resolve-a-pack-into-flat-recipes).
 
 ## MCP client
 
@@ -154,10 +154,10 @@ plugin_validation=PluginValidation.ERROR, store=None)` resolves reusable configu
 | model | Harnessed Model or provider:model string; wrap native models with PydanticAIModel |
 | instructions | Caller-owned text prepended to the selected prompt |
 | prompt | Content document or explicit SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED) strategy |
-| plugins | Iterable of configured plugins or Kit values, resolved by local slots before mounting |
+| plugins | Iterable of configured plugins or PluginPack values, resolved by local slots before mounting |
 | plugin_validation | ERROR rejects unresolved plugins at session startup; WARN emits PluginDependencyWarning and retains them for later activation |
 | agent.plugins | Tuple of resolved plugins |
-| agent.describe() | Immutable CompositionDescription with configured order, kit origins, replacement histories and exclusions |
+| agent.describe() | Immutable CompositionDescription with configured order, pack origins, replacement histories and exclusions |
 | agent.prompt | Inspectable PromptComposition with final order, origins and format |
 | store | Optional application-owned SessionStore; None keeps sessions ephemeral |
 | agent.session(*, state=None, id=None, restore_outputs=()) | Open a Session from explicit state or a stored conversation; id requires a store |
@@ -204,22 +204,22 @@ tuple contains immutable `PluginDependencyIssue` snapshots with `.plugin`
 and permits later activation. Setup failures still propagate in either mode.
 See [startup validation](../guides/plugins.md#session-startup-validation).
 
-## Kit composition
+## PluginPack composition
 
-`from harnessed import Kit, CompositionDescription` exposes static library
-composition. `Kit(name: str, plugins: Iterable[PluginInput])` captures its inputs
-once as a tuple; `PluginInput` is a configured kernel plugin or another Kit.
-The name must be a nonempty string. A kit has no lifecycle of its own.
+`from harnessed import PluginPack, CompositionDescription` exposes static library
+composition. `PluginPack(name: str, plugins: Iterable[PluginInput])` captures its inputs
+once as a tuple; `PluginInput` is a configured kernel plugin or another PluginPack.
+The name must be a nonempty string. A pack has no lifecycle of its own.
 
-`kit.without(*types)` returns a new kit excluding all matching recipe types and
+`pack.without(*types)` returns a new pack excluding all matching recipe types and
 subclasses recursively. Each requested type must match a remaining recipe
-(`ValueError` otherwise); non-type arguments raise `TypeError`. The original kit
-and child kits remain unchanged. It does not remove dependent plugins or agent
+(`ValueError` otherwise); non-type arguments raise `TypeError`. The original pack
+and child packs remain unchanged. It does not remove dependent plugins or agent
 fallbacks. `None`, booleans and arbitrary nested lists are not plugin inputs.
 
-At each boundary, direct plugins override child-kit exports by slot. Duplicate
-direct slots and conflicting sibling-kit exports raise `PluginConflict`; a
-direct entry at that boundary resolves a sibling conflict. Internal child-kit
+At each boundary, direct plugins override child-pack exports by slot. Duplicate
+direct slots and conflicting sibling-pack exports raise `PluginConflict`; a
+direct entry at that boundary resolves a sibling conflict. Internal child-pack
 conflicts must be resolved inside that child. Nesting depth does not set global
 precedence. All resolved supplied plugins override the agent's built-in
 fallbacks. Unslotted recipes are additive, regardless of class or service keys.
@@ -227,13 +227,13 @@ Replacements keep the first inherited slot position.
 
 `agent.describe()` returns a `CompositionDescription` with `plugins` and `removed`
 tuples and a readable `str()` rendering. Plugin descriptions contain `name`,
-`kit_path`, `origin`, `slot`, `needs`, `observes`, `provides` and recursive `replaces` tuples.
-Exclusions contain `plugin` and `removed_by`. Direct inputs use an empty kit
+`pack_path`, `origin`, `slot`, `needs`, `observes`, `provides` and recursive `replaces` tuples.
+Exclusions contain `plugin` and `removed_by`. Direct inputs use an empty pack
 path; built-ins use `("harnessed",)`. The result records static declarations,
 not live activation or services published dynamically by setup. Only selected
-recipes contribute prompts and event types. Kits are not kernel plugin recipes
+recipes contribute prompts and event types. Plugin packs are not kernel plugin recipes
 and cannot be mounted with `session.use()`.
-See [library defaults](../guides/plugins.md#publish-library-defaults-with-kit).
+See [library defaults](../guides/plugins.md#publish-library-defaults-with-pluginpack).
 
 Start with `Agent(model="openai-responses:gpt-6.1-terra")` to select a model.
 Provider strings automatically select the PydanticAI adapter. Use an explicit
@@ -262,7 +262,7 @@ lines, MARKDOWN adds optional level-two headings, and XML escapes section conten
 
 `SystemPrompt.from_plugins(*parts, order=PluginOrder.AS_LISTED, format=...)` opts into
 collection. **The keyword-only `order` argument has no default.** Fixed parts appear
-before complete plugin blocks in resolved plugin-list order. Nested kits expand
+before complete plugin blocks in resolved plugin-list order. Nested packs expand
 at their list position; removals disappear and replacements keep inherited slot
 positions. Only final winners' providers run, once at agent construction.
 A plugin provider returns a content document and cannot request collection itself.
@@ -270,10 +270,10 @@ A selected override without an explicit collection strategy raises `ConfigError`
 before providers run. Collection strategies cannot be nested inside content.
 
 `Agent(instructions="...")` prepends caller text. `Agent(prompt=...)` selects the
-outer document or strategy. `Kit(name, plugins, prompt=...)` supplies a default
+outer document or strategy. `PluginPack(name, plugins, prompt=...)` supplies a default
 using normal slot precedence: parent defaults override children and explicit
-agent prompts override kits. Conflicting sibling prompt defaults require a direct
-choice. Caller instructions do not replace a kit's strategy. Optional `None`
+agent prompts override packs. Conflicting sibling prompt defaults require a direct
+choice. Caller instructions do not replace a pack's strategy. Optional `None`
 entries in public plugin lists are ignored.
 
 `Instructions(text="", title=None, description="")` is a content value, not a

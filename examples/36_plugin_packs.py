@@ -1,12 +1,12 @@
-"""Run with: uv run python -m examples.36_plugin_kits"""
+"""Run with: uv run python -m examples.36_plugin_packs"""
 
 import asyncio
 
 from harnessed import (
     Agent,
-    Kit,
     Plugin,
     PluginOrder,
+    PluginPack,
     SystemPrompt,
     tool,
 )
@@ -33,8 +33,8 @@ class DebugTools(Plugin):
         return "Debugging enabled."
 
 
-def library_kit() -> Kit:
-    return Kit(
+def library_pack() -> PluginPack:
+    return PluginPack(
         "library",
         [TextTools(), DebugTools(), AgentLoop(max_steps=12)],
         prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
@@ -42,7 +42,7 @@ def library_kit() -> Kit:
 
 
 async def main() -> None:
-    project = Kit("project", [library_kit(), AgentLoop(max_steps=6)]).without(DebugTools)
+    project = PluginPack("project", [library_pack(), AgentLoop(max_steps=6)]).without(DebugTools)
     agent = Agent(
         model=ScriptedModel([call("label", text="Hello"), "Application: Hello"]),
         plugins=[project, TextTools(prefix="Application")],

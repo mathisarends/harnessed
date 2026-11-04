@@ -3,9 +3,9 @@ from typing import assert_type
 from harnessed import (
     Agent,
     Instructions,
-    Kit,
     Plugin,
     PluginOrder,
+    PluginPack,
     PromptFormat,
     SectionDelivery,
     Session,
@@ -24,7 +24,7 @@ feature = PromptFeature()
 assert_type(feature.instructions(), SystemPrompt)
 assert_type(PluginOrder.AS_LISTED, PluginOrder)
 layout = SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED, format=PromptFormat.MARKDOWN)
-Agent(instructions="Role.", plugins=[None, Kit("feature", [feature, None], prompt=layout)])
+Agent(instructions="Role.", plugins=[None, PluginPack("feature", [feature, None], prompt=layout)])
 Agent(prompt=layout)
 SystemPrompt.from_plugins()  # ty: ignore[missing-argument]
 SystemPrompt.from_plugins(order="as_listed")  # ty: ignore[invalid-argument-type]

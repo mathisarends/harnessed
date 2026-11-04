@@ -32,7 +32,7 @@ Provide plugin guidance through synchronous `instructions() -> SystemPrompt`.
 Use only recipe configuration in that method; files and async session factories
 belong in returned `Instructions` values. Collect complete blocks explicitly
 with `SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)`, supplied through
-the agent's or kit's `prompt=`. Caller `Agent(instructions="...")` text is
+the agent's or pack's `prompt=`. Caller `Agent(instructions="...")` text is
 prepended. See the [context guide](docs/guides/context.md).
 
 Hook priorities run in ascending order: `Priority.GUARD`, `Priority.DEFAULT`,

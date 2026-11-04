@@ -15,7 +15,7 @@ import re
 from harnessed.kernel import Context, Key, dependency
 assert 'pydantic' not in sys.modules
 from harnessed import (
-    Agent, CompositionDescription, Kit, SessionState, OutputContract, Plugin, PluginConfig,
+    Agent, CompositionDescription, PluginPack, SessionState, OutputContract, Plugin, PluginConfig,
     PluginOrder,
     PromptFormat, SectionDelivery,
     SystemPrompt, Instructions, tool,
@@ -74,14 +74,14 @@ class Guidance(Plugin, slot='wheel.guidance'):
         return SystemPrompt('Plugin guidance.')
 
 async def main():
-    defaults = Kit('library', [Guidance()])
+    defaults = PluginPack('library', [Guidance()])
     selected = Guidance()
     configured = Agent(plugins=[defaults, selected],
                        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED))
     description = configured.describe()
     assert isinstance(description, CompositionDescription)
     assert configured.plugins[-1] is selected
-    assert description.plugins[-1].replaces[0].kit_path == ('library',)
+    assert description.plugins[-1].replaces[0].pack_path == ('library',)
     assert await configured.prompt.render() == 'Plugin guidance.'
     filtered = Agent(plugins=[defaults.without(Guidance)])
     assert filtered.describe().removed[0].removed_by == ('library',)

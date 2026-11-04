@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased
+
+### Breaking changes
+
+- Rename `Kit` to `PluginPack`, `KitPromptPolicy` to `PluginPackPromptPolicy`
+  and `ResolvedKit` to `ResolvedPluginPack`. Update imports from `harnessed`
+  and references to these types; the old names have no compatibility aliases.
+- Rename `PluginDescription.kit_path` to `PluginDescription.pack_path`, including
+  descriptions nested in replacement histories and exclusions. Update attribute
+  access and keyword construction accordingly.
+- Composition behavior is unchanged: packs retain ordered plugin defaults,
+  nesting, slot overrides, `without()` exclusions and optional prompt strategies.
+  Persisted state and storage format versions are unchanged.
+
+### Upgrade from 0.12.0
+
+```python
+from harnessed import PluginPack, PluginPackPromptPolicy, ResolvedPluginPack
+from harnessed.plugins import Filesystem
+
+workspace = PluginPack("workspace", [Filesystem(".")])
+resolved: ResolvedPluginPack = workspace.resolve(prompt=PluginPackPromptPolicy.OMIT)
+for plugin in resolved.description.plugins:
+    print(plugin.pack_path)
+```
+
+Run the renamed offline example with
+`uv run python -m examples.36_plugin_packs`.
+See [plugin packs](docs/guides/plugins.md#publish-library-defaults-with-pluginpack).
+
 ## 0.12.0 (2026-11-04)
 
 This minor release adds parent-owned subagent sessions and replaces the named
@@ -167,7 +197,7 @@ format **2**.
    and selected recipes' instruction contributions remain intact.
 
 See [sessions](docs/guides/sessions.md), [tracing](docs/guides/tracing.md) and
-[kit resolution](docs/guides/plugins.md#resolve-a-kit-into-flat-recipes).
+[kit resolution](docs/guides/plugins.md#resolve-a-pack-into-flat-recipes).
 Run `uv run python -m examples.38_session_store`,
 `uv run python -m examples.39_typed_session_store` and
 `uv run python -m examples.40_atomic_session_store` for offline persistence examples.
@@ -293,7 +323,7 @@ agent = Agent(instructions="Help with the workspace.", plugins=[workspace])
 ```
 
 See [prompt composition](docs/guides/context.md) and
-[kit composition](docs/guides/plugins.md#publish-library-defaults-with-kit) for
+[kit composition](docs/guides/plugins.md#publish-library-defaults-with-pluginpack) for
 provider timing, ordering and slot precedence.
 
 ## 0.9.0 (2026-11-01)

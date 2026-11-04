@@ -6,10 +6,10 @@ from enum import StrEnum
 from harnessed import (
     Agent,
     Instructions,
-    Kit,
     Plugin,
     PluginConfig,
     PluginOrder,
+    PluginPack,
     PromptFormat,
     SectionDelivery,
     SystemPrompt,
@@ -58,7 +58,7 @@ class BrowserTrust(Plugin):
 async def main() -> None:
     interaction = InteractionTools(name="browser.interaction")
     for format in PromptFormat:
-        browser = Kit(
+        browser = PluginPack(
             "browser",
             [Observe(config=ObserveConfig()), interaction, BrowserTrust()],
             prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED, format=format),
