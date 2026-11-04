@@ -113,6 +113,7 @@ class CountingTools(Plugin, needs=(str,)):
 
 
 async def consumer(agent: Session) -> None:
+    assert_type(await agent.add_context("Include source URLs."), None)
     assert_type(CountingTools().create_instance(), CountingTools)
     assert_type(await CountingTools().count(1, injected="service"), int)
     assert_type(await agent.run("hello"), RunResult[None])

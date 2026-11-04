@@ -47,7 +47,7 @@ class RelevantMemories(Plugin, needs=(Memory, Session)):
         if event.is_turn_start:
             hits = await memory.search(event.latest_user_text, k=3)
             if hits:
-                await agent.context.set("memories", "\n".join(hits))
+                await agent.add_context("\n".join(hits))
         return await next_()
 
 

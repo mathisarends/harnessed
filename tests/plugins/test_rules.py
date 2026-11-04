@@ -4,6 +4,7 @@ from harnessed import Agent as Application
 from harnessed import Plugin, PolicyDecision, ToolCall, ToolResult, tool
 from harnessed.core.messages import Role, ToolStatus
 from harnessed.core.model import ModelChunk
+from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.core.session.events import (
     ContextValueChangedEvent,
@@ -56,7 +57,7 @@ async def test_rule_note_context_steer_order_and_structured_exit_code():
         assert [e.mode for e in inbox] == ["followup", "steer"]
         assert inbox[-1].message.role == Role.USER
         assert any("Consider the failure." in m.text for m in model.requests[-1].messages)
-        assert agent.context.values["rule:rules:1"] == "Consider the failure."
+        assert agent.ctx[DynamicContext].values["rule:rules:1"] == "Consider the failure."
         triggered = [e for e in agent_audit.events if isinstance(e, RuleTriggeredEvent)]
         assert triggered[0].actions == ("note", "steer")
         assert AuditProjection(agent_audit.events).messages == agent.log.messages
@@ -285,10 +286,10 @@ async def test_canonical_match_metadata_survives_output_limits_and_context_reset
         assert len(first.tool_calls[0][1].content) == 256
         assert dict(first.tool_calls[0][1].rule_matches)["rules:0"] is True
         await session.run("Second")
-        assert session.context.values["rule:rules:0"] == "Use a smaller range."
+        assert session.ctx[DynamicContext].values["rule:rules:0"] == "Use a smaller range."
         source[0] = "fixed"
         await session.run("Success")
-        assert "rule:rules:0" not in session.context.values
+        assert "rule:rules:0" not in session.ctx[DynamicContext].values
 
 
 def test_rules_are_immutable_and_require_actions():

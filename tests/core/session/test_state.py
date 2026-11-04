@@ -20,6 +20,7 @@ from harnessed import (
 )
 from harnessed.core.errors import SessionClosed, SessionFormatError, SessionStateError
 from harnessed.core.messages import ImageReference, UserMessage
+from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.session.session import SessionLog
 from harnessed.events import TurnEndedEvent, TurnFinishedEvent, TurnStartedEvent
 from harnessed.kernel import Context
@@ -32,7 +33,7 @@ async def test_roundtrip_continuation_matches_a_live_conversation_and_uses_curre
     model = ScriptedModel(["first", "second", "third"])
     agent = Agent(model=model, instructions="Original instructions.")
     async with agent.session() as session:
-        await session.context.set("customer", "one")
+        await session.ctx[DynamicContext].set("customer", "one")
         first = await session.run("Remember this.")
         saved = first.state.to_json()
         await session.run("Continue.")
@@ -42,13 +43,13 @@ async def test_roundtrip_continuation_matches_a_live_conversation_and_uses_curre
         await session.run("Continue.")
         actual = model.requests[-1].messages
         assert [(m.role, m.text) for m in actual] == [(m.role, m.text) for m in expected]
-        assert session.context.values == {"customer": "one"}
+        assert session.ctx[DynamicContext].values == {"customer": "one"}
         assert not session.events and not session.turns
     newer = ScriptedModel(["updated"])
     async with Agent(model=newer, instructions="New instructions.").session(
         state=restored
     ) as session:
-        await session.context.set("customer", "two")
+        await session.ctx[DynamicContext].set("customer", "two")
         result = await session.run("Update.")
         assert result.state.context == {"customer": "two"}
     assert newer.requests[0].messages[0].text == "New instructions."
@@ -61,9 +62,9 @@ async def test_two_imports_are_independent_and_snapshots_are_immutable():
     state = (await agent.run("Initial.")).state
     saved = state.to_json()
     async with agent.session(state=state) as a, agent.session(state=state) as b:
-        await a.context.set("branch", "a")
+        await a.ctx[DynamicContext].set("branch", "a")
         result_a = await a.run("Approach A.")
-        assert "branch" not in b.context.values
+        assert "branch" not in b.ctx[DynamicContext].values
         result_b = await b.run("Approach B.")
     assert state.to_json() == saved
     assert result_a.state.context == {"branch": "a"}
@@ -249,7 +250,7 @@ async def test_repeated_imports_compact_the_active_state_without_resurrecting_ol
     state = None
     for index in range(10):
         async with agent.session(state=state) as session:
-            await session.context.set("iteration", str(index))
+            await session.ctx[DynamicContext].set("iteration", str(index))
             session.observe(Observation("browser", f"frame {index}", refs=(str(index),)))
             result = await session.run(f"task {index} " * 200)
             state = SessionState.from_json(result.state.to_json())

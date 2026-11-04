@@ -105,12 +105,12 @@ async def main():
         store = JsonSessionStore(root=directory)
         persistent = Agent(model=ScriptedModel(['persisted', 'restored']), store=store)
         async with persistent.session(id='wheel-conversation') as session:
-            await session.context.set('customer', 'Ada')
+            await session.add_context('The customer is Ada.')
             await session.run('Remember the customer.')
         record = await store.load_session('wheel-conversation')
         assert isinstance(record, StoredSession)
         async with persistent.session(id='wheel-conversation') as session:
-            assert session.context.values == {'customer': 'Ada'}
+            assert session.messages[0].text == 'The customer is Ada.'
             assert (await session.run('Continue.')).text == 'restored'
 
     guidance = Guidance()
@@ -134,13 +134,17 @@ async def main():
         pass
     else:
         raise AssertionError('Plugin order must be explicit')
-    async with Agent(model=ScriptedModel([reply('Ready')]),
+    mounted_model = ScriptedModel([reply('Ready'), reply('Unmounted')])
+    async with Agent(model=mounted_model,
                      instructions='Fixed.').session() as session:
         handle = await session.use(guidance, section_delivery=SectionDelivery.CONTEXT)
-        assert list(session.context.values.values()) == ['Plugin guidance.']
         await session.run('Mounted')
+        assert any('Plugin guidance.' in message.text
+                   for message in mounted_model.requests[-1].messages)
         await handle.aclose()
-        assert not session.context.values
+        await session.run('Unmounted')
+        assert all('Plugin guidance.' not in message.text
+                   for message in mounted_model.requests[-1].messages)
         assert await session.prompt.render() == 'Fixed.'
     agent = Agent(model=ScriptedModel([call(Calculator.add, a=19, b=23), reply('42')]),
                   plugins=[Calculator(config=CalculatorConfig())], prompt=SystemPrompt(

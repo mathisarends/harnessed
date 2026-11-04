@@ -73,7 +73,7 @@ async def open_session(
             [
                 Service(SessionLog, log),
                 Service(Session, runtime),
-                Service(DynamicContext, runtime.context),
+                Service(DynamicContext, DynamicContext(log)),
             ]
         )
     except BaseException:

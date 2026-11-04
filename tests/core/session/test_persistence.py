@@ -18,6 +18,7 @@ from harnessed import (
     tool,
 )
 from harnessed.core.messages import ImageReference, UserMessage
+from harnessed.core.prompt.context import DynamicContext
 from harnessed.errors import ConfigError, SessionClosed, SessionFormatError, SessionWriteConflict
 from harnessed.events import ApprovalRequestedEvent, ContextMessageEvent
 from harnessed.integrations.json import JsonSessionStore
@@ -62,19 +63,19 @@ async def test_repository_reopens_by_id_and_saves_context_and_results_before_ret
     model = ScriptedModel(["first", "second"])
     agent = Agent(model=model, store=store, instructions="Current instructions.")
     async with agent.session(id="tenant:customer/4711") as session:
-        await session.context.set("customer", "Ada")
+        await session.add_context("The customer is Ada.")
         assert await store.load_session(session.id) is not None
         result = await session.run("Remember this.")
         stored = await store.load_session(session.id)
         assert stored is not None
         assert stored.checkpoint.state.history[-1].message.text == "first"
-        assert result.state.context == {"customer": "Ada"}
+        assert result.state.history[0].message.text == "The customer is Ada."
     async with agent.session(id="tenant:customer/4711") as restored:
-        assert restored.context.values == {"customer": "Ada"}
+        assert restored.messages[0].text == "The customer is Ada."
         await restored.run("Continue.")
     assert [message.text for message in model.requests[-1].messages] == [
         "Current instructions.",
-        '<context name="customer">Ada</context>',
+        "The customer is Ada.",
         "Remember this.",
         "first",
         "Continue.",
@@ -139,12 +140,12 @@ async def test_paused_inbox_and_quiet_context_survive_reopening(store):
         await session.pause()
     async with agent.session(id="inbox") as session:
         assert session.status is SessionStatus.PAUSED
-        await session.context.set("status", "ready")
+        await session.add_context("Status: ready")
         await session.submit("First")
         await session.submit("Second")
     async with agent.session(id="inbox") as restored:
         assert restored.status is SessionStatus.PAUSED
-        assert restored.context.values == {"status": "ready"}
+        assert restored.messages[0].text == "Status: ready"
         assert [item.content.text for item in restored.inbox.pending] == ["First", "Second"]
         await restored.resume()
         await asyncio.wait_for(restored.wait_until_idle(), timeout=5)
@@ -159,11 +160,11 @@ async def test_paused_inbox_and_quiet_context_survive_reopening(store):
 async def test_stale_worker_cannot_overwrite_a_new_revision(store):
     agent = Agent(model=ScriptedModel([]), store=store)
     async with agent.session(id="shared") as first, agent.session(id="shared") as second:
-        await first.context.set("owner", "first")
+        await first.add_context("Owner: first")
         with pytest.raises(SessionWriteConflict):
-            await second.context.set("owner", "second")
+            await second.add_context("Owner: second")
     async with agent.session(id="shared") as restored:
-        assert restored.context.values == {"owner": "first"}
+        assert [message.text for message in restored.messages] == ["Owner: first"]
 
 
 @pytest.mark.parametrize("mode", ["run", "stream"])
@@ -213,7 +214,7 @@ async def test_cancelled_write_finishes_before_cancellation_is_delivered(monkeyp
             await session.emit(ContextMessageEvent(UserMessage("retained")))
             write = asyncio.create_task(session.flush())
         else:
-            write = asyncio.create_task(session.context.set("fact", "retained"))
+            write = asyncio.create_task(session.add_context("retained"))
         await asyncio.wait_for(entered.wait(), timeout=5)
         write.cancel()
         release.set()
@@ -330,7 +331,7 @@ async def test_intermediate_changes_coalesce_and_restore_at_the_requested_bounda
     repository = ConversationRepository()
     agent = Agent(model=ScriptedModel([]), store=repository)
     async with agent.session(id="batch") as session:
-        await session.context.set("seed", "ready")
+        await session.ctx[DynamicContext].set("seed", "ready")
         before = repository.rows["batch"].revision
         await session.emit(ContextMessageEvent(UserMessage("first")))
         await session.emit(ContextMessageEvent(UserMessage("second")))
@@ -426,7 +427,7 @@ async def test_context_provider_can_unmount_while_a_persistent_session_closes(st
         result = await session.run("Work")
         assert result.state.context == {"ci": "ready"}
     async with Agent(model=ScriptedModel([]), store=store).session(id="provider") as restored:
-        assert "ci" not in restored.context.values
+        assert "ci" not in restored.ctx[DynamicContext].values
 
 
 async def test_reported_store_failure_is_not_raised_again_by_context_provider_teardown():
