@@ -69,13 +69,27 @@ inputs when passed to an Agent. See [pack resolution](../guides/plugins.md#resol
 ## MCP client
 
 Install `harnessed[mcp]` and import `MCP` from `harnessed.plugins.mcp`.
+The extra installs FastMCP's client dependencies. Harnessed consumes external MCP
+servers; server hosting and exporting Harnessed tools over MCP are outside this SDK.
 `MCP.http(name, *, url, headers=None, auth=None, ...)` connects over Streamable
-HTTP. `MCP.stdio(name, *, command, args=(), env=None, cwd=None, ...)` launches
-a local server. Both accept `include_tools=None`, `readonly_tools=()`,
+HTTP through FastMCP. `auth` accepts a bearer-token string, `"oauth"` or an
+`httpx.Auth` instance. `MCP.stdio(name, *, command, args=(), env=None, cwd=None, ...)`
+connects to an installed stdio MCP server, managing its subprocess for the client.
+Both accept `include_tools=None`, `readonly_tools=()`,
 `startup_timeout=10.0`, `call_timeout=60.0`, `parallel=False` and `enabled=True`.
-`MCP(name, *, transport: MCPTransport, ...)` accepts a custom transport recipe.
+`MCP(name, *, transport: MCPTransport, ...)` accepts a custom transport recipe
+implementing `create() -> fastmcp.client.transports.ClientTransport`.
 Each mount owns one connection and a fixed catalog of namespaced tools. See
 [MCP tools](../guides/mcp.md) for approvals, results and cancellation boundaries.
+
+## Tool presentation
+
+`@tool(title=None, tags=(), icons=(), annotations=None, meta=None, ...)` attaches
+immutable display and JSON integration metadata to native tools. Import
+`ToolAnnotations`, `ToolIcon` and `ToolPresentation` from `harnessed`. Policy,
+execution and review hooks expose the captured `ToolInfo.presentation`; display
+values do not change model argument schemas or grant approval. See
+[tool display and integration metadata](../guides/tools.md#tool-display-and-integration-metadata).
 
 ## Subagents
 

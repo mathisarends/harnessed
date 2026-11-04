@@ -1,8 +1,8 @@
 # Executable examples
 
 Run examples from the checkout with the locked uv environment. These scripts are
-also exercised by the offline test suite; the native-provider example additionally
-requires its provider extra and credentials.
+also exercised by the test suite. The MCP client example requires an external
+MCP endpoint; the native-provider example requires its provider extra and credentials.
 
 | Topic | Run | Source |
 | --- | --- | --- |
@@ -65,9 +65,11 @@ and [the event extension guide](events.md).
 
 ## MCP tools
 
-`uv run --extra mcp python -m examples.31_mcp` starts a local MCP subprocess,
-discovers its tools and runs a scripted agent without network access or provider
-credentials. See the [MCP guide](mcp.md) for HTTP, filters and ownership.
+`uv run --extra mcp python -m examples.31_mcp --url http://localhost:8000/mcp`
+consumes an existing MCP endpoint with a read-only `search(query: str)` tool.
+It discovers the remote tool and invokes it through a scripted agent, without
+provider credentials. The endpoint must be supplied separately. See the
+[MCP guide](mcp.md) for HTTP, stdio, filters and connection ownership.
 
 ## Tracing
 

@@ -86,8 +86,20 @@ async def test_spawn_returns_before_child_and_completion_wakes_idle_coordinator(
         assert copied.children[0].status is SubagentStatus.INTERRUPTED
 
 
-@pytest.mark.parametrize("timeout", [0.0, 1.0])
-async def test_status_asks_child_coalesces_requests_and_does_not_finish_task(timeout, tmp_path):
+@pytest.mark.parametrize(
+    "timeout,save_delay",
+    [
+        pytest.param(0.0, 0.0, id="poll"),
+        pytest.param(5.0, 0.0, id="wait"),
+        pytest.param(5.0, 0.2, id="slow-checkpoints"),
+    ],
+)
+async def test_status_asks_child_coalesces_requests_and_does_not_finish_task(
+    timeout, save_delay, tmp_path, monkeypatch
+):
+    # The status timeout bounds the reply wait, not the surrounding durable writes.
+    # Keep a separate local coordination deadline with room for slow Windows fsyncs.
+    coordination_timeout = 15
     blocked, release, continue_work, report_notified = [asyncio.Event() for _ in range(4)]
     child_requests = []
     child_id = None
@@ -97,7 +109,7 @@ async def test_status_asks_child_coalesces_requests_and_does_not_finish_task(tim
         @tool(readonly=True)
         async def work(self):
             blocked.set()
-            await asyncio.wait_for(release.wait(), 3)
+            await asyncio.wait_for(release.wait(), coordination_timeout)
             return "First part complete"
 
     async def child_response(request):
@@ -130,7 +142,7 @@ async def test_status_asks_child_coalesces_requests_and_does_not_finish_task(tim
         else:
             results = [message for message in request.messages if isinstance(message, ToolMessage)]
             assert [message.status for message in results[-2:]] == [ToolStatus.ERROR, ToolStatus.OK]
-            await asyncio.wait_for(continue_work.wait(), 3)
+            await asyncio.wait_for(continue_work.wait(), coordination_timeout)
             yield ModelChunk(text="Final task result")
 
     async def parent_response(request):
@@ -195,12 +207,21 @@ async def test_status_asks_child_coalesces_requests_and_does_not_finish_task(tim
         Agent(model=CallbackModel(child_response), plugins=[Work()]),
         CallbackModel(parent_response),
     )
-    parent.store = JsonSessionStore(root=tmp_path)
+    store = JsonSessionStore(root=tmp_path)
+    if save_delay:
+        save = store.save_session
+
+        async def delayed_save(conversation_id, commit, *, expected_revision):
+            await asyncio.sleep(save_delay)
+            return await save(conversation_id, commit, expected_revision=expected_revision)
+
+        monkeypatch.setattr(store, "save_session", delayed_save)
+    parent.store = store
     async with parent.session() as session:
         session.on(SessionAppended, requested)
         await session.run("Start")
-        await asyncio.wait_for(blocked.wait(), 2)
-        result = await asyncio.wait_for(session.run("Ask"), 2)
+        await asyncio.wait_for(blocked.wait(), coordination_timeout)
+        result = await asyncio.wait_for(session.run("Ask"), coordination_timeout)
         reports = [
             json.loads(value.text)["report"]
             for call, value in result.tool_calls
@@ -214,8 +235,8 @@ async def test_status_asks_child_coalesces_requests_and_does_not_finish_task(tim
             assert session.children[0].runtime.activity is ChildActivity.TOOL
             assert len(child_requests) == 1
             release.set()
-            await asyncio.wait_for(report_notified.wait(), 2)
-            await asyncio.wait_for(session.wait_until_idle(), 2)
+            await asyncio.wait_for(report_notified.wait(), coordination_timeout)
+            await asyncio.wait_for(session.wait_until_idle(), coordination_timeout)
         else:
             assert reports[0]["state"] == "answered"
             assert not report_notified.is_set()
@@ -228,7 +249,7 @@ async def test_status_asks_child_coalesces_requests_and_does_not_finish_task(tim
         )
         continue_work.set()
         # Observe completion without starting another parent turn ourselves.
-        async with asyncio.timeout(2):
+        async with asyncio.timeout(coordination_timeout):
             async for _event in session.subscribe():
                 if session.children[0].status is SubagentStatus.COMPLETED:
                     break

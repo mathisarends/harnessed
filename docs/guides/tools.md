@@ -47,6 +47,50 @@ a `ToolContext`, validates its external schema and returns `ToolResult`. Core
 owns registrations and uses the same availability, scheduling, approval and
 execution pipeline as Python tools; it has no MCP or JSON Schema dependency.
 
+## Tool display and integration metadata
+
+The native decorator accepts display options inspired by FastMCP without requiring
+the MCP extra. Existing `name`, `description`, `enabled` and `timeout` options keep
+their normal execution behavior.
+
+```python
+from harnessed import Plugin, ToolAnnotations, ToolIcon, tool
+
+
+class Documents(Plugin):
+    @tool(
+        title="Search documents",
+        tags={"documents", "search"},
+        icons=(ToolIcon("https://example.com/search.svg", mime_type="image/svg+xml"),),
+        annotations=ToolAnnotations(idempotent_hint=True, open_world_hint=False),
+        meta={"ui": {"category": "workspace"}},
+        readonly=True,
+    )
+    async def search(self, query: str) -> str:
+        """Find documents matching the query."""
+        return f"Matches for {query}"
+```
+
+| Option | Meaning |
+| --- | --- |
+| `title: str \| None` | An optional human-readable display title. |
+| `tags: Iterable[str]` | Nonempty labels for application grouping and filtering. |
+| `icons: Iterable[ToolIcon]` | Icon sources, optional MIME types, sizes and light/dark themes. Harnessed does not fetch them. |
+| `annotations: ToolAnnotations \| None` | Optional `read_only_hint`, `destructive_hint`, `idempotent_hint` and `open_world_hint` booleans. |
+| `meta: JSONMapping \| None` | JSON metadata for application integrations. |
+
+Hooks read the captured values through `event.tool.presentation: ToolPresentation`.
+Tags become a `frozenset`, icons a tuple and JSON metadata is copied and deeply
+frozen at declaration. A prepared call retains its original presentation across
+registration replacement. These values stay process-local: they do not change
+model tool definitions, argument schemas or persisted events. MCP tools populate
+the same presentation from their remote catalog, including FastMCP tags.
+
+Annotations describe behavior; they never grant permissions. Only `readonly=True`
+and the application's approval policy control local authorization. Use `metadata=`
+for typed Python application values, and `meta=` for JSON integration data.
+Synchronous tools continue to run in worker threads; async tools run on the event loop.
+
 ## Pydantic parameter objects
 
 Use `@tool(params=SearchParams)` to receive all model-supplied arguments as one

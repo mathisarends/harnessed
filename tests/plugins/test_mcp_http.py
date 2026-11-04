@@ -1,6 +1,7 @@
 import asyncio
 import json
 import socket
+import sys
 from base64 import urlsafe_b64encode
 from contextlib import asynccontextmanager, suppress
 from hashlib import sha256
@@ -8,15 +9,17 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-pytest.importorskip("mcp")
+pytest.importorskip("fastmcp")
 pytest.importorskip("jsonschema")
 
 import httpx
 import uvicorn
+from fastmcp import FastMCP as FastMCPServer
 from mcp.client.auth import OAuthClientProvider
 from mcp.server.fastmcp import Context as MCPContext
 from mcp.server.fastmcp import FastMCP
 from mcp.shared.auth import OAuthClientMetadata, OAuthToken
+from mcp.types import Icon
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
@@ -24,6 +27,7 @@ from starlette.routing import Route
 
 import harnessed.plugins.mcp as mcp_plugin
 from harnessed import Agent, ToolCall
+from harnessed import ToolAnnotations as LocalToolAnnotations
 from harnessed.core.messages import ToolStatus
 from harnessed.core.model import ModelChunk
 from harnessed.core.tools.registry import ToolRegistry
@@ -37,6 +41,12 @@ async def no_leaked_connections():
     yield
     assert not [
         task for task in asyncio.all_tasks() if task.get_name().startswith("harnessed:mcp:")
+    ]
+    assert not [
+        task
+        for task in asyncio.all_tasks()
+        if task.get_coro().__qualname__
+        in {"Client._session_runner", "_stdio_transport_connect_task"}
     ]
 
 
@@ -71,6 +81,86 @@ def serve_http():
             listener.close()
 
     return serve
+
+
+@pytest.mark.parametrize("stateless", [False, True])
+async def test_native_fastmcp_http_with_bearer_auth(serve_http, stateless):
+    server = FastMCPServer("native-http")
+    calls = []
+    authorization = []
+
+    @server.tool(
+        title="Echo documentation",
+        tags={"docs"},
+        icons=[Icon(src="data:image/png;base64,aA==", mimeType="image/png")],
+        annotations={"readOnlyHint": True, "idempotentHint": True},
+        meta={"category": "documentation"},
+    )
+    async def echo(query: str) -> str:
+        calls.append(query)
+        return query
+
+    inner = server.http_app(path="/mcp", stateless_http=stateless)
+
+    async def app(scope, receive, send):
+        if scope["type"] == "http":
+            authorization.append(dict(scope["headers"])[b"authorization"])
+        await inner(scope, receive, send)
+
+    async with serve_http(app) as url:
+        model = ScriptedModel(
+            [[ModelChunk(tool_call=ToolCall("native__echo", {"query": "FastMCP works"}))], "done"]
+        )
+        agent = Agent(
+            model=model,
+            plugins=[MCP.http("native", url=url, auth="native-token", readonly_tools=["echo"])],
+        )
+        async with agent.session() as session:
+            registry = session.ctx[ToolRegistry]
+            plan = registry.plan(ToolCall("native__echo", {"query": "FastMCP works"}))
+            presentation = plan.tool.presentation
+            assert presentation.title == "Echo documentation"
+            assert presentation.tags == frozenset({"docs"})
+            assert presentation.icons[0].mime_type == "image/png"
+            assert presentation.meta["category"] == "documentation"
+            assert presentation.annotations == LocalToolAnnotations(
+                read_only_hint=True, idempotent_hint=True
+            )
+            result = await session.run("echo")
+    assert calls == ["FastMCP works"]
+    assert result.tool_calls[0][1].text.splitlines()[0] == "FastMCP works"
+    assert authorization and all(value == b"Bearer native-token" for value in authorization)
+
+
+async def test_mcp_example_consumes_an_external_server(serve_http):
+    server = FastMCPServer("example-fixture")
+    calls = []
+
+    @server.tool
+    async def search(query: str) -> str:
+        calls.append(query)
+        return "External documentation search result"
+
+    async with serve_http(server.http_app(path="/mcp")) as url:
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "examples.31_mcp",
+            "--url",
+            url,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            async with asyncio.timeout(30):
+                stdout, stderr = await process.communicate()
+        finally:
+            if process.returncode is None:
+                process.kill()
+                await asyncio.wait_for(process.wait(), 5)
+    assert process.returncode == 0, stderr.decode("utf-8", errors="replace")
+    assert calls == ["MCP"]
+    assert b"External documentation search result" in stdout
 
 
 @pytest.mark.parametrize("stateless", [False, True])
@@ -133,9 +223,9 @@ async def test_http_startup_rejection_releases_connection(serve_http, status):
     app = Starlette(routes=[Route("/mcp", reject, methods=["POST"])])
     async with serve_http(app) as url:
         model = ScriptedModel(["unused"])
-        with pytest.raises(ExceptionGroup) as caught:
+        with pytest.raises(httpx.HTTPStatusError) as caught:
             await Agent(model=model, plugins=[MCP.http("web", url=url, startup_timeout=1)]).run("x")
-        assert caught.value.subgroup(httpx.HTTPStatusError) is not None
+        assert caught.value.response.status_code == status
         assert model.requests == []
     assert requests == ["POST"]
 
@@ -286,12 +376,12 @@ async def test_http_cross_origin_redirect_does_not_forward_credentials(serve_htt
 
         source = Starlette(routes=[Route("/mcp", redirect, methods=["POST"])])
         async with serve_http(source) as url:
-            with pytest.raises(ExceptionGroup) as caught:
+            with pytest.raises(httpx.HTTPStatusError) as caught:
                 await Agent(
                     model=ScriptedModel(["unused"]),
                     plugins=[MCP.http("web", url=url, headers={"Authorization": "Bearer secret"})],
                 ).run("x")
-            assert caught.value.subgroup(httpx.HTTPStatusError) is not None
+            assert caught.value.response.status_code == 307
     assert received == []
 
 

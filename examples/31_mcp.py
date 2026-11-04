@@ -1,31 +1,22 @@
-"""Run a real local MCP server and a scripted agent without network access."""
+"""Consume an existing MCP search server with a scripted agent.
+
+Run: uv run --extra mcp python -m examples.31_mcp --url http://localhost:8000/mcp
+The server must provide a read-only search(query: str) tool.
+"""
 
 import asyncio
-import sys
-from pathlib import Path
-
-from mcp.server.fastmcp import FastMCP
+from argparse import ArgumentParser
 
 from harnessed import Agent, ToolCall
 from harnessed.models import ModelChunk
 from harnessed.plugins.mcp import MCP
 from harnessed.testing import ScriptedModel
 
-server = FastMCP("documentation")
-SERVER_PATH = str(Path(__file__).resolve())
 
-
-@server.tool()
-def search(query: str) -> str:
-    """Search the example documentation."""
-    return f"Documentation for {query}: sessions own their plugin connections."
-
-
-async def main() -> None:
-    docs = MCP.stdio(
+async def main(url: str) -> None:
+    docs = MCP.http(
         "docs",
-        command=sys.executable,
-        args=(SERVER_PATH, "--server"),
+        url=url,
         include_tools=("search",),
         readonly_tools=("search",),
     )
@@ -42,7 +33,7 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    if sys.argv[1:] == ["--server"]:
-        server.run(transport="stdio")
-    else:
-        asyncio.run(main())
+    parser = ArgumentParser(description="Consume an existing read-only MCP search tool.")
+    parser.add_argument("--url", required=True, help="Streamable HTTP endpoint of the MCP server")
+    arguments = parser.parse_args()
+    asyncio.run(main(arguments.url))

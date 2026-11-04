@@ -11,12 +11,19 @@ from pydantic import BaseModel, ConfigDict, Field, RootModel, TypeAdapter, Valid
 from pydantic.fields import FieldInfo
 
 from harnessed.core.errors import ToolNameConflict
-from harnessed.core.messages import ToolCall, ToolResult, ToolStatus
+from harnessed.core.messages import JSONMapping, ToolCall, ToolResult, ToolStatus
 from harnessed.core.model import ToolDefinition
 from harnessed.core.tools.arguments import ToolArguments, tool_result_content
 from harnessed.core.tools.context import ToolContext, ToolContexts
 from harnessed.core.tools.enabled import ToolEnabled, bind_enabled, validate_enabled
-from harnessed.core.tools.info import ToolChain, ToolInfo, ToolMetadata
+from harnessed.core.tools.info import (
+    ToolAnnotations,
+    ToolChain,
+    ToolIcon,
+    ToolInfo,
+    ToolMetadata,
+    ToolPresentation,
+)
 from harnessed.core.tools.policy import OutputLimit, OutputLimitSetting, validate_output_limit
 from harnessed.core.tools.references import ToolReference, ToolSelector, tool_selector
 from harnessed.core.tools.scheduling import (
@@ -70,8 +77,11 @@ class ToolSpec:
     params: type[BaseModel] | None = None
     metadata: tuple[object, ...] = ()
     chain: ToolChain = ToolChain.CONTINUE
+    presentation: ToolPresentation = ToolPresentation()
 
     def __post_init__(self) -> None:
+        if not isinstance(self.presentation, ToolPresentation):
+            raise TypeError("Tool presentation must be a ToolPresentation")
         object.__setattr__(self, "metadata", ToolMetadata(self.metadata).values)
         object.__setattr__(self, "chain", ToolChain(self.chain))
         if self.parallel and self.chain is ToolChain.STOP_AFTER:
@@ -226,6 +236,11 @@ class ToolRegistry:
         *,
         name: str | None = None,
         description: str | None = None,
+        title: str | None = None,
+        tags: Iterable[str] = (),
+        icons: Iterable[ToolIcon] = (),
+        annotations: ToolAnnotations | None = None,
+        meta: JSONMapping | None = None,
         enabled: ToolEnabled = True,
         timeout: float | None = None,
         parallel: bool = False,
@@ -246,6 +261,11 @@ class ToolRegistry:
         *,
         name: str | None = None,
         description: str | None = None,
+        title: str | None = None,
+        tags: Iterable[str] = (),
+        icons: Iterable[ToolIcon] = (),
+        annotations: ToolAnnotations | None = None,
+        meta: JSONMapping | None = None,
         enabled: ToolEnabled = True,
         timeout: float | None = None,
         parallel: bool = False,
@@ -263,6 +283,11 @@ class ToolRegistry:
                 callback,
                 name=name,
                 description=description,
+                title=title,
+                tags=tags,
+                icons=icons,
+                annotations=annotations,
+                meta=meta,
                 enabled=enabled,
                 timeout=timeout,
                 parallel=parallel,
@@ -285,6 +310,11 @@ class ToolRegistry:
         *,
         name: str | None = None,
         description: str | None = None,
+        title: str | None = None,
+        tags: Iterable[str] = (),
+        icons: Iterable[ToolIcon] = (),
+        annotations: ToolAnnotations | None = None,
+        meta: JSONMapping | None = None,
         enabled: ToolEnabled = True,
         timeout: float | None = None,
         parallel: bool = False,
@@ -302,6 +332,9 @@ class ToolRegistry:
         spec = spec or ToolSpec(
             name=name,
             description=description,
+            presentation=ToolPresentation(
+                title=title, tags=tags, icons=icons, annotations=annotations, meta=meta
+            ),
             enabled=enabled,
             timeout=timeout,
             parallel=parallel,
@@ -485,6 +518,7 @@ class ToolRegistry:
                 tool.spec.readonly,
                 tool.spec.parallel,
                 tool.spec.chain,
+                tool.spec.presentation,
             ),
         )
 
