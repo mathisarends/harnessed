@@ -3,7 +3,6 @@
 import asyncio
 
 from harnessed import Agent, Plugin, SessionLog, ToolResult, tool
-from harnessed.core.tools.registry import ToolRegistry
 from harnessed.hooks import Next, ReviewToolResult
 from harnessed.kernel import Inject, hook
 from harnessed.testing import ScriptedModel, call
@@ -44,9 +43,9 @@ async def main():
     async with agent.session() as session:
         print((await session.run("Echo Hello.")).text)
         handle = await session.use(TemporaryEcho())
-        assert "temporary_echo" in {t.name for t in session.ctx[ToolRegistry].definitions}
+        assert "temporary_echo" in session.tools.names
         await handle.aclose()
-        assert "temporary_echo" not in {t.name for t in session.ctx[ToolRegistry].definitions}
+        assert "temporary_echo" not in session.tools.names
 
 
 if __name__ == "__main__":

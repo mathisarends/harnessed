@@ -59,6 +59,12 @@
   nesting, slot overrides, `without()` exclusions and optional prompt strategies.
   Persisted state and storage format versions are unchanged.
 
+### Added
+
+- Inspect model-visible tools through the read-only `session.tools` mapping and
+  its `.names` set. `harnessed.services` explicitly exports injectable prompt and
+  tool services, plus the `SessionTools` view type.
+
 ### Upgrade from 0.12.0
 
 ```python

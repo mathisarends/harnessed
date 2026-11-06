@@ -61,6 +61,7 @@ from harnessed.core.session.state import SessionState
 from harnessed.core.session.turns import Turn
 from harnessed.core.tools import ToolRegistry
 from harnessed.core.tools.context import BoundToolContexts, ToolContexts
+from harnessed.core.tools.view import SessionTools
 from harnessed.kernel import (
     Context,
     Disposer,
@@ -78,6 +79,7 @@ class Session:
 
     def __init__(self, ctx: Context, session: SessionLog, options: AgentOptions) -> None:
         self.ctx = ctx
+        self._tools_view = SessionTools(ctx[ToolRegistry], ctx)
         self.log = session
         self._options = options
         self._close_task: asyncio.Task[None] | None = None
@@ -117,6 +119,11 @@ class Session:
         session.set_persistence_error_handler(self._persistence_failed)
         ctx.on(SessionAppended, self._session_event)
         ctx.on(SessionPublished, self._stream_event)
+
+    @property
+    def tools(self) -> SessionTools:
+        """Inspect currently visible tools without changing their registrations."""
+        return self._tools_view
 
     @property
     def prompt(self) -> SystemPromptStore:

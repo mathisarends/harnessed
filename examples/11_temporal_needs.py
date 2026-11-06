@@ -4,9 +4,8 @@ import asyncio
 from dataclasses import dataclass
 
 from harnessed import Plugin, ToolCall, tool
-from harnessed.core.prompt.system_prompt import SystemPromptStore
-from harnessed.core.tools.registry import ToolRegistry
 from harnessed.kernel import Context, Emit, Inject
+from harnessed.services import SystemPromptStore, ToolRegistry
 
 
 @dataclass

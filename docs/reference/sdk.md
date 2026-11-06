@@ -82,6 +82,20 @@ implementing `create() -> fastmcp.client.transports.ClientTransport`.
 Each mount owns one connection and a fixed catalog of namespaced tools. See
 [MCP tools](../guides/mcp.md) for approvals, results and cancellation boundaries.
 
+## Session tool inspection and plugin services
+
+`session.tools` is a live, read-only mapping. Use `session.tools.names` for a
+`frozenset[str]`, `session.tools["read_file"]` for a visible `ToolDefinition`,
+and `session.tools.values()` to iterate definitions. Iterating the mapping
+itself yields names. Missing, disabled or inactive tools raise `KeyError` on
+lookup. Existing views reflect activation, removal and replacement, using the
+same visibility rules as model requests. Register tools through plugins.
+
+Plugin authors import `DynamicContext`, `SystemPromptStore` and `ToolRegistry`
+from `harnessed.services`. `SessionTools` is also exported there for annotations.
+These explicit service exports keep plugin code off deep internal import paths;
+the root SDK remains lazy and does not re-export the service catalog.
+
 ## Approval policy
 
 `Approvals.allow_all()` and `Approvals.ask_all()` select the fallback decision;
@@ -350,6 +364,7 @@ after completion it raises `SessionStateError` instead of starting a new turn.
 | emit(event) | Admit a declared execution event or publish a transient notification |
 | approvals.request(call, reason) / answer(id, decision) / revoke(id) | Ask, answer, or revoke live-session grants; `pending` / `grants` / `grant_for()` read them |
 | id / prompt | Session ID / effective system prompt |
+| tools | Read-only `SessionTools` mapping of currently visible tool names to definitions; `.names` returns a frozenset |
 | ctx | Advanced: resolve services in this session's scope (`session.ctx[ToolRegistry]`) |
 | control | Advanced: the SessionControl service for plugins and external UIs |
 | log | Advanced: live SessionLog state owner, current-turn buffer and event catalog |
