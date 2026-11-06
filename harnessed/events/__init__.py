@@ -1,5 +1,3 @@
-from typing import Any
-
 from harnessed.core.diagnostics import ModelAttemptOutcome, RetryKind, RetryReason
 from harnessed.core.events.approvals import (
     ApprovalNeededEvent,
@@ -9,8 +7,7 @@ from harnessed.core.events.approvals import (
     ApprovalStatus,
     PolicySource,
 )
-from harnessed.core.events.base import CustomTransientEvent as TransientEvent
-from harnessed.core.events.base import DurableEvent, SessionEvent
+from harnessed.core.events.base import DurableEvent, SessionEvent, TransientEvent
 from harnessed.core.events.compaction import (
     CompactionAppliedEvent,
     CompactionFinishedEvent,
@@ -57,13 +54,12 @@ from harnessed.core.events.observations import (
 )
 from harnessed.core.events.output import OutputValidatedEvent, OutputValidationFailedEvent
 from harnessed.core.events.registry import EventRegistry
-from harnessed.core.events.rules import RuleAction, RuleTriggeredEvent
 from harnessed.core.events.session import (
     ControlState,
     SessionControlChangedEvent,
     SessionStatusChangedEvent,
 )
-from harnessed.core.events.stream import EventStream, StreamEvent
+from harnessed.core.events.stream import StreamEvent, StreamItem
 from harnessed.core.events.subagents import (
     SubagentApprovalRequestedEvent,
     SubagentFinishedEvent,
@@ -97,8 +93,6 @@ from harnessed.core.model import (
     UsagePurpose,
 )
 
-type BuiltinEvent = LogEvent | StreamEvent[Any]
-
 __all__ = [
     "ApprovalNeededEvent",
     "ApprovalRequestedEvent",
@@ -106,7 +100,6 @@ __all__ = [
     "ApprovalRevokedEvent",
     "ApprovalStatus",
     "AssistantMessageEvent",
-    "BuiltinEvent",
     "CompactionAppliedEvent",
     "CompactionFinishedEvent",
     "CompactionOutcome",
@@ -118,13 +111,13 @@ __all__ = [
     "DurableEvent",
     "EventKind",
     "EventRegistry",
-    "EventStream",
     "InboxAddedEvent",
     "InboxMode",
     "InboxRemovalReason",
     "InboxRemovedEvent",
     "InboxTarget",
     "IncludedObservation",
+    "LogEvent",
     "ModelAttemptFinishedEvent",
     "ModelAttemptOutcome",
     "ModelAttemptStartedEvent",
@@ -143,8 +136,6 @@ __all__ = [
     "ReasoningDeltaEvent",
     "RetryKind",
     "RetryReason",
-    "RuleAction",
-    "RuleTriggeredEvent",
     "SessionControlChangedEvent",
     "SessionEvent",
     "SessionStatusChangedEvent",
@@ -155,6 +146,7 @@ __all__ = [
     "StepOutcome",
     "StepStartedEvent",
     "StreamEvent",
+    "StreamItem",
     "SubagentApprovalRequestedEvent",
     "SubagentFinishedEvent",
     "SubagentLinkedEvent",

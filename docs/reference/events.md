@@ -5,8 +5,9 @@ Import concrete event classes directly from `harnessed.events`, or use
 explicit namespaced `type` discriminator. Tags are independent of class names.
 
 `StreamEvent[T]` is the discriminated union of built-in UI notifications below.
-`EventStream[T]` also admits declared application events. `BuiltinEvent` includes
-the UI notifications and durable audit events. See
+`StreamItem[T]` also admits declared application events. `LogEvent` is the
+closed union of built-in durable events. Every built-in or custom event derives
+from `DurableEvent` or `TransientEvent`; `SessionEvent` is their common root. See
 [event schemas and extensions](../guides/events.md#discriminated-unions-and-json)
 for validation, codecs and explicit application unions.
 
@@ -17,34 +18,35 @@ notifications are the same objects recorded in `session.events`; transient ones
 are available only live. A consumer may handle any subset of informational
 events. Live approval questions need an answer or a configured approver.
 
-| Event class | Tag | Durable | Meaning / identity |
-| --- | --- | --- | --- |
-| `TextDeltaEvent` | `text.delta` | No | Generated text for `message_id` |
-| `ReasoningDeltaEvent` | `reasoning.delta` | No | Generated reasoning for `message_id` |
-| `ToolCallGenerationStartedEvent` | `tool.call.generation.started` | No | Start or reset a preview keyed by `(message_id, call.index)` |
-| `ToolArgumentsDeltaEvent` | `tool.arguments.delta` | No | Append or replace preview arguments at `(message_id, delta.index)` |
-| `ToolCallRequestedEvent` | `tool.call.requested` | Yes | Complete application call accepted for scheduling, identified by `call.id` |
-| `ToolProgressEvent` | `tool.progress` | Yes | Progress for a scheduled `call_id` |
-| `ToolCallFinishedEvent` | `tool.call.finished` | Yes | Final reviewed result for `call.id`, including denial or interruption |
-| `ApprovalNeededEvent` | `approval.needed` | No | Live question identified by approval `request_id`; answer through `session.approvals` |
-| `SessionStatusChangedEvent` | `session.status.changed` | No | Session control status observed during this turn |
-| `TurnResultEvent[T]` | `turn.result` | No | Assembled `RunResult[T]`; terminal on normal stream exhaustion |
-| `ModelRequestedEvent` | `model.requested` | Yes | Final request and selected ModelInfo for `request_id`, with runtime retry metadata |
-| `ModelRequestFailedEvent` | `model.request.failed` | Yes | Close `request_id` without an assistant message |
-| `ModelAttemptStartedEvent` | `model.attempt.started` | No | Observed provider or runtime retry attempt starts, scoped by `retry_kind` |
-| `ModelRetryScheduledEvent` | `model.retry.scheduled` | No | Plan a successor to the reported attempt; counters have not advanced |
-| `ModelAttemptFinishedEvent` | `model.attempt.finished` | No | Attempt outcome and `partial` flag; not a turn completion |
-| `CompactionStartedEvent` | `compaction.started` | No | Summarization attempt starts, identified by `compaction_id` |
-| `CompactionAppliedEvent` | `compaction.applied` | Yes | Committed history projection, identified by `id` |
-| `CompactionFinishedEvent` | `compaction.finished` | No | Outcome of `compaction_id`, including discarded, failed and cancelled attempts |
-| `SpillCreatedEvent` | `spill.created` | Yes | Artifact `ref` created for a tool's `call_id` |
-| `SpillExpiredEvent` | `spill.expired` | Yes | Artifact `ref` expired for the given `reason` |
-| `SubagentLinkedEvent` | `subagent.linked` | Yes | Child origin: parent session, turn and delegation call, with inherited depth limit |
-| `SubagentStartedEvent` | `subagent.started` | Yes | Parent reference for `child_session_id`, specialist, task and delegation `call_id` |
-| `SubagentFinishedEvent` | `subagent.finished` | Yes | Terminal receipt for `child_session_id`, including answer and descendant usage |
-| `SubagentApprovalRequestedEvent` | `subagent.approval.requested` | Yes | Link a forwarded parent call to the child's original approval request |
-| `SubagentUpdatedEvent` | `subagent.updated` | Yes | Bounded child runtime state and correlated on-demand report |
-| `SubagentMessageSentEvent` | `subagent.message.sent` | Yes | Parent-acknowledged guidance for a running or queued child |
+| Event class | Tag | Durable | On stream | Meaning / identity |
+| --- | --- | --- | --- | --- |
+| `TextDeltaEvent` | `text.delta` | No | Yes | Generated text for `message_id` |
+| `ReasoningDeltaEvent` | `reasoning.delta` | No | Yes | Generated reasoning for `message_id` |
+| `ToolCallGenerationStartedEvent` | `tool.call.generation.started` | No | Yes | Start or reset a preview keyed by `(message_id, call.index)` |
+| `ToolArgumentsDeltaEvent` | `tool.arguments.delta` | No | Yes | Append or replace preview arguments at `(message_id, delta.index)` |
+| `ToolCallRequestedEvent` | `tool.call.requested` | Yes | Yes | Complete application call accepted for scheduling, identified by `call.id` |
+| `ToolExecutionStartedEvent` | `tool.execution.started` | Yes | Yes | Invocation of permitted `call_id` is about to begin |
+| `ToolProgressEvent` | `tool.progress` | Yes | Yes | Progress for a scheduled `call_id` |
+| `ToolCallFinishedEvent` | `tool.call.finished` | Yes | Yes | Final reviewed result for `call.id`, including denial or interruption |
+| `ApprovalNeededEvent` | `approval.needed` | No | Yes | Live question identified by approval `request_id`; answer through `session.approvals` |
+| `SessionStatusChangedEvent` | `session.status.changed` | No | Yes | Session control status observed during this turn |
+| `TurnResultEvent[T]` | `turn.result` | No | Yes | Assembled `RunResult[T]`; terminal on normal stream exhaustion |
+| `ModelRequestedEvent` | `model.requested` | Yes | Yes | Final request and selected ModelInfo for `request_id`, with runtime retry metadata |
+| `ModelRequestFailedEvent` | `model.request.failed` | Yes | Yes | Close `request_id` without an assistant message |
+| `ModelAttemptStartedEvent` | `model.attempt.started` | No | Yes | Observed provider or runtime retry attempt starts, scoped by `retry_kind` |
+| `ModelRetryScheduledEvent` | `model.retry.scheduled` | No | Yes | Plan a successor to the reported attempt; counters have not advanced |
+| `ModelAttemptFinishedEvent` | `model.attempt.finished` | No | Yes | Attempt outcome and `partial` flag; not a turn completion |
+| `CompactionStartedEvent` | `compaction.started` | No | Yes | Summarization attempt starts, identified by `compaction_id` |
+| `CompactionAppliedEvent` | `compaction.applied` | Yes | Yes | Committed history projection, identified by `id` |
+| `CompactionFinishedEvent` | `compaction.finished` | No | Yes | Outcome of `compaction_id`, including discarded, failed and cancelled attempts |
+| `SpillCreatedEvent` | `spill.created` | Yes | Yes | Artifact `ref` created for a tool's `call_id` |
+| `SpillExpiredEvent` | `spill.expired` | Yes | Yes | Artifact `ref` expired for the given `reason` |
+| `SubagentLinkedEvent` | `subagent.linked` | Yes | Yes | Child origin: parent session, turn and delegation call, with inherited depth limit |
+| `SubagentStartedEvent` | `subagent.started` | Yes | Yes | Parent reference for `child_session_id`, specialist, task and delegation `call_id` |
+| `SubagentFinishedEvent` | `subagent.finished` | Yes | Yes | Terminal receipt for `child_session_id`, including answer and descendant usage |
+| `SubagentApprovalRequestedEvent` | `subagent.approval.requested` | Yes | Yes | Link a forwarded parent call to the child's original approval request |
+| `SubagentUpdatedEvent` | `subagent.updated` | Yes | Yes | Bounded child runtime state and correlated on-demand report |
+| `SubagentMessageSentEvent` | `subagent.message.sent` | Yes | Yes | Parent-acknowledged guidance for a running or queued child |
 
 Structured-output control calls do not produce application tool lifecycle
 notifications. Generation previews may still include `final_answer`. Transient
@@ -88,15 +90,15 @@ turn are also included in its final `RunResult.events`.
 
 ### Turns and inputs
 
-| Event class | Tag | Meaning / identity |
-| --- | --- | --- |
-| `InboxAddedEvent` | `inbox.added` | Queued input `message.id` with its target, context and turn options |
-| `InboxRemovedEvent` | `inbox.removed` | Input `message_id` removed for the given `reason` |
-| `TurnStartedEvent` | `turn.started` | Turn `turn_id` started from queued `input_id` |
-| `TurnEndedEvent` | `turn.ended` | Durable outcome of `turn_id` |
-| `StepStartedEvent` | `step.started` | Step `(turn_id, step)` started |
-| `StepEndedEvent` | `step.ended` | Outcome of step `(turn_id, step)` |
-| `SessionControlChangedEvent` | `session.control.changed` | Committed control `state` and inbox retention policy |
+| Event class | Tag | Durable | On stream | Meaning / identity |
+| --- | --- | --- | --- | --- |
+| `InboxAddedEvent` | `inbox.added` | Yes | No | Queued input `message.id` with its target, context and turn options |
+| `InboxRemovedEvent` | `inbox.removed` | Yes | No | Input `message_id` removed for the given `reason` |
+| `TurnStartedEvent` | `turn.started` | Yes | No | Turn `turn_id` started from queued `input_id` |
+| `TurnEndedEvent` | `turn.ended` | Yes | No | Durable outcome of `turn_id` |
+| `StepStartedEvent` | `step.started` | Yes | No | Step `(turn_id, step)` started |
+| `StepEndedEvent` | `step.ended` | Yes | No | Outcome of step `(turn_id, step)` |
+| `SessionControlChangedEvent` | `session.control.changed` | Yes | No | Committed control `state` and inbox retention policy |
 
 `TurnEndedEvent` records the durable outcome. `TurnResultEvent[T]` carries the
 assembled result to one UI stream. The latter can be absent when the stream
@@ -104,18 +106,18 @@ raises or disconnects; neither event means that the session has no queued work.
 
 ### Model requests and context
 
-| Event class | Tag | Meaning / identity |
-| --- | --- | --- |
-| `AssistantMessageEvent` | `assistant.message` | Accepted or interrupted partial message closing `request_id` |
-| `ModelUsageRecordedEvent` | `model.usage.recorded` | Usage and purpose; response usage has a model `request_id` |
-| `ModelCacheMetricsEvent` | `model.cache.metrics` | Recorded usage and derived cache hit rate |
-| `ObservationsIncludedEvent` | `observations.included` | Observation sources and forms present in `request_id` |
-| `SystemMessageEvent` | `system.message` | Effective fixed system content |
-| `UserMessageEvent` | `user.message` | Accepted user `message` |
-| `ContextMessageEvent` | `context.message` | Context `message` with its lifetime and optional `turn_id` |
-| `ContextValueChangedEvent` | `context.value.changed` | Named context fact changed or removed |
-| `ObservationRecordedEvent` | `observation.recorded` | Observation received at `(turn_id, step)` |
-| `ObservationPolicyAppliedEvent` | `observation.policy.applied` | Explicit observation-count retention policy changed |
+| Event class | Tag | Durable | On stream | Meaning / identity |
+| --- | --- | --- | --- | --- |
+| `AssistantMessageEvent` | `assistant.message` | Yes | No | Accepted or interrupted partial message closing `request_id` |
+| `ModelUsageRecordedEvent` | `model.usage.recorded` | Yes | No | Usage and purpose; response usage has a model `request_id` |
+| `ModelCacheMetricsEvent` | `model.cache.metrics` | Yes | No | Recorded usage and derived cache hit rate |
+| `ObservationsIncludedEvent` | `observations.included` | Yes | No | Observation sources and forms present in `request_id` |
+| `SystemMessageEvent` | `system.message` | Yes | No | Effective fixed system content |
+| `UserMessageEvent` | `user.message` | Yes | No | Accepted user `message` |
+| `ContextMessageEvent` | `context.message` | Yes | No | Context `message` with its lifetime and optional `turn_id` |
+| `ContextValueChangedEvent` | `context.value.changed` | Yes | No | Named context fact changed or removed |
+| `ObservationRecordedEvent` | `observation.recorded` | Yes | No | Observation received at `(turn_id, step)` |
+| `ObservationPolicyAppliedEvent` | `observation.policy.applied` | Yes | No | Explicit observation-count retention policy changed |
 
 A model request closes with exactly one assistant message or request failure.
 Usage and included-observation records do not close it. Provider-internal
@@ -125,17 +127,15 @@ in a new step receives a new identity. See the
 
 ### Tools, approvals and output
 
-| Event class | Tag | Meaning / identity |
-| --- | --- | --- |
-| `ToolPolicyAppliedEvent` | `tool.policy.applied` | Policy decision and source for `call_id` |
-| `ToolExecutionStartedEvent` | `tool.execution.started` | Invocation of permitted `call_id` is about to begin |
-| `ToolExecutionFinishedEvent` | `tool.execution.finished` | Raw execution receipt for `call_id`, before result review |
-| `ApprovalRequestedEvent` | `approval.requested` | Durable approval question for `request_id`, including call and scope |
-| `ApprovalResolvedEvent` | `approval.resolved` | Durable answer, interruption or unavailability for approval `request_id` |
-| `ApprovalRevokedEvent` | `approval.revoked` | Revoke a reusable grant identified by approval `request_id` |
-| `OutputValidatedEvent` | `output.validated` | Validated output data for `turn_id`, `schema_id` and `message_id` |
-| `OutputValidationFailedEvent` | `output.validation.failed` | Failed output-validation attempt and feedback for `turn_id` |
-| `RuleTriggeredEvent` | `rule.triggered` | Rule occurrence and selected actions for `call_id` |
+| Event class | Tag | Durable | On stream | Meaning / identity |
+| --- | --- | --- | --- | --- |
+| `ToolPolicyAppliedEvent` | `tool.policy.applied` | Yes | No | Policy decision and source for `call_id` |
+| `ToolExecutionFinishedEvent` | `tool.execution.finished` | Yes | No | Raw execution receipt for `call_id`, before result review |
+| `ApprovalRequestedEvent` | `approval.requested` | Yes | No | Durable approval question for `request_id`, including call and scope |
+| `ApprovalResolvedEvent` | `approval.resolved` | Yes | No | Durable answer, interruption or unavailability for approval `request_id` |
+| `ApprovalRevokedEvent` | `approval.revoked` | Yes | No | Revoke a reusable grant identified by approval `request_id` |
+| `OutputValidatedEvent` | `output.validated` | Yes | No | Validated output data for `turn_id`, `schema_id` and `message_id` |
+| `OutputValidationFailedEvent` | `output.validation.failed` | Yes | No | Failed output-validation attempt and feedback for `turn_id` |
 
 Execution completion and call completion describe different stages: the raw
 receipt precedes review and limits, while `ToolCallFinishedEvent` commits the

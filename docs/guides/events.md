@@ -34,6 +34,39 @@ not required.
 
 ## Correlate event lifecycles
 
+The log and UI stream consume the same event vocabulary. A `DurableEvent` is
+recorded in the log and may also be projected onto the stream. A `TransientEvent`
+is live only. Use the reference's *Durable* and *On stream* columns to choose
+notifications; all concrete classes remain in `harnessed.events`.
+
+For application tools, distinguish pending calls, human approval, and execution:
+
+```python
+from harnessed.events import (
+    ApprovalNeededEvent,
+    ToolCallRequestedEvent,
+    ToolExecutionStartedEvent,
+    ToolProgressEvent,
+    ToolCallFinishedEvent,
+)
+
+async for event in session.stream("Publish the report"):
+    match event:
+        case ToolCallRequestedEvent(call=call):
+            ui.tool_pending(call.id, call.name)
+        case ApprovalNeededEvent(call=call, reason=reason):
+            ui.tool_awaiting_approval(call.id, reason)
+        case ToolExecutionStartedEvent(call_id=call_id):
+            ui.tool_running(call_id)
+        case ToolProgressEvent(call_id=call_id, text=text):
+            ui.tool_progress(call_id, text)
+        case ToolCallFinishedEvent(call=call, result=result):
+            ui.tool_done(call.id, result)
+```
+
+The approval UI answers through `session.approvals`; execution starts only after
+permission. Denied calls finish without an execution-start notification.
+
 | Activity | Identity | Completion |
 | --- | --- | --- |
 | Turn | `turn_id` | `TurnEndedEvent` in the execution stream; `TurnResultEvent.result.turn_id` on normal UI stream exhaustion |
@@ -230,22 +263,18 @@ state machine or become model messages automatically.
 Pydantic supplies validation and schemas without requiring BaseModel events:
 
 ```python
-from typing import Annotated
-from pydantic import Field, TypeAdapter
-from harnessed.events import BuiltinEvent
+from pydantic import TypeAdapter
+from harnessed.events import LogEvent, StreamEvent
 
-type ProjectEvent = Annotated[
-    BuiltinEvent | ProjectIndexed,
-    Field(discriminator="type"),
-]
+type ProjectEvent = LogEvent | StreamEvent[str] | ProjectIndexed
 
 adapter = TypeAdapter(ProjectEvent)
 schema = adapter.json_schema()
 ```
 
 `StreamEvent[T]` is the concrete discriminated union of built-in UI notifications,
-including compaction and spill. `BuiltinEvent` also includes the durable audit
-events. The open return type `EventStream[T]` includes application extension
+including compaction and spill. `LogEvent` contains the built-in durable audit
+events. The open return type `StreamItem[T]` includes application extension
 bases; class patterns preserve the structured `TurnResultEvent[T]` result type.
 An explicit application union gives the type checker knowledge of its custom
 variants. Loading a plugin dynamically cannot alter an existing static union.
@@ -259,6 +288,16 @@ at `session.log.registry`. Use `context={"events": registry}` when decoding a
 Pydantic terminal result whose nested log contains application events.
 Request IDs and approval payloads are data; answer them through
 `session.approvals.answer(request_id, decision)`, not through an event handle.
+
+`DurableEvent` and `TransientEvent` describe persistence for both built-in and
+application classes. `SessionEvent` is their common root for generic observers;
+authors subclass one of the two concrete roles. Durable events may also appear
+on the UI stream; transient events never enter the audit codec.
+
+The rules plugin declares its own `RuleTriggeredEvent` and `RuleAction`, available
+from `harnessed.plugins.rules`. Decoding `rule.triggered` requires that plugin's
+declaration in the registry. A missing declaration fails with an unknown-event
+error; it does not silently discard or retain an opaque record.
 
 Run `uv run python -m examples.28_custom_events` for streaming, schema generation
 and replay in one offline example.

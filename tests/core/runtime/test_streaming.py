@@ -9,6 +9,7 @@ from harnessed import (
     Agent,
     ApprovalAnswer,
     Plugin,
+    PolicyDecision,
     StopReason,
     StreamOverflow,
     ToolCall,
@@ -23,18 +24,19 @@ from harnessed.events import (
     ApprovalNeededEvent,
     ApprovalResolvedEvent,
     AssistantMessageEvent,
-    EventStream,
+    DurableEvent,
     InboxAddedEvent,
     ModelAttemptFinishedEvent,
     ModelRequestedEvent,
     ModelRequestFailedEvent,
     ModelRequestOutcome,
     ReasoningDeltaEvent,
-    SessionEvent,
     SessionStatusChangedEvent,
+    StreamItem,
     TextDeltaEvent,
     ToolCallFinishedEvent,
     ToolCallRequestedEvent,
+    ToolExecutionStartedEvent,
     ToolProgressEvent,
     TurnResultEvent,
 )
@@ -64,7 +66,7 @@ async def test_model_failure_raises_without_a_terminal_ui_event(partial: bool) -
 
     async with Agent(model=CallbackModel(respond)).session() as session:
         session_audit = Audit(session)
-        received: list[EventStream[None]] = []
+        received: list[StreamItem[None]] = []
         with pytest.raises(ValueError, match="model failed"):
             async with aclosing(session.stream("Review")) as stream:
                 async for event in stream:
@@ -195,6 +197,7 @@ async def test_stream_has_model_lifecycle_a_durable_approval_and_one_terminal_re
             TextDeltaEvent,
             ReasoningDeltaEvent,
             ToolCallRequestedEvent,
+            ToolExecutionStartedEvent,
             ToolProgressEvent,
             ToolCallFinishedEvent,
             ApprovalNeededEvent,
@@ -204,16 +207,64 @@ async def test_stream_has_model_lifecycle_a_durable_approval_and_one_terminal_re
         assert isinstance(events[-1], TurnResultEvent)
         assert events[-1].result.text == "Finished" and events[-1].result.output is None
         assert sum(isinstance(e, TurnResultEvent) for e in events) == 1
-        durable = [event for event in events if isinstance(event, SessionEvent)]
+        lifecycle = [
+            type(event)
+            for event in events
+            if isinstance(
+                event,
+                ToolCallRequestedEvent
+                | ApprovalNeededEvent
+                | ToolExecutionStartedEvent
+                | ToolProgressEvent
+                | ToolCallFinishedEvent,
+            )
+        ]
+        assert lifecycle == [
+            ToolCallRequestedEvent,
+            ApprovalNeededEvent,
+            ToolExecutionStartedEvent,
+            ToolProgressEvent,
+            ToolCallFinishedEvent,
+        ]
+        durable = [event for event in events if isinstance(event, DurableEvent)]
         assert {type(event) for event in durable} == {
             ModelRequestedEvent,
             ToolCallRequestedEvent,
+            ToolExecutionStartedEvent,
             ToolProgressEvent,
             ToolCallFinishedEvent,
         }
         assert all(any(event is record for record in session_audit.events) for event in durable)
         finished = [event for event in events if isinstance(event, ToolCallFinishedEvent)]
         assert len(finished) == 1 and finished[0].call.name == "publish"
+
+
+async def test_execution_start_precedes_progress_without_approval():
+    effects = []
+    async with Agent(
+        model=ScriptedModel([work(), "done"]),
+        plugins=[Work(effects), Approvals(default=PolicyDecision.ALLOW)],
+    ).session() as session:
+        events = [event async for event in session.stream("Publish")]
+    assert effects == ["published"]
+    lifecycle = [
+        type(event)
+        for event in events
+        if isinstance(
+            event,
+            ToolCallRequestedEvent
+            | ApprovalNeededEvent
+            | ToolExecutionStartedEvent
+            | ToolProgressEvent
+            | ToolCallFinishedEvent,
+        )
+    ]
+    assert lifecycle == [
+        ToolCallRequestedEvent,
+        ToolExecutionStartedEvent,
+        ToolProgressEvent,
+        ToolCallFinishedEvent,
+    ]
 
 
 async def test_closing_the_stream_resolves_pending_approval_and_removes_its_responder():
@@ -360,7 +411,13 @@ async def test_structured_stream_preserves_the_output_type_without_control_tool_
         assert isinstance(events[-1].result.output, Report)
         assert events[-1].result.output.text == "ready"
         assert not any(
-            isinstance(e, ToolCallRequestedEvent | ToolCallFinishedEvent | ApprovalNeededEvent)
+            isinstance(
+                e,
+                ToolCallRequestedEvent
+                | ToolCallFinishedEvent
+                | ApprovalNeededEvent
+                | ToolExecutionStartedEvent,
+            )
             for e in events
         )
 

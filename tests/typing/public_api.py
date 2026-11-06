@@ -23,7 +23,6 @@ from harnessed.events import (
     AssistantMessageEvent,
     CompactionFinishedEvent,
     CompactionOutcome,
-    EventStream,
     IncludedObservation,
     ModelAttemptFinishedEvent,
     ModelAttemptOutcome,
@@ -32,9 +31,11 @@ from harnessed.events import (
     ModelRequestOutcome,
     ObservationsIncludedEvent,
     RetryKind,
+    StreamItem,
     ToolArgumentsDeltaEvent,
     ToolCallGenerationStartedEvent,
     ToolExecutionFinishedEvent,
+    ToolExecutionStartedEvent,
     TurnEndedEvent,
     TurnOutcome,
     TurnResultEvent,
@@ -159,13 +160,15 @@ async def structured_consumer(agent: AppAgent, session: Session) -> None:
 
 async def typed_stream(session: Session) -> None:
     async for event in session.stream("Triage", output=OutputContract("triage.v1", Triage)):
-        assert_type(event, EventStream[Triage])
+        assert_type(event, StreamItem[Triage])
         if isinstance(event, TurnResultEvent):
             assert_type(event, TurnResultEvent[Triage])
             assert_type(event.result, RunResult[Triage])
             assert_type(event.result.output.severity, int)
         elif isinstance(event, ToolCallGenerationStartedEvent):
             assert_type(event.call, ToolCallStart)
+        elif isinstance(event, ToolExecutionStartedEvent):
+            assert_type(event.call_id, str)
         elif isinstance(event, ToolArgumentsDeltaEvent):
             assert_type(event.delta, ToolCallDelta)
             assert_type(event.delta.mode, ToolArgumentsMode)

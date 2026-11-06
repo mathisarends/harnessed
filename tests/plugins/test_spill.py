@@ -11,7 +11,6 @@ from harnessed import (
 )
 from harnessed.core.events.observations import SpillCreatedEvent, SpillExpiredEvent
 from harnessed.core.messages import ImagePart, TextPart, ToolCall, ToolResult, ToolStatus
-from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.core.session.files import SessionFiles
 from harnessed.core.tools.decorator import tool
 from harnessed.core.tools.output_limit import ToolOutputLimit
@@ -60,7 +59,11 @@ async def test_spill_is_owned_by_its_session_and_resumes_with_exact_content(tmp_
         assert await session.ctx[SpillStore].read(ref.path, offset=1, limit=2) == "😀l"
         events = session_audit.events
         assert (
-            tuple(decode_event(json.loads(json.dumps(encode_event(e)))) for e in events) == events
+            tuple(
+                session.log.registry.decode(json.loads(json.dumps(session.log.registry.encode(e))))
+                for e in events
+            )
+            == events
         )
         state = session.snapshot()
     app = configure(ScriptedModel([]), plugins=[Spill(threshold_tokens=32)])

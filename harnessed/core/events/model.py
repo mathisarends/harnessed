@@ -10,7 +10,7 @@ from harnessed.core.diagnostics import (
     ModelRetryScheduled,
     RetryKind,
 )
-from harnessed.core.events.base import Identifier, SessionEvent, TransientEvent
+from harnessed.core.events.base import DurableEvent, Identifier, TransientEvent
 from harnessed.core.events.kinds import EventKind
 from harnessed.core.model import ModelInfo, ModelRequest, ModelUsage, UsagePurpose
 
@@ -22,7 +22,7 @@ class ModelRequestOutcome(StrEnum):
 
 
 @dataclass(frozen=True)
-class ModelRequestedEvent(SessionEvent):
+class ModelRequestedEvent(DurableEvent):
     """Commit one Harnessed model invocation's final request snapshot.
 
     The request_id correlates its usage and exactly one assistant message or
@@ -49,7 +49,7 @@ class ModelRequestedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class ModelRequestFailedEvent(SessionEvent):
+class ModelRequestFailedEvent(DurableEvent):
     """Close a request without an assistant message; not a turn completion."""
 
     __hash__ = None
@@ -66,7 +66,7 @@ class ModelRequestFailedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class ModelUsageRecordedEvent(SessionEvent):
+class ModelUsageRecordedEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.MODEL_USAGE_RECORDED] = field(
@@ -81,7 +81,7 @@ class ModelUsageRecordedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class ModelCacheMetricsEvent(SessionEvent):
+class ModelCacheMetricsEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.MODEL_CACHE_METRICS] = field(

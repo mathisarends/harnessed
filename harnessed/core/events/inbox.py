@@ -5,7 +5,7 @@ from typing import Annotated, Literal, Self
 
 from pydantic import Field
 
-from harnessed.core.events.base import Identifier, SessionEvent
+from harnessed.core.events.base import DurableEvent, Identifier
 from harnessed.core.events.kinds import EventKind
 from harnessed.core.events.turn import TurnLimits
 from harnessed.core.messages import Message
@@ -18,8 +18,8 @@ class InboxMode(StrEnum):
 
 
 class InboxTarget(StrEnum):
-    NEXT_TURN = "next-turn"
-    NEXT_STEP = "next-step"
+    NEXT_TURN = "next_turn"
+    NEXT_STEP = "next_step"
 
 
 class InboxRemovalReason(StrEnum):
@@ -37,7 +37,7 @@ _INBOX_ROUTES: dict[InboxMode, InboxTarget] = {
 
 
 @dataclass(frozen=True)
-class InboxAddedEvent(SessionEvent):
+class InboxAddedEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.INBOX_ADDED] = field(default=EventKind.INBOX_ADDED, kw_only=True)
@@ -93,7 +93,7 @@ class InboxAddedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class InboxRemovedEvent(SessionEvent):
+class InboxRemovedEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.INBOX_REMOVED] = field(default=EventKind.INBOX_REMOVED, kw_only=True)

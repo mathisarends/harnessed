@@ -4,7 +4,7 @@ from typing import Annotated, Any, Literal
 from pydantic import PlainSerializer, PlainValidator, ValidationInfo, WithJsonSchema
 
 from harnessed.core.errors import OutputUnavailable
-from harnessed.core.events.base import SessionEvent
+from harnessed.core.events.base import DurableEvent
 from harnessed.core.events.compaction import CompactionAppliedEvent
 from harnessed.core.events.kinds import EventKind
 from harnessed.core.events.messages import AssistantMessageEvent
@@ -33,8 +33,8 @@ class _NoOutput:
 _NO_OUTPUT = _NoOutput()
 
 
-def _result_event(value: Any, info: ValidationInfo) -> SessionEvent:
-    if isinstance(value, SessionEvent):
+def _result_event(value: Any, info: ValidationInfo) -> DurableEvent:
+    if isinstance(value, DurableEvent):
         return value
     if not isinstance(value, dict):
         raise ValueError("Result events require tagged data")
@@ -45,7 +45,7 @@ def _result_event(value: Any, info: ValidationInfo) -> SessionEvent:
 
 
 type ResultEvent = Annotated[
-    SessionEvent,
+    DurableEvent,
     PlainValidator(_result_event),
     PlainSerializer(to_dict, when_used="json"),
     WithJsonSchema(
@@ -102,7 +102,7 @@ class RunResult[T]:
 
 
 def _result_from_events(
-    events: tuple[SessionEvent, ...], *, output: Any = None, state: SessionState | None = None
+    events: tuple[DurableEvent, ...], *, output: Any = None, state: SessionState | None = None
 ) -> RunResult[Any]:
     """Build a turn-scoped result, giving explicit termination precedence."""
     final = next((e for e in reversed(events) if isinstance(e, AssistantMessageEvent)), None)
@@ -147,7 +147,7 @@ class RunResults:
 
     def build(
         self,
-        events: tuple[SessionEvent, ...],
+        events: tuple[DurableEvent, ...],
         *,
         schema: OutputSchema | None = None,
         state: SessionState | None = None,

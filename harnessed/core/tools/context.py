@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
-from harnessed.core.events.base import SessionEvent, TransientEvent
+from harnessed.core.events.base import DurableEvent, TransientEvent
 from harnessed.core.events.tools import ToolProgressEvent
 from harnessed.core.messages import ApprovalAnswer, ToolCall
 
@@ -31,7 +31,7 @@ class ToolContext:
     async def progress(self, text: str) -> None:
         await self.log.append(ToolProgressEvent(self.call.id, text))
 
-    async def emit(self, event: SessionEvent | TransientEvent) -> None:
+    async def emit(self, event: DurableEvent | TransientEvent) -> None:
         await self.log.emit(event)
 
     async def approve(

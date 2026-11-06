@@ -3,7 +3,7 @@ from enum import StrEnum
 from typing import Literal
 from uuid import uuid4
 
-from harnessed.core.events.base import Identifier, SessionEvent, TransientEvent
+from harnessed.core.events.base import DurableEvent, Identifier, TransientEvent
 from harnessed.core.events.kinds import EventKind
 from harnessed.core.messages import AssistantMessage, Message, UserMessage
 from harnessed.core.model import StopReason
@@ -15,7 +15,7 @@ class ContextLifetime(StrEnum):
 
 
 @dataclass(frozen=True)
-class SystemMessageEvent(SessionEvent):
+class SystemMessageEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.SYSTEM_MESSAGE] = field(default=EventKind.SYSTEM_MESSAGE, kw_only=True)
@@ -23,7 +23,7 @@ class SystemMessageEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class UserMessageEvent(SessionEvent):
+class UserMessageEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.USER_MESSAGE] = field(default=EventKind.USER_MESSAGE, kw_only=True)
@@ -35,7 +35,7 @@ class UserMessageEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class ContextMessageEvent(SessionEvent):
+class ContextMessageEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.CONTEXT_MESSAGE] = field(
@@ -47,7 +47,7 @@ class ContextMessageEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class ContextValueChangedEvent(SessionEvent):
+class ContextValueChangedEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.CONTEXT_VALUE_CHANGED] = field(
@@ -59,7 +59,7 @@ class ContextValueChangedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class AssistantMessageEvent(SessionEvent):
+class AssistantMessageEvent(DurableEvent):
     """Close a model request with its accepted or interrupted partial message.
 
     An interrupted message is terminal for its request_id and is not followed

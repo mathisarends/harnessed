@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal
 
-from harnessed.core.events.base import SessionEvent, TransientEvent
+from harnessed.core.events.base import DurableEvent, TransientEvent
 from harnessed.core.events.kinds import EventKind
 
 
@@ -14,7 +14,7 @@ class CompactionOutcome(StrEnum):
 
 
 @dataclass(frozen=True)
-class CompactionAppliedEvent(SessionEvent):
+class CompactionAppliedEvent(DurableEvent):
     """Replace a history prefix at a closed turn or completed step boundary.
 
     preserve_turns pins full turns; retained_turns is temporary sliding retention.

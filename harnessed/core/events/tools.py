@@ -2,14 +2,14 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from harnessed.core.events.approvals import PolicySource
-from harnessed.core.events.base import Identifier, SessionEvent, TransientEvent
+from harnessed.core.events.base import DurableEvent, Identifier, TransientEvent
 from harnessed.core.events.kinds import EventKind
 from harnessed.core.messages import PolicyDecision, ToolCall, ToolResult
 from harnessed.core.model import ToolCallDelta, ToolCallStart
 
 
 @dataclass(frozen=True)
-class ToolPolicyAppliedEvent(SessionEvent):
+class ToolPolicyAppliedEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.TOOL_POLICY_APPLIED] = field(
@@ -27,7 +27,7 @@ class ToolPolicyAppliedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class ToolExecutionStartedEvent(SessionEvent):
+class ToolExecutionStartedEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.TOOL_EXECUTION_STARTED] = field(
@@ -37,7 +37,7 @@ class ToolExecutionStartedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class ToolExecutionFinishedEvent(SessionEvent):
+class ToolExecutionFinishedEvent(DurableEvent):
     """The unreviewed execution receipt, saved before ordered result review.
 
     Text respects the captured output limit. This is audit data, not a
@@ -54,7 +54,7 @@ class ToolExecutionFinishedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class ToolCallRequestedEvent(SessionEvent):
+class ToolCallRequestedEvent(DurableEvent):
     """A complete call accepted for scheduling, before policy or execution."""
 
     __hash__ = None
@@ -70,7 +70,7 @@ class ToolCallRequestedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class ToolCallFinishedEvent(SessionEvent):
+class ToolCallFinishedEvent(DurableEvent):
     """The final reviewed and limited result, committed in model call order.
 
     Shared by the durable log and UI stream, including calls denied before
@@ -95,7 +95,7 @@ class ToolCallFinishedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class ToolProgressEvent(SessionEvent):
+class ToolProgressEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.TOOL_PROGRESS] = field(default=EventKind.TOOL_PROGRESS, kw_only=True)

@@ -11,7 +11,7 @@ from harnessed.core.events.approvals import (
     ApprovalRevokedEvent,
     ApprovalStatus,
 )
-from harnessed.core.events.base import SessionEvent
+from harnessed.core.events.base import DurableEvent
 from harnessed.core.hooks import ToolPolicy
 from harnessed.core.messages import ApprovalAnswer, PolicyDecision
 from harnessed.core.plugin import Plugin, PluginConfig
@@ -144,7 +144,7 @@ class ApprovalState:
         object.__setattr__(snapshot, "records", tuple(records))
         return snapshot
 
-    def __init__(self, events: Iterable[SessionEvent]) -> None:
+    def __init__(self, events: Iterable[DurableEvent]) -> None:
         records: dict[str, Approval] = {}
         for event in events:
             record = approval_transition(records, event)
@@ -171,7 +171,7 @@ class ApprovalState:
         )
 
 
-def approval_transition(records, event: SessionEvent) -> Approval | None:
+def approval_transition(records, event: DurableEvent) -> Approval | None:
     if isinstance(event, ApprovalRequestedEvent):
         if event.request_id in records:
             raise ValueError("Duplicate approval request_id")

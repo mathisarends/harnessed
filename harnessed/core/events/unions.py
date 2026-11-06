@@ -7,7 +7,7 @@ from harnessed.core.events.approvals import (
     ApprovalResolvedEvent,
     ApprovalRevokedEvent,
 )
-from harnessed.core.events.base import SessionEvent
+from harnessed.core.events.base import DurableEvent
 from harnessed.core.events.compaction import CompactionAppliedEvent
 from harnessed.core.events.inbox import InboxAddedEvent, InboxRemovedEvent
 from harnessed.core.events.messages import (
@@ -31,7 +31,6 @@ from harnessed.core.events.observations import (
     SpillExpiredEvent,
 )
 from harnessed.core.events.output import OutputValidatedEvent, OutputValidationFailedEvent
-from harnessed.core.events.rules import RuleTriggeredEvent
 from harnessed.core.events.session import SessionControlChangedEvent
 from harnessed.core.events.subagents import (
     SubagentApprovalRequestedEvent,
@@ -83,7 +82,6 @@ type LogEvent = Annotated[
         | ObservationPolicyAppliedEvent
         | SpillCreatedEvent
         | SpillExpiredEvent
-        | RuleTriggeredEvent
         | AssistantMessageEvent
         | ToolCallRequestedEvent
         | ToolCallFinishedEvent
@@ -103,6 +101,6 @@ type LogEvent = Annotated[
 ]
 
 
-SESSION_EVENT_TYPES: dict[str, type[SessionEvent]] = {
+SESSION_EVENT_TYPES: dict[str, type[DurableEvent]] = {
     kind.type: kind for kind in get_args(get_args(LogEvent.__value__)[0])
 }

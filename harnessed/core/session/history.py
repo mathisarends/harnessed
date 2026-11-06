@@ -5,7 +5,7 @@ from dataclasses import replace
 from typing import TypedDict, Unpack
 from xml.sax.saxutils import escape, quoteattr
 
-from harnessed.core.events.base import SessionEvent
+from harnessed.core.events.base import DurableEvent
 from harnessed.core.events.compaction import CompactionAppliedEvent
 from harnessed.core.events.messages import (
     AssistantMessageEvent,
@@ -42,7 +42,7 @@ class WorkingHistory:
         self._turn: str | None = None
         self.max_observations = state.observation_limit if state is not None else None
 
-    def apply(self, event: SessionEvent, seq: int) -> None:
+    def apply(self, event: DurableEvent, seq: int) -> None:
         self._snapshot = None
         if isinstance(event, TurnStartedEvent):
             self._turn = event.turn_id
@@ -218,15 +218,15 @@ class _EntryMetadata(TypedDict, total=False):
     resources: tuple[SpillRef, ...]
 
 
-def derive_requests(events: Iterable[SessionEvent]) -> tuple[ModelRequest, ...]:
+def derive_requests(events: Iterable[DurableEvent]) -> tuple[ModelRequest, ...]:
     return tuple(event.request for event in events if isinstance(event, ModelRequestedEvent))
 
 
-def derive_messages(events: Iterable[SessionEvent]) -> tuple[Message, ...]:
+def derive_messages(events: Iterable[DurableEvent]) -> tuple[Message, ...]:
     return tuple(message for _, message in _derive_message_entries(events))
 
 
-def _derive_message_entries(events: Iterable[SessionEvent]) -> tuple[tuple[int, Message], ...]:
+def _derive_message_entries(events: Iterable[DurableEvent]) -> tuple[tuple[int, Message], ...]:
     events = tuple(events)
     active_turn, max_observations = None, None
     observations: dict[str, list[int]] = {}

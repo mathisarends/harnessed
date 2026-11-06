@@ -3,7 +3,7 @@ from enum import StrEnum
 from typing import Literal
 
 from harnessed.core.child_status import ChildRuntimeState
-from harnessed.core.events.base import Identifier, SessionEvent, StepNumber
+from harnessed.core.events.base import DurableEvent, Identifier, StepNumber
 from harnessed.core.events.kinds import EventKind
 from harnessed.core.messages import UserMessage
 from harnessed.core.model import ModelUsage
@@ -20,7 +20,7 @@ class SubagentStatus(StrEnum):
 
 
 @dataclass(frozen=True)
-class SubagentLinkedEvent(SessionEvent):
+class SubagentLinkedEvent(DurableEvent):
     """A child's immutable origin; recorded before any child work starts."""
 
     type: Literal[EventKind.SUBAGENT_LINKED] = field(
@@ -35,7 +35,7 @@ class SubagentLinkedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class SubagentStartedEvent(SessionEvent):
+class SubagentStartedEvent(DurableEvent):
     type: Literal[EventKind.SUBAGENT_STARTED] = field(
         default=EventKind.SUBAGENT_STARTED, kw_only=True
     )
@@ -49,7 +49,7 @@ class SubagentStartedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class SubagentUpdatedEvent(SessionEvent):
+class SubagentUpdatedEvent(DurableEvent):
     """A bounded runtime projection, including explicitly requested status reports."""
 
     type: Literal[EventKind.SUBAGENT_UPDATED] = field(
@@ -60,7 +60,7 @@ class SubagentUpdatedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class SubagentMessageSentEvent(SessionEvent):
+class SubagentMessageSentEvent(DurableEvent):
     type: Literal[EventKind.SUBAGENT_MESSAGE_SENT] = field(
         default=EventKind.SUBAGENT_MESSAGE_SENT, kw_only=True
     )
@@ -69,7 +69,7 @@ class SubagentMessageSentEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class SubagentFinishedEvent(SessionEvent):
+class SubagentFinishedEvent(DurableEvent):
     """A child receipt; usage includes its descendants, never parent model usage."""
 
     type: Literal[EventKind.SUBAGENT_FINISHED] = field(
@@ -87,7 +87,7 @@ class SubagentFinishedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class SubagentApprovalRequestedEvent(SessionEvent):
+class SubagentApprovalRequestedEvent(DurableEvent):
     """Correlate a parent approval with the original request in a child log."""
 
     type: Literal[EventKind.SUBAGENT_APPROVAL_REQUESTED] = field(

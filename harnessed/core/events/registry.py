@@ -8,12 +8,10 @@ from typing import Annotated, Any, Literal, Self, cast, get_args, get_origin, ge
 from pydantic import ConfigDict, Field, TypeAdapter
 
 from harnessed.core.events.base import (
-    CustomTransientEvent,
     DurableEvent,
-    SessionEvent,
     TransientEvent,
 )
-from harnessed.core.events.stream import StreamEvent
+from harnessed.core.events.stream import STREAM_EVENT_TYPES
 from harnessed.core.events.unions import SESSION_EVENT_TYPES
 from harnessed.core.messages import to_dict
 from harnessed.core.session.codec import _validate_event, decode_event, encode_event
@@ -26,32 +24,21 @@ class EventRegistry:
     readable after plugin disposal. Different classes may never share a tag.
     """
 
-    def __init__(self, kinds: Iterable[type[SessionEvent | TransientEvent]] = ()) -> None:
-        live = tuple(
-            get_origin(kind) or kind for kind in get_args(get_args(StreamEvent.__value__)[0])
-        )
-        self._types: dict[str, type] = dict(SESSION_EVENT_TYPES)
-        self._types.update(
-            {
-                cast(str, next(f.default for f in fields(kind) if f.name == "type")): kind
-                for kind in live
-            }
-        )
+    def __init__(self, kinds: Iterable[type[DurableEvent | TransientEvent]] = ()) -> None:
+        self._types: dict[str, type] = {**SESSION_EVENT_TYPES, **STREAM_EVENT_TYPES}
         self.builtin_types = frozenset(self._types.values())
-        self._custom: dict[type[SessionEvent | TransientEvent], TypeAdapter] = {}
+        self._custom: dict[type[DurableEvent | TransientEvent], TypeAdapter] = {}
         self._adapter: TypeAdapter | None = None
         self.register(kinds)
 
     def copy(self) -> Self:
         return type(self)(self._custom)
 
-    def register(self, kinds: Iterable[type[SessionEvent | TransientEvent]]) -> None:
+    def register(self, kinds: Iterable[type[DurableEvent | TransientEvent]]) -> None:
         proposed = dict(self._types)
         validators = dict(self._custom)
         for kind in kinds:
-            if not isinstance(kind, type) or not issubclass(
-                kind, DurableEvent | CustomTransientEvent
-            ):
+            if not isinstance(kind, type) or not issubclass(kind, DurableEvent | TransientEvent):
                 raise TypeError("Events must derive from DurableEvent or TransientEvent")
             if kind in proposed.values():
                 continue
@@ -83,7 +70,7 @@ class EventRegistry:
         self._custom = validators
         self._adapter = None
 
-    def validate(self, event: SessionEvent | TransientEvent) -> None:
+    def validate(self, event: DurableEvent | TransientEvent) -> None:
         kind = type(event)
         if self._types.get(getattr(event, "type", None)) is not kind:
             raise TypeError("Only registered frozen event instances may be emitted")
@@ -99,7 +86,7 @@ class EventRegistry:
     @property
     def adapter(self) -> TypeAdapter:
         if self._adapter is None:
-            kinds = [kind for kind in self._types.values() if issubclass(kind, SessionEvent)]
+            kinds = [kind for kind in self._types.values() if issubclass(kind, DurableEvent)]
             annotation = cast(Any, Annotated)[reduce(or_, kinds), Field(discriminator="type")]
             self._adapter = TypeAdapter(
                 annotation,
@@ -113,8 +100,8 @@ class EventRegistry:
         """Return the complete discriminated schema of this catalog's durable events."""
         return self.adapter.json_schema()
 
-    def encode(self, event: SessionEvent) -> dict:
+    def encode(self, event: DurableEvent) -> dict:
         return encode_event(event, registry=self)
 
-    def decode(self, record: dict) -> SessionEvent:
+    def decode(self, record: dict) -> DurableEvent:
         return decode_event(record, registry=self)

@@ -6,7 +6,7 @@ import pytest
 
 from harnessed import Agent as Application
 from harnessed import Plugin, PolicyDecision, ToolCall, ToolResult, tool
-from harnessed.core.events.base import SessionEvent
+from harnessed.core.events.base import DurableEvent
 from harnessed.core.events.messages import SystemMessageEvent
 from harnessed.core.events.model import ModelRequestedEvent
 from harnessed.core.events.turn import TurnEndedEvent
@@ -86,11 +86,11 @@ async def test_exact_requests_include_request_hook_changes_without_rerunning_the
 
 
 @dataclass(frozen=True)
-class UnknownEvent(SessionEvent):
+class UnknownEvent(DurableEvent):
     type: ClassVar[str] = "unknown/event"
 
 
-@pytest.mark.parametrize("event", [SessionEvent(), UnknownEvent(), SystemMessageEvent(["mutable"])])
+@pytest.mark.parametrize("event", [DurableEvent(), UnknownEvent(), SystemMessageEvent(["mutable"])])
 async def test_memory_logs_seeds_and_codecs_reject_unregistered_or_mutable_events(event):
     session = SessionLog("immutable")
     with pytest.raises(TypeError):

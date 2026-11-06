@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal
 
-from harnessed.core.events.base import Identifier, SessionEvent, TransientEvent
+from harnessed.core.events.base import DurableEvent, Identifier, TransientEvent
 from harnessed.core.events.kinds import EventKind
 from harnessed.core.messages import ApprovalAnswer, ToolCall
 
@@ -20,7 +20,7 @@ class PolicySource(StrEnum):
 
 
 @dataclass(frozen=True)
-class ApprovalRequestedEvent(SessionEvent):
+class ApprovalRequestedEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.APPROVAL_REQUESTED] = field(
@@ -45,7 +45,7 @@ class ApprovalRequestedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class ApprovalResolvedEvent(SessionEvent):
+class ApprovalResolvedEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.APPROVAL_RESOLVED] = field(
@@ -77,7 +77,7 @@ class ApprovalResolvedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class ApprovalRevokedEvent(SessionEvent):
+class ApprovalRevokedEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.APPROVAL_REVOKED] = field(

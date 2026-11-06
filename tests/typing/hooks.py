@@ -3,10 +3,10 @@ from typing import assert_type
 from harnessed.events import (
     CompactionFinishedEvent,
     CompactionStartedEvent,
+    DurableEvent,
     ModelAttemptFinishedEvent,
     ModelAttemptStartedEvent,
     ModelRetryScheduledEvent,
-    SessionEvent,
 )
 from harnessed.kernel import Bail, Context, Emit, Inject, Next, PluginBase, Waterfall, hook
 
@@ -36,7 +36,7 @@ class OtherTransform(Waterfall[str]):
 
 
 type TerminalEvent = (
-    SessionEvent
+    DurableEvent
     | Notice
     | CompactionStartedEvent
     | CompactionFinishedEvent

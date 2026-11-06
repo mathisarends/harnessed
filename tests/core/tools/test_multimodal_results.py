@@ -18,7 +18,6 @@ from harnessed.core.messages import (
     ToolResult,
 )
 from harnessed.core.model import ModelInfo, ModelRequest
-from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.core.tokens import ApproximateTokenCounter, count_content
 from harnessed.core.tools.decorator import tool
 from harnessed.core.tools.output_limit import ToolOutputLimit
@@ -65,8 +64,10 @@ async def test_multimodal_tool_loop_retains_images_and_metadata_through_replay(t
         )
         assert history.content == resolved.messages[0].content
         assert history.status == tool_result.status and history.exit_code == 0
-        records = json.loads(json.dumps([encode_event(e) for e in session_audit.events]))
-        replay = AuditProjection([decode_event(e) for e in records])
+        records = json.loads(
+            json.dumps([session.log.registry.encode(e) for e in session_audit.events])
+        )
+        replay = AuditProjection([session.log.registry.decode(e) for e in records])
         assert replay.messages == session.messages
         if policy == "limit":
             assert tool_result.truncation and len(tool_result.text) <= 256

@@ -483,7 +483,7 @@ See [events and schemas](../guides/events.md).
 The [event reference](events.md) lists every built-in event, its discriminator
 and whether it is part of the UI stream or only the durable audit log.
 
-`StreamEvent[T]` describes the built-in UI union. `EventStream[T]` includes the
+`StreamEvent[T]` describes the built-in UI union. `StreamItem[T]` includes the
 application extension bases. Declare frozen dataclasses extending `DurableEvent`
 or `TransientEvent` and list them on `Plugin.events`. EventRegistry supplies
 session-local validation, durable schemas and encode/decode operations.

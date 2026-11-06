@@ -49,7 +49,7 @@ async def test_run_scoped_steering_rejects_input_after_completion():
         assert calls == 2
 
 
-@pytest.mark.parametrize(("mode", "target"), [("followup", "next-turn"), ("steer", "next-step")])
+@pytest.mark.parametrize(("mode", "target"), [("followup", "next_turn"), ("steer", "next_step")])
 def test_input_modes_define_one_consistent_durable_route(mode, target):
     event = InboxAddedEvent.create(user("input"), mode)
     assert event.target == target
@@ -59,10 +59,10 @@ def test_input_modes_define_one_consistent_durable_route(mode, target):
 @pytest.mark.parametrize(
     ("mode", "target"),
     [
-        ("followup", "next-step"),
-        ("steer", "next-turn"),
-        ("inject", "next-step"),
-        ("unknown", "next-step"),
+        ("followup", "next_step"),
+        ("steer", "next_turn"),
+        ("inject", "next_step"),
+        ("unknown", "next_step"),
     ],
 )
 def test_inconsistent_inbox_routes_cannot_enter_the_log(mode, target):

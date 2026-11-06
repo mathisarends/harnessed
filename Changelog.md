@@ -4,6 +4,21 @@
 
 ### Breaking changes
 
+- Rename the open stream return annotation `EventStream[T]` to `StreamItem[T]`.
+  Import it from `harnessed.events`. `StreamEvent[T]` remains the closed built-in
+  stream union. Streams now also include `ToolExecutionStartedEvent` before tool
+  progress, so exhaustive consumers must handle that variant.
+- `InboxTarget.NEXT_TURN` and `NEXT_STEP` now serialize as `"next_turn"` and
+  `"next_step"`. Update literal routing values and stored inbox payloads;
+  hyphenated values are no longer accepted.
+- Built-in durable and transient events now share the public `DurableEvent` and
+  `TransientEvent` bases with custom events. `SessionEvent` is their common root;
+  use `DurableEvent` for persistence checks and custom persisted classes. Replace
+  `BuiltinEvent` annotations with `LogEvent | StreamEvent[T]` where needed.
+- Import `RuleTriggeredEvent` and `RuleAction` from `harnessed.plugins.rules`.
+  Rules events are plugin-declared; readers of `rule.triggered` records must
+  register `Rules.events`. Missing declarations fail strictly. Core no longer
+  exports `EventKind.RULE_TRIGGERED`; use the event's plugin-owned discriminator.
 - Audit-event envelopes now require version **4**; version 3 is rejected without
   migration. Conversation state, execution checkpoint and JSON-store envelope
   versions remain unchanged. Start a new audit log when upgrading.
