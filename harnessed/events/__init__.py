@@ -59,7 +59,7 @@ from harnessed.core.events.session import (
     SessionControlChangedEvent,
     SessionStatusChangedEvent,
 )
-from harnessed.core.events.stream import EventStream, StreamEvent
+from harnessed.core.events.stream import StreamEvent, StreamItem
 from harnessed.core.events.subagents import (
     SubagentApprovalRequestedEvent,
     SubagentFinishedEvent,
@@ -111,7 +111,6 @@ __all__ = [
     "DurableEvent",
     "EventKind",
     "EventRegistry",
-    "EventStream",
     "InboxAddedEvent",
     "InboxMode",
     "InboxRemovalReason",
@@ -147,6 +146,7 @@ __all__ = [
     "StepOutcome",
     "StepStartedEvent",
     "StreamEvent",
+    "StreamItem",
     "SubagentApprovalRequestedEvent",
     "SubagentFinishedEvent",
     "SubagentLinkedEvent",

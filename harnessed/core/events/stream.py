@@ -34,6 +34,7 @@ from harnessed.core.events.tools import (
     ToolCallFinishedEvent,
     ToolCallGenerationStartedEvent,
     ToolCallRequestedEvent,
+    ToolExecutionStartedEvent,
     ToolProgressEvent,
 )
 from harnessed.core.model import ToolArgumentsMode
@@ -45,6 +46,7 @@ type StreamEvent[T] = Annotated[
         | ToolCallGenerationStartedEvent
         | ToolArgumentsDeltaEvent
         | ToolCallRequestedEvent
+        | ToolExecutionStartedEvent
         | ToolProgressEvent
         | ToolCallFinishedEvent
         | ApprovalNeededEvent
@@ -78,7 +80,7 @@ STREAM_EVENT_TYPES: dict[str, type] = {
 }
 
 
-type EventStream[T] = StreamEvent[T] | DurableEvent | TransientEvent[T]
+type StreamItem[T] = StreamEvent[T] | DurableEvent | TransientEvent[T]
 
 
 def coalesce_deltas[E](previous: E, event: E) -> E | None:

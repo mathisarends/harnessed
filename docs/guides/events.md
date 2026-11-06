@@ -34,6 +34,39 @@ not required.
 
 ## Correlate event lifecycles
 
+The log and UI stream consume the same event vocabulary. A `DurableEvent` is
+recorded in the log and may also be projected onto the stream. A `TransientEvent`
+is live only. Use the reference's *Durable* and *On stream* columns to choose
+notifications; all concrete classes remain in `harnessed.events`.
+
+For application tools, distinguish pending calls, human approval, and execution:
+
+```python
+from harnessed.events import (
+    ApprovalNeededEvent,
+    ToolCallRequestedEvent,
+    ToolExecutionStartedEvent,
+    ToolProgressEvent,
+    ToolCallFinishedEvent,
+)
+
+async for event in session.stream("Publish the report"):
+    match event:
+        case ToolCallRequestedEvent(call=call):
+            ui.tool_pending(call.id, call.name)
+        case ApprovalNeededEvent(call=call, reason=reason):
+            ui.tool_awaiting_approval(call.id, reason)
+        case ToolExecutionStartedEvent(call_id=call_id):
+            ui.tool_running(call_id)
+        case ToolProgressEvent(call_id=call_id, text=text):
+            ui.tool_progress(call_id, text)
+        case ToolCallFinishedEvent(call=call, result=result):
+            ui.tool_done(call.id, result)
+```
+
+The approval UI answers through `session.approvals`; execution starts only after
+permission. Denied calls finish without an execution-start notification.
+
 | Activity | Identity | Completion |
 | --- | --- | --- |
 | Turn | `turn_id` | `TurnEndedEvent` in the execution stream; `TurnResultEvent.result.turn_id` on normal UI stream exhaustion |
@@ -241,7 +274,7 @@ schema = adapter.json_schema()
 
 `StreamEvent[T]` is the concrete discriminated union of built-in UI notifications,
 including compaction and spill. `LogEvent` contains the built-in durable audit
-events. The open return type `EventStream[T]` includes application extension
+events. The open return type `StreamItem[T]` includes application extension
 bases; class patterns preserve the structured `TurnResultEvent[T]` result type.
 An explicit application union gives the type checker knowledge of its custom
 variants. Loading a plugin dynamically cannot alter an existing static union.
