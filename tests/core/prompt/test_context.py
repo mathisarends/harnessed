@@ -16,16 +16,14 @@ from harnessed import (
     ToolCall,
     tool,
 )
+from harnessed.core.events.messages import ContextMessageEvent
+from harnessed.core.events.model import ModelRequestedEvent
+from harnessed.core.events.observations import ObservationRecordedEvent
 from harnessed.core.hooks import PreStep
 from harnessed.core.messages import ImageDetail, ImagePart, Role, TextPart, UserMessage, user
 from harnessed.core.model import ModelChunk
 from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.session.events import (
-    ContextMessageEvent,
-    ModelRequestedEvent,
-    ObservationRecordedEvent,
-)
 from harnessed.errors import SessionClosed
 from harnessed.kernel import hook
 from harnessed.plugins import Approvals, Service

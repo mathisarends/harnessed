@@ -5,16 +5,16 @@ from typing import Annotated, Protocol, Self, runtime_checkable
 
 from pydantic import ConfigDict, Field, TypeAdapter
 
-from harnessed.core.hooks import ToolPolicy
-from harnessed.core.messages import ApprovalAnswer, PolicyDecision
-from harnessed.core.plugin import Plugin, PluginConfig
-from harnessed.core.session.events import (
+from harnessed.core.events.approvals import (
     ApprovalRequestedEvent,
     ApprovalResolvedEvent,
     ApprovalRevokedEvent,
     ApprovalStatus,
-    SessionEvent,
 )
+from harnessed.core.events.base import SessionEvent
+from harnessed.core.hooks import ToolPolicy
+from harnessed.core.messages import ApprovalAnswer, PolicyDecision
+from harnessed.core.plugin import Plugin, PluginConfig
 from harnessed.core.tools import ToolRegistry
 from harnessed.core.tools.references import ToolReference, ToolSelector, tool_selector
 from harnessed.kernel import Context, Inject, Next, Priority, hook

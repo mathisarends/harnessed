@@ -7,6 +7,8 @@ project:
   test_roots: [tests]
   coverage: strict
   exclude:
+    - path: build/**
+      reason: Local generated wheel contents and maintainer scratch scripts are not source modules.
     - path: examples/**
       reason: Consumer examples exercise the public SDK and run in tests/test_examples.py.
     - path: scripts/**

@@ -8,7 +8,51 @@ from harnessed.core.approvals import Approval, ApprovalState, approval_transitio
 from harnessed.core.assets import AssetStore, _MemoryAssets
 from harnessed.core.buffering import EventBuffer
 from harnessed.core.errors import SessionFormatError, SessionStateError
-from harnessed.core.event_registry import EventRegistry
+from harnessed.core.events.approvals import ApprovalResolvedEvent, ApprovalStatus
+from harnessed.core.events.base import DurableEvent, SessionEvent, TransientEvent
+from harnessed.core.events.compaction import CompactionAppliedEvent
+from harnessed.core.events.inbox import (
+    InboxAddedEvent,
+    InboxMode,
+    InboxRemovalReason,
+    InboxRemovedEvent,
+    InboxTarget,
+)
+from harnessed.core.events.messages import (
+    AssistantMessageEvent,
+    ContextMessageEvent,
+    UserMessageEvent,
+)
+from harnessed.core.events.model import (
+    ModelRequestedEvent,
+    ModelRequestFailedEvent,
+    ModelRequestOutcome,
+    ModelUsageRecordedEvent,
+)
+from harnessed.core.events.observations import IncludedObservation
+from harnessed.core.events.publishing import SessionPublished
+from harnessed.core.events.registry import EventRegistry
+from harnessed.core.events.session import AgentControlChangedEvent, ControlState
+from harnessed.core.events.stream import coalesce_deltas
+from harnessed.core.events.subagents import (
+    SubagentFinishedEvent,
+    SubagentLinkedEvent,
+    SubagentStatus,
+)
+from harnessed.core.events.tools import (
+    ToolCallFinishedEvent,
+    ToolExecutionFinishedEvent,
+    ToolExecutionStartedEvent,
+)
+from harnessed.core.events.turn import (
+    StepEndedEvent,
+    StepOutcome,
+    StepStartedEvent,
+    TurnEndedEvent,
+    TurnOutcome,
+    TurnStartedEvent,
+)
+from harnessed.core.events.unions import LogEvent
 from harnessed.core.hooks import SessionAppended
 from harnessed.core.messages import (
     AssistantMessage,
@@ -30,41 +74,6 @@ from harnessed.core.session.checkpoint import (
 from harnessed.core.session.children import ChildProjection, ChildSession
 from harnessed.core.session.commit import SessionChange
 from harnessed.core.session.control import RunControl
-from harnessed.core.session.events import (
-    AgentControlChangedEvent,
-    ApprovalResolvedEvent,
-    ApprovalStatus,
-    AssistantMessageEvent,
-    CompactionAppliedEvent,
-    ContextMessageEvent,
-    ControlState,
-    DurableEvent,
-    InboxAddedEvent,
-    InboxMode,
-    InboxRemovalReason,
-    InboxRemovedEvent,
-    InboxTarget,
-    IncludedObservation,
-    LogEvent,
-    ModelRequestedEvent,
-    ModelRequestFailedEvent,
-    ModelRequestOutcome,
-    ModelUsageRecordedEvent,
-    SessionEvent,
-    StepEndedEvent,
-    StepOutcome,
-    StepStartedEvent,
-    SubagentFinishedEvent,
-    SubagentLinkedEvent,
-    SubagentStatus,
-    ToolCallFinishedEvent,
-    ToolExecutionFinishedEvent,
-    ToolExecutionStartedEvent,
-    TurnEndedEvent,
-    TurnOutcome,
-    TurnStartedEvent,
-    UserMessageEvent,
-)
 from harnessed.core.session.files import MemoryFiles
 from harnessed.core.session.history import (
     WorkingHistory,
@@ -76,7 +85,6 @@ from harnessed.core.session.inbox import Inbox
 from harnessed.core.session.state import HistoryTurn, SessionState, image_refs
 from harnessed.core.session.store import SessionPersistence
 from harnessed.core.session.turns import Turn, TurnProjection
-from harnessed.core.stream import SessionPublished, TransientEvent, coalesce_deltas
 from harnessed.kernel import Context
 
 

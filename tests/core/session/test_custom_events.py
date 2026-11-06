@@ -9,7 +9,7 @@ from pydantic.errors import PydanticInvalidForJsonSchema
 
 from harnessed import Agent, Plugin, ToolContext, events, tool
 from harnessed.core.errors import SessionFormatError
-from harnessed.core.runtime.result import RunResult
+from harnessed.core.result import RunResult
 from harnessed.testing import ScriptedModel, call
 from tests._audit import Audit
 

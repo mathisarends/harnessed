@@ -2,16 +2,14 @@ import pytest
 
 from harnessed import Agent as Application
 from harnessed import Plugin, PolicyDecision, ToolCall, ToolResult, tool
+from harnessed.core.events.inbox import InboxAddedEvent
+from harnessed.core.events.messages import ContextValueChangedEvent
+from harnessed.core.events.rules import RuleTriggeredEvent
+from harnessed.core.events.tools import ToolCallFinishedEvent
 from harnessed.core.messages import Role, ToolStatus
 from harnessed.core.model import ModelChunk
 from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.session.events import (
-    ContextValueChangedEvent,
-    InboxAddedEvent,
-    RuleTriggeredEvent,
-    ToolCallFinishedEvent,
-)
 from harnessed.core.session.session import SessionLog
 from harnessed.kernel import PluginStatus
 from harnessed.plugins import Approvals

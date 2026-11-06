@@ -8,6 +8,9 @@ from pydantic.dataclasses import dataclass
 
 from harnessed.core.assets import AssetRef, AssetValue
 from harnessed.core.errors import SessionFormatError
+from harnessed.core.events.messages import ContextLifetime
+from harnessed.core.events.observations import IncludedObservation
+from harnessed.core.events.subagents import SubagentLinkedEvent
 from harnessed.core.messages import (
     AssistantMessage,
     ImageReference,
@@ -18,7 +21,6 @@ from harnessed.core.messages import (
 )
 
 from .children import ChildSession
-from .events import ContextLifetime, IncludedObservation, SubagentLinkedEvent
 from .files import TextValue
 
 _CONFIG = ConfigDict(

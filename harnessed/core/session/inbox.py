@@ -2,14 +2,9 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Self
 
-from harnessed.core.session.events import (
-    ContextMessageEvent,
-    InboxAddedEvent,
-    InboxRemovedEvent,
-    InboxTarget,
-    SessionEvent,
-    UserMessageEvent,
-)
+from harnessed.core.events.base import SessionEvent
+from harnessed.core.events.inbox import InboxAddedEvent, InboxRemovedEvent, InboxTarget
+from harnessed.core.events.messages import ContextMessageEvent, UserMessageEvent
 
 
 @dataclass(frozen=True, init=False)

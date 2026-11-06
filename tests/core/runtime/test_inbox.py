@@ -5,16 +5,16 @@ import pytest
 
 from harnessed import Agent as Application
 from harnessed import PolicyDecision
-from harnessed.core.messages import system, user
-from harnessed.core.model import ModelChunk
-from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.session.events import (
+from harnessed.core.events.inbox import (
     InboxAddedEvent,
     InboxMode,
     InboxRemovalReason,
     InboxRemovedEvent,
-    UserMessageEvent,
 )
+from harnessed.core.events.messages import UserMessageEvent
+from harnessed.core.messages import system, user
+from harnessed.core.model import ModelChunk
+from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.core.session.inbox import Inbox
 from harnessed.errors import SessionStateError
 from harnessed.plugins import Approvals

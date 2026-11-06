@@ -1,9 +1,9 @@
 from harnessed.core.budget import ContextBudget
+from harnessed.core.events.model import ModelRequestedEvent, ModelUsageRecordedEvent
 from harnessed.core.hooks import SessionAppended
 from harnessed.core.model import UsagePurpose
 from harnessed.core.plugin import Plugin
 from harnessed.core.prompt.system_prompt import SystemPromptStore
-from harnessed.core.session.events import ModelRequestedEvent, ModelUsageRecordedEvent
 from harnessed.core.tokens import CalibratedTokenCounter, TokenCounter
 from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import Context

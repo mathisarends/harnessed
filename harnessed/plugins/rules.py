@@ -10,15 +10,12 @@ from typing import Annotated, Self
 from pydantic import AfterValidator, ConfigDict, Field, StringConstraints, TypeAdapter
 from pydantic.dataclasses import dataclass
 
+from harnessed.core.events.rules import RuleAction, RuleTriggeredEvent
 from harnessed.core.hooks import ReviewToolResult
 from harnessed.core.messages import ToolCall, ToolResult, to_dict, user
 from harnessed.core.plugin import Plugin
 from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.runtime.inbox import SessionInbox
-from harnessed.core.session.events import (
-    RuleAction,
-    RuleTriggeredEvent,
-)
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import TokenCounter, count_content
 from harnessed.kernel import Inject, Next, PluginState, hook

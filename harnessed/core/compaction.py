@@ -12,6 +12,15 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from harnessed.core.budget import ContextBudget, truncate
+from harnessed.core.events.compaction import (
+    CompactionAppliedEvent,
+    CompactionFinishedEvent,
+    CompactionOutcome,
+    CompactionStartedEvent,
+)
+from harnessed.core.events.messages import ContextMessageEvent, UserMessageEvent
+from harnessed.core.events.model import ModelUsageRecordedEvent
+from harnessed.core.events.turn import StepEndedEvent, StepOutcome
 from harnessed.core.messages import Message, SystemMessage, UserMessage, to_dict
 from harnessed.core.model import (
     GenerationSettings,
@@ -21,16 +30,7 @@ from harnessed.core.model import (
     UsagePurpose,
     resolve_request_settings,
 )
-from harnessed.core.session.events import (
-    CompactionAppliedEvent,
-    ContextMessageEvent,
-    ModelUsageRecordedEvent,
-    StepEndedEvent,
-    StepOutcome,
-    UserMessageEvent,
-)
 from harnessed.core.session.session import SessionLog
-from harnessed.core.stream import CompactionFinishedEvent, CompactionOutcome, CompactionStartedEvent
 from harnessed.core.tokens import TokenCounter, count_request
 from harnessed.core.tracing import span
 from harnessed.kernel import Context

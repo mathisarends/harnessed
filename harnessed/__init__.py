@@ -38,7 +38,7 @@ _EXPORTS = {
     "Role": ("harnessed.core.messages", "Role"),
     "ResolvedPluginPack": ("harnessed.core.composition", "ResolvedPluginPack"),
     "RunHandle": ("harnessed.core.runtime.handles", "RunHandle"),
-    "RunResult": ("harnessed.core.runtime.result", "RunResult"),
+    "RunResult": ("harnessed.core.result", "RunResult"),
     "PluginOrder": ("harnessed.core.prompt.values", "PluginOrder"),
     "PromptFormat": ("harnessed.core.prompt.values", "PromptFormat"),
     "SectionDelivery": ("harnessed.core.prompt.values", "SectionDelivery"),

@@ -2,10 +2,9 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
+from harnessed.core.events.inbox import InboxAddedEvent
 from harnessed.core.model import OutputSchema
-from harnessed.core.session.events import InboxAddedEvent
-
-from .result import RunResult
+from harnessed.core.result import RunResult
 
 
 class RunHandle[T]:

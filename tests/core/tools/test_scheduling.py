@@ -16,16 +16,16 @@ from harnessed import (
     plugin,
     tool,
 )
-from harnessed.core.hooks import ReviewToolResult
-from harnessed.core.messages import PolicyDecision, Role
-from harnessed.core.model import ModelChunk
-from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.session.events import (
+from harnessed.core.events.tools import (
     ToolCallFinishedEvent,
     ToolCallRequestedEvent,
     ToolExecutionFinishedEvent,
     ToolProgressEvent,
 )
+from harnessed.core.hooks import ReviewToolResult
+from harnessed.core.messages import PolicyDecision, Role
+from harnessed.core.model import ModelChunk
+from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.core.tools.registry import ToolRegistry
 from harnessed.kernel import hook
 from harnessed.plugins import AgentLoop, Approvals

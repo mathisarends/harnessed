@@ -1,6 +1,12 @@
 from dataclasses import replace
 
 from harnessed.core.errors import ConfigError, SessionStateError
+from harnessed.core.events.messages import (
+    AssistantMessageEvent,
+    ContextLifetime,
+    ContextMessageEvent,
+)
+from harnessed.core.events.output import OutputValidatedEvent, OutputValidationFailedEvent
 from harnessed.core.messages import AssistantMessage, ToolResult, UserMessage
 from harnessed.core.model import (
     Model,
@@ -13,13 +19,6 @@ from harnessed.core.model import (
 )
 from harnessed.core.outputs import FINAL_ANSWER, OutputTypes, OutputValues, validation_note
 from harnessed.core.runtime.options import AgentOptions
-from harnessed.core.session.events import (
-    AssistantMessageEvent,
-    ContextLifetime,
-    ContextMessageEvent,
-    OutputValidatedEvent,
-    OutputValidationFailedEvent,
-)
 from harnessed.core.session.session import SessionLog
 from harnessed.kernel import Context
 

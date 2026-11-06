@@ -4,6 +4,12 @@ from dataclasses import replace
 from functools import partial
 
 from harnessed.core.assets import AssetRef, AssetStore
+from harnessed.core.events.base import SessionEvent
+from harnessed.core.events.inbox import InboxAddedEvent
+from harnessed.core.events.messages import ContextMessageEvent, UserMessageEvent
+from harnessed.core.events.model import ModelRequestedEvent
+from harnessed.core.events.observations import ObservationRecordedEvent
+from harnessed.core.events.tools import ToolCallFinishedEvent, ToolExecutionFinishedEvent
 from harnessed.core.messages import (
     ContentPart,
     ImagePart,
@@ -14,17 +20,6 @@ from harnessed.core.messages import (
 )
 from harnessed.core.model import ModelRequest
 from harnessed.kernel import run_sync
-
-from .events import (
-    ContextMessageEvent,
-    InboxAddedEvent,
-    ModelRequestedEvent,
-    ObservationRecordedEvent,
-    SessionEvent,
-    ToolCallFinishedEvent,
-    ToolExecutionFinishedEvent,
-    UserMessageEvent,
-)
 
 
 class _SessionImages:

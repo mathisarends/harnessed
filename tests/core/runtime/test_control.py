@@ -4,14 +4,11 @@ from contextlib import asynccontextmanager
 import pytest
 
 from harnessed import Agent, Inject, Plugin, SessionClosed, SessionStatus, StopReason
+from harnessed.core.events.session import AgentControlChangedEvent, ControlState
+from harnessed.core.events.tools import ToolCallFinishedEvent
 from harnessed.core.messages import ApprovalAnswer, ToolCall
 from harnessed.core.model import ModelChunk
 from harnessed.core.runtime.control import SessionControl
-from harnessed.core.session.events import (
-    AgentControlChangedEvent,
-    ControlState,
-    ToolCallFinishedEvent,
-)
 from harnessed.core.tools.context import ToolContext
 from harnessed.core.tools.decorator import tool
 from harnessed.plugins import Approvals

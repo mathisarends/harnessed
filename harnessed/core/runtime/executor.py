@@ -6,6 +6,14 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from harnessed.core.errors import ApprovalUnavailable
+from harnessed.core.events.approvals import PolicySource
+from harnessed.core.events.tools import (
+    ToolCallFinishedEvent,
+    ToolCallRequestedEvent,
+    ToolExecutionFinishedEvent,
+    ToolExecutionStartedEvent,
+    ToolPolicyAppliedEvent,
+)
 from harnessed.core.hooks import (
     ExecuteTool,
     ReviewToolResult,
@@ -20,14 +28,6 @@ from harnessed.core.messages import (
     ToolStatus,
 )
 from harnessed.core.runtime.options import AgentOptions
-from harnessed.core.session.events import (
-    PolicySource,
-    ToolCallFinishedEvent,
-    ToolCallRequestedEvent,
-    ToolExecutionFinishedEvent,
-    ToolExecutionStartedEvent,
-    ToolPolicyAppliedEvent,
-)
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tools import ToolChain
 from harnessed.core.tools.context import ToolContexts

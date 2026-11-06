@@ -2,10 +2,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 
 from harnessed.core.child_status import ChildActivity, ChildReportState, ChildRuntimeState
-from harnessed.core.model import ModelUsage
-
-from .events import (
-    SessionEvent,
+from harnessed.core.events.base import SessionEvent
+from harnessed.core.events.subagents import (
     SubagentApprovalRequestedEvent,
     SubagentFinishedEvent,
     SubagentLinkedEvent,
@@ -14,6 +12,7 @@ from .events import (
     SubagentStatus,
     SubagentUpdatedEvent,
 )
+from harnessed.core.model import ModelUsage
 
 
 @dataclass(frozen=True)

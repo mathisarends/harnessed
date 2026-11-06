@@ -1,5 +1,5 @@
+from harnessed.core.events.observations import ObservationPolicyAppliedEvent
 from harnessed.core.plugin import Plugin
-from harnessed.core.session.events import ObservationPolicyAppliedEvent
 from harnessed.core.session.session import SessionLog
 from harnessed.kernel import Inject
 

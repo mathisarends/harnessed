@@ -9,12 +9,9 @@ from harnessed import (
     PluginOrder,
     SystemPrompt,
 )
+from harnessed.core.events.observations import SpillCreatedEvent, SpillExpiredEvent
 from harnessed.core.messages import ImagePart, TextPart, ToolCall, ToolResult, ToolStatus
 from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.session.events import (
-    SpillCreatedEvent,
-    SpillExpiredEvent,
-)
 from harnessed.core.session.files import SessionFiles
 from harnessed.core.tools.decorator import tool
 from harnessed.core.tools.output_limit import ToolOutputLimit
@@ -134,7 +131,7 @@ def test_spill_options_are_declarative_and_strict(options):
 
 
 async def test_late_canonical_results_do_not_resurrect_a_durably_expired_reference():
-    from harnessed.core.session.events import ToolCallFinishedEvent
+    from harnessed.core.events.tools import ToolCallFinishedEvent
 
     app = configure(
         ScriptedModel([call("source", text="x" * 1000), "done"]),

@@ -5,26 +5,27 @@ from dataclasses import replace
 from typing import TypedDict, Unpack
 from xml.sax.saxutils import escape, quoteattr
 
-from harnessed.core.messages import Message, SpillRef, SystemMessage, ToolMessage, UserMessage
-from harnessed.core.model import ModelRequest
-from harnessed.core.session.events import (
+from harnessed.core.events.base import SessionEvent
+from harnessed.core.events.compaction import CompactionAppliedEvent
+from harnessed.core.events.messages import (
     AssistantMessageEvent,
-    CompactionAppliedEvent,
     ContextLifetime,
     ContextMessageEvent,
     ContextValueChangedEvent,
-    IncludedObservation,
-    ModelRequestedEvent,
-    ObservationPolicyAppliedEvent,
-    ObservationRecordedEvent,
-    SessionEvent,
-    SpillExpiredEvent,
     SystemMessageEvent,
-    ToolCallFinishedEvent,
-    TurnEndedEvent,
-    TurnStartedEvent,
     UserMessageEvent,
 )
+from harnessed.core.events.model import ModelRequestedEvent
+from harnessed.core.events.observations import (
+    IncludedObservation,
+    ObservationPolicyAppliedEvent,
+    ObservationRecordedEvent,
+    SpillExpiredEvent,
+)
+from harnessed.core.events.tools import ToolCallFinishedEvent
+from harnessed.core.events.turn import TurnEndedEvent, TurnStartedEvent
+from harnessed.core.messages import Message, SpillRef, SystemMessage, ToolMessage, UserMessage
+from harnessed.core.model import ModelRequest
 
 from .state import HistoryEntry, SessionState
 

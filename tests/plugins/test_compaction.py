@@ -12,6 +12,9 @@ from harnessed import (
 )
 from harnessed.core.compaction import ContextState
 from harnessed.core.errors import ConfigError, ContextLengthExceeded, SessionStateError
+from harnessed.core.events.compaction import CompactionAppliedEvent, CompactionStartedEvent
+from harnessed.core.events.model import ModelRequestedEvent, ModelUsageRecordedEvent
+from harnessed.core.events.turn import TurnOutcome
 from harnessed.core.hooks import ConfigureRequest
 from harnessed.core.messages import AssistantMessage, SystemMessage, ToolCall
 from harnessed.core.model import (
@@ -24,13 +27,6 @@ from harnessed.core.model import (
     UsagePurpose,
 )
 from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.session.events import (
-    CompactionAppliedEvent,
-    ModelRequestedEvent,
-    ModelUsageRecordedEvent,
-    TurnOutcome,
-)
-from harnessed.core.stream import CompactionStartedEvent
 from harnessed.core.tools.decorator import tool
 from harnessed.plugins import AgentLoop, Compaction, at_ratio, every_turns
 from harnessed.testing import CallbackModel, ScriptedModel, reply

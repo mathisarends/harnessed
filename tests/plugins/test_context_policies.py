@@ -19,20 +19,15 @@ from harnessed import (
     tool,
 )
 from harnessed.core.compaction import ModelSummarizer
+from harnessed.core.events.compaction import CompactionAppliedEvent
+from harnessed.core.events.messages import SystemMessageEvent, UserMessageEvent
+from harnessed.core.events.model import ModelUsageRecordedEvent
+from harnessed.core.events.observations import ObservationPolicyAppliedEvent, SpillCreatedEvent
+from harnessed.core.events.turn import TurnEndedEvent, TurnStartedEvent
 from harnessed.core.hooks import PreStep
 from harnessed.core.messages import AssistantMessage, ToolStatus, UserMessage
 from harnessed.core.model import ModelChunk, ModelUsage
 from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.session.events import (
-    CompactionAppliedEvent,
-    ModelUsageRecordedEvent,
-    ObservationPolicyAppliedEvent,
-    SpillCreatedEvent,
-    SystemMessageEvent,
-    TurnEndedEvent,
-    TurnStartedEvent,
-    UserMessageEvent,
-)
 from harnessed.core.session.files import SessionFiles
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tools.registry import ToolError

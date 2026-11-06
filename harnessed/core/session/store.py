@@ -4,24 +4,25 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from harnessed.core.errors import SessionStateError
-
-from .checkpoint import CheckpointExtension, SessionCheckpoint
-from .commit import SessionChange, SessionCommit
-from .events import (
-    AgentControlChangedEvent,
+from harnessed.core.events.approvals import (
     ApprovalRequestedEvent,
     ApprovalResolvedEvent,
     ApprovalRevokedEvent,
-    CompactionAppliedEvent,
-    ContextValueChangedEvent,
-    InboxAddedEvent,
-    InboxRemovedEvent,
-    ModelRequestedEvent,
+)
+from harnessed.core.events.compaction import CompactionAppliedEvent
+from harnessed.core.events.inbox import InboxAddedEvent, InboxRemovedEvent
+from harnessed.core.events.messages import ContextValueChangedEvent
+from harnessed.core.events.model import ModelRequestedEvent
+from harnessed.core.events.session import AgentControlChangedEvent
+from harnessed.core.events.tools import (
     ToolCallFinishedEvent,
     ToolExecutionFinishedEvent,
     ToolExecutionStartedEvent,
-    TurnEndedEvent,
 )
+from harnessed.core.events.turn import TurnEndedEvent
+
+from .checkpoint import CheckpointExtension, SessionCheckpoint
+from .commit import SessionChange, SessionCommit
 
 
 @dataclass(frozen=True)

@@ -12,8 +12,8 @@ from harnessed import (
     SystemPrompt,
     tool,
 )
+from harnessed.core.events.messages import ContextValueChangedEvent
 from harnessed.core.prompt.context import DynamicContext
-from harnessed.core.session.events import ContextValueChangedEvent
 from harnessed.kernel import PluginStatus
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit

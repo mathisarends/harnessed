@@ -4,7 +4,14 @@ from typing import Annotated, Any, Literal
 from pydantic import PlainSerializer, PlainValidator, ValidationInfo, WithJsonSchema
 
 from harnessed.core.errors import OutputUnavailable
-from harnessed.core.event_kinds import EventKind
+from harnessed.core.events.base import SessionEvent
+from harnessed.core.events.compaction import CompactionAppliedEvent
+from harnessed.core.events.kinds import EventKind
+from harnessed.core.events.messages import AssistantMessageEvent
+from harnessed.core.events.model import ModelUsageRecordedEvent
+from harnessed.core.events.output import OutputValidatedEvent, OutputValidationFailedEvent
+from harnessed.core.events.tools import ToolCallFinishedEvent, ToolCallRequestedEvent
+from harnessed.core.events.turn import TurnEndedEvent, TurnOutcome, TurnStartedEvent
 from harnessed.core.messages import (
     Message,
     ToolCall,
@@ -14,19 +21,6 @@ from harnessed.core.messages import (
 from harnessed.core.model import ModelUsage, OutputSchema, StopReason, sum_usage
 from harnessed.core.outputs import OutputTypes, OutputValues
 from harnessed.core.session.codec import CURRENT_VERSION, decode_event
-from harnessed.core.session.events import (
-    AssistantMessageEvent,
-    CompactionAppliedEvent,
-    ModelUsageRecordedEvent,
-    OutputValidatedEvent,
-    OutputValidationFailedEvent,
-    SessionEvent,
-    ToolCallFinishedEvent,
-    ToolCallRequestedEvent,
-    TurnEndedEvent,
-    TurnOutcome,
-    TurnStartedEvent,
-)
 from harnessed.core.session.history import derive_messages
 from harnessed.core.session.state import SessionState
 

@@ -3,6 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Self
 
+from harnessed.core.events.approvals import ApprovalRequestedEvent
+from harnessed.core.events.base import SessionEvent
+from harnessed.core.events.messages import UserMessageEvent
 from harnessed.core.messages import (
     ApprovalAnswer,
     Message,
@@ -12,7 +15,6 @@ from harnessed.core.messages import (
     ToolResult,
 )
 from harnessed.core.model import ModelRequest
-from harnessed.core.session.events import ApprovalRequestedEvent, SessionEvent, UserMessageEvent
 from harnessed.core.tools import ToolInfo
 from harnessed.core.tools.policy import OutputLimit, OutputLimitSetting
 from harnessed.kernel import Bail, Emit, Waterfall

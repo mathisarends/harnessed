@@ -4,10 +4,10 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from xml.sax.saxutils import escape, quoteattr
 
+from harnessed.core.events.messages import ContextValueChangedEvent
 from harnessed.core.hooks import PreStep, StepDecision
 from harnessed.core.messages import UserMessage
 from harnessed.core.plugin import Plugin
-from harnessed.core.session.events import ContextValueChangedEvent
 from harnessed.core.session.session import SessionLog
 from harnessed.kernel import Context, Disposer, Inject, Next, RegistrationState, hook
 

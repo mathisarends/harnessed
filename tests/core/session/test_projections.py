@@ -3,6 +3,21 @@ import random
 import pytest
 
 from harnessed.core.approvals import ApprovalState
+from harnessed.core.events.approvals import (
+    ApprovalRequestedEvent,
+    ApprovalResolvedEvent,
+    ApprovalRevokedEvent,
+)
+from harnessed.core.events.inbox import InboxAddedEvent, InboxMode, InboxRemovedEvent
+from harnessed.core.events.messages import AssistantMessageEvent, UserMessageEvent
+from harnessed.core.events.model import ModelRequestedEvent
+from harnessed.core.events.session import AgentControlChangedEvent
+from harnessed.core.events.turn import (
+    StepEndedEvent,
+    StepStartedEvent,
+    TurnEndedEvent,
+    TurnStartedEvent,
+)
 from harnessed.core.messages import (
     ApprovalAnswer,
     AssistantMessage,
@@ -11,22 +26,6 @@ from harnessed.core.messages import (
 )
 from harnessed.core.model import ModelRequest
 from harnessed.core.session.control import RunControl
-from harnessed.core.session.events import (
-    AgentControlChangedEvent,
-    ApprovalRequestedEvent,
-    ApprovalResolvedEvent,
-    ApprovalRevokedEvent,
-    AssistantMessageEvent,
-    InboxAddedEvent,
-    InboxMode,
-    InboxRemovedEvent,
-    ModelRequestedEvent,
-    StepEndedEvent,
-    StepStartedEvent,
-    TurnEndedEvent,
-    TurnStartedEvent,
-    UserMessageEvent,
-)
 from harnessed.core.session.inbox import Inbox
 from harnessed.core.session.session import SessionLog, derive_messages, derive_requests
 from harnessed.models import ModelInfo
