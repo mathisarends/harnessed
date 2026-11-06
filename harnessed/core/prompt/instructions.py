@@ -1,7 +1,7 @@
 from harnessed.core.plugin import Plugin
 from harnessed.core.prompt.system_prompt import SystemPromptStore
 from harnessed.core.prompt.values import PromptComposition, SystemPrompt
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 
 class PromptRenderer(Plugin, slot="instructions", needs=(SystemPromptStore,)):
@@ -19,6 +19,6 @@ class PromptRenderer(Plugin, slot="instructions", needs=(SystemPromptStore,)):
         self.values = values
         self.composition = composition
 
-    async def setup(self, ctx: Context) -> None:
+    async def setup(self, scope: Scope) -> None:
         composition = self.composition or PromptComposition(self.values)
-        ctx[SystemPromptStore].fixed(await composition.render(ctx), owner=ctx)
+        scope[SystemPromptStore].fixed(await composition.render(scope), owner=scope)

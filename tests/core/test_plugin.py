@@ -5,7 +5,7 @@ import pytest
 from pydantic import Field, ValidationError
 
 from harnessed import Agent, ApprovalAnswer, Plugin, PluginConfig, PluginState, tool
-from harnessed.kernel import Context, Emit, PluginFailed, Priority, hook
+from harnessed.kernel import Emit, PluginFailed, Priority, Scope, hook
 from harnessed.plugins import Approvals
 from harnessed.testing import ScriptedModel, call
 
@@ -19,12 +19,12 @@ async def test_plugin_mount_does_not_deepcopy_external_clients_or_locks():
             super().__init__()
             self.client = client
 
-        async def setup(self, ctx):
+        async def setup(self, scope):
             self.state = []
             seen.append((self.client, self.state))
 
     recipe = Stateful(client)
-    async with Context() as first, Context() as second:
+    async with Scope() as first, Scope() as second:
         await first.plugin(recipe)
         await second.plugin(recipe)
     assert seen[0][0] is seen[1][0] is client
@@ -48,14 +48,14 @@ async def test_failed_setup_reports_immediately_and_releases_partial_effects(cap
     cleaned, failures = [], []
 
     class Broken(Plugin):
-        async def setup(self, ctx):
-            ctx.effect(lambda: cleaned.append("closed"))
+        async def setup(self, scope):
+            scope.effect(lambda: cleaned.append("closed"))
             raise ValueError("setup failed")
 
-    async with Context() as ctx:
-        ctx.on(PluginFailed, failures.append)
+    async with Scope() as scope:
+        scope.on(PluginFailed, failures.append)
         with pytest.raises(ValueError, match="setup failed"):
-            await ctx.plugin(Broken())
+            await scope.plugin(Broken())
         assert cleaned == ["closed"]
         assert failures[0].plugin == "Broken"
         assert "Plugin Broken setup failed" in caplog.text
@@ -66,12 +66,12 @@ async def test_direct_listener_registration_returns_an_idempotent_disposer():
         pass
 
     seen = []
-    async with Context() as ctx:
-        remove = ctx.on(Changed, lambda event: seen.append(True), priority=Priority.GUARD)
-        await ctx.dispatch(Changed())
+    async with Scope() as scope:
+        remove = scope.on(Changed, lambda event: seen.append(True), priority=Priority.GUARD)
+        await scope.dispatch(Changed())
         await remove()
         await remove()
-        await ctx.dispatch(Changed())
+        await scope.dispatch(Changed())
     assert seen == [True]
     assert "Lower priorities" in hook.__doc__
 

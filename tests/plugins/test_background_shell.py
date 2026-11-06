@@ -21,7 +21,7 @@ from tests._audit import Audit
 
 
 async def execute(session, name, **arguments):
-    return await session.ctx[ToolRegistry].execute(ToolCall(name, arguments))
+    return await session.scope[ToolRegistry].execute(ToolCall(name, arguments))
 
 
 def agent(tmp_path, **options):
@@ -63,7 +63,7 @@ async def test_background_tools_require_explicit_opt_in(tmp_path, shell_enabled)
         plugins=[Shell(tmp_path)] if shell_enabled else [],
     )
     async with app.session() as session:
-        definitions = {tool.name: tool for tool in session.ctx[ToolRegistry].definitions}
+        definitions = {tool.name: tool for tool in session.scope[ToolRegistry].definitions}
         assert (
             not {
                 "start_command",
@@ -87,7 +87,7 @@ async def test_background_plugin_can_use_an_explicit_backend_without_foreground_
     )
     async with app.session() as session:
         await session.pause()
-        assert {tool.name for tool in session.ctx[ToolRegistry].definitions} == {
+        assert {tool.name for tool in session.scope[ToolRegistry].definitions} == {
             "start_command",
             "read_command",
             "write_command",
@@ -317,8 +317,8 @@ async def test_background_process_tree_cleanup_and_retry(tmp_path, end):
         elif end == "unmount":
             await handle.aclose()
         else:
-            session.ctx.provide(ShellBackend, LocalShell())
-            await session.ctx.settle()
+            session.scope.provide(ShellBackend, LocalShell())
+            await session.scope.settle()
             stale = await execute(session, "read_command", command_id=command_id)
             assert stale.is_error and "Unknown command_id" in stale.text
         before = heartbeat.read_bytes()

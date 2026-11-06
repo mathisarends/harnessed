@@ -55,13 +55,13 @@ async def test_compaction_lifecycle_is_live_and_correlates_with_the_committed_pr
     ).session() as session:
         session_audit = Audit(session)
         assert await session.compact() is None
-        assert not session.ctx[Recorder].events
+        assert not session.scope[Recorder].events
         await session.run("x" * 4000)
         if automatic:
             stream = [event async for event in session.stream("current")]
         else:
             await session.compact()
-            stream = session.ctx[Recorder].events
+            stream = session.scope[Recorder].events
         started = [e for e in stream if isinstance(e, CompactionStartedEvent)]
         finished = [e for e in stream if isinstance(e, CompactionFinishedEvent)]
         assert len(started) == len(finished) == 1
@@ -106,9 +106,11 @@ async def test_compaction_failure_and_cancellation_always_close_the_started_life
             task.cancel()
         with pytest.raises(asyncio.CancelledError if cancel else ValueError):
             await asyncio.wait_for(task, timeout=5)
-        started = [e for e in session.ctx[Recorder].events if isinstance(e, CompactionStartedEvent)]
+        started = [
+            e for e in session.scope[Recorder].events if isinstance(e, CompactionStartedEvent)
+        ]
         finished = [
-            e for e in session.ctx[Recorder].events if isinstance(e, CompactionFinishedEvent)
+            e for e in session.scope[Recorder].events if isinstance(e, CompactionFinishedEvent)
         ]
         assert len(started) == len(finished) == 1
         assert finished[0].compaction_id == started[0].compaction_id
@@ -134,7 +136,7 @@ async def test_failure_after_durable_apply_still_reports_applied():
         with pytest.raises(ValueError, match="observer failed"):
             await session.compact()
         finished = [
-            e for e in session.ctx[Recorder].events if isinstance(e, CompactionFinishedEvent)
+            e for e in session.scope[Recorder].events if isinstance(e, CompactionFinishedEvent)
         ]
         assert len(finished) == 1 and finished[0].outcome is CompactionOutcome.APPLIED
         assert session.last(CompactionAppliedEvent).id == finished[0].compaction_id

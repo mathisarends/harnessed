@@ -155,8 +155,8 @@ async def test_same_workspace_backend_and_explicit_binary_export(tmp_path):
         services = sandbox.services(session)
         files = services.file_system
         shell = services.shell
-        assert files is session.ctx[FileSystemBackend]
-        assert shell is session.ctx[ShellBackend]
+        assert files is session.scope[FileSystemBackend]
+        assert shell is session.scope[ShellBackend]
         assert files is shell
         assert await files.read(Path("example.txt"), offset=1, limit=3) == "ell"
         assert (await files.stat(Path("example.txt"))).size == 5
@@ -168,7 +168,7 @@ async def test_same_workspace_backend_and_explicit_binary_export(tmp_path):
         destination = tmp_path / "out/result.bin"
         await sandbox.export(session, source="result.bin", destination=destination)
         assert destination.read_bytes() == b"\x00\xff\x10"
-        registry = session.ctx[ToolRegistry]
+        registry = session.scope[ToolRegistry]
         assert {d.name for d in registry.definitions} == {
             "run_command",
             "read_file",
@@ -200,8 +200,8 @@ async def test_mount_state_is_fresh_and_export_uses_recipe_identity(tmp_path):
     async with agent.session() as first, agent.session() as second:
         assert len(backends) == 2 and backends[0] is not backends[1]
         assert sandbox.services(first).file_system is not sandbox.services(second).file_system
-        await first.ctx[FileSystemBackend].write(Path("example.txt"), "first")
-        assert await second.ctx[FileSystemBackend].read(Path("example.txt")) == "hello"
+        await first.scope[FileSystemBackend].write(Path("example.txt"), "first")
+        assert await second.scope[FileSystemBackend].read(Path("example.txt")) == "hello"
         with pytest.raises(MissingService):
             await other.export(first, source="example.txt", destination=tmp_path / "wrong.txt")
         with pytest.raises(MissingService):
@@ -271,7 +271,7 @@ async def test_interrupted_commands_close_sandbox(tmp_path, end):
     backend = MemoryBackend()
     sandbox = Sandbox(backend=lambda: backend, workspace=Workspace.copy_from(tmp_path))
     async with app(sandbox).session() as session:
-        shell = session.ctx[ShellBackend]
+        shell = session.scope[ShellBackend]
         if end == "timeout":
             with pytest.raises(TimeoutError):
                 await shell.run(["timeout"], cwd=Path("."), timeout=1)
@@ -303,7 +303,7 @@ async def test_rejected_path_and_oversized_writes_never_reach_backend(tmp_path):
         limits=SandboxLimits(max_transfer_bytes=256),
     )
     async with app(sandbox).session() as session:
-        files = session.ctx[FileSystemBackend]
+        files = session.scope[FileSystemBackend]
         with pytest.raises(ValueError):
             await files.read(Path("../secret"))
         with pytest.raises(ValueError, match="max_transfer_bytes"):

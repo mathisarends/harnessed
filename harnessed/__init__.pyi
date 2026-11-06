@@ -41,7 +41,6 @@ from harnessed.core.tools.info import ToolInfo as ToolInfo
 from harnessed.core.tools.info import ToolMetadata as ToolMetadata
 from harnessed.core.tools.info import ToolPresentation as ToolPresentation
 from harnessed.core.tools.registry import ToolError as ToolError
-from harnessed.kernel import Context as Context
 from harnessed.kernel import Inject as Inject
 from harnessed.kernel import PluginState as PluginState
 from harnessed.kernel import hook as hook
@@ -52,7 +51,6 @@ from . import events as events
 __all__ = [
     "Agent",
     "ApprovalAnswer",
-    "Context",
     "CompositionDescription",
     "File",
     "Image",

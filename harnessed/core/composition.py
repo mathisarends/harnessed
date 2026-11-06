@@ -9,10 +9,10 @@ from typing import Any, Self
 
 from harnessed.kernel import (
     Bundle,
-    Context,
     PluginBase,
     PluginLike,
     PluginSpec,
+    Scope,
     ServiceKey,
     as_plugin_spec,
 )
@@ -310,9 +310,9 @@ class PluginValidation(StrEnum):
     WARN = "warn"
 
 
-def validate_plugins(ctx: Context, policy: PluginValidation) -> None:
+def validate_plugins(scope: Scope, policy: PluginValidation) -> None:
     """Check a settled session scope before starting its runtime."""
-    issues = ctx.plugin_diagnostics()
+    issues = scope.plugin_diagnostics()
     if not issues:
         return
     if policy == PluginValidation.ERROR:

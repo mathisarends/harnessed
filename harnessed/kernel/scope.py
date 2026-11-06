@@ -16,17 +16,17 @@ from .keys import MissingService, ServiceKey
 from .plugin import PluginHandle, PluginLike, PluginStatus, _Runtime, as_plugin_spec
 from .spec import PluginDependencyIssue, PluginSpec
 
-_current: ContextVar[Context | None] = ContextVar("harnessed_context", default=None)
+_current: ContextVar[Scope | None] = ContextVar("harnessed_scope", default=None)
 
 
-class ContextClosed(RuntimeError):
+class ScopeClosed(RuntimeError):
     pass
 
 
 @dataclass(eq=False)
 class _Binding:
     value: Any
-    owner: Context
+    owner: Scope
 
 
 @dataclass
@@ -40,7 +40,7 @@ class _Scope:
 class RegistrationState:
     """Visibility of an owned registration throughout plugin startup and disposal."""
 
-    def __init__(self, owner: Context) -> None:
+    def __init__(self, owner: Scope) -> None:
         self._owner = owner
         self._disposed = False
 
@@ -49,7 +49,7 @@ class RegistrationState:
         return not self._disposed and self._owner._registrations_active()
 
 
-class Context:
+class Scope:
     """A service/event scope with an AsyncExitStack for every owner.
 
     Plugins share their mount's service scope. ``extend()`` creates an isolated
@@ -63,7 +63,7 @@ class Context:
         self._handle: PluginHandle | None = None
 
     @classmethod
-    def current(cls) -> Context | None:
+    def current(cls) -> Scope | None:
         """The owner of registrations in the current asynchronous call chain."""
         return _current.get()
 
@@ -83,13 +83,13 @@ class Context:
 
     def _check_open(self) -> None:
         if self._closed:
-            raise ContextClosed("This context has been disposed")
+            raise ScopeClosed("This scope has been disposed")
 
     def _registrations_active(self) -> bool:
         return not self._closed and (
             self._handle is None
             or self._handle.status == PluginStatus.ACTIVE
-            or Context.current() is self
+            or Scope.current() is self
         )
 
     def _binding[T](self, key: ServiceKey[T], *, exclude: PluginHandle | None = None) -> _Binding:
@@ -99,7 +99,7 @@ class Context:
                 handle = binding.owner._handle
                 if exclude is not None and handle is exclude:
                     continue
-                current = Context.current()
+                current = Scope.current()
                 if (
                     handle is None
                     or handle.status == PluginStatus.ACTIVE
@@ -155,7 +155,7 @@ class Context:
     @property
     def owner_name(self) -> str:
         """A diagnostic name for registrations owned by this context."""
-        return self._handle.name if self._handle is not None else f"Context@{id(self):x}"
+        return self._handle.name if self._handle is not None else f"Scope@{id(self):x}"
 
     def provide[T](self, key: ServiceKey[T], implementation: T) -> Disposer:
         self._check_open()
@@ -361,14 +361,14 @@ class Context:
         return mounted, pending
 
 
-def _check_declared_dependencies(specs: tuple[PluginSpec, ...], ctx: Context) -> None:
+def _check_declared_dependencies(specs: tuple[PluginSpec, ...], scope: Scope) -> None:
     """Reject a closed dependency cycle before running any setup callbacks.
 
-    Undeclared providers (function plugins and manual ctx.provide) still require
+    Undeclared providers (function plugins and manual scope.provide) still require
     the normal runtime check. Do not infer their outputs from their class names.
     """
     pending = list(specs)
-    available = {key for spec in specs for key in spec.needs if key in ctx}
+    available = {key for spec in specs for key in spec.needs if key in scope}
     while pending:
         ready = [spec for spec in pending if set(spec.needs) <= available]
         if not ready:

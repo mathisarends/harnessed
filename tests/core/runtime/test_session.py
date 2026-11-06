@@ -211,7 +211,7 @@ async def test_function_plugin_can_inject_current_agent_with_explicit_needs():
     observed = []
 
     @plugin(needs=(Session, ToolRegistry))
-    async def observer(ctx, agent: Inject[Session], registry: Inject[ToolRegistry]):
+    async def observer(scope, agent: Inject[Session], registry: Inject[ToolRegistry]):
         observed.append((agent.id, registry))
         yield
         assert agent.status == "closed"
@@ -220,7 +220,7 @@ async def test_function_plugin_can_inject_current_agent_with_explicit_needs():
         model=ScriptedModel(["done"]), plugins=[Approvals.allow_all(), observer()]
     )
     async with harness.session() as agent:
-        assert observed == [(agent.id, agent.ctx[ToolRegistry])]
+        assert observed == [(agent.id, agent.scope[ToolRegistry])]
         await agent.run("go")
 
 
@@ -257,7 +257,7 @@ async def test_explicit_and_live_registration():
         assert seen == ["hello\n\nok"]
         assert {d.name for d in model.requests[0].tools} == {"echo", "alias", "live"}
         await handle.aclose()
-        assert {d.name for d in agent.ctx[ToolRegistry].definitions} == {"echo", "alias"}
+        assert {d.name for d in agent.scope[ToolRegistry].definitions} == {"echo", "alias"}
 
 
 async def test_pre_step_rejection_consumes_input_permanently():

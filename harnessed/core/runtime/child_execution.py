@@ -144,7 +144,7 @@ class ChildExecution:
                 )
                 async with self.factory.child_session(request) as child:
                     self.child = child
-                    remove = child.ctx.on(SessionAppended, self._observe)
+                    remove = child.scope.on(SessionAppended, self._observe)
                     try:
                         await self._update(replace(self.runtime, activity=ChildActivity.IDLE))
                         handle = await child.submit(
@@ -389,7 +389,7 @@ class ChildExecution:
         # Notifications carry a preview; fetching the full result remains a reviewed tool call.
         payload = dict(payload)
         text = payload.get("text")
-        preview_limit = min(4096, self.parent.ctx[ToolOutputLimit].max_chars // 2)
+        preview_limit = min(4096, self.parent.scope[ToolOutputLimit].max_chars // 2)
         if isinstance(text, str) and len(text) > preview_limit:
             payload["text"] = text[:preview_limit]
             payload["truncated"] = True

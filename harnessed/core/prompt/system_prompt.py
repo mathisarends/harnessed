@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from pydantic import ConfigDict, TypeAdapter
 
-from harnessed.kernel import Context, Disposer, RegistrationState
+from harnessed.kernel import Disposer, RegistrationState, Scope
 
 _TEXT = TypeAdapter(str, config=ConfigDict(strict=True, hide_input_in_errors=True))
 
@@ -14,13 +14,13 @@ class _Snapshot:
 
 
 class SystemPromptStore:
-    def __init__(self, ctx: Context) -> None:
-        self._ctx = ctx
+    def __init__(self, scope: Scope) -> None:
+        self._ctx = scope
         self._snapshots: list[_Snapshot] = []
 
-    def fixed(self, text: str, *, owner: Context | None = None) -> Disposer:
+    def fixed(self, text: str, *, owner: Scope | None = None) -> Disposer:
         """Own an immutable session snapshot; disposal restores the previous owner."""
-        owner = owner if owner is not None else Context.current() or self._ctx
+        owner = owner if owner is not None else Scope.current() or self._ctx
         text = _TEXT.validate_python(text)
 
         def install(registration: RegistrationState):

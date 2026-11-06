@@ -3,10 +3,10 @@ from itertools import permutations
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import Context, Plugin, hook
+from harnessed import Plugin, hook
 from harnessed.core.plugin import Bundle
 from harnessed.kernel import Bundle as KernelBundle
-from harnessed.kernel import Emit, Waterfall
+from harnessed.kernel import Emit, Scope, Waterfall
 from harnessed.kernel import PluginBase as KernelPlugin
 from harnessed.plugins import Approvals
 from harnessed.testing import ScriptedModel
@@ -36,10 +36,10 @@ async def test_waterfall_priority_defines_nesting_independently_of_registration_
 
         return around
 
-    async with Context() as ctx:
+    async with Scope() as scope:
         for priority in registration_order:
-            ctx.on(Trace, listener(priority), priority=priority)
-        assert await ctx.dispatch(Trace(), default=lambda: "core") == "core"
+            scope.on(Trace, listener(priority), priority=priority)
+        assert await scope.dispatch(Trace(), default=lambda: "core") == "core"
     assert seen == [
         (-100, "before"),
         (0, "before"),
@@ -52,7 +52,7 @@ async def test_waterfall_priority_defines_nesting_independently_of_registration_
 
 async def test_priorities_apply_across_inherited_scopes_and_base_event_types_with_stable_ties():
     seen = []
-    async with Context() as parent:
+    async with Scope() as parent:
         child = parent.extend()
         parent.on(Ping, lambda ev: seen.append("parent-low"), priority=20)
         parent.on(Emit, lambda ev: seen.append("parent-first"))
@@ -75,14 +75,14 @@ async def test_priority_survives_plugin_unload_and_reactivation():
     seen = []
     bundle = KernelBundle("early")
     bundle.on(Ping, lambda ev: seen.append("early"), priority=-50)
-    async with Context() as ctx:
-        ctx.on(Ping, lambda ev: seen.append("normal"))
-        handle = await ctx.plugin(bundle)
-        await ctx.dispatch(Ping())
+    async with Scope() as scope:
+        scope.on(Ping, lambda ev: seen.append("normal"))
+        handle = await scope.plugin(bundle)
+        await scope.dispatch(Ping())
         await handle.aclose()
-        await ctx.dispatch(Ping())
-        await ctx.plugin(bundle)
-        await ctx.dispatch(Ping())
+        await scope.dispatch(Ping())
+        await scope.plugin(bundle)
+        await scope.dispatch(Ping())
     assert seen == ["early", "normal", "normal", "early", "normal"]
 
 
@@ -120,7 +120,7 @@ async def test_priority_flows_through_all_sdk_declaration_and_imperative_hook_ap
     async with harness.session() as agent:
         agent.on(Ping, lambda ev: seen.append("agent-decorator"), priority=20)
         dispose = agent.add_hook(Ping, lambda ev: seen.append("agent-imperative"), priority=30)
-        await agent.ctx.dispatch(Ping())
+        await agent.scope.dispatch(Ping())
         assert seen == [
             "kernel-class",
             "class",
@@ -134,15 +134,15 @@ async def test_priority_flows_through_all_sdk_declaration_and_imperative_hook_ap
         ]
         seen.clear()
         await dispose()
-        await agent.ctx.dispatch(Ping())
+        await agent.scope.dispatch(Ping())
         assert "agent-imperative" not in seen
 
 
 @pytest.mark.parametrize("priority", [True, 1.5, "early"])
 async def test_priorities_require_integers(priority):
-    async with Context() as ctx:
+    async with Scope() as scope:
         with pytest.raises(TypeError, match="priority"):
-            ctx.on(Ping, lambda ev: None, priority=priority)
+            scope.on(Ping, lambda ev: None, priority=priority)
     with pytest.raises(TypeError, match="priority"):
         hook(Ping, priority=priority)
     with pytest.raises(TypeError, match="priority"):

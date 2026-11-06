@@ -26,7 +26,7 @@ Applications on 0.9.0 should also follow the
 | Replace defaults or share services | [Plugins](guides/plugins.md) |
 | Connect MCP server tools | [MCP tools](guides/mcp.md) |
 | Delegate tasks to specialist agents | [Subagents](guides/subagents.md) |
-| Provide instructions, facts or memories | [Context](guides/context.md) |
+| Provide instructions, facts or memories | [Scope](guides/context.md) |
 | Load task instructions and resources on demand | [Skills](guides/skills.md) |
 | Bound or spill large tool results | [Output](guides/output.md) |
 | Continue conversations and control live work | [Sessions](guides/sessions.md) |

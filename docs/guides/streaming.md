@@ -210,7 +210,7 @@ lifecycle and committed changes, add:
 case events.CompactionStartedEvent(compaction_id=compaction_id):
     print("Compacting context:", compaction_id)
 case events.CompactionAppliedEvent() as applied:
-    print("Context tokens:", applied.before_tokens, "->", applied.after_tokens)
+    print("Scope tokens:", applied.before_tokens, "->", applied.after_tokens)
 case events.CompactionFinishedEvent(compaction_id=compaction_id, outcome=outcome):
     print("Compaction finished:", compaction_id, outcome)
 ```

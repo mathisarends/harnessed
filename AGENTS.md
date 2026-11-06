@@ -17,13 +17,15 @@ Single-dot relative imports within the same package remain allowed.
 
 ```python
 from harnessed.plugins.shell import LocalShell, ProcResult, ShellBackend
-from harnessed.kernel import Context, Inject, plugin
+from harnessed.kernel import Scope, Inject, plugin
 ```
 
 Plugin implementations and examples must use the public `harnessed.kernel` facade
-for kernel APIs, such as `Context`, `Inject`, `plugin`, and `hook`. Do not import
-these through `harnessed.kernel.context`, `.di`, or `.plugin`. Keep the facade's
+for kernel APIs, such as `Scope`, `Inject`, `plugin`, and `hook`. Do not import
+these through `harnessed.kernel.scope`, `.di`, or `.plugin`. Keep the facade's
 exports in `harnessed/kernel/__init__.py` stable when reorganizing kernel internals.
+The deliberate container rename to `Scope`/`ScopeClosed` is an accepted exception;
+do not add compatibility aliases in the kernel or root facade.
 Kernel implementation modules may use sibling imports to avoid import cycles.
 
 Keep imports pointed at their owning layer. The target layers, from lowest to
@@ -85,7 +87,7 @@ that define it. Single-dot sibling imports remain preferred within a package;
 cross-package imports stay absolute.
 
 Keep lifecycle ownership behind public kernel operations. Higher layers must not
-call private Context lifecycle checks or inspect private registration state.
+call private Scope lifecycle checks or inspect private registration state.
 Stateful turn and step orchestration belongs to typed runtime components, not
 free functions receiving a Session as a pseudo-`self` argument.
 
@@ -98,8 +100,8 @@ Normalize plugin prompt metadata into typed `PromptContribution` values at the
 agent boundary. `PromptComposition` renders these contributions. Tool scheduling
 captures one `PreparedToolCall`; it must not silently follow replaced bindings.
 
-Use `Context.register()` for owned registrations and `RegistrationState.active`
-for visibility; do not inspect private Context state from higher layers. Public
+Use `Scope.register()` for owned registrations and `RegistrationState.active`
+for visibility; do not inspect private Scope state from higher layers. Public
 event classes use full names ending in `Event` and are exported directly from
 `harnessed.events`. Feature/model facades
 use explicit re-exports; only the SDK root stays lazy to preserve kernel isolation,

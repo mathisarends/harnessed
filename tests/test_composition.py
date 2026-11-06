@@ -6,7 +6,6 @@ import pytest
 
 from harnessed import (
     Agent,
-    Context,
     Inject,
     Instructions,
     Plugin,
@@ -21,6 +20,7 @@ from harnessed import (
 )
 from harnessed.errors import PluginConflict
 from harnessed.events import DurableEvent
+from harnessed.kernel import Scope
 from harnessed.models import Model
 from harnessed.plugins import AgentLoop, Filesystem, PromptRenderer, Service, Shell
 from harnessed.testing import ScriptedModel, call
@@ -73,8 +73,8 @@ async def test_session_installs_waiting_plugins_and_disposes_the_driver_once(mon
     monkeypatch.setattr(Session, "aclose", close)
 
     @plugin(needs=[Session])
-    async def observer(ctx: Context):
-        starts.append(ctx[Session])
+    async def observer(scope: Scope):
+        starts.append(scope[Session])
         yield
 
     app = Agent(model=ScriptedModel(["ready"]), plugins=[observer()])

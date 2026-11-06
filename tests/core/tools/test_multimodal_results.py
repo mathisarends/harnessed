@@ -74,7 +74,7 @@ async def test_multimodal_tool_loop_retains_images_and_metadata_through_replay(t
             assert ToolOutputLimit(256).apply(tool_result) is tool_result
         elif policy == "spill":
             assert tool_result.spill
-            full = await session.ctx[SpillStore].read(tool_result.spill.path, limit=16000)
+            full = await session.scope[SpillStore].read(tool_result.spill.path, limit=16000)
             assert TEXT in full and "Keep the image." in tool_result.text
         else:
             assert "Keep the image." in tool_result.text

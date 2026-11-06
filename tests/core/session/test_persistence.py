@@ -317,7 +317,7 @@ async def test_images_and_spilled_text_survive_a_paused_turn(store):
     async with agent.session(id="resources") as restored:
         assert await restored.assets.read(image) == b"pixels\xff\x00"
         resource = restored.log.resources[0]
-        assert await restored.ctx[SpillStore].read(resource.path, limit=16000) == text[:16000]
+        assert await restored.scope[SpillStore].read(resource.path, limit=16000) == text[:16000]
         await restored.resume()
         await asyncio.wait_for(restored.wait_until_idle(), timeout=5)
         assert restored.messages[-1].text == "finished"
@@ -331,7 +331,7 @@ async def test_intermediate_changes_coalesce_and_restore_at_the_requested_bounda
     repository = ConversationRepository()
     agent = Agent(model=ScriptedModel([]), store=repository)
     async with agent.session(id="batch") as session:
-        await session.ctx[DynamicContext].set("seed", "ready")
+        await session.scope[DynamicContext].set("seed", "ready")
         before = repository.rows["batch"].revision
         await session.emit(ContextMessageEvent(UserMessage("first")))
         await session.emit(ContextMessageEvent(UserMessage("second")))
@@ -427,7 +427,7 @@ async def test_context_provider_can_unmount_while_a_persistent_session_closes(st
         result = await session.run("Work")
         assert result.state.context == {"ci": "ready"}
     async with Agent(model=ScriptedModel([]), store=store).session(id="provider") as restored:
-        assert "ci" not in restored.ctx[DynamicContext].values
+        assert "ci" not in restored.scope[DynamicContext].values
 
 
 async def test_reported_store_failure_is_not_raised_again_by_context_provider_teardown():

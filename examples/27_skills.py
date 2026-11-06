@@ -51,7 +51,7 @@ async def main():
             ],
         )
         async with agent.session() as session:
-            print("Catalog:", [entry.info.name for entry in session.ctx[SkillCatalog].entries])
+            print("Catalog:", [entry.info.name for entry in session.scope[SkillCatalog].entries])
             result = await session.run("Prepare release notes.")
             loaded = json.loads(result.tool_calls[0][1].text)
             print("Instructions:", loaded["instructions"].strip())

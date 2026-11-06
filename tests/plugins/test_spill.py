@@ -56,7 +56,7 @@ async def test_spill_is_owned_by_its_session_and_resumes_with_exact_content(tmp_
         assert sum(isinstance(p, ImagePart) for p in result.content) == 1
         ref = result.spill
         assert ref.path.startswith("spills/") and str(tmp_path) not in result.text
-        assert await session.ctx[SpillStore].read(ref.path, offset=1, limit=2) == "😀l"
+        assert await session.scope[SpillStore].read(ref.path, offset=1, limit=2) == "😀l"
         events = session_audit.events
         assert (
             tuple(
@@ -68,10 +68,10 @@ async def test_spill_is_owned_by_its_session_and_resumes_with_exact_content(tmp_
         state = session.snapshot()
     app = configure(ScriptedModel([]), plugins=[Spill(threshold_tokens=32)])
     async with app.session(state=state) as session:
-        assert await session.ctx[SpillStore].read(ref.path, limit=16000) == text
+        assert await session.scope[SpillStore].read(ref.path, limit=16000) == text
     async with app.session() as session:
         with pytest.raises(ToolError, match="this session"):
-            await session.ctx[SpillStore].read(ref.path)
+            await session.scope[SpillStore].read(ref.path)
 
 
 async def test_retention_expiration_is_durable_and_cannot_be_reactivated_by_old_results():
@@ -83,16 +83,16 @@ async def test_retention_expiration_is_durable_and_cannot_be_reactivated_by_old_
         first = (await session.run("one")).tool_calls[0][1].spill
         second = (await session.run("two")).tool_calls[0][1].spill
         assert first and second
-        assert [entry.key for entry in await session.ctx[SessionFiles].entries()] == [second.path]
+        assert [entry.key for entry in await session.scope[SessionFiles].entries()] == [second.path]
         assert session.last(SpillExpiredEvent).ref == first
-        assert await session.ctx[SpillStore].read(second.path, limit=2) == "bb"
+        assert await session.scope[SpillStore].read(second.path, limit=2) == "bb"
         with pytest.raises(ToolError, match="expired"):
-            await session.ctx[SpillStore].read(first.path)
+            await session.scope[SpillStore].read(first.path)
         state = session.snapshot()
     async with app.session(state=state) as session:
         with pytest.raises(ToolError, match="does not belong"):
-            await session.ctx[SpillStore].read(first.path)
-        assert await session.ctx[SpillStore].read(second.path, limit=2) == "bb"
+            await session.scope[SpillStore].read(first.path)
+        assert await session.scope[SpillStore].read(second.path, limit=2) == "bb"
 
 
 async def test_spill_budget_falls_back_to_the_final_output_limit_without_losing_metadata():
@@ -107,7 +107,7 @@ async def test_spill_budget_falls_back_to_the_final_output_limit_without_losing_
         assert result.exit_code == 3 and sum(isinstance(p, ImagePart) for p in result.content) == 1
         assert (
             session.last(SpillCreatedEvent) is None
-            and not await session.ctx[SessionFiles].entries()
+            and not await session.scope[SessionFiles].entries()
         )
 
 
@@ -147,8 +147,8 @@ async def test_late_canonical_results_do_not_resurrect_a_durably_expired_referen
             ToolCallFinishedEvent(ToolCall("late-result", id="late-result"), result)
         )
         with pytest.raises(ToolError, match="expired"):
-            await session.ctx[SpillStore].read(result.spill.path)
+            await session.scope[SpillStore].read(result.spill.path)
     async with app.session() as session:
-        assert not await session.ctx[SessionFiles].entries()
+        assert not await session.scope[SessionFiles].entries()
         with pytest.raises(ToolError, match="expired"):
-            await session.ctx[SpillStore].read(result.spill.path)
+            await session.scope[SpillStore].read(result.spill.path)

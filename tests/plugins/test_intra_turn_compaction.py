@@ -30,7 +30,7 @@ from harnessed.core.messages import (
 from harnessed.core.model import ModelChunk, ModelRequest, ModelResponse
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import ApproximateTokenCounter, TokenCounter
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 from harnessed.models import ModelInfo, ProviderState
 from harnessed.plugins import AgentLoop, Compaction
 from harnessed.testing import CallbackModel, ScriptedModel
@@ -99,10 +99,10 @@ async def compact(
         preserve_turns=preserve_turns,
         keep_steps=keep_steps,
     )
-    async with Context() as ctx:
-        ctx.provide(TokenCounter, ApproximateTokenCounter())
-        ctx.provide(CompactionPolicy, CompactionPolicy(settings, lambda _: True, Brief()))
-        manager = CompactionManager(ctx, log, context_window=None)
+    async with Scope() as scope:
+        scope.provide(TokenCounter, ApproximateTokenCounter())
+        scope.provide(CompactionPolicy, CompactionPolicy(settings, lambda _: True, Brief()))
+        manager = CompactionManager(scope, log, context_window=None)
         applied, request = await manager.compact(
             ModelRequest(log.messages), model=ScriptedModel([])
         )

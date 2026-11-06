@@ -15,7 +15,7 @@ from harnessed.core.prompt.values import Instructions, SystemPrompt
 from harnessed.core.runtime.inbox import SessionInbox
 from harnessed.core.tools.decorator import tool
 from harnessed.core.tools.registry import ToolError, ToolRegistry
-from harnessed.kernel import Context, Inject
+from harnessed.kernel import Inject, Scope
 
 from .background import BackgroundCommands, command_result
 from .background import CommandInfo as CommandInfo
@@ -64,9 +64,9 @@ class ShellTools[ConfigT: ShellToolsConfig](Plugin[ConfigT], needs=(ShellBackend
             config=ShellToolsConfig(cwd=Path(cwd), timeout=timeout, max_timeout=max_timeout)
         )
 
-    async def setup(self, ctx: Context) -> None:
+    async def setup(self, scope: Scope) -> None:
         self.cwd = self.config.cwd
-        ctx[ToolRegistry].result_converter(ProcResult, proc_result, owner=ctx)
+        scope[ToolRegistry].result_converter(ProcResult, proc_result, owner=scope)
 
     def _command_fields(self) -> Mapping[str, FieldInfo]:
         return {"timeout": Field(le=self.config.max_timeout)}
@@ -128,8 +128,8 @@ class Shell(ShellTools[ShellConfig], slot="shell"):
     def instructions(self) -> SystemPrompt:
         return SystemPrompt(_SHELL_INSTRUCTIONS)
 
-    async def setup(self, ctx: Context) -> None:
-        await super().setup(ctx)
+    async def setup(self, scope: Scope) -> None:
+        await super().setup(scope)
         backend = self.implementation
         if backend is None:
             config = ShellConfig.model_validate(self.config)
@@ -138,7 +138,7 @@ class Shell(ShellTools[ShellConfig], slot="shell"):
                 max_output_bytes=config.max_output_bytes,
                 env=config.env,
             )
-        ctx.provide(ShellBackend, backend)
+        scope.provide(ShellBackend, backend)
 
 
 class BackgroundShellConfig(ShellToolsConfig):
@@ -181,12 +181,12 @@ class BackgroundShell(
     def instructions(self) -> SystemPrompt:
         return SystemPrompt(_BACKGROUNDSHELL_INSTRUCTIONS)
 
-    async def setup(self, ctx: Context) -> None:
+    async def setup(self, scope: Scope) -> None:
         self.cwd = self.config.cwd
         self._commands = BackgroundCommands(self.config.max_background_commands)
-        ctx.effect(self._commands.close)
-        ctx.on(SessionClosing, self._close_commands)
-        ctx[ToolRegistry].result_converter(CommandResult, command_result, owner=ctx)
+        scope.effect(self._commands.close)
+        scope.on(SessionClosing, self._close_commands)
+        scope[ToolRegistry].result_converter(CommandResult, command_result, owner=scope)
 
     async def _close_commands(self, event: SessionClosing) -> None:
         await self._commands.close()

@@ -51,7 +51,7 @@ async def test_compaction_window_uses_captured_model(context_window: int | None)
     async def swap(
         event: ConfigureRequest, next_: Callable[[], Awaitable[ModelRequest]]
     ) -> ModelRequest:
-        event.session.ctx.provide(Model, replacement)
+        event.session.scope.provide(Model, replacement)
         return await next_()
 
     async with Agent(
@@ -74,7 +74,7 @@ async def test_default_summary_uses_captured_model_after_a_request_hook() -> Non
     async def swap(
         event: ConfigureRequest, next_: Callable[[], Awaitable[ModelRequest]]
     ) -> ModelRequest:
-        event.session.ctx.provide(Model, replacement)
+        event.session.scope.provide(Model, replacement)
         return await next_()
 
     async with Agent(
@@ -97,7 +97,7 @@ async def test_manual_summary_uses_captured_model_before_start_observers() -> No
         await session.run("x" * 4000)
 
         def swap(event: CompactionStartedEvent) -> None:
-            session.ctx.provide(Model, replacement)
+            session.scope.provide(Model, replacement)
 
         session.on(CompactionStartedEvent, swap)
         applied = await session.compact()
@@ -121,7 +121,7 @@ async def test_context_recovery_summary_uses_captured_model() -> None:
     async def swap(
         event: ConfigureRequest, next_: Callable[[], Awaitable[ModelRequest]]
     ) -> ModelRequest:
-        event.session.ctx.provide(Model, replacement)
+        event.session.scope.provide(Model, replacement)
         return await next_()
 
     async with Agent(
@@ -231,7 +231,7 @@ async def test_periodic_trigger_counts_new_closed_turns_and_reuses_the_previous_
 
 
 async def test_compaction_runs_after_request_hooks_and_preserves_their_extra_context():
-    class Context(Plugin):
+    class Scope(Plugin):
         @hook(ConfigureRequest)
         async def add(self, event, next_):
             request = await next_()
@@ -241,7 +241,7 @@ async def test_compaction_runs_after_request_hooks_and_preserves_their_extra_con
     model = ScriptedModel(["first", "second"])
     async with Agent(
         model=model,
-        plugins=[Context(), Compaction(trigger=every_turns(1), summarizer=brief, keep_turns=0)],
+        plugins=[Scope(), Compaction(trigger=every_turns(1), summarizer=brief, keep_turns=0)],
     ).session() as session:
         await session.run("x" * 4000)
         await session.run("current")

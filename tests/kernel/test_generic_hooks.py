@@ -2,7 +2,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Protocol
 
-from harnessed.kernel import Context, Next, PluginBase, Waterfall, hook
+from harnessed.kernel import Next, PluginBase, Scope, Waterfall, hook
 
 
 class Intent[R](Protocol):
@@ -48,7 +48,7 @@ async def test_generic_hook_keeps_independent_action_signatures_and_results() ->
         return wait
 
     async def perform[**P, R](
-        ctx: Context,
+        scope: Scope,
         intent: Intent[R],
         action: Callable[P, Awaitable[R]],
         /,
@@ -58,12 +58,12 @@ async def test_generic_hook_keeps_independent_action_signatures_and_results() ->
         async def terminal() -> R:
             return await action(*args, **kwargs)
 
-        return await ctx.dispatch(Perform(intent), default=terminal)
+        return await scope.dispatch(Perform(intent), default=terminal)
 
-    async with Context() as ctx:
-        await ctx.plugin(Actions())
+    async with Scope() as scope:
+        await scope.plugin(Actions())
 
-        @ctx.hook(Perform)
+        @scope.hook(Perform)
         async def observe[R](event: Perform[R], next_: Next[R]) -> R:
             seen.append("before")
             result = await next_()
@@ -72,12 +72,12 @@ async def test_generic_hook_keeps_independent_action_signatures_and_results() ->
 
         find_intent = FindIntent("button")
         navigate_intent = NavigateIntent("https://example.com")
-        assert await perform(ctx, find_intent, find, "button", limit=2) == ["button"]
+        assert await perform(scope, find_intent, find, "button", limit=2) == ["button"]
         assert (
-            await perform(ctx, navigate_intent, navigate, "https://example.com", wait=False)
+            await perform(scope, navigate_intent, navigate, "https://example.com", wait=False)
             is False
         )
-        assert await perform(ctx, NavigateIntent(""), navigate, "unused") is False
+        assert await perform(scope, NavigateIntent(""), navigate, "unused") is False
 
     assert calls == [("button", 2), ("https://example.com", False)]
     assert seen == ["before", "after", "before", "after"]

@@ -9,7 +9,7 @@ from harnessed.core.hooks import PreStep, StepDecision
 from harnessed.core.messages import UserMessage
 from harnessed.core.plugin import Plugin
 from harnessed.core.session.session import SessionLog
-from harnessed.kernel import Context, Disposer, Inject, Next, RegistrationState, hook
+from harnessed.kernel import Disposer, Inject, Next, RegistrationState, Scope, hook
 
 
 @dataclass(frozen=True, eq=False)
@@ -46,16 +46,16 @@ class DynamicContext:
             for name, value in self._owned_values().items()
         )
 
-    def register(self, name: str, value: str, *, owner: Context) -> Disposer:
+    def register(self, name: str, value: str, *, owner: Scope) -> Disposer:
         """Own runtime guidance; suspension and disposal immediately hide it.
 
         Model request records retain what was delivered, but reopening a session
         never restores these values without a new mount.
         """
         if not isinstance(name, str) or not name:
-            raise ValueError("Context names must be non-empty strings")
+            raise ValueError("Scope names must be non-empty strings")
         if not isinstance(value, str):
-            raise TypeError("Context values must be strings")
+            raise TypeError("Scope values must be strings")
 
         def install(registration: RegistrationState) -> Callable[[], None]:
             item = _OwnedContext(name, value, registration)
@@ -66,9 +66,9 @@ class DynamicContext:
 
     async def set(self, name: str, value: str | None) -> None:
         if not name or not isinstance(name, str):
-            raise ValueError("Context names must be non-empty strings")
+            raise ValueError("Scope names must be non-empty strings")
         if value is not None and not isinstance(value, str):
-            raise TypeError("Context values must be strings or None")
+            raise TypeError("Scope values must be strings or None")
         async with self._lock:
             if self._values.get(name) == value:
                 return
@@ -97,7 +97,7 @@ class ContextValue(Plugin, needs=(DynamicContext,)):
     ) -> None:
         super().__init__()
         if not isinstance(key, str) or not key:
-            raise ValueError("Context names must be non-empty strings")
+            raise ValueError("Scope names must be non-empty strings")
         self.key = key
         self.value = value
 
@@ -113,7 +113,7 @@ class ContextValue(Plugin, needs=(DynamicContext,)):
         if inspect.isawaitable(value):
             value = await value
         if value is not None and not isinstance(value, str):
-            raise TypeError("Context providers must return a string or None")
+            raise TypeError("Scope providers must return a string or None")
         await context.set(self.key, value)
         return await next_()
 

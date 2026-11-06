@@ -35,9 +35,9 @@ restoring the service restarts the plugin. `Inject` resolves per-call services
 and keeps those arguments out of the model's schema. Related tools, hooks,
 configuration and cleanup belong to the same class.
 
-`Context`, `Bundle` and `Session` do not provide separate tool decorators or
+`Scope`, `Bundle` and `Session` do not provide separate tool decorators or
 function-list registration. Functional kernel plugins remain useful for services
-and hooks. Kernel consumers use `harnessed.kernel.Context` without importing
+and hooks. Kernel consumers use `harnessed.kernel.Scope` without importing
 Pydantic or the agent runtime.
 
 [MCP](mcp.md) is the schema-defined remote integration. It registers external
@@ -363,7 +363,7 @@ subject to the turn's existing limits.
 
 ## Hook signatures
 
-`@hook(Event)` and `@ctx.hook(Event)` derive the callback type from the event:
+`@hook(Event)` and `@scope.hook(Event)` derive the callback type from the event:
 
 | Event kind | Callback |
 | --- | --- |
@@ -415,11 +415,11 @@ those arguments with a `ParamSpec` and bind them once before dispatch:
 ```python
 from collections.abc import Awaitable, Callable
 
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 
 async def perform[**P, R](
-    ctx: Context,
+    scope: Scope,
     intent: Intent[R],
     action: Callable[P, Awaitable[R]],
     /,
@@ -429,7 +429,7 @@ async def perform[**P, R](
     async def terminal() -> R:
         return await action(*args, **kwargs)
 
-    return await ctx.dispatch(Perform(intent), default=terminal)
+    return await scope.dispatch(Perform(intent), default=terminal)
 ```
 
 This async-action wrapper requires no shared tool argument schema or result
@@ -437,13 +437,13 @@ class. Fixed-result events such as `Waterfall[ToolResult]` and explicit result
 unions remain useful where the application has that contract. `Any` opts out
 of checking the affected types.
 
-The generic middleware body and `ctx.dispatch` retain `R`. The current hook
+The generic middleware body and `scope.dispatch` retain `R`. The current hook
 decorator specializes the callable it returns, so direct calls to a decorated
 generic method do not retain the same generic inference. Keep typed application
 entrypoints in functions such as `perform` and invoke middleware through dispatch.
 
-`ctx.dispatch(event, default=terminal)` and
-`EventBus.dispatch(ctx, event, default=terminal)` also check the result contract.
+`scope.dispatch(event, default=terminal)` and
+`EventBus.dispatch(scope, event, default=terminal)` also check the result contract.
 The zero-argument terminal may return the result directly or an awaitable of it.
 The event's result type is invariant: a `Waterfall[str]` rejects an `int` terminal
 instead of widening the dispatch result to `str | int`.
@@ -474,7 +474,7 @@ removes them all. Repeated keys or overlapping base/subclass keys can call the
 handler more than once for a dispatched event.
 
 Ty checks wrong event types, wrong callback results and incompatible continuations
-for decorators and direct `ctx.on(Event, callback)` registrations. The CI consumer
+for decorators and direct `scope.on(Event, callback)` registrations. The CI consumer
 fixtures include expected failures and reject unused suppressions, so weakening
 a signature breaks those checks too. Equal priorities retain registration order;
 lower priorities run first. Use `Priority.GUARD` for approval/policy gates and
@@ -483,12 +483,12 @@ lower priorities run first. Use `Priority.GUARD` for approval/policy gates and
 `harnessed.hooks.SessionAborting` lets an opt-in plugin drain background work before
 an interruption repairs its log, including when the parent is idle. The hook carries
 the owning `SessionLog`. Cleanup must be idempotent: abort and failure paths can both
-dispatch it. A plugin should also own cleanup as a Context effect for rollback.
+dispatch it. A plugin should also own cleanup as a Scope effect for rollback.
 
 `harnessed.hooks.SessionClosing` lets an opt-in plugin release live resources when
 `session.aclose()` shuts down the driver, before plugin disposal. It receives the
 closing session and runs once per explicit close. Also register cleanup with
-`ctx.effect(...)` to cover startup rollback, unmounting and context teardown.
+`scope.effect(...)` to cover startup rollback, unmounting and context teardown.
 
 ## Multimodal results
 

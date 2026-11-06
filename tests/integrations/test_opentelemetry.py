@@ -139,7 +139,7 @@ async def test_content_is_explicit_bounded_and_excludes_opaque_state(telemetry):
     plugin = OpenTelemetryTracer(tracer_provider=provider, capture_content=True)
     async with Agent(model=ScriptedModel(["answer"]), plugins=[plugin]).session() as session:
         await session.run("secret prompt")
-        tracer = session.ctx[Tracer]
+        tracer = session.scope[Tracer]
         with tracer.span("model", session_id=session.id) as span:
             span.set_attribute("output", native)
     model_spans = [s for s in exporter.get_finished_spans() if s.name == "harnessed.model"]
@@ -225,7 +225,7 @@ async def test_content_filter_can_mutate_a_detached_copy(telemetry):
     )
     call = ToolCall("work", {"api_key": "secret"})
     async with Agent(model=ScriptedModel([]), plugins=[tracer]).session() as session:
-        with session.ctx[Tracer].span("tool", tool="work") as span:
+        with session.scope[Tracer].span("tool", tool="work") as span:
             span.set_attribute("input", call)
     assert dict(call.arguments) == {"api_key": "secret"}
     captured = exporter.get_finished_spans()[0]
@@ -286,7 +286,7 @@ async def test_filter_runs_before_serialization_and_truncation(telemetry):
     )
     async with Agent(model=ScriptedModel([]), plugins=[tracer]).session() as session:
         with pytest.raises(RuntimeError, match="secret error"):
-            with session.ctx[Tracer].span("tool", tool="work") as span:
+            with session.scope[Tracer].span("tool", tool="work") as span:
                 span.set_attribute("input", ToolCall("work", {"api_key": "long secret value"}))
                 raise RuntimeError("secret error beyond the limit")
     assert [item.value for item in seen] == [
@@ -412,7 +412,7 @@ async def test_redacted_exception_text_is_separately_enabled(telemetry, include_
     tracer = OpenTelemetryTracer(tracer_provider=provider, capture_content=capture)
     async with Agent(model=ScriptedModel([]), plugins=[tracer]).session() as session:
         with pytest.raises(RuntimeError, match="Bearer token-xyz"):
-            with session.ctx[Tracer].span("tool", tool="billing"):
+            with session.scope[Tracer].span("tool", tool="billing"):
                 raise RuntimeError("Authorization: Bearer token-xyz")
     span = exporter.get_finished_spans()[0]
     attributes = span.events[0].attributes

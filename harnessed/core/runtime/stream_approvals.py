@@ -29,10 +29,10 @@ class StreamApprovals:
         self.pending: dict[str, LiveApproval] = {}
 
     async def __aenter__(self) -> Self:
-        self._remove_answer = self.session.ctx.on(
+        self._remove_answer = self.session.scope.on(
             RequestApproval, self._answer, priority=Priority.OBSERVE
         )
-        self._remove_ack = self.session.ctx.on(SessionAppended, self._ack)
+        self._remove_ack = self.session.scope.on(SessionAppended, self._ack)
         return self
 
     async def __aexit__(self, *exc) -> None:

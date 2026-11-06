@@ -43,7 +43,7 @@ async def test_removing_an_approver_never_removes_the_scoped_guard():
         provider = await session.use(Service(Approver, CallbackApprover(lambda call: True)))
         assert (await session.run("publish")).tool_calls[0][1].status == ToolStatus.OK
         await provider.aclose()
-        await session.ctx.settle()
+        await session.scope.settle()
         assert guard.status == PluginStatus.ACTIVE
         assert (await session.run("publish")).tool_calls[0][1].status == ToolStatus.UNAVAILABLE
         await session.use(Service(Approver, CallbackApprover(lambda call: True)))
@@ -111,7 +111,7 @@ async def test_explicit_approver_then_service_take_precedence_over_request_liste
     async with Application(
         model=ScriptedModel([]), plugins=[Approvals.allow_all()]
     ).session() as agent:
-        agent.ctx.provide(Approver, Answer(ApprovalAnswer.DENY))
+        agent.scope.provide(Approver, Answer(ApprovalAnswer.DENY))
         agent.on(RequestApproval, lambda ev: pytest.fail("Explicit approver was bypassed"))
         assert (
             await agent.approvals.request(
@@ -174,7 +174,7 @@ async def test_unresponsive_approval_uses_the_session_timeout_and_cancels_the_re
         if transport == "listener":
             agent.on(RequestApproval, wait)
         elif transport == "service":
-            agent.ctx.provide(Approver, WaitingApprover())
+            agent.scope.provide(Approver, WaitingApprover())
         with pytest.raises(ApprovalUnavailable, match="timed out after 0.02 seconds"):
             await asyncio.wait_for(agent.approvals.request(ToolCall("work"), "permission"), 2)
         assert stopped.is_set()
@@ -229,10 +229,10 @@ async def test_gate_stays_active_after_approver_service_is_removed():
         plugins=[Approvals.allow_all(), tools, ToolApprovalGuard(risky={"work"})],
     ).session() as agent:
         agent_audit = Audit(agent)
-        remove = agent.ctx.provide(Approver, AllowOnce())
+        remove = agent.scope.provide(Approver, AllowOnce())
         await agent.run("first")
         await remove()
-        await agent.ctx.settle()
+        await agent.scope.settle()
         await agent.run("second")
         assert executed == [True]
         assert agent.last(ApprovalResolvedEvent).status == ApprovalStatus.UNAVAILABLE

@@ -1,4 +1,3 @@
-from .context import Context, ContextClosed, Key, MissingService, RegistrationState
 from .declarations import Bundle, HookEntry, PluginBase, Registration
 from .dependencies import DependencyField, dependency
 from .di import BindingPlan, Dependency, Inject, InjectMarker, binding_plan
@@ -18,6 +17,7 @@ from .events import (
 from .hooks import HookFactory, ListenerFactory, Next
 from .keys import ServiceKey
 from .plugin import PluginHandle, PluginLike, PluginSpec, PluginStatus, as_plugin_spec, hook, plugin
+from .scope import Key, MissingService, RegistrationState, Scope, ScopeClosed
 from .spec import PluginDependencyIssue
 from .state import PluginState
 
@@ -25,8 +25,6 @@ __all__ = [
     "Bail",
     "BindingPlan",
     "Bundle",
-    "Context",
-    "ContextClosed",
     "Dependency",
     "DependencyField",
     "Disposer",
@@ -54,6 +52,8 @@ __all__ = [
     "Priority",
     "Registration",
     "RegistrationState",
+    "Scope",
+    "ScopeClosed",
     "ServiceKey",
     "Waterfall",
     "as_plugin_spec",

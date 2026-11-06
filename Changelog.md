@@ -4,6 +4,12 @@
 
 ### Breaking changes
 
+- Import `Scope` and `ScopeClosed` from `harnessed.kernel` in place of `Context`
+  and `ContextClosed`. The root SDK no longer exports the container type.
+  Replace `session.ctx` with `session.scope` and use `scope: Scope` for kernel
+  parameters, including `scope=` keywords on service and runtime APIs. The old
+  kernel module and names have no aliases. `ToolContext`, `DynamicContext`,
+  `add_context()` and model-visible context retain their meanings.
 | Approval configuration before | Current API |
 | --- | --- |
 | `Approvals(trust=[...])` | `Approvals(allow=[...])` |

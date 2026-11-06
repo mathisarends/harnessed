@@ -239,7 +239,7 @@ class Indexer(Plugin):
         return "Indexed."
 ```
 
-`await ctx.emit(event)` and `await session.emit(event)` admit execution records
+`await scope.emit(event)` and `await session.emit(event)` admit execution records
 or publish transient notifications through the event catalog. Custom events also
 reach that turn's UI stream. Serializable records appear in current-turn buffers
 and returned results; transient notifications are live only. Neither surface

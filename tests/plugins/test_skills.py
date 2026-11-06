@@ -38,7 +38,7 @@ def folder(
 
 
 async def execute(session, tool_name, **arguments):
-    return await session.ctx[ToolRegistry].execute(ToolCall(tool_name, arguments))
+    return await session.scope[ToolRegistry].execute(ToolCall(tool_name, arguments))
 
 
 async def test_catalog_reads_only_frontmatter_once_per_session_and_loads_body_fresh(
@@ -115,7 +115,7 @@ async def test_earlier_sources_win_and_catalog_metadata_and_shadows_are_inspecta
         plugins=[skills],
     )
     async with app.session() as session:
-        (entry,) = session.ctx[SkillCatalog].entries
+        (entry,) = session.scope[SkillCatalog].entries
         assert entry.inline is inline and entry.shadows == (str(root.resolve()),)
         assert "Inline winner." in await session.prompt.render()
         assert (
@@ -130,7 +130,7 @@ async def test_earlier_sources_win_and_catalog_metadata_and_shadows_are_inspecta
         model=ScriptedModel([]),
         plugins=[skills_4],
     ).session() as session:
-        (entry,) = session.ctx[SkillCatalog].entries
+        (entry,) = session.scope[SkillCatalog].entries
         assert entry.info.metadata["license"] == "MIT"
         assert entry.info.metadata["metadata"]["author"] == "example"
         assert entry.info.metadata["allowed-tools"] == "Shell"
@@ -257,7 +257,7 @@ async def test_missing_sources_are_checked_at_session_open_not_at_construction(t
             pass
     root = folder(tmp_path / "missing")
     async with app.session() as session:
-        assert str(root.resolve()) == str(session.ctx[SkillCatalog].entries[0].directory)
+        assert str(root.resolve()) == str(session.scope[SkillCatalog].entries[0].directory)
 
 
 async def test_complete_skill_output_is_never_truncated_or_spilled_and_needs_no_approval():
@@ -295,7 +295,7 @@ async def test_loaded_instructions_survive_compaction_and_restart_from_the_log(t
     async with app.session() as session:
         await session.run("Run tests")
         assert await session.compact() is not None
-        assert session.ctx[DynamicContext].values["skill:testing"] == original
+        assert session.scope[DynamicContext].values["skill:testing"] == original
         state = session.snapshot()
     changed = Skill(
         name="testing", description="Changed description.", instructions="Changed source."
@@ -306,7 +306,7 @@ async def test_loaded_instructions_survive_compaction_and_restart_from_the_log(t
         model=ScriptedModel([]),
         plugins=[skills_10],
     ).session(state=state) as restored:
-        assert restored.ctx[DynamicContext].values["skill:testing"] == original
+        assert restored.scope[DynamicContext].values["skill:testing"] == original
         assert any(original in message.text for message in restored.messages)
 
 
@@ -316,10 +316,10 @@ async def test_runtime_mount_rejects_system_catalog_before_installing_tools():
             await session.use(
                 Skills(Skill(name="notes", description="Write notes.", instructions="Be concise."))
             )
-        assert session.ctx[ToolRegistry].definitions == ()
-        assert SkillCatalog not in session.ctx
+        assert session.scope[ToolRegistry].definitions == ()
+        assert SkillCatalog not in session.scope
         assert await session.prompt.render() == "Fixed rules."
-        assert not session.ctx[DynamicContext].values
+        assert not session.scope[DynamicContext].values
 
 
 async def test_discovery_is_not_recursive_and_resource_output_is_complete(tmp_path):
@@ -332,7 +332,7 @@ async def test_discovery_is_not_recursive_and_resource_output_is_complete(tmp_pa
         model=ScriptedModel([]),
         plugins=[skills],
     ).session() as session:
-        assert session.ctx[SkillCatalog].entries == ()
+        assert session.scope[SkillCatalog].entries == ()
     model = ScriptedModel([call("read_skill_file", name="pdf-forms", path="reference.md"), "read"])
     skills_12 = Skills(Skill.from_dir(root))
     spill_13 = Spill(threshold_tokens=1)
@@ -364,11 +364,11 @@ async def test_reloading_after_compaction_updates_the_retained_body_even_with_re
     ).session() as session:
         await session.run("Load")
         assert await session.compact() is not None
-        assert session.ctx[DynamicContext].values["skill:pdf-forms"] == "Original instructions."
+        assert session.scope[DynamicContext].values["skill:pdf-forms"] == "Original instructions."
         folder(tmp_path, body="Fresh instructions.")
         model.responses.extend([call("load_skill", name="pdf-forms"), "updated"])
         await session.run("Reload")
-        assert session.ctx[DynamicContext].values["skill:pdf-forms"] == "Fresh instructions."
+        assert session.scope[DynamicContext].values["skill:pdf-forms"] == "Fresh instructions."
 
 
 async def test_yaml_python_tags_are_rejected_as_configuration_errors(tmp_path):
@@ -391,6 +391,6 @@ async def test_multiline_yaml_scalars_do_not_close_frontmatter_at_an_indented_se
         model=ScriptedModel([]),
         plugins=[skills],
     ).session() as session:
-        assert session.ctx[SkillCatalog].entries[0].info.description == "Before\n---\nAfter\n"
+        assert session.scope[SkillCatalog].entries[0].info.description == "Before\n---\nAfter\n"
         loaded = await execute(session, "load_skill", name="pdf-forms")
         assert json.loads(loaded.text)["instructions"] == "Instructions."

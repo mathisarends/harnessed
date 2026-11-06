@@ -4,7 +4,7 @@ import pytest
 
 from harnessed import Agent, Plugin, PluginValidation, Session, SessionLog, tool
 from harnessed.errors import ConfigError, PluginDependencyError, PluginDependencyWarning
-from harnessed.kernel import Context, Key, dependency
+from harnessed.kernel import Key, Scope, dependency
 from harnessed.plugins import Service
 from harnessed.testing import ScriptedModel
 
@@ -68,16 +68,16 @@ async def test_session_services_and_providers_activated_by_them_settle_before_va
         session = dependency(Session)
         log = dependency(SessionLog)
 
-        async def setup(self, ctx: Context) -> None:
+        async def setup(self, scope: Scope) -> None:
             assert self.session.id == self.log.id
             mounted.append(self.log.id)
-            ctx.provide(RequiredService, RequiredService())
+            scope.provide(RequiredService, RequiredService())
 
     agent = Agent(model=ScriptedModel(["ok"]), plugins=[RequiredFeature(), SessionProvider()])
     with warnings.catch_warnings(record=True) as seen:
         warnings.simplefilter("always", PluginDependencyWarning)
         async with agent.session() as session:
-            assert session.ctx.plugin_diagnostics() == ()
+            assert session.scope.plugin_diagnostics() == ()
             assert (await session.run("Use the configured capability")).text == "ok"
     assert mounted == [session.id]
     assert not [item for item in seen if isinstance(item.message, PluginDependencyWarning)]
@@ -93,7 +93,7 @@ async def test_optional_injections_do_not_block_session_start():
             mounted.append(self.service)
 
     async with Agent(model=ScriptedModel([]), plugins=[OptionalFeature()]).session() as session:
-        assert session.ctx.plugin_diagnostics() == ()
+        assert session.scope.plugin_diagnostics() == ()
     assert mounted == [None]
 
 
@@ -115,9 +115,9 @@ async def test_warn_mode_reports_structured_issues_and_allows_later_service_acti
             await session.run("Before activation")
             assert model.requests[0].tools == ()
 
-            session.ctx.provide(RequiredService, RequiredService())
-            await session.ctx.settle()
-            assert session.ctx.plugin_diagnostics() == ()
+            session.scope.provide(RequiredService, RequiredService())
+            await session.scope.settle()
+            assert session.scope.plugin_diagnostics() == ()
             await session.run("After activation")
             assert [definition.name for definition in model.requests[1].tools] == ["capability"]
             assert warning.issues[0].missing == (RequiredService,)
@@ -129,9 +129,9 @@ async def test_validation_failure_closes_runtime_plugins_and_session_lease():
     class Observer(Plugin, needs=(Session,)):
         session = dependency(Session)
 
-        async def setup(self, ctx: Context) -> None:
+        async def setup(self, scope: Scope) -> None:
             mounted.append(self.session)
-            ctx.effect(lambda: closed.append(True))
+            scope.effect(lambda: closed.append(True))
 
     agent = Agent(model=ScriptedModel([]), plugins=[Observer(), RequiredFeature()])
     with pytest.raises(PluginDependencyError):
@@ -144,7 +144,7 @@ async def test_validation_failure_closes_runtime_plugins_and_session_lease():
         plugins=[RequiredFeature(), Service(RequiredService, RequiredService())],
     )
     async with peer.session() as session:
-        assert session.ctx.plugin_diagnostics() == ()
+        assert session.scope.plugin_diagnostics() == ()
 
 
 async def test_warning_promoted_to_error_also_releases_session_resources():

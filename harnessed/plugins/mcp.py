@@ -57,7 +57,7 @@ from harnessed.core.tools import (
     ToolSpec,
 )
 from harnessed.core.tools.enabled import ToolEnabled, bind_enabled
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 logger = logging.getLogger(__name__)
 
@@ -431,9 +431,9 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
             enabled=enabled,
         )
 
-    async def setup(self, ctx: Context) -> None:
+    async def setup(self, scope: Scope) -> None:
         connection = _Connection(self.transport, self.config.server_name)
-        ctx.effect(connection.aclose)
+        scope.effect(connection.aclose)
         async with asyncio.timeout(self.config.startup_timeout):
             client = await connection.start()
             catalog: dict[str, Tool] = {}
@@ -455,8 +455,8 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
         requested = set(selected or ()) | set(self.config.readonly_tools)
         if missing := requested - catalog.keys():
             raise ValueError(f"MCP server omitted configured tools: {sorted(missing)}")
-        registry = ctx[ToolRegistry]
-        check_enabled = bind_enabled(self.enabled, self.setup, ctx)
+        registry = scope[ToolRegistry]
+        check_enabled = bind_enabled(self.enabled, self.setup, scope)
         for name, tool in catalog.items():
             if selected is not None and name not in selected:
                 continue
@@ -474,12 +474,12 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
                     tool.inputSchema,
                 ),
                 remote.invoke,
-                owner=ctx,
+                owner=scope,
                 spec=ToolSpec(
                     timeout=self.config.call_timeout,
                     parallel=self.config.parallel,
                     readonly=name in self.config.readonly_tools,
-                    enabled=lambda: connection.active and check_enabled(ctx),
+                    enabled=lambda: connection.active and check_enabled(scope),
                     presentation=_presentation(tool),
                 ),
             )

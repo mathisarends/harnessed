@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from typing import cast
 
 from harnessed.core.tools import ToolRegistry
-from harnessed.kernel import Context, PluginBase, PluginLike
+from harnessed.kernel import PluginBase, PluginLike, Scope
 
 
 @asynccontextmanager
@@ -15,10 +15,10 @@ async def mount_plugin[T: PluginBase](
     No agent, model, prompt rendering or event codec is required. The yielded
     instance belongs to this mount and becomes invalid on context-manager exit.
     """
-    async with Context() as ctx:
-        ctx.provide(ToolRegistry, ToolRegistry(ctx))
-        await ctx.install(services, strict=True)
-        (handle,) = await ctx.install((recipe,), strict=True, settle=True)
+    async with Scope() as scope:
+        scope.provide(ToolRegistry, ToolRegistry(scope))
+        await scope.install(services, strict=True)
+        (handle,) = await scope.install((recipe,), strict=True, settle=True)
         instance = handle.instance
         if not isinstance(instance, type(recipe)):
             raise TypeError("The recipe did not activate a matching plugin instance")

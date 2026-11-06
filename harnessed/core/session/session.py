@@ -85,7 +85,7 @@ from harnessed.core.session.inbox import Inbox
 from harnessed.core.session.state import HistoryTurn, SessionState, image_refs
 from harnessed.core.session.store import SessionPersistence
 from harnessed.core.session.turns import Turn, TurnProjection
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 
 class SessionLog:
@@ -95,7 +95,7 @@ class SessionLog:
         self,
         session_id: str,
         *,
-        ctx: Context | None = None,
+        scope: Scope | None = None,
         state: SessionState | None = None,
         files: MemoryFiles | None = None,
         registry: EventRegistry | None = None,
@@ -104,11 +104,13 @@ class SessionLog:
     ) -> None:
         if registry is None:
             registry = (
-                ctx[EventRegistry] if ctx is not None and EventRegistry in ctx else EventRegistry()
+                scope[EventRegistry]
+                if scope is not None and EventRegistry in scope
+                else EventRegistry()
             )
         self.registry = registry
         self.id = session_id
-        self.ctx = ctx
+        self.scope = scope
         self._events: list[DurableEvent] = []
         self._snapshot: tuple[DurableEvent, ...] | None = None
         self._last: dict[type[DurableEvent], tuple[int, DurableEvent]] = {}
@@ -564,9 +566,9 @@ class SessionLog:
         if on_committed is not None:
             on_committed()
         try:
-            if self.ctx is not None:
-                await self.ctx.dispatch(SessionAppended(self, event, seq))
-                await self.ctx.dispatch(event)
+            if self.scope is not None:
+                await self.scope.dispatch(SessionAppended(self, event, seq))
+                await self.scope.dispatch(event)
         finally:
             if isinstance(event, TurnEndedEvent):
                 self._release_turn()
@@ -713,9 +715,9 @@ class SessionLog:
             raise TypeError("publish requires a TransientEvent")
         self.registry.validate(event)
         self._notify(event)
-        if self.ctx is not None:
-            await self.ctx.dispatch(SessionPublished(self, event))
-            await self.ctx.dispatch(event)
+        if self.scope is not None:
+            await self.scope.dispatch(SessionPublished(self, event))
+            await self.scope.dispatch(event)
 
     async def emit(self, event: DurableEvent | TransientEvent) -> None:
         """Admit an execution record or publish a live notification through the same catalog."""

@@ -48,7 +48,7 @@ async def test_decorator_captures_immutable_presentation_without_changing_model_
     async with Agent(
         model=model, plugins=[Tools(), Approvals(approver=lambda request: True)]
     ).session() as session:
-        registry = session.ctx[ToolRegistry]
+        registry = session.scope[ToolRegistry]
         assert not registry.is_readonly("inspect")
         result = await session.run("inspect")
     assert result.tool_calls[0][1].text == "document"
@@ -79,7 +79,7 @@ async def test_registration_routes_preserve_captured_presentation_after_replacem
         pytest.fail("Only the captured registration is inspected")
 
     async with Agent(model=ScriptedModel(["unused"])).session() as session:
-        registry = session.ctx[ToolRegistry]
+        registry = session.scope[ToolRegistry]
         if route == "register":
             registry.register(work, title="Original", tags={route}, confirm=True)
         elif route == "decorator":
@@ -88,7 +88,7 @@ async def test_registration_routes_preserve_captured_presentation_after_replacem
             registry.register_external(
                 ToolDefinition("work", "", {}),
                 external,
-                owner=session.ctx,
+                owner=session.scope,
                 spec=ToolSpec(
                     presentation=ToolPresentation(title="Original", tags={route}), confirm=True
                 ),

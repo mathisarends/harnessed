@@ -141,7 +141,7 @@ class SessionClosing(Emit):
     """Release live resources after driver shutdown, before plugin disposal.
 
     Explicit Session.aclose() dispatches this once. Plugins must also own cleanup
-    through Context effects for startup rollback and context teardown.
+    through Scope effects for startup rollback and context teardown.
     """
 
     session: Session

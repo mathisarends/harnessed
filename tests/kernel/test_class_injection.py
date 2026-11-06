@@ -1,10 +1,10 @@
 import pytest
 
 from harnessed.kernel import (
-    Context,
     Key,
     PluginBase,
     PluginStatus,
+    Scope,
     as_plugin_spec,
     dependency,
 )
@@ -14,8 +14,8 @@ class Feature(PluginBase, provides=True):
     backend = dependency(str)
     optional = dependency(int, optional=True)
 
-    async def setup(self, ctx: Context) -> None:
-        assert ctx[Feature] is self
+    async def setup(self, scope: Scope) -> None:
+        assert scope[Feature] is self
         self.computed = self.backend.upper()
 
 
@@ -27,7 +27,7 @@ async def test_class_injection_precedes_setup_and_is_isolated_between_mounts():
     recipe = Feature()
     with pytest.raises(RuntimeError, match="mounted plugin"):
         _ = recipe.backend
-    async with Context() as first, Context() as second:
+    async with Scope() as first, Scope() as second:
         first.provide(str, "first")
         second.provide(str, "second")
         second.provide(int, 42)
@@ -45,26 +45,26 @@ async def test_class_injection_precedes_setup_and_is_isolated_between_mounts():
 
 
 async def test_explicit_class_dependency_waits_and_restarts():
-    async with Context() as ctx:
-        handle = await ctx.plugin(Feature())
+    async with Scope() as scope:
+        handle = await scope.plugin(Feature())
         assert handle.status is PluginStatus.WAITING
-        remove = ctx.provide(str, "one")
-        await ctx.settle()
-        previous = ctx[Feature]
-        restore = ctx.provide(str, "override")
-        await ctx.settle()
-        assert ctx[Feature] is not previous
-        assert ctx[Feature].backend == "override"
+        remove = scope.provide(str, "one")
+        await scope.settle()
+        previous = scope[Feature]
+        restore = scope.provide(str, "override")
+        await scope.settle()
+        assert scope[Feature] is not previous
+        assert scope[Feature].backend == "override"
         await restore()
-        await ctx.settle()
-        assert ctx[Feature].backend == "one"
+        await scope.settle()
+        assert scope[Feature].backend == "one"
         await remove()
-        await ctx.settle()
-        assert Feature not in ctx
-        ctx.provide(str, "two")
-        await ctx.settle()
-        assert ctx[Feature] is not previous
-        assert ctx[Feature].backend == "two"
+        await scope.settle()
+        assert Feature not in scope
+        scope.provide(str, "two")
+        await scope.settle()
+        assert scope[Feature] is not previous
+        assert scope[Feature].backend == "two"
 
 
 async def test_inherited_provides_uses_declaring_class_and_named_keys():
@@ -77,12 +77,12 @@ async def test_inherited_provides_uses_declaring_class_and_named_keys():
         pass
 
     assert as_plugin_spec(Specialized()).provides == (Feature,)
-    async with Context() as ctx:
-        ctx.provide(str, "ready")
-        await ctx.install([Specialized(), Named()], strict=True)
-        assert type(ctx[Feature]) is Specialized
-        assert Specialized not in ctx
-        assert type(ctx[key]) is Named
+    async with Scope() as scope:
+        scope.provide(str, "ready")
+        await scope.install([Specialized(), Named()], strict=True)
+        assert type(scope[Feature]) is Specialized
+        assert Specialized not in scope
+        assert type(scope[key]) is Named
 
 
 async def test_field_requirement_is_validated_before_mount():
@@ -92,9 +92,9 @@ async def test_field_requirement_is_validated_before_mount():
     recipe = Deferred()
     with pytest.raises(RuntimeError, match="mounted plugin"):
         _ = recipe.backend
-    async with Context() as ctx:
+    async with Scope() as scope:
         with pytest.raises(RuntimeError, match="Unresolved plugin dependencies"):
-            await ctx.install([recipe], strict=True)
+            await scope.install([recipe], strict=True)
 
 
 async def test_private_dependency_has_the_same_recipe_guard_and_mount_binding():
@@ -104,10 +104,10 @@ async def test_private_dependency_has_the_same_recipe_guard_and_mount_binding():
     recipe = Private()
     with pytest.raises(RuntimeError, match="mounted plugin"):
         _ = recipe._backend
-    async with Context() as ctx:
-        ctx.provide(str, "ready")
-        await ctx.plugin(recipe)
-        assert ctx[Private]._backend == "ready"
+    async with Scope() as scope:
+        scope.provide(str, "ready")
+        await scope.plugin(recipe)
+        assert scope[Private]._backend == "ready"
         assert as_plugin_spec(recipe).needs == (str,)
 
 
@@ -116,10 +116,10 @@ async def test_failed_setup_removes_automatic_provision():
         async def setup(self) -> None:
             raise ValueError("broken")
 
-    async with Context() as ctx:
+    async with Scope() as scope:
         with pytest.raises(ValueError, match="broken"):
-            await ctx.plugin(Broken())
-        assert Broken not in ctx
+            await scope.plugin(Broken())
+        assert Broken not in scope
 
 
 async def test_strict_install_detects_declared_cycles_before_setup():
@@ -134,7 +134,7 @@ async def test_strict_install_detects_declared_cycles_before_setup():
     class Second(PluginBase, provides=second_key, needs=(first_key,)):
         pass
 
-    async with Context() as ctx:
+    async with Scope() as scope:
         with pytest.raises(RuntimeError, match="cyclic"):
-            await ctx.install([First(), Second()], strict=True)
+            await scope.install([First(), Second()], strict=True)
         assert entered == []

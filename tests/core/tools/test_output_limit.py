@@ -165,7 +165,7 @@ async def test_spill_retains_full_output_before_the_final_limit_is_applied(tmp_p
         await agent.run("go")
         result = next(e.result for e in agent_audit.events if isinstance(e, ToolCallFinishedEvent))
         assert result.spill is not None and len(result.content) <= 4096
-        files = agent.ctx[SessionFiles]
+        files = agent.scope[SessionFiles]
         chunks = [
             await files.read(result.spill.path, offset=offset, limit=16000)
             for offset in range(0, len(original), 16000)
@@ -186,7 +186,7 @@ async def test_read_file_supports_bounded_unicode_character_ranges_and_continuat
             FilesystemTools(),
         ],
     ).session() as agent:
-        registry = agent.ctx[ToolRegistry]
+        registry = agent.scope[ToolRegistry]
         result = await registry.execute(ToolCall("read_file", {"path": "large.txt"}))
         assert result.content.startswith(original[:8000])
         assert "offset=8000, limit=8000" in result.content

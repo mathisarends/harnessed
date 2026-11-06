@@ -9,7 +9,7 @@ from typing import Self
 from xml.sax.saxutils import escape, quoteattr
 
 from harnessed.core.errors import ConfigError
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 
 class PromptFormat(StrEnum):
@@ -41,7 +41,7 @@ class Instructions:
     description: str = ""
     _file: Path | None = field(default=None, init=False, repr=False)
     _missing_ok: bool = field(default=False, init=False, repr=False)
-    _factory: Callable[[Context], Awaitable[str | None]] | None = field(
+    _factory: Callable[[Scope], Awaitable[str | None]] | None = field(
         default=None, init=False, repr=False
     )
 
@@ -68,7 +68,7 @@ class Instructions:
     def from_factory(
         cls,
         *,
-        factory: Callable[[Context], Awaitable[str | None]],
+        factory: Callable[[Scope], Awaitable[str | None]],
         title: str | None = None,
         description: str = "",
     ) -> Self:
@@ -87,12 +87,12 @@ class Instructions:
     def preview(self) -> str:
         return self.description or (str(self._file) if self._file else self.text[:80])
 
-    async def render(self, ctx: Context | None = None) -> str:
+    async def render(self, scope: Scope | None = None) -> str:
         text: str | None = self.text
         if self._factory is not None:
-            if ctx is None:
+            if scope is None:
                 raise ValueError("This system section requires a session context")
-            text = await self._factory(ctx)
+            text = await self._factory(scope)
         elif self._file is not None:
             try:
                 text = await asyncio.to_thread(self._file.read_text, encoding="utf-8")
@@ -240,14 +240,14 @@ class PromptComposition:
         for index, entry in enumerate(self.entries, 1):
             lines.append(f"  {index}. {entry.origin}: {entry.section.preview!r}")
         if self.context_entries:
-            lines.append("Context (dynamic, outside the system prompt)")
+            lines.append("Scope (dynamic, outside the system prompt)")
             lines.extend(f"  - {key}: {preview}" for key, preview in self.context_entries)
         return "\n".join(lines)
 
-    async def render(self, ctx: Context | None = None) -> str:
+    async def render(self, scope: Scope | None = None) -> str:
         parts: list[str] = []
         for entry in self.entries:
-            text = await entry.section.render(ctx)
+            text = await entry.section.render(scope)
             if not text:
                 continue
             title = entry.section.title

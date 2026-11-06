@@ -90,7 +90,7 @@ async def writes_with_resource_keys(root: Path):
         returned = [event for event in result.events if isinstance(event, ToolCallFinishedEvent)]
         assert all(not event.result.is_error for event in returned)
         assert writes.index("first version") < writes.index("second version")
-        assert await session.ctx[FileSystemBackend].read(Path("a.txt")) == "second version"
+        assert await session.scope[FileSystemBackend].read(Path("a.txt")) == "second version"
         print("Same-file writes kept their order; a.txt contains the second version.")
         print("b.txt may run concurrently. Built-in write_file remains a full barrier.")
 

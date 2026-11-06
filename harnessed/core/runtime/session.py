@@ -63,12 +63,12 @@ from harnessed.core.tools import ToolRegistry
 from harnessed.core.tools.context import BoundToolContexts, ToolContexts
 from harnessed.core.tools.view import SessionTools
 from harnessed.kernel import (
-    Context,
     Disposer,
     HookFactory,
     ListenerFactory,
     PluginHandle,
     PluginLike,
+    Scope,
 )
 
 _driving: ContextVar[Session | None] = ContextVar("harnessed_driving", default=None)
@@ -77,48 +77,48 @@ _driving: ContextVar[Session | None] = ContextVar("harnessed_driving", default=N
 class Session:
     """A live conversation with in-memory inputs, turn-scoped results and controls."""
 
-    def __init__(self, ctx: Context, session: SessionLog, options: AgentOptions) -> None:
-        self.ctx = ctx
-        self._tools_view = SessionTools(ctx[ToolRegistry], ctx)
+    def __init__(self, scope: Scope, session: SessionLog, options: AgentOptions) -> None:
+        self.scope = scope
+        self._tools_view = SessionTools(scope[ToolRegistry], scope)
         self.log = session
         self._options = options
         self._close_task: asyncio.Task[None] | None = None
         self.id = session.id
         self._boundary_state = session.boundary_state
-        self._compaction = CompactionManager(ctx, session, context_window=options.context_window)
+        self._compaction = CompactionManager(scope, session, context_window=options.context_window)
         self.control = SessionControl(session, self._drive, lambda: _driving.get() is self)
         self._live_approvals = LiveApprovals()
         self.approvals = SessionApprovals(
-            ctx, session, self.control, options, self, self._live_approvals
+            scope, session, self.control, options, self, self._live_approvals
         )
         self._inbox_writer = InboxWriter(session, self.control)
         self.inbox = SessionInbox(session, self.control, self._inbox_writer)
-        ctx.provide(SessionControl, self.control)
-        ctx.provide(SessionInbox, self.inbox)
-        ctx.provide(ToolContexts, BoundToolContexts(session, self.inbox, self.approvals))
+        scope.provide(SessionControl, self.control)
+        scope.provide(SessionInbox, self.inbox)
+        scope.provide(ToolContexts, BoundToolContexts(session, self.inbox, self.approvals))
         self._subscribers: set[EventBuffer[DurableEvent | TransientEvent | None]] = set()
         self._submissions: dict[RunHandle[Any], SubmittedRun] = {}
         self._queued_submissions: dict[str, SubmittedRun] = {}
         self._submitted_turns: dict[str, SubmittedRun] = {}
         self._output_values = OutputValues()
-        if OutputTypes not in ctx:
-            ctx.provide(OutputTypes, OutputTypes())
-        self._results = RunResults(ctx[OutputTypes], self._output_values)
+        if OutputTypes not in scope:
+            scope.provide(OutputTypes, OutputTypes())
+        self._results = RunResults(scope[OutputTypes], self._output_values)
         self._steps = StepRunner(
-            ctx,
+            scope,
             session,
             options,
             self.control,
             self._compaction,
-            OutputHandler(ctx, session, options, self._output_values),
-            ToolExecutor(ctx, session, options, self),
-            ModelResponder(ctx, session),
+            OutputHandler(scope, session, options, self._output_values),
+            ToolExecutor(scope, session, options, self),
+            ModelResponder(scope, session),
             self,
         )
-        self._runner = TurnRunner(ctx, session, options, self.control, self._steps, self)
+        self._runner = TurnRunner(scope, session, options, self.control, self._steps, self)
         session.set_persistence_error_handler(self._persistence_failed)
-        ctx.on(SessionAppended, self._session_event)
-        ctx.on(SessionPublished, self._stream_event)
+        scope.on(SessionAppended, self._session_event)
+        scope.on(SessionPublished, self._stream_event)
 
     @property
     def tools(self) -> SessionTools:
@@ -127,7 +127,7 @@ class Session:
 
     @property
     def prompt(self) -> SystemPromptStore:
-        return self.ctx[SystemPromptStore]
+        return self.scope[SystemPromptStore]
 
     @property
     def events(self) -> tuple[DurableEvent, ...]:
@@ -200,10 +200,10 @@ class Session:
         contribution = plugin_contribution(plugin)
         spec = runtime_sections(plugin, contribution, delivery)
         self.log.registry.register(plugin_events(plugin))
-        handle = await self.ctx.plugin(spec)
+        handle = await self.scope.plugin(spec)
         try:
-            await self.ctx.settle()
-            self.ctx[ToolRegistry].validate_references()
+            await self.scope.settle()
+            self.scope[ToolRegistry].validate_references()
         except BaseException:
             await handle.aclose()
             raise
@@ -217,7 +217,7 @@ class Session:
         *,
         prepend: bool = False,
         priority: int = 0,
-        owner: Context | None = None,
+        owner: Scope | None = None,
     ) -> H: ...
 
     @overload
@@ -228,17 +228,17 @@ class Session:
         *,
         prepend: bool = False,
         priority: int = 0,
-        owner: Context | None = None,
+        owner: Scope | None = None,
     ) -> Disposer: ...
 
     def on(self, event, fn=None, *, prepend: bool = False, priority: int = 0, owner=None):
-        owner = owner if owner is not None else Context.current() or self.ctx
+        owner = owner if owner is not None else Scope.current() or self.scope
         return owner.on(event, fn, prepend=prepend, priority=priority)
 
     def add_hook(
         self, event, callback, *, prepend: bool = False, priority: int = 0, owner=None
     ) -> Disposer:
-        owner = owner if owner is not None else Context.current() or self.ctx
+        owner = owner if owner is not None else Scope.current() or self.scope
         return owner.add_listener(event, callback, prepend=prepend, priority=priority)
 
     @property
@@ -269,7 +269,7 @@ class Session:
         """
         self.control.check_open()
         if not isinstance(content, str):
-            raise TypeError("Context content must be a string")
+            raise TypeError("Scope content must be a string")
         await self.log.append(ContextMessageEvent(UserMessage(content)))
         await self.log.flush()
 
@@ -298,10 +298,10 @@ class Session:
     async def compact(self) -> CompactionAppliedEvent | None:
         """Summarize completed history while idle or paused; return its log record."""
         async with self.control.maintenance():
-            model = self.ctx[Model]
+            model = self.scope[Model]
             request = ModelRequest(
-                (*self.log.messages, *self.ctx[DynamicContext].owned_messages),
-                self.ctx[ToolRegistry].visible_definitions(self.ctx),
+                (*self.log.messages, *self.scope[DynamicContext].owned_messages),
+                self.scope[ToolRegistry].visible_definitions(self.scope),
             )
             request = resolve_request_settings(request, model.settings)
             applied, _ = await self._compaction.compact(request, model=model)
@@ -456,7 +456,7 @@ class Session:
         """Admit a turn to the in-memory inbox and return its session-owned completion handle."""
         self.control.check_open()
         limits = TurnLimits(max_steps, token_budget)
-        compiled = self.ctx[OutputTypes].register(output) if output is not None else None
+        compiled = self.scope[OutputTypes].register(output) if output is not None else None
         schema = compiled.definition if compiled is not None else None
         return await self._enqueue(
             content,
@@ -547,7 +547,7 @@ class Session:
         responder but does not abort the turn; use abort() to cancel its work.
         """
         limits = TurnLimits(max_steps, token_budget)
-        compiled = self.ctx[OutputTypes].register(output) if output is not None else None
+        compiled = self.scope[OutputTypes].register(output) if output is not None else None
         schema = compiled.definition if compiled is not None else None
         async with StreamApprovals(self, self._live_approvals) as approvals:
             queue: EventBuffer[DurableEvent | TransientEvent | None] = EventBuffer(
@@ -596,7 +596,7 @@ class Session:
         finally:
             try:
                 if self.control.closing:
-                    await self.ctx.dispatch(SessionClosing(self))
+                    await self.scope.dispatch(SessionClosing(self))
             finally:
                 try:
                     await self.log.close_persistence()

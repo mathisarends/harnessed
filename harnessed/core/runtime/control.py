@@ -294,5 +294,5 @@ class SessionControl:
         self.synchronize()
 
     async def _abort_owned_work(self) -> None:
-        if self.log.ctx is not None:
-            await self.log.ctx.dispatch(SessionAborting(self.log))
+        if self.log.scope is not None:
+            await self.log.scope.dispatch(SessionAborting(self.log))

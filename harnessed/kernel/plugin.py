@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 if TYPE_CHECKING:
-    from .context import Context
+    from .scope import Scope
 
 
 class PluginStatus(StrEnum):
@@ -35,12 +35,12 @@ class PluginStatus(StrEnum):
 class PluginHandle:
     """An owned recipe. Dependency loss suspends it; aclose permanently removes it."""
 
-    def __init__(self, spec: PluginSpec, mount: Context) -> None:
+    def __init__(self, spec: PluginSpec, mount: Scope) -> None:
         self.name = spec.name
         self.spec = spec
         self._mount = mount
-        self.ctx = mount._child(mount._scope)
-        self.ctx._closed = True
+        self.scope = mount._child(mount._scope)
+        self.scope._closed = True
         self.status: PluginStatus = PluginStatus.WAITING
         self.error: Exception | None = None
         self._disposed = False
@@ -170,7 +170,7 @@ class PluginHandle:
                 self.status = PluginStatus.WAITING
                 return
             self.status = PluginStatus.STARTING
-            self.ctx = child = self._mount._child(self._mount._scope)
+            self.scope = child = self._mount._child(self._mount._scope)
             child._handle = self
             for binding in signature:
                 if binding is None:
@@ -245,7 +245,7 @@ class PluginHandle:
             self.status = PluginStatus.STOPPING
             try:
                 async with AsyncExitStack() as stack:
-                    stack.push_async_callback(self.ctx.aclose)
+                    stack.push_async_callback(self.scope.aclose)
                     for dependent in tuple(self._dependents):
                         stack.push_async_callback(dependent._suspend, visited)
             finally:

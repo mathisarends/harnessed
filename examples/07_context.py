@@ -20,7 +20,7 @@ from harnessed import (
 )
 from harnessed.events import ContextMessageEvent
 from harnessed.hooks import PreStep
-from harnessed.kernel import Context, Inject, hook, plugin
+from harnessed.kernel import Inject, Scope, hook, plugin
 from harnessed.models import ModelChunk
 from harnessed.plugins import ContextValue
 from harnessed.testing import ScriptedModel
@@ -36,8 +36,8 @@ class DemoMemory:
 
 
 @plugin
-async def memory_backend(ctx: Context):
-    ctx.provide(Memory, DemoMemory())
+async def memory_backend(scope: Scope):
+    scope.provide(Memory, DemoMemory())
     yield
 
 

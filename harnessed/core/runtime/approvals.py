@@ -24,7 +24,7 @@ from harnessed.core.runtime.control import SessionControl
 from harnessed.core.runtime.options import AgentOptions
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tracing import span
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 if TYPE_CHECKING:
     from harnessed.core.runtime.session import Session
@@ -94,14 +94,14 @@ class SessionApprovals:
 
     def __init__(
         self,
-        ctx: Context,
+        scope: Scope,
         log: SessionLog,
         control: SessionControl,
         options: AgentOptions,
         session: Session,
         live: LiveApprovals,
     ) -> None:
-        self.ctx = ctx
+        self.scope = scope
         self.log = log
         self.control = control
         self.options = options
@@ -203,7 +203,7 @@ class SessionApprovals:
         timeout: float | None = None,
     ) -> ApprovalAnswer:
         with span(
-            self.ctx,
+            self.scope,
             "approval_wait",
             session_id=self.log.id,
             tool=request.call.name,
@@ -225,16 +225,16 @@ class SessionApprovals:
         try:
             async with asyncio.timeout(timeout):
                 selected = (
-                    self.ctx[ChildSessionRequest].approver
-                    if ChildSessionRequest in self.ctx
+                    self.scope[ChildSessionRequest].approver
+                    if ChildSessionRequest in self.scope
                     else approver
                     if approver is not None
-                    else (self.ctx[Approver] if Approver in self.ctx else None)
+                    else (self.scope[Approver] if Approver in self.scope else None)
                 )
                 if selected is not None:
                     decision = await selected.ask(request)
                 else:
-                    decision = await self.ctx.dispatch(RequestApproval(request, self.session))
+                    decision = await self.scope.dispatch(RequestApproval(request, self.session))
             if decision is None:
                 raise ApprovalUnavailable("No approval responder answered the request")
             if not isinstance(decision, ApprovalAnswer):

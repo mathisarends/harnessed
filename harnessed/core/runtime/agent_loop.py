@@ -10,11 +10,11 @@ from harnessed.core.runtime.session import Session
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tools.output_limit import ToolOutputLimit
 from harnessed.core.tools.registry import ErrorFormatter
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 
 class AgentFactory(Protocol):
-    def create(self, ctx: Context, session: SessionLog) -> Session: ...
+    def create(self, scope: Scope, session: SessionLog) -> Session: ...
 
 
 _DEFAULTS = AgentLoopConfig()
@@ -50,8 +50,8 @@ class AgentLoop(Plugin[AgentLoopConfig], slot="loop"):
         )
         self.error_formatter = error_formatter
 
-    async def setup(self, ctx: Context) -> None:
-        ctx.provide(AgentFactory, ReactLoopFactory(self.config, self.error_formatter))
+    async def setup(self, scope: Scope) -> None:
+        scope.provide(AgentFactory, ReactLoopFactory(self.config, self.error_formatter))
 
 
 class ReactLoopFactory:
@@ -59,12 +59,12 @@ class ReactLoopFactory:
         self.config = config
         self.error_formatter = error_formatter
 
-    def create(self, ctx: Context, session: SessionLog) -> Session:
+    def create(self, scope: Scope, session: SessionLog) -> Session:
         # Require a model before opening the runtime, without caching its metadata.
-        ctx[Model]
+        scope[Model]
         options = AgentOptions.resolve(
             self.config,
-            tool_output_limit=ctx[ToolOutputLimit],
+            tool_output_limit=scope[ToolOutputLimit],
             error_formatter=self.error_formatter,
         )
-        return Session(ctx, session, options)
+        return Session(scope, session, options)

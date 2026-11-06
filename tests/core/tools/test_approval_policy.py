@@ -158,11 +158,11 @@ async def test_approval_uses_the_prepared_tool_flags_after_replacement():
             Approvals.allow_all(approver=lambda request: asked.append(request) or True),
         ],
     ).session() as session:
-        registry = session.ctx[ToolRegistry]
+        registry = session.scope[ToolRegistry]
         plan = registry.plan(ToolCall("work"))
         registry.register(replacement, name="work", override=True, readonly=True)
         assert plan.tool is not None and plan.tool.confirm
-        decision = await session.ctx.dispatch(
+        decision = await session.scope.dispatch(
             ToolPolicy(plan.call, session, tool=plan.tool),
             default=lambda: PolicyDecision.ALLOW,
         )

@@ -20,7 +20,7 @@ from harnessed.core.runtime.children import ChildSessionSupervisor
 from harnessed.core.runtime.session import Session
 from harnessed.core.session.children import ChildSession as ChildSession
 from harnessed.core.tools import ToolContext, tool
-from harnessed.kernel import Context, Inject
+from harnessed.kernel import Inject, Scope
 
 
 class SubagentsConfig(PluginConfig):
@@ -76,7 +76,7 @@ class Subagents(Plugin[SubagentsConfig], needs=(Session,)):
             f"Available agents: {', '.join(self.agents)}."
         )
 
-    async def setup(self, ctx: Context, session: Inject[Session]) -> None:
+    async def setup(self, scope: Scope, session: Inject[Session]) -> None:
         limits = ChildLimits(
             self.config.max_parallel,
             self.config.max_calls,
@@ -86,9 +86,9 @@ class Subagents(Plugin[SubagentsConfig], needs=(Session,)):
             self.config.token_budget,
         )
         self._supervisor = ChildSessionSupervisor(session, self.agents, limits)
-        ctx.effect(self._supervisor.aclose)
-        ctx.on(SessionAborting, self._supervisor.aborting)
-        ctx.on(SessionClosing, self._supervisor.closing)
+        scope.effect(self._supervisor.aclose)
+        scope.on(SessionAborting, self._supervisor.aborting)
+        scope.on(SessionClosing, self._supervisor.closing)
 
     @tool(timeout=3600.0, parallel=True)
     async def delegate(self, agent: str, task: str, *, context: ToolContext) -> ToolResult:

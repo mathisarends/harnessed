@@ -118,7 +118,7 @@ async def test_explicit_turn_pins_are_preserved_and_excluded_from_summary_input(
         await agent.run("PINNED " + "a" * 400)
         pinned = agent_audit.turns[0]
         await agent.run("OLD " + "b" * 800)
-        await agent.ctx.plugin(
+        await agent.scope.plugin(
             Compaction(
                 trigger=every_turns(1),
                 summarizer=summaries,

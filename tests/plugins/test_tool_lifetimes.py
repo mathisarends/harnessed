@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from harnessed import Context, ToolCall, plugin
+from harnessed import ToolCall, plugin
 from harnessed.core.runtime.services import RuntimeServices
 from harnessed.core.tools.registry import ToolRegistry
-from harnessed.kernel import PluginStatus
+from harnessed.kernel import PluginStatus, Scope
 from harnessed.plugins.filesystem import FileSystemBackend, FilesystemTools
 from harnessed.plugins.shell import ProcResult, ShellTools
 from harnessed.plugins.shell import ShellBackend as Shell
@@ -61,34 +61,34 @@ async def test_builtin_features_declare_lifetime_needs_and_wait_for_the_backend(
     assert spec.needs == (key, ToolRegistry)
 
     @plugin
-    async def provider(ctx, label):
-        ctx.provide(key, backend(label))
+    async def provider(scope, label):
+        scope.provide(key, backend(label))
         yield
 
-    async with Context() as ctx:
-        await ctx.plugin(RuntimeServices())
-        registry = ctx[ToolRegistry]
-        handle = await ctx.plugin(spec)
+    async with Scope() as scope:
+        await scope.plugin(RuntimeServices())
+        registry = scope[ToolRegistry]
+        handle = await scope.plugin(spec)
         assert handle.status == PluginStatus.WAITING and registry.definitions == ()
-        first = await ctx.plugin(provider("first"))
-        await ctx.settle()
-        original = handle.ctx
+        first = await scope.plugin(provider("first"))
+        await scope.settle()
+        original = handle.scope
         assert handle.status == PluginStatus.ACTIVE
         assert {definition.name for definition in registry.definitions} == names
         assert await invoke(registry, key) == "first"
 
-        override = ctx.provide(key, backend("override"))
-        await ctx.settle()
-        assert original._closed and handle.ctx is not original
+        override = scope.provide(key, backend("override"))
+        await scope.settle()
+        assert original._closed and handle.scope is not original
         assert await invoke(registry, key) == "override"
         await override()
-        await ctx.settle()
+        await scope.settle()
         assert await invoke(registry, key) == "first"
 
         await first.aclose()
         assert handle.status == PluginStatus.WAITING and registry.definitions == ()
-        await ctx.plugin(provider("second"))
-        await ctx.settle()
+        await scope.plugin(provider("second"))
+        await scope.settle()
         assert handle.status == PluginStatus.ACTIVE
         assert await invoke(registry, key) == "second"
         assert len(registry.definitions) == len(names)
@@ -101,22 +101,22 @@ async def test_registry_replacement_rebuilds_builtin_registrations_without_dupli
     backend,
     names,
 ):
-    async with Context() as ctx:
-        ctx.provide(key, backend("ready"))
-        handle = await ctx.plugin(feature())
+    async with Scope() as scope:
+        scope.provide(key, backend("ready"))
+        handle = await scope.plugin(feature())
         assert handle.status == PluginStatus.WAITING
-        first, second = ToolRegistry(ctx), ToolRegistry(ctx)
-        ctx.provide(ToolRegistry, first)
-        await ctx.settle()
-        original = handle.ctx
+        first, second = ToolRegistry(scope), ToolRegistry(scope)
+        scope.provide(ToolRegistry, first)
+        await scope.settle()
+        original = handle.scope
         assert {definition.name for definition in first.definitions} == names
-        remove_override = ctx.provide(ToolRegistry, second)
-        await ctx.settle()
-        assert handle.ctx is not original and original._closed
+        remove_override = scope.provide(ToolRegistry, second)
+        await scope.settle()
+        assert handle.scope is not original and original._closed
         assert first.definitions == ()
         assert {definition.name for definition in second.definitions} == names
         await remove_override()
-        await ctx.settle()
+        await scope.settle()
         assert second.definitions == ()
         assert {definition.name for definition in first.definitions} == names
         assert await invoke(first, key) == "ready"

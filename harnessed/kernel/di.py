@@ -20,7 +20,7 @@ from weakref import WeakKeyDictionary
 from .keys import Key, ServiceKey
 
 if TYPE_CHECKING:
-    from .context import Context
+    from .scope import Scope
 
 
 @dataclass(frozen=True)
@@ -38,10 +38,10 @@ class Dependency:
     key: ServiceKey[Any]
     optional: bool = False
 
-    def resolve(self, ctx: Context) -> Any:
-        if self.optional and self.key not in ctx:
+    def resolve(self, scope: Scope) -> Any:
+        if self.optional and self.key not in scope:
             return None
-        return ctx[self.key]
+        return scope[self.key]
 
 
 def _dependency(annotation) -> Dependency | None:
@@ -78,7 +78,7 @@ class BindingPlan:
     hints: Mapping[str, Any]
     dependencies: Mapping[str, Dependency]
 
-    def bind(self, ctx, args: tuple = (), kwargs=None, *, extra=None) -> inspect.BoundArguments:
+    def bind(self, scope, args: tuple = (), kwargs=None, *, extra=None) -> inspect.BoundArguments:
         bound = self.signature.bind_partial(*args, **(kwargs or {}))
         extra = extra or {}
         for name, dependency in self.dependencies.items():
@@ -88,7 +88,7 @@ class BindingPlan:
             if key in extra:
                 bound.arguments[name] = extra[key]
             else:
-                bound.arguments[name] = dependency.resolve(ctx)
+                bound.arguments[name] = dependency.resolve(scope)
         return bound
 
 
@@ -127,10 +127,10 @@ def injections(callback: Callable) -> dict[str, ServiceKey[Any]]:
 
 def bind_injected(
     callback: Callable,
-    ctx,
+    scope,
     args: tuple = (),
     kwargs: Mapping[str, Any] | None = None,
     *,
     extra: Mapping[ServiceKey[Any], Any] | None = None,
 ) -> inspect.BoundArguments:
-    return binding_plan(callback).bind(ctx, args, kwargs, extra=extra)
+    return binding_plan(callback).bind(scope, args, kwargs, extra=extra)

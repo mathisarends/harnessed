@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Protocol, assert_type
 
 from harnessed import Plugin, tool
-from harnessed.kernel import Context, Next, Waterfall, hook
+from harnessed.kernel import Next, Scope, Waterfall, hook
 
 
 class Intent[R](Protocol):
@@ -54,7 +54,7 @@ class BrowserTools(Plugin):
 
 
 async def perform[**P, R](
-    ctx: Context,
+    scope: Scope,
     intent: Intent[R],
     action: Callable[P, Awaitable[R]],
     /,
@@ -64,21 +64,23 @@ async def perform[**P, R](
     async def terminal() -> R:
         return await action(*args, **kwargs)
 
-    return await ctx.dispatch(Perform(intent), default=terminal)
+    return await scope.dispatch(Perform(intent), default=terminal)
 
 
-async def consumer(ctx: Context, tools: BrowserTools) -> None:
+async def consumer(scope: Scope, tools: BrowserTools) -> None:
     assert_type(await tools.find("button", limit=2), list[str])
     assert_type(await tools.navigate("https://example.com", wait=False), bool)
     assert_type(tools.count(["button"]), int)
-    assert_type(await perform(ctx, FindIntent("button"), tools.find, "button", limit=2), list[str])
     assert_type(
-        await perform(ctx, NavigateIntent("url"), tools.navigate, "url", wait=False),
+        await perform(scope, FindIntent("button"), tools.find, "button", limit=2), list[str]
+    )
+    assert_type(
+        await perform(scope, NavigateIntent("url"), tools.navigate, "url", wait=False),
         bool,
     )
 
-    await perform(ctx, FindIntent("button"), tools.navigate, "url")  # ty: ignore[invalid-argument-type]
-    await perform(ctx, NavigateIntent("url"), tools.find, "button")  # ty: ignore[invalid-argument-type]
-    await perform(ctx, FindIntent("button"), tools.find, 42)  # ty: ignore[invalid-argument-type]
-    await perform(ctx, FindIntent("button"), tools.find, "button", limit="two")  # ty: ignore[invalid-argument-type]
-    await perform(ctx, NavigateIntent("url"), tools.navigate, "url", wait="yes")  # ty: ignore[invalid-argument-type]
+    await perform(scope, FindIntent("button"), tools.navigate, "url")  # ty: ignore[invalid-argument-type]
+    await perform(scope, NavigateIntent("url"), tools.find, "button")  # ty: ignore[invalid-argument-type]
+    await perform(scope, FindIntent("button"), tools.find, 42)  # ty: ignore[invalid-argument-type]
+    await perform(scope, FindIntent("button"), tools.find, "button", limit="two")  # ty: ignore[invalid-argument-type]
+    await perform(scope, NavigateIntent("url"), tools.navigate, "url", wait="yes")  # ty: ignore[invalid-argument-type]

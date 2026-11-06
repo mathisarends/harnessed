@@ -14,7 +14,7 @@ class PluginState[T]:
     Keep service bindings in dependency fields; use state for mutable runtime data.
     State remains available through teardown and owned cleanup, then is released.
     These values are not persisted: restore durable state from a session log in
-    setup. Resources needing acquisition or cleanup belong in Context effects.
+    setup. Resources needing acquisition or cleanup belong in Scope effects.
     """
 
     def __init__(self, factory: Callable[[], T]) -> None:

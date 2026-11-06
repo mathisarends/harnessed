@@ -4,7 +4,7 @@ from typing import Self
 
 import pytest
 
-from harnessed.kernel import Context, Emit, Inject, PluginBase, PluginState, PluginStatus, hook
+from harnessed.kernel import Emit, Inject, PluginBase, PluginState, PluginStatus, Scope, hook
 
 
 class Ping(Emit):
@@ -22,9 +22,9 @@ async def test_state_isolated_between_mounts_and_released_after_all_cleanup():
             super().__init__()
             self.client = client
 
-        async def setup(self, ctx: Context) -> None:
+        async def setup(self, scope: Scope) -> None:
             instances.append(self)
-            ctx.effect(lambda: cleanup.append(tuple(self.values)))
+            scope.effect(lambda: cleanup.append(tuple(self.values)))
 
         @hook(Ping)
         async def record(self, event: Ping) -> None:
@@ -39,7 +39,7 @@ async def test_state_isolated_between_mounts_and_released_after_all_cleanup():
         _ = recipe.values
     with pytest.raises(RuntimeError, match="mounted plugin"):
         recipe.values = []
-    async with Context() as first, Context() as second:
+    async with Scope() as first, Scope() as second:
         await first.plugin(recipe)
         await second.plugin(recipe)
         assert instances[0].client is instances[1].client is client
@@ -66,18 +66,18 @@ async def test_dependency_restart_recreates_state_before_setup():
             self.values.append(backend)
             instances.append(self)
 
-    async with Context() as ctx:
-        handle = await ctx.plugin(Feature())
+    async with Scope() as scope:
+        handle = await scope.plugin(Feature())
         assert handle.status is PluginStatus.WAITING
-        remove = ctx.provide(str, "first")
-        await ctx.settle()
+        remove = scope.provide(str, "first")
+        await scope.settle()
         assert instances[0].values == ["first"]
         await remove()
-        await ctx.settle()
+        await scope.settle()
         with pytest.raises(RuntimeError):
             _ = instances[0].values
-        ctx.provide(str, "second")
-        await ctx.settle()
+        scope.provide(str, "second")
+        await scope.settle()
         assert instances[1] is not instances[0]
         assert instances[1].values == ["second"]
 
@@ -90,10 +90,10 @@ async def test_failed_or_cancelled_lifecycle_keeps_state_for_cleanup_then_releas
     class Feature(PluginBase):
         values = PluginState[list[str]](list)
 
-        async def setup(self, ctx: Context) -> None:
+        async def setup(self, scope: Scope) -> None:
             instances.append(self)
             self.values.append("ready")
-            ctx.effect(lambda: cleaned.append(tuple(self.values)))
+            scope.effect(lambda: cleaned.append(tuple(self.values)))
             if failure == "setup":
                 raise ValueError("setup failed")
             if failure == "cancel":
@@ -103,18 +103,18 @@ async def test_failed_or_cancelled_lifecycle_keeps_state_for_cleanup_then_releas
         async def teardown(self) -> None:
             raise ValueError("teardown failed")
 
-    async with Context() as ctx:
+    async with Scope() as scope:
         if failure == "cancel":
-            mounting = asyncio.create_task(ctx.plugin(Feature()))
+            mounting = asyncio.create_task(scope.plugin(Feature()))
             await asyncio.wait_for(entered.wait(), 3)
             mounting.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await asyncio.wait_for(mounting, timeout=5)
         elif failure == "setup":
             with pytest.raises(ValueError, match="setup failed"):
-                await ctx.plugin(Feature())
+                await scope.plugin(Feature())
         else:
-            handle = await ctx.plugin(Feature())
+            handle = await scope.plugin(Feature())
             with pytest.raises(ValueError, match="teardown failed"):
                 await handle.aclose()
         assert cleaned == [("ready",)]
@@ -140,8 +140,8 @@ async def test_state_inheritance_overrides_and_aliases_use_one_factory_per_field
         async def setup(self) -> None:
             instances.append(self)
 
-    async with Context() as ctx:
-        await ctx.plugin(Child())
+    async with Scope() as scope:
+        await scope.plugin(Child())
         instance = instances[0]
         assert calls == ["factory"]
         assert instance.values is instance.alias
@@ -160,8 +160,8 @@ async def test_state_does_not_keep_values_alive_after_disposal():
         async def setup(self) -> None:
             instances.append(self)
 
-    async with Context() as ctx:
-        handle = await ctx.plugin(Feature())
+    async with Scope() as scope:
+        handle = await scope.plugin(Feature())
         ref = weakref.ref(instances[0].value)
         assert ref() is not None
         await handle.aclose()
@@ -189,11 +189,11 @@ async def test_custom_factory_rejects_invalid_instances(result):
             async def setup(self) -> None:
                 instances.append(self)
 
-        async with Context() as first, Context() as second:
+        async with Scope() as first, Scope() as second:
             await first.plugin(Original())
             with pytest.raises(TypeError, match="already mounted"):
                 await second.plugin(instances[0])
     else:
-        async with Context() as ctx:
+        async with Scope() as scope:
             with pytest.raises(TypeError, match="fresh instance"):
-                await ctx.plugin(Feature())
+                await scope.plugin(Feature())

@@ -31,7 +31,7 @@ async def test_owned_shell_configures_its_local_backend(tmp_path):
         model=ScriptedModel([]),
         plugins=[shell],
     ).session() as session:
-        backend = session.ctx[ShellBackend]
+        backend = session.scope[ShellBackend]
         assert isinstance(backend, LocalShell)
         assert backend.options.env == {"EXPLICIT": "yes"}
         assert backend.options.max_output_bytes == 256
@@ -108,9 +108,9 @@ async def test_shell_limits_are_schema_visible_and_configured_backends_are_used(
         model=ScriptedModel([]),
         plugins=[shell],
     ).session() as session:
-        definition = session.ctx[ToolRegistry].definitions[0]
+        definition = session.scope[ToolRegistry].definitions[0]
         assert definition.parameters["properties"]["timeout"]["anyOf"][0]["maximum"] == 600
-        result = await session.ctx[ToolRegistry].execute(
+        result = await session.scope[ToolRegistry].execute(
             ToolCall("run_command", {"argv": [sys.executable, "-c", "raise SystemExit(7)"]})
         )
         assert result.exit_code == 7 and result.is_error
@@ -135,7 +135,7 @@ async def test_shell_command_deadline_overrides_the_generic_tool_timeout(tmp_pat
             shell,
         ],
     ).session() as session:
-        registry = session.ctx[ToolRegistry]
+        registry = session.scope[ToolRegistry]
         result = await registry.execute(
             ToolCall("run_command", {"argv": ["test"], **({"timeout": 0.15} if explicit else {})})
         )
@@ -159,12 +159,12 @@ async def test_shell_schema_and_validation_use_each_mounts_timeout_limit(tmp_pat
         plugins=[shell],
     )
     async with app.session() as session:
-        registry = session.ctx[ToolRegistry]
+        registry = session.scope[ToolRegistry]
         definition = registry.definitions[0]
         schema = definition.parameters["properties"]["timeout"]
         assert schema["anyOf"][0]["maximum"] == maximum
         assert schema["default"] is None
-        reference = registry.reference(shell.run_command, owner=session.ctx)
+        reference = registry.reference(shell.run_command, owner=session.scope)
         assert registry.matches(reference, "run_command")
         accepted = await registry.execute(
             ToolCall("run_command", {"argv": ["test"], "timeout": maximum})
@@ -182,5 +182,5 @@ async def test_shell_schema_and_validation_use_each_mounts_timeout_limit(tmp_pat
         model=ScriptedModel([]),
         plugins=[shell_3],
     ).session() as session:
-        schema = session.ctx[ToolRegistry].definitions[0].parameters["properties"]["timeout"]
+        schema = session.scope[ToolRegistry].definitions[0].parameters["properties"]["timeout"]
         assert schema["anyOf"][0]["maximum"] == 600

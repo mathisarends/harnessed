@@ -137,17 +137,17 @@ async def test_dynamic_context_is_durable_changes_only_and_does_not_change_syste
         ]
         assert [event.value for event in changes] == ["one", "two"]
         assert await session.prompt.render() == "Fixed rules."
-        assert session.ctx[DynamicContext].values == {"user": "two"}
+        assert session.scope[DynamicContext].values == {"user": "two"}
 
 
 async def test_runtime_context_is_explicit_and_disposes_with_its_plugin():
     async with Agent(model=ScriptedModel(["done"]), instructions="Fixed.").session() as session:
         handle = await session.use(ContextValue(key="runtime.help", value="Runtime help."))
         await session.run("Refresh context")
-        assert list(session.ctx[DynamicContext].values.values()) == ["Runtime help."]
+        assert list(session.scope[DynamicContext].values.values()) == ["Runtime help."]
         assert await session.prompt.render() == "Fixed."
         await handle.aclose()
-        assert session.ctx[DynamicContext].values == {}
+        assert session.scope[DynamicContext].values == {}
 
 
 async def test_removed_runtime_plugins_are_collectable_while_the_session_stays_open():
@@ -162,10 +162,10 @@ async def test_removed_runtime_plugins_are_collectable_while_the_session_stays_o
             references.extend((weakref.ref(handle), weakref.ref(recipe)))
             await handle.aclose()
         del handle, recipe
-        await session.ctx.settle()
+        await session.scope.settle()
         gc.collect()
         assert all(reference() is None for reference in references)
-        assert not session.ctx[DynamicContext].values
+        assert not session.scope[DynamicContext].values
 
 
 async def test_default_approvals_allow_reads_and_reject_side_effects_without_a_responder():
@@ -235,18 +235,18 @@ async def test_runtime_context_tracks_temporal_dependency_restarts():
 
     async with Agent(model=ScriptedModel(["one", "two"])).session() as session:
         handle = await session.use(Runtime(key="backend", value="Use the active backend."))
-        assert handle.status == PluginStatus.WAITING and session.ctx[DynamicContext].values == {}
-        remove = session.ctx.provide(Backend, Backend())
-        await session.ctx.settle()
+        assert handle.status == PluginStatus.WAITING and session.scope[DynamicContext].values == {}
+        remove = session.scope.provide(Backend, Backend())
+        await session.scope.settle()
         await session.run("Refresh context")
-        assert list(session.ctx[DynamicContext].values.values()) == ["Use the active backend."]
+        assert list(session.scope[DynamicContext].values.values()) == ["Use the active backend."]
         await remove()
-        await session.ctx.settle()
-        assert session.ctx[DynamicContext].values == {}
-        session.ctx.provide(Backend, Backend())
-        await session.ctx.settle()
+        await session.scope.settle()
+        assert session.scope[DynamicContext].values == {}
+        session.scope.provide(Backend, Backend())
+        await session.scope.settle()
         await session.run("Refresh context")
-        assert list(session.ctx[DynamicContext].values.values()) == ["Use the active backend."]
+        assert list(session.scope[DynamicContext].values.values()) == ["Use the active backend."]
 
 
 async def test_public_session_type_and_forks_open_as_independent_conversations():

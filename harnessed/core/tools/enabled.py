@@ -2,7 +2,7 @@ import inspect
 from collections.abc import Callable
 from types import MethodType
 
-from harnessed.kernel import Context, binding_plan
+from harnessed.kernel import Scope, binding_plan
 
 from .context import ToolContext
 
@@ -23,12 +23,12 @@ def validate_enabled(enabled: ToolEnabled) -> None:
 
 
 def bind_enabled(
-    enabled: ToolEnabled, callback: Callable[..., object], owner: Context
-) -> Callable[[Context], bool]:
+    enabled: ToolEnabled, callback: Callable[..., object], owner: Scope
+) -> Callable[[Scope], bool]:
     """Bind a condition to the tool's mount, resolving its services for each check."""
     validate_enabled(enabled)
     if isinstance(enabled, bool):
-        return lambda ctx: enabled
+        return lambda scope: enabled
 
     predicate = enabled
     parameters = tuple(inspect.signature(predicate).parameters.values())
@@ -48,13 +48,13 @@ def bind_enabled(
     if any(dependency.key is ToolContext for dependency in plan.dependencies.values()):
         raise TypeError("Tool enabled predicates cannot depend on per-call ToolContext")
 
-    def check(ctx: Context) -> bool:
+    def check(scope: Scope) -> bool:
         if any(
-            not dependency.optional and dependency.key not in ctx
+            not dependency.optional and dependency.key not in scope
             for dependency in plan.dependencies.values()
         ):
             return False
-        bound = plan.bind(ctx)
+        bound = plan.bind(scope)
         with owner.activate():
             result = predicate(*bound.args, **bound.kwargs)
         if inspect.isawaitable(result):

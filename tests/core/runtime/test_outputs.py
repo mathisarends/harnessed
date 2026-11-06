@@ -22,7 +22,7 @@ from harnessed.core.model import (
 from harnessed.core.outputs import OutputContract, OutputTypes
 from harnessed.core.runtime.agent_loop import AgentLoop
 from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.kernel import Context, plugin
+from harnessed.kernel import Scope, plugin
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit
 
@@ -52,14 +52,14 @@ async def test_output_mode_uses_the_model_captured_before_request_hooks(
     )
 
     @plugin
-    async def swap(ctx: Context) -> AsyncIterator[None]:
+    async def swap(scope: Scope) -> AsyncIterator[None]:
         async def configure(
             event: ConfigureRequest, next_: Callable[[], Awaitable[ModelRequest]]
         ) -> ModelRequest:
-            ctx.provide(Model, replacement)
+            scope.provide(Model, replacement)
             return await next_()
 
-        ctx.on(ConfigureRequest, configure)
+        scope.on(ConfigureRequest, configure)
         yield
 
     async with Agent(

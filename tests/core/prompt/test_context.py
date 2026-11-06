@@ -119,7 +119,7 @@ async def test_added_context_is_additive_quiet_and_retained_across_turns():
 async def test_added_context_rejects_non_text_without_changing_history(content):
     model = ScriptedModel([])
     async with Application(model=model).session() as session:
-        with pytest.raises(TypeError, match="Context content must be a string"):
+        with pytest.raises(TypeError, match="Scope content must be a string"):
             await session.add_context(content)
         assert not session.messages and not model.requests
 
