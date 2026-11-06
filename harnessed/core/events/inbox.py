@@ -18,8 +18,8 @@ class InboxMode(StrEnum):
 
 
 class InboxTarget(StrEnum):
-    NEXT_TURN = "next-turn"
-    NEXT_STEP = "next-step"
+    NEXT_TURN = "next_turn"
+    NEXT_STEP = "next_step"
 
 
 class InboxRemovalReason(StrEnum):

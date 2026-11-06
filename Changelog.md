@@ -4,6 +4,9 @@
 
 ### Breaking changes
 
+- `InboxTarget.NEXT_TURN` and `NEXT_STEP` now serialize as `"next_turn"` and
+  `"next_step"`. Update literal routing values and stored inbox payloads;
+  hyphenated values are no longer accepted.
 - Built-in durable and transient events now share the public `DurableEvent` and
   `TransientEvent` bases with custom events. `SessionEvent` is their common root;
   use `DurableEvent` for persistence checks and custom persisted classes. Replace
