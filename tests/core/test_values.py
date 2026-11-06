@@ -2,6 +2,8 @@ from collections.abc import Hashable
 
 import pytest
 
+from harnessed.core.events.model import ModelRequestedEvent
+from harnessed.core.events.turn import TurnStartedEvent
 from harnessed.core.messages import (
     AssistantMessage,
     ImagePart,
@@ -11,7 +13,6 @@ from harnessed.core.messages import (
     UserMessage,
 )
 from harnessed.core.model import ModelInfo, ModelRequest, ModelResponse, ModelUsage, ToolDefinition
-from harnessed.core.session.events import ModelRequestedEvent, TurnStartedEvent
 
 
 @pytest.mark.parametrize(

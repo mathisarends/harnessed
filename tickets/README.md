@@ -25,7 +25,6 @@ review conversation. Every ticket lists:
 
 | # | Ticket | Priority | Breaking | Depends on | Status |
 |---|--------|----------|----------|------------|--------|
-| 01 | [Event package structure](01-event-package-structure.md) | high | no | – | proposed |
 | 02 | [Consistent event tags and format v4](02-event-tag-consistency.md) | high | yes (log format) | 01 | proposed |
 | 03 | [Stream surface for UIs](03-stream-surface.md) | high | alias rename only | 01, 04 | proposed |
 | 04 | [Fewer event bases, plugin-owned events](04-event-bases-and-ownership.md) | medium | yes | 01 | proposed |

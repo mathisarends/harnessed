@@ -16,9 +16,9 @@ from harnessed import (
     tool,
 )
 from harnessed.core.errors import ApprovalUnavailable, OutputUnavailable, SessionClosed
+from harnessed.core.events.approvals import ApprovalStatus
 from harnessed.core.messages import ToolStatus
 from harnessed.core.model import ModelChunk, ModelRequest
-from harnessed.core.session.events import ApprovalStatus
 from harnessed.events import (
     ApprovalNeededEvent,
     ApprovalResolvedEvent,

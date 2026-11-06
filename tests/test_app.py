@@ -15,16 +15,13 @@ from harnessed import (
     ToolCall,
     tool,
 )
+from harnessed.core.events.compaction import CompactionAppliedEvent
+from harnessed.core.events.messages import ContextValueChangedEvent
+from harnessed.core.events.tools import ToolPolicyAppliedEvent
+from harnessed.core.events.turn import TurnEndedEvent, TurnStartedEvent
 from harnessed.core.messages import PolicyDecision, ToolStatus
 from harnessed.core.model import ModelChunk
 from harnessed.core.prompt.context import DynamicContext
-from harnessed.core.session.events import (
-    CompactionAppliedEvent,
-    ContextValueChangedEvent,
-    ToolPolicyAppliedEvent,
-    TurnEndedEvent,
-    TurnStartedEvent,
-)
 from harnessed.core.session.session import SessionLog
 from harnessed.kernel import PluginStatus
 from harnessed.models import Model

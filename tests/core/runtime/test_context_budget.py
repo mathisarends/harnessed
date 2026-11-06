@@ -8,19 +8,19 @@ from harnessed import Agent as Application
 from harnessed import Plugin, PolicyDecision, ToolCall, tool
 from harnessed.core.budget import ContextBudget
 from harnessed.core.errors import ContextBudgetExceeded, ContextLengthExceeded
+from harnessed.core.events.compaction import CompactionAppliedEvent
+from harnessed.core.events.messages import AssistantMessageEvent
+from harnessed.core.events.model import (
+    ModelRequestedEvent,
+    ModelRequestFailedEvent,
+    ModelRequestOutcome,
+)
+from harnessed.core.events.turn import TurnOutcome
 from harnessed.core.hooks import ConfigureRequest, PrepareRequest
 from harnessed.core.messages import Role, SystemMessage
 from harnessed.core.model import Model, ModelChunk, ModelInfo
 from harnessed.core.plugin import Bundle, Service
 from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.session.events import (
-    AssistantMessageEvent,
-    CompactionAppliedEvent,
-    ModelRequestedEvent,
-    ModelRequestFailedEvent,
-    ModelRequestOutcome,
-    TurnOutcome,
-)
 from harnessed.models import GenerationSettings
 from harnessed.plugins import AgentLoop, Approvals, Compaction, at_ratio, every_turns
 from harnessed.testing import CallbackModel, ExtractiveSummarizer, ScriptedModel

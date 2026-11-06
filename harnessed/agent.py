@@ -11,16 +11,16 @@ from harnessed.core.composition import (
     compose_plugins,
 )
 from harnessed.core.errors import ConfigError
-from harnessed.core.event_registry import EventRegistry
+from harnessed.core.events.registry import EventRegistry
 from harnessed.core.model import Model
 from harnessed.core.outputs import OutputContract, OutputTypes
 from harnessed.core.plugin import Service, plugin_contribution, plugin_events
 from harnessed.core.prompt.instructions import PromptRenderer
 from harnessed.core.prompt.values import PromptComposition, SystemPrompt
+from harnessed.core.result import RunResult
 from harnessed.core.runtime.agent_loop import AgentLoop
 from harnessed.core.runtime.opener import open_session
 from harnessed.core.runtime.options import RunOptions
-from harnessed.core.runtime.result import RunResult
 from harnessed.core.runtime.services import RuntimeServices
 from harnessed.core.runtime.session import Session
 from harnessed.core.session.state import SessionState

@@ -14,11 +14,11 @@ from harnessed import (
 )
 from harnessed.core.approvals import Approver
 from harnessed.core.compaction import Summarizer
+from harnessed.core.events.tools import ToolCallFinishedEvent
 from harnessed.core.hooks import ToolPolicy
 from harnessed.core.messages import ApprovalAnswer, PolicyDecision
 from harnessed.core.model import Model, ModelChunk
 from harnessed.core.runtime.agent_loop import AgentFactory
-from harnessed.core.session.events import ToolCallFinishedEvent
 from harnessed.core.tokens import TokenCounter
 from harnessed.kernel import Context
 from harnessed.plugins import Approvals

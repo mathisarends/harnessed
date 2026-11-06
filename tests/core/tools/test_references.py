@@ -3,7 +3,7 @@ from pydantic import ValidationError
 
 from harnessed import Agent, ApprovalAnswer, Plugin, PolicyDecision, tool
 from harnessed.core.approvals import CallbackApprover
-from harnessed.core.session.events import ApprovalRequestedEvent
+from harnessed.core.events.approvals import ApprovalRequestedEvent
 from harnessed.plugins import Approvals, Filesystem
 from harnessed.testing import ScriptedModel, call
 

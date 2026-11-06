@@ -11,9 +11,9 @@ from harnessed import (
     SystemPrompt,
     ToolCall,
 )
+from harnessed.core.events.inbox import InboxAddedEvent
 from harnessed.core.messages import ToolStatus
 from harnessed.core.model import ModelChunk
-from harnessed.core.session.events import InboxAddedEvent
 from harnessed.core.tools.registry import ToolRegistry
 from harnessed.plugins import Approvals, BackgroundShell, Service, Shell
 from harnessed.plugins.shell import LocalShell, ProcessState, ProcResult, ShellBackend

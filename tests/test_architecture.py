@@ -15,6 +15,23 @@ PACKAGE = ROOT / "harnessed"
 LAYERS = {"kernel": 0, "core": 1, "plugins": 2, "models": 2, "integrations": 2}
 
 
+def test_event_vocabulary_does_not_depend_on_runtime():
+    paths = tuple((PACKAGE / "core" / "events").glob("*.py"))
+    assert paths
+    violations = []
+    for path in paths:
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.ImportFrom):
+                modules = [node.module or ""]
+            elif isinstance(node, ast.Import):
+                modules = [alias.name for alias in node.names]
+            else:
+                continue
+            if any(module.startswith("harnessed.core.runtime") for module in modules):
+                violations.append(path.name)
+    assert violations == []
+
+
 def test_imports_follow_layer_direction_and_public_boundaries():
     violations = []
     ranks = LAYERS

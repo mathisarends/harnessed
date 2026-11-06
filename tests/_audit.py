@@ -2,18 +2,18 @@ from collections.abc import Iterable
 
 from harnessed import Session
 from harnessed.core.approvals import ApprovalState
-from harnessed.core.event_registry import EventRegistry
-from harnessed.core.hooks import SessionAppended
-from harnessed.core.model import ModelRequest, ModelUsage, sum_usage
-from harnessed.core.session.control import RunControl
-from harnessed.core.session.events import (
-    ModelUsageRecordedEvent,
-    SessionEvent,
+from harnessed.core.events.base import SessionEvent
+from harnessed.core.events.model import ModelUsageRecordedEvent
+from harnessed.core.events.registry import EventRegistry
+from harnessed.core.events.turn import (
     StepEndedEvent,
     StepStartedEvent,
     TurnEndedEvent,
     TurnStartedEvent,
 )
+from harnessed.core.hooks import SessionAppended
+from harnessed.core.model import ModelRequest, ModelUsage, sum_usage
+from harnessed.core.session.control import RunControl
 from harnessed.core.session.history import derive_messages, derive_requests
 from harnessed.core.session.inbox import Inbox
 from harnessed.core.session.turns import Step, Turn

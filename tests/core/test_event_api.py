@@ -5,8 +5,8 @@ import pytest
 from pydantic import Field, TypeAdapter
 
 from harnessed import Agent, Plugin, PolicyDecision, ToolCall, events, tool
+from harnessed.core.events.unions import SESSION_EVENT_TYPES
 from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.session.events import SESSION_EVENT_TYPES
 from harnessed.events import (
     AssistantMessageEvent,
     SessionEvent,

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from harnessed.core.messages import ToolCall, ToolResult, freeze
 
 if TYPE_CHECKING:
-    from harnessed.core.runtime.result import RunResult
+    from harnessed.core.result import RunResult
 
 
 def assert_tool_called(result: RunResult, name: str, /, **arguments) -> tuple[ToolCall, ToolResult]:

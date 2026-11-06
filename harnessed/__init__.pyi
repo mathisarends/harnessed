@@ -26,9 +26,9 @@ from harnessed.core.prompt.values import PluginOrder as PluginOrder
 from harnessed.core.prompt.values import PromptFormat as PromptFormat
 from harnessed.core.prompt.values import SectionDelivery as SectionDelivery
 from harnessed.core.prompt.values import SystemPrompt as SystemPrompt
+from harnessed.core.result import RunResult as RunResult
 from harnessed.core.runtime.control import SessionStatus as SessionStatus
 from harnessed.core.runtime.handles import RunHandle as RunHandle
-from harnessed.core.runtime.result import RunResult as RunResult
 from harnessed.core.runtime.session import Session as Session
 from harnessed.core.session.session import SessionLog as SessionLog
 from harnessed.core.session.state import SessionState as SessionState

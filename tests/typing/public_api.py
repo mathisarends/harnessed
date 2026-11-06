@@ -16,7 +16,7 @@ from harnessed import (
 )
 from harnessed.core.messages import AssistantMessage, ToolMessage, UserMessage
 from harnessed.core.model import ModelRequest, ModelResponse
-from harnessed.core.runtime.result import RunResult
+from harnessed.core.result import RunResult
 from harnessed.core.runtime.session import Session
 from harnessed.errors import PluginDependencyError
 from harnessed.events import (

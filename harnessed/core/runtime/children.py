@@ -8,14 +8,14 @@ from hashlib import sha256
 from typing import TYPE_CHECKING
 
 from harnessed.core.children import ChildLimits, ChildSessionFactory
-from harnessed.core.hooks import SessionAborting, SessionClosing
-from harnessed.core.messages import ToolResult, ToolStatus, UserMessage, to_dict
-from harnessed.core.session.children import ChildSession
-from harnessed.core.session.events import (
+from harnessed.core.events.subagents import (
     SubagentFinishedEvent,
     SubagentStartedEvent,
     SubagentStatus,
 )
+from harnessed.core.hooks import SessionAborting, SessionClosing
+from harnessed.core.messages import ToolResult, ToolStatus, UserMessage, to_dict
+from harnessed.core.session.children import ChildSession
 from harnessed.core.tools import ToolContext, ToolError
 
 from .child_execution import ChildExecution

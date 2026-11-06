@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from harnessed.core.approvals import Approver
-from harnessed.core.session.events import SubagentLinkedEvent
+from harnessed.core.events.subagents import SubagentLinkedEvent
 
 if TYPE_CHECKING:
     from harnessed.core.runtime.session import Session

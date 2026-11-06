@@ -4,8 +4,8 @@ import pytest
 
 from harnessed import Agent, SessionStatus
 from harnessed.core.errors import RateLimited
+from harnessed.core.events.turn import TurnOutcome
 from harnessed.core.messages import UserMessage
-from harnessed.core.session.events import TurnOutcome
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit
 

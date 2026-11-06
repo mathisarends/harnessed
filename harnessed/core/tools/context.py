@@ -4,9 +4,9 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
+from harnessed.core.events.base import SessionEvent, TransientEvent
+from harnessed.core.events.tools import ToolProgressEvent
 from harnessed.core.messages import ApprovalAnswer, ToolCall
-from harnessed.core.session.events import SessionEvent, ToolProgressEvent
-from harnessed.core.stream import TransientEvent
 
 if TYPE_CHECKING:
     from harnessed.core.runtime.approvals import SessionApprovals

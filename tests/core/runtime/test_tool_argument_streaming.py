@@ -4,10 +4,11 @@ import pytest
 from pydantic import TypeAdapter
 
 from harnessed import Agent, Plugin, StopReason, ToolCall, events, tool
+from harnessed.core.events.messages import AssistantMessageEvent, TextDeltaEvent
+from harnessed.core.events.stream import coalesce_deltas
+from harnessed.core.events.tools import ToolArgumentsDeltaEvent, ToolCallRequestedEvent
 from harnessed.core.model import ModelChunk, ToolArgumentsMode, ToolCallDelta, ToolCallStart
 from harnessed.core.session.codec import encode_event
-from harnessed.core.session.events import AssistantMessageEvent, ToolCallRequestedEvent
-from harnessed.core.stream import TextDeltaEvent, ToolArgumentsDeltaEvent, coalesce_deltas
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit
 

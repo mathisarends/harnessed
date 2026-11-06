@@ -4,18 +4,13 @@ import json
 import pytest
 
 from harnessed import StreamOverflow, ToolCall, ToolResult
+from harnessed.core.events.inbox import InboxAddedEvent, InboxMode, InboxTarget
+from harnessed.core.events.messages import AssistantMessageEvent, UserMessageEvent
+from harnessed.core.events.model import ModelRequestedEvent
+from harnessed.core.events.tools import ToolCallFinishedEvent
 from harnessed.core.messages import AssistantMessage, UserMessage
 from harnessed.core.model import ModelRequest, ToolDefinition
 from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.session.events import (
-    AssistantMessageEvent,
-    InboxAddedEvent,
-    InboxMode,
-    InboxTarget,
-    ModelRequestedEvent,
-    ToolCallFinishedEvent,
-    UserMessageEvent,
-)
 from harnessed.core.session.session import SessionLog, derive_messages
 from harnessed.models import ModelInfo
 from tests._audit import AuditProjection

@@ -6,16 +6,16 @@ from enum import StrEnum
 from typing import Any
 
 from harnessed.core.attachments import Attachment, _prepare_input
-from harnessed.core.messages import Message
-from harnessed.core.model import GenerationSettings, OutputSchema
-from harnessed.core.runtime.control import SessionControl
-from harnessed.core.session.events import (
+from harnessed.core.events.inbox import (
     InboxAddedEvent,
     InboxMode,
     InboxRemovalReason,
     InboxRemovedEvent,
-    TurnLimits,
 )
+from harnessed.core.events.turn import TurnLimits
+from harnessed.core.messages import Message
+from harnessed.core.model import GenerationSettings, OutputSchema
+from harnessed.core.runtime.control import SessionControl
 from harnessed.core.session.session import SessionLog
 
 

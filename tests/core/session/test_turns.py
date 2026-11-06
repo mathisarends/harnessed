@@ -5,21 +5,20 @@ import pytest
 
 from harnessed import Agent as Application
 from harnessed import Plugin, PolicyDecision, ToolCall, tool
-from harnessed.core.hooks import PreStep, StepDecision
-from harnessed.core.model import ModelChunk, ModelRequest
-from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.session.events import (
-    ModelRequestedEvent,
+from harnessed.core.events.messages import UserMessageEvent
+from harnessed.core.events.model import ModelRequestedEvent
+from harnessed.core.events.tools import ToolCallFinishedEvent, ToolCallRequestedEvent
+from harnessed.core.events.turn import (
     StepEndedEvent,
     StepOutcome,
     StepStartedEvent,
-    ToolCallFinishedEvent,
-    ToolCallRequestedEvent,
     TurnEndedEvent,
     TurnOutcome,
     TurnStartedEvent,
-    UserMessageEvent,
 )
+from harnessed.core.hooks import PreStep, StepDecision
+from harnessed.core.model import ModelChunk, ModelRequest
+from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.models import ModelInfo
 from harnessed.plugins import Approvals
 from harnessed.testing import CallbackModel, ScriptedModel

@@ -3,12 +3,9 @@ from contextlib import aclosing
 
 import pytest
 
+from harnessed.core.events.messages import UserMessageEvent
+from harnessed.core.events.tools import ToolCallFinishedEvent, ToolExecutionFinishedEvent
 from harnessed.core.messages import ToolCall, ToolResult, UserMessage
-from harnessed.core.session.events import (
-    ToolCallFinishedEvent,
-    ToolExecutionFinishedEvent,
-    UserMessageEvent,
-)
 from harnessed.core.session.session import SessionLog
 from harnessed.kernel import Context
 

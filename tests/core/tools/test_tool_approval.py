@@ -1,7 +1,7 @@
 from harnessed import Agent, Plugin, PolicyDecision, ToolCall, ToolContext, events, tool
+from harnessed.core.events.approvals import ApprovalRequestedEvent
 from harnessed.core.messages import ApprovalAnswer
 from harnessed.core.model import ModelChunk
-from harnessed.core.session.events import ApprovalRequestedEvent
 from harnessed.plugins import Approvals
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit

@@ -10,20 +10,16 @@ from typing import TYPE_CHECKING, Any, cast
 from pydantic import ConfigDict, TypeAdapter, ValidationError
 
 from harnessed.core.errors import SessionFormatError
+from harnessed.core.events.base import SessionEvent
+from harnessed.core.events.unions import SESSION_EVENT_TYPES, LogEvent
 from harnessed.core.messages import (
     freeze,
     to_dict,
 )
-from harnessed.core.session.events import (
-    SESSION_EVENT_TYPES,
-    LogEvent,
-    SessionEvent,
-)
 
 if TYPE_CHECKING:
-    from harnessed.core.event_registry import EventRegistry
-    from harnessed.core.stream import TransientEvent
-
+    from harnessed.core.events.registry import EventRegistry
+from harnessed.core.events.base import TransientEvent
 
 CURRENT_VERSION = 3
 

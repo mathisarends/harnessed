@@ -17,16 +17,13 @@ from pydantic import (
 )
 
 from harnessed.core.errors import ConfigError
+from harnessed.core.events.compaction import CompactionAppliedEvent
+from harnessed.core.events.tools import ToolCallFinishedEvent, ToolCallRequestedEvent
 from harnessed.core.hooks import SessionAppended
 from harnessed.core.messages import AssistantMessage, ToolMessage, ToolStatus, freeze, to_dict
 from harnessed.core.plugin import Plugin
 from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.prompt.values import Instructions, SystemPrompt
-from harnessed.core.session.events import (
-    CompactionAppliedEvent,
-    ToolCallFinishedEvent,
-    ToolCallRequestedEvent,
-)
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tools import ToolError, tool
 from harnessed.kernel import Context, Inject, Key, hook

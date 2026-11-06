@@ -12,16 +12,16 @@ from harnessed.core.approvals import (
 )
 from harnessed.core.children import ChildSessionRequest
 from harnessed.core.errors import ApprovalUnavailable
-from harnessed.core.hooks import RequestApproval
-from harnessed.core.messages import ApprovalAnswer, ToolCall
-from harnessed.core.runtime.control import SessionControl
-from harnessed.core.runtime.options import AgentOptions
-from harnessed.core.session.events import (
+from harnessed.core.events.approvals import (
     ApprovalRequestedEvent,
     ApprovalResolvedEvent,
     ApprovalRevokedEvent,
     ApprovalStatus,
 )
+from harnessed.core.hooks import RequestApproval
+from harnessed.core.messages import ApprovalAnswer, ToolCall
+from harnessed.core.runtime.control import SessionControl
+from harnessed.core.runtime.options import AgentOptions
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tracing import span
 from harnessed.kernel import Context

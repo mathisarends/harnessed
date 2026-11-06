@@ -7,10 +7,16 @@ from typing import Annotated, Any, Literal, Self, cast, get_args, get_origin, ge
 
 from pydantic import ConfigDict, Field, TypeAdapter
 
+from harnessed.core.events.base import (
+    CustomTransientEvent,
+    DurableEvent,
+    SessionEvent,
+    TransientEvent,
+)
+from harnessed.core.events.stream import StreamEvent
+from harnessed.core.events.unions import SESSION_EVENT_TYPES
 from harnessed.core.messages import to_dict
 from harnessed.core.session.codec import _validate_event, decode_event, encode_event
-from harnessed.core.session.events import SESSION_EVENT_TYPES, DurableEvent, SessionEvent
-from harnessed.core.stream import CustomTransientEvent, StreamEvent, TransientEvent
 
 
 class EventRegistry:

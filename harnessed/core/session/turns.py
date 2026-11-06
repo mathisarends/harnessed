@@ -2,13 +2,11 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from harnessed.core.errors import SessionFormatError
-from harnessed.core.model import ModelRequest
-from harnessed.core.session.events import (
-    AssistantMessageEvent,
-    ModelRequestedEvent,
-    OutputValidatedEvent,
-    OutputValidationFailedEvent,
-    SessionEvent,
+from harnessed.core.events.base import SessionEvent
+from harnessed.core.events.messages import AssistantMessageEvent
+from harnessed.core.events.model import ModelRequestedEvent
+from harnessed.core.events.output import OutputValidatedEvent, OutputValidationFailedEvent
+from harnessed.core.events.turn import (
     StepEndedEvent,
     StepOutcome,
     StepStartedEvent,
@@ -16,6 +14,7 @@ from harnessed.core.session.events import (
     TurnOutcome,
     TurnStartedEvent,
 )
+from harnessed.core.model import ModelRequest
 
 
 @dataclass(frozen=True)

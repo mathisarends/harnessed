@@ -6,10 +6,10 @@ from pydantic import ValidationError
 from harnessed import Agent
 from harnessed.core.budget import ContextBudget
 from harnessed.core.errors import PluginConflict
+from harnessed.core.events.model import ModelRequestedEvent
 from harnessed.core.model import ModelChunk, ModelInfo, ModelUsage
 from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.runtime.services import RuntimeServices
-from harnessed.core.session.events import ModelRequestedEvent
 from harnessed.core.tokens import ApproximateTokenCounter, CalibratedTokenCounter, TokenCounter
 from harnessed.plugins import (
     AgentLoop,

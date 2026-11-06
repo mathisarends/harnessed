@@ -16,10 +16,10 @@ from harnessed import (
     ToolContext,
     tool,
 )
+from harnessed.core.events.subagents import SubagentLinkedEvent
 from harnessed.core.messages import ToolStatus
 from harnessed.core.model import ModelChunk, ModelUsage
 from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.session.events import SubagentLinkedEvent
 from harnessed.core.session.session import SessionLog
 from harnessed.errors import SessionWriteConflict
 from harnessed.events import (

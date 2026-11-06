@@ -9,15 +9,15 @@ from typing import Annotated, Protocol
 from pydantic import Field
 
 from harnessed.core.budget import truncate
-from harnessed.core.hooks import Next, ReviewToolResult, SessionAppended
-from harnessed.core.messages import SpillRef, ToolResult
-from harnessed.core.plugin import Plugin, PluginConfig
-from harnessed.core.prompt.values import Instructions, SystemPrompt
-from harnessed.core.session.events import (
+from harnessed.core.events.observations import (
     SpillCreatedEvent,
     SpillExpirationReason,
     SpillExpiredEvent,
 )
+from harnessed.core.hooks import Next, ReviewToolResult, SessionAppended
+from harnessed.core.messages import SpillRef, ToolResult
+from harnessed.core.plugin import Plugin, PluginConfig
+from harnessed.core.prompt.values import Instructions, SystemPrompt
 from harnessed.core.session.files import FileOffset, ReadLimit, SessionFiles
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import TokenCounter

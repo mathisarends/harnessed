@@ -9,12 +9,12 @@ from harnessed.core.diagnostics import (
     RetryReason,
 )
 from harnessed.core.errors import ContextLengthExceeded, ProviderError, RateLimited
-from harnessed.core.session.session import SessionLog
-from harnessed.core.stream import (
+from harnessed.core.events.model import (
     ModelAttemptFinishedEvent,
     ModelAttemptStartedEvent,
     ModelRetryScheduledEvent,
 )
+from harnessed.core.session.session import SessionLog
 
 
 class RequestDiagnostics:
