@@ -91,7 +91,7 @@ async def test_foreign_fs_and_model_work_through_di_without_framework_inheritanc
     async with Application(
         prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), foreign_files(), FilesystemTools()],
+        plugins=[Approvals.allow_all(), foreign_files(), FilesystemTools()],
     ).session() as agent:
         result = await agent.run("Write and read the note.")
         assert result.text == "done"
@@ -151,7 +151,7 @@ async def test_foreign_shell_and_approver_are_accepted_structurally(tmp_path):
     harness = Application(
         model=model,
         plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
+            Approvals.allow_all(),
             foreign_services(),
             ShellTools(tmp_path),
             policy(),

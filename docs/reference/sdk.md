@@ -82,6 +82,16 @@ implementing `create() -> fastmcp.client.transports.ClientTransport`.
 Each mount owns one connection and a fixed catalog of namespaced tools. See
 [MCP tools](../guides/mcp.md) for approvals, results and cancellation boundaries.
 
+## Approval policy
+
+`Approvals.allow_all()` and `Approvals.ask_all()` select the fallback decision;
+both accept `approver=` and `timeout=`. `Approvals(allow=..., ask=..., deny=...)`
+accepts tool references or names. Tools declare `@tool(confirm=True)` or
+`@tool(readonly=True)`; these flags are mutually exclusive and are captured in
+`ToolInfo` when scheduling. Explicit application rules precede tool flags and
+`policy=`. `ToolApprovalGuard` provides an independent gate that survives policy
+slot replacement. See [approval composition](../guides/approvals.md).
+
 ## Tool presentation
 
 `@tool(title=None, tags=(), icons=(), annotations=None, meta=None, ...)` attaches

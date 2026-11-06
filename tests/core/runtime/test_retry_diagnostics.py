@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import pytest
 from pydantic import BaseModel, TypeAdapter
 
-from harnessed import Agent, Plugin, PolicyDecision, Session, ToolCall, tool
+from harnessed import Agent, Plugin, Session, ToolCall, tool
 from harnessed.core.errors import ContextLengthExceeded, OutputValidationError, RateLimited
 from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.events import (
@@ -274,7 +274,7 @@ async def test_tool_steps_do_not_count_as_retries_and_new_groups_use_the_remaini
     ]
     async with Agent(
         model=ScriptedModel([[ModelChunk(tool_call=call)] for call in calls]),
-        plugins=[Tools(), Approvals(default=PolicyDecision.ALLOW), AgentLoop(output_retries=2)],
+        plugins=[Tools(), Approvals.allow_all(), AgentLoop(output_retries=2)],
     ).session() as session:
         session_audit = Audit(session)
         notifications = [e async for e in session.stream("work", output=Answer)]

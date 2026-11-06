@@ -81,21 +81,25 @@ async def test_registration_routes_preserve_captured_presentation_after_replacem
     async with Agent(model=ScriptedModel(["unused"])).session() as session:
         registry = session.ctx[ToolRegistry]
         if route == "register":
-            registry.register(work, title="Original", tags={route})
+            registry.register(work, title="Original", tags={route}, confirm=True)
         elif route == "decorator":
-            registry.tool(title="Original", tags={route})(work)
+            registry.tool(title="Original", tags={route}, confirm=True)(work)
         else:
             registry.register_external(
                 ToolDefinition("work", "", {}),
                 external,
                 owner=session.ctx,
-                spec=ToolSpec(presentation=ToolPresentation(title="Original", tags={route})),
+                spec=ToolSpec(
+                    presentation=ToolPresentation(title="Original", tags={route}), confirm=True
+                ),
             )
         plan = registry.plan(ToolCall("work"))
         registry.register(work, override=True, title="Replacement")
         assert plan.tool.presentation.title == "Original"
         assert plan.tool.presentation.tags == frozenset({route})
+        assert plan.tool.confirm is True
         assert registry.plan(ToolCall("work")).tool.presentation.title == "Replacement"
+        assert registry.plan(ToolCall("work")).tool.confirm is False
 
 
 @pytest.mark.parametrize(

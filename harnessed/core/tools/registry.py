@@ -71,6 +71,7 @@ class ToolSpec:
     parallel: bool = False
     resources: ResourceSpec = ()
     readonly: bool = False
+    confirm: bool = False
     override: bool = False
     output_limit: OutputLimitSetting = OutputLimit.INHERIT
     parameter_fields: ParameterFields | None = None
@@ -80,6 +81,10 @@ class ToolSpec:
     presentation: ToolPresentation = ToolPresentation()
 
     def __post_init__(self) -> None:
+        if type(self.confirm) is not bool:
+            raise TypeError("confirm must be a bool")
+        if self.readonly and self.confirm:
+            raise TypeError("readonly=True cannot be combined with confirm=True")
         if not isinstance(self.presentation, ToolPresentation):
             raise TypeError("Tool presentation must be a ToolPresentation")
         object.__setattr__(self, "metadata", ToolMetadata(self.metadata).values)
@@ -246,6 +251,7 @@ class ToolRegistry:
         parallel: bool = False,
         resources: ResourceSpec = (),
         readonly: bool = False,
+        confirm: bool = False,
         output_limit: OutputLimitSetting = OutputLimit.INHERIT,
         override: bool = False,
         owner: Context | None = None,
@@ -271,6 +277,7 @@ class ToolRegistry:
         parallel: bool = False,
         resources: ResourceSpec = (),
         readonly: bool = False,
+        confirm: bool = False,
         output_limit: OutputLimitSetting = OutputLimit.INHERIT,
         override: bool = False,
         owner: Context | None = None,
@@ -293,6 +300,7 @@ class ToolRegistry:
                 parallel=parallel,
                 resources=resources,
                 readonly=readonly,
+                confirm=confirm,
                 output_limit=output_limit,
                 override=override,
                 owner=owner,
@@ -320,6 +328,7 @@ class ToolRegistry:
         parallel: bool = False,
         resources: ResourceSpec = (),
         readonly: bool = False,
+        confirm: bool = False,
         output_limit: OutputLimitSetting = OutputLimit.INHERIT,
         override: bool = False,
         owner: Context | None = None,
@@ -340,6 +349,7 @@ class ToolRegistry:
             parallel=parallel,
             resources=resources,
             readonly=readonly,
+            confirm=confirm,
             override=override,
             output_limit=output_limit,
             params=params,
@@ -519,6 +529,7 @@ class ToolRegistry:
                 tool.spec.parallel,
                 tool.spec.chain,
                 tool.spec.presentation,
+                confirm=tool.spec.confirm,
             ),
         )
 

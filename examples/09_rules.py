@@ -2,7 +2,7 @@
 
 import asyncio
 
-from harnessed import Agent, Plugin, PolicyDecision, Session, ToolCall, ToolResult, ToolStatus, tool
+from harnessed import Agent, Plugin, Session, ToolCall, ToolResult, ToolStatus, tool
 from harnessed.events import InboxAddedEvent, InboxMode, ToolCallFinishedEvent
 from harnessed.hooks import ReviewToolResult
 from harnessed.kernel import Inject, hook
@@ -63,7 +63,7 @@ async def demo(name, policy):
             "I will summarize the attempts before editing again.",
         ]
     )
-    agent = Agent(model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), commands, policy])
+    agent = Agent(model=model, plugins=[Approvals.allow_all(), commands, policy])
     print(f"\n{name}")
     async with agent.session() as session:
         steering = []

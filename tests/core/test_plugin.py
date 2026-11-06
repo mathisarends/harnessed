@@ -118,7 +118,7 @@ async def test_custom_instance_factory_preserves_bound_tool_references_and_isola
             "third",
         ]
     )
-    agent = Agent(model=model, plugins=[recipe, Approvals(require=[recipe.count], approver=allow)])
+    agent = Agent(model=model, plugins=[recipe, Approvals(ask=[recipe.count], approver=allow)])
     async with agent.session() as first, agent.session() as second:
         assert (await first.run("count")).tool_calls[0][1].text == "1"
         assert (await second.run("count")).tool_calls[0][1].text == "1"

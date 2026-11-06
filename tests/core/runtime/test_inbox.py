@@ -4,7 +4,6 @@ from dataclasses import FrozenInstanceError
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import PolicyDecision
 from harnessed.core.events.inbox import (
     InboxAddedEvent,
     InboxMode,
@@ -109,9 +108,7 @@ class PausingModel(CallbackModel):
 
 async def test_steering_enters_the_running_turn_before_its_next_step():
     model = PausingModel()
-    async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
-    ).session() as agent:
+    async with Application(model=model, plugins=[Approvals.allow_all()]).session() as agent:
         agent_audit = Audit(agent)
         await agent.submit("task")
         await model.started.wait()

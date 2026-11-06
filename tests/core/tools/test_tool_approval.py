@@ -45,7 +45,7 @@ async def test_a_tool_asks_the_configured_approver_mid_call():
 async def test_a_stream_consumer_answers_a_tool_approval():
     tools = Cleanup()
     model = ScriptedModel(_calls(1))
-    plugins = [tools, Approvals(default=PolicyDecision.ALLOW)]
+    plugins = [tools, Approvals.allow_all()]
     async with Agent(model=model, plugins=plugins).session() as session:
         async for event in session.stream("clean up"):
             if isinstance(event, events.ApprovalNeededEvent):

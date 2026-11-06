@@ -22,7 +22,7 @@ coordinator = Agent(
     model="openai:gpt-4.1",
     plugins=[
         Subagents({"review": reviewer}, max_parallel=2, max_steps=8),
-        Approvals(trust=[Subagents.delegate]),
+        Approvals(allow=[Subagents.delegate]),
     ],
 )
 

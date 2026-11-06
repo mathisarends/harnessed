@@ -48,7 +48,7 @@ class CallbackApprover:
         raise TypeError("Approvers must return ApprovalAnswer or bool")
 
 
-class ApprovalGateConfig(PluginConfig):
+class ToolApprovalGuardConfig(PluginConfig):
     risky: Annotated[
         tuple[Annotated[str, Field(min_length=1)] | Callable | ToolReference, ...],
         Field(strict=False),
@@ -58,7 +58,7 @@ class ApprovalGateConfig(PluginConfig):
     priority: int = Priority.GUARD
 
 
-class ApprovalGate(Plugin[ApprovalGateConfig], needs=(ToolRegistry,)):
+class ToolApprovalGuard(Plugin[ToolApprovalGuardConfig], needs=(ToolRegistry,)):
     """Keep a scoped guard active even when its optional approver is unavailable."""
 
     def __init__(
@@ -70,7 +70,7 @@ class ApprovalGate(Plugin[ApprovalGateConfig], needs=(ToolRegistry,)):
         priority: int = Priority.GUARD,
     ) -> None:
         super().__init__(
-            config=ApprovalGateConfig(risky=risky, ask=ask, scope=scope, priority=priority)
+            config=ToolApprovalGuardConfig(risky=risky, ask=ask, scope=scope, priority=priority)
         )
         self.risky = tuple(tool_selector(item) for item in self.config.risky)
         self.ask = self.config.ask
@@ -209,15 +209,15 @@ class ApprovalsConfig(PluginConfig):
 
 
 class Approvals(Plugin[ApprovalsConfig], slot="approvals", needs=(ToolRegistry,)):
-    """Compose default decisions and explicit tool rules; required approval wins trust."""
+    """Compose application rules, captured tool policy and a fallback decision."""
 
     def __init__(
         self,
         *,
         approver: Approver | ApprovalCallback | None = None,
         default: PolicyDecision = PolicyDecision.ASK,
-        trust: Iterable[ToolSelector] = (),
-        require: Iterable[ToolSelector] = (),
+        allow: Iterable[ToolSelector] = (),
+        ask: Iterable[ToolSelector] = (),
         deny: Iterable[ToolSelector] = (),
         policy: Callable[[ToolCall], PolicyDecision | None] | None = None,
         timeout: float = 300.0,
@@ -230,19 +230,33 @@ class Approvals(Plugin[ApprovalsConfig], slot="approvals", needs=(ToolRegistry,)
         )
         if not isinstance(default, PolicyDecision):
             raise TypeError("default must be a PolicyDecision")
-        if any(isinstance(items, str) for items in (trust, require, deny)):
+        if any(isinstance(items, str) for items in (allow, ask, deny)):
             raise TypeError(
-                "Tool rules must be collections; use default=PolicyDecision.ALLOW to allow all"
+                "Tool rules must be collections; use Approvals.allow_all() for an allowing fallback"
             )
         self.default = default
-        self.trust = tuple(tool_selector(item) for item in trust)
-        self.require = tuple(tool_selector(item) for item in require)
+        self.allow = tuple(tool_selector(item) for item in allow)
+        self.ask = tuple(tool_selector(item) for item in ask)
         self.deny = tuple(tool_selector(item) for item in deny)
         self.policy = policy
 
+    @classmethod
+    def allow_all(
+        cls, *, approver: Approver | ApprovalCallback | None = None, timeout: float = 300.0
+    ) -> Self:
+        """Use ALLOW as the fallback, preserving explicit tool policy and guards."""
+        return cls(default=PolicyDecision.ALLOW, approver=approver, timeout=timeout)
+
+    @classmethod
+    def ask_all(
+        cls, *, approver: Approver | ApprovalCallback | None = None, timeout: float = 300.0
+    ) -> Self:
+        """Use ASK as the fallback, preserving explicit tool policy and guards."""
+        return cls(default=PolicyDecision.ASK, approver=approver, timeout=timeout)
+
     async def setup(self, ctx: Context, tools: Inject[ToolRegistry]) -> None:
-        self.trust = tuple(tools.reference(item, owner=ctx) for item in self.trust)
-        self.require = tuple(tools.reference(item, owner=ctx) for item in self.require)
+        self.allow = tuple(tools.reference(item, owner=ctx) for item in self.allow)
+        self.ask = tuple(tools.reference(item, owner=ctx) for item in self.ask)
         self.deny = tuple(tools.reference(item, owner=ctx) for item in self.deny)
         if self.approver is not None:
             # Tools and other guards asking mid-call reach the same human.
@@ -255,19 +269,18 @@ class Approvals(Plugin[ApprovalsConfig], slot="approvals", needs=(ToolRegistry,)
         session = event.session
         if any(tools.matches(item, event.call.name) for item in self.deny):
             return PolicyDecision.DENY
-        required = any(tools.matches(item, event.call.name) for item in self.require)
-        decision = (
-            PolicyDecision.ASK
-            if required
-            else (self.policy(event.call) if self.policy is not None else None)
-        )
-        if decision is None:
-            decision = (
-                PolicyDecision.ALLOW
-                if any(tools.matches(item, event.call.name) for item in self.trust)
-                or tools.is_readonly(event.call.name)
-                else self.default
-            )
+        if any(tools.matches(item, event.call.name) for item in self.ask):
+            decision = PolicyDecision.ASK
+        elif any(tools.matches(item, event.call.name) for item in self.allow):
+            decision = PolicyDecision.ALLOW
+        elif event.tool is not None and event.tool.confirm:
+            decision = PolicyDecision.ASK
+        elif event.tool is not None and event.tool.readonly:
+            decision = PolicyDecision.ALLOW
+        else:
+            decision = self.policy(event.call) if self.policy is not None else None
+            if decision is None:
+                decision = self.default
         if decision is not None and not isinstance(decision, PolicyDecision):
             raise TypeError("Approval policies must return PolicyDecision or None")
         if decision is PolicyDecision.ASK:

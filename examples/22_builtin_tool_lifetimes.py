@@ -3,7 +3,7 @@
 import asyncio
 from pathlib import Path
 
-from harnessed import Agent, PluginValidation, PolicyDecision, ToolCall
+from harnessed import Agent, PluginValidation, ToolCall
 from harnessed.core.tools.registry import ToolRegistry
 from harnessed.kernel import Context, plugin
 from harnessed.models import ModelChunk
@@ -39,7 +39,7 @@ async def main():
     # This example deliberately opens before adding the shell backend at runtime.
     agent = Agent(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), ShellTools()],
+        plugins=[Approvals.allow_all(), ShellTools()],
         plugin_validation=PluginValidation.WARN,
     )
     outputs = []

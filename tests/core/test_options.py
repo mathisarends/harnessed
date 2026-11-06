@@ -1,7 +1,7 @@
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from harnessed.core.approvals import ApprovalGate
+from harnessed.core.approvals import ToolApprovalGuard
 from harnessed.core.budget import ContextBudget
 from harnessed.core.model import ModelInfo, ModelRequest, ModelUsage
 from harnessed.core.runtime.options import AgentLoopConfig
@@ -22,7 +22,7 @@ from harnessed.models import GenerationSettings
 )
 def test_scoped_guard_configuration_is_strict(options):
     with pytest.raises(ValidationError):
-        ApprovalGate(**options)
+        ToolApprovalGuard(**options)
 
 
 @pytest.mark.parametrize(

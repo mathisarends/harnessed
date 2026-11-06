@@ -529,7 +529,7 @@ model = ScriptedModel(
         "Read the requested ranges.",
     ]
 )
-policy = Approvals(require=[Filesystem.delete_file])
+policy = Approvals(ask=[Filesystem.delete_file])
 ```
 
 `call(method, **arguments)` validates the model arguments immediately, excluding

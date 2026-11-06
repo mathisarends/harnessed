@@ -33,11 +33,11 @@ from mcp.types import (
 import harnessed.plugins.mcp as mcp_plugin
 from harnessed import Agent, ToolCall
 from harnessed.core.errors import ToolNameConflict
-from harnessed.core.messages import PolicyDecision, ToolStatus, to_dict
+from harnessed.core.messages import ToolStatus, to_dict
 from harnessed.core.model import ModelChunk
 from harnessed.core.tools.registry import ToolRegistry
 from harnessed.events import ToolProgressEvent
-from harnessed.plugins import ApprovalGate, Approvals, ToolOutputLimit
+from harnessed.plugins import Approvals, ToolApprovalGuard, ToolOutputLimit
 from harnessed.plugins.mcp import MCP
 from harnessed.testing import ScriptedModel
 
@@ -141,7 +141,7 @@ async def run_tool(transport, arguments=None, **options):
         model=model,
         plugins=[
             MCP("docs", transport=transport, **options),
-            Approvals(default=PolicyDecision.ALLOW),
+            Approvals.allow_all(),
         ],
     )
     result = await agent.run("search")
@@ -217,8 +217,8 @@ async def test_policy_denial_happens_before_remote_execution():
         model=model,
         plugins=[
             MCP("docs", transport=transport),
-            Approvals(default=PolicyDecision.ALLOW),
-            ApprovalGate(risky=["docs__search"], ask=lambda request: False),
+            Approvals.allow_all(),
+            ToolApprovalGuard(risky=["docs__search"], ask=lambda request: False),
         ],
     )
     result = await agent.run("search")
@@ -260,7 +260,7 @@ async def test_call_timeout_and_abort_propagate_cancellation():
     call = ToolCall("docs__search", {"query": "x"})
     agent = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=call)]]),
-        plugins=[MCP("docs", transport=transport), Approvals(default=PolicyDecision.ALLOW)],
+        plugins=[MCP("docs", transport=transport), Approvals.allow_all()],
     )
     async with agent.session() as session:
         handle = await session.submit("search")
@@ -318,7 +318,7 @@ async def test_structured_and_image_content_and_output_limits():
         plugins=[
             MCP("docs", transport=transport),
             ToolOutputLimit(max_chars=256),
-            Approvals(default=PolicyDecision.ALLOW),
+            Approvals.allow_all(),
         ],
     )
     result = await agent.run("x")
@@ -343,7 +343,7 @@ async def test_reopening_session_does_not_replay_remote_calls(tmp_path):
     model = ScriptedModel([[ModelChunk(tool_call=call)], "done", "next"])
     agent = Agent(
         model=model,
-        plugins=[MCP("docs", transport=transport), Approvals(default=PolicyDecision.ALLOW)],
+        plugins=[MCP("docs", transport=transport), Approvals.allow_all()],
     )
     async with agent.session() as session:
         await session.run("search")
@@ -370,7 +370,7 @@ if __name__ == "__main__":
         model=ScriptedModel([[ModelChunk(tool_call=call)], "done"]),
         plugins=[
             MCP.stdio("local", command=sys.executable, args=[str(server)], startup_timeout=15),
-            Approvals(default=PolicyDecision.ALLOW),
+            Approvals.allow_all(),
         ],
     )
     result = await agent.run("echo")

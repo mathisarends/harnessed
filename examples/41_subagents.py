@@ -26,7 +26,7 @@ async def main() -> None:
                 "Review complete: session ownership is preserved.",
             ]
         ),
-        plugins=[Subagents({"review": reviewer}), Approvals(trust=[Subagents.delegate])],
+        plugins=[Subagents({"review": reviewer}), Approvals(allow=[Subagents.delegate])],
     )
     async with coordinator.session() as session:
         result = await session.run("Ask the reviewer to inspect session ownership.")

@@ -14,7 +14,7 @@ class Echo(Plugin):
         return text
 
 
-async def test_required_reference_overrides_default_trust_and_policy():
+async def test_explicit_ask_overrides_allow_readonly_and_policy():
     requests = []
 
     def approve(request):
@@ -28,8 +28,8 @@ async def test_required_reference_overrides_default_trust_and_policy():
             Echo(),
             Approvals(
                 default=PolicyDecision.ALLOW,
-                trust=[Echo.echo],
-                require=[Echo.echo],
+                allow=[Echo.echo],
+                ask=[Echo.echo],
                 policy=lambda call: PolicyDecision.ALLOW,
                 approver=approve,
             ),
@@ -46,14 +46,14 @@ async def test_denied_reference_never_asks():
     model = ScriptedModel([call(Echo.echo, text="hello"), "done"])
     agent = Agent(
         model=model,
-        plugins=[Echo(), Approvals(require=[Echo.echo], deny=[Echo.echo])],
+        plugins=[Echo(), Approvals(ask=[Echo.echo], deny=[Echo.echo])],
     )
     result = await agent.run("Echo")
     assert result.tool_calls[0][1].is_error
 
 
 async def test_unmounted_reference_and_wrong_recipe_fail_at_session_start():
-    for plugins in ([Approvals(require=[Echo.echo])], [Echo(), Approvals(require=[Echo().echo])]):
+    for plugins in ([Approvals(ask=[Echo.echo])], [Echo(), Approvals(ask=[Echo().echo])]):
         agent = Agent(model=ScriptedModel([]), plugins=plugins)
         with pytest.raises(ValueError, match="not registered"):
             async with agent.session():
@@ -67,7 +67,7 @@ async def test_bound_recipe_reference_survives_per_session_mount_copy():
         model=model,
         plugins=[
             echo,
-            Approvals(require=[echo.echo], approver=lambda request: ApprovalAnswer.ALLOW),
+            Approvals(ask=[echo.echo], approver=lambda request: ApprovalAnswer.ALLOW),
         ],
     )
     assert (await agent.run("Echo")).tool_calls[0][1].text == "hello"
@@ -96,6 +96,6 @@ async def test_callback_adapter_receives_the_same_request_as_policy_callbacks():
 
 def test_string_sentinel_and_arbitrary_functions_are_rejected():
     with pytest.raises(TypeError, match="collections"):
-        Approvals(trust="all")
+        Approvals(allow="all")
     with pytest.raises(TypeError, match="@tool"):
-        Approvals(require=[lambda: None])
+        Approvals(ask=[lambda: None])

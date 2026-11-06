@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import Plugin, PolicyDecision, ToolCall, tool
+from harnessed import Plugin, ToolCall, tool
 from harnessed.core.budget import ContextBudget
 from harnessed.core.errors import ContextBudgetExceeded, ContextLengthExceeded
 from harnessed.core.events.compaction import CompactionAppliedEvent
@@ -52,7 +52,7 @@ async def test_sliding_window_preserves_recent_turns_first_turn_and_tool_pairs_v
     async with Application(
         model=model,
         plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
+            Approvals.allow_all(),
             tools,
             Compaction(
                 trigger=every_turns(1),
@@ -94,7 +94,7 @@ async def test_periodic_compaction_counts_new_closed_turns_since_last_event():
     async with Application(
         model=model,
         plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
+            Approvals.allow_all(),
             Compaction(
                 trigger=every_turns(2), summarizer=summaries, keep_turns=1, summary_tokens=32
             ),
@@ -113,9 +113,7 @@ async def test_periodic_compaction_counts_new_closed_turns_since_last_event():
 async def test_explicit_turn_pins_are_preserved_and_excluded_from_summary_input():
     summaries = RecordingCompactor()
     model = ScriptedModel(["answer"] * 4)
-    async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
-    ).session() as agent:
+    async with Application(model=model, plugins=[Approvals.allow_all()]).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("PINNED " + "a" * 400)
         pinned = agent_audit.turns[0]
@@ -146,7 +144,7 @@ async def test_compaction_preserves_request_hook_context_and_combines_triggers_o
         model=model,
         plugins=[
             AgentLoop(context_window=2000),
-            Approvals(default=PolicyDecision.ALLOW),
+            Approvals.allow_all(),
             Compaction(
                 trigger=lambda state: ratio(state) or periodic(state),
                 summarizer=summaries,
@@ -184,7 +182,7 @@ async def test_inbox_arrival_during_summary_does_not_change_the_summary_identity
     async with Application(
         model=model,
         plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
+            Approvals.allow_all(),
             Compaction(trigger=every_turns(1), summarizer=BlockingCompactor(), keep_turns=0),
         ],
     ).session() as agent:
@@ -209,7 +207,7 @@ async def test_budget_guard_blocks_oversized_requests_after_configure_hooks():
     harness = Application(
         model=model,
         plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
+            Approvals.allow_all(),
             Service(ContextBudget, ContextBudget(limit=100, reserve_tokens=20)),
             extensions,
         ],
@@ -235,7 +233,7 @@ async def test_threshold_uses_guard_limit_and_reserved_output_budget():
     async with Application(
         model=model,
         plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
+            Approvals.allow_all(),
             Compaction(
                 trigger=at_ratio(0.8), summarizer=summaries, keep_turns=0, summary_tokens=32
             ),
@@ -259,7 +257,7 @@ async def test_current_turn_and_tool_schemas_are_not_silently_discarded_to_fit_b
     async with Application(
         model=model,
         plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
+            Approvals.allow_all(),
             tools,
             Compaction(trigger=every_turns(1), summarizer=ExtractiveSummarizer(), keep_turns=0),
             Service(ContextBudget, ContextBudget(limit=100)),
@@ -278,7 +276,7 @@ async def test_unknown_turn_pins_are_reported_before_the_provider_call():
     async with Application(
         model=model,
         plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
+            Approvals.allow_all(),
             Compaction(
                 trigger=every_turns(1),
                 summarizer=ExtractiveSummarizer(),

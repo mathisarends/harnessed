@@ -8,7 +8,6 @@ from harnessed import (
     Agent,
     Plugin,
     PluginOrder,
-    PolicyDecision,
     Role,
     SystemPrompt,
     ToolResult,
@@ -62,7 +61,7 @@ async def main():
             prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
             model=model,
             plugins=[
-                Approvals(default=PolicyDecision.ALLOW),
+                Approvals.allow_all(),
                 budget,
                 Service(FileSystemBackend, LocalFileSystem(directory)),
                 FilesystemTools(),

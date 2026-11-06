@@ -5,7 +5,7 @@ from typing import ClassVar
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import Plugin, PolicyDecision, ToolCall, ToolResult, tool
+from harnessed import Plugin, ToolCall, ToolResult, tool
 from harnessed.core.events.base import DurableEvent
 from harnessed.core.events.messages import SystemMessageEvent
 from harnessed.core.events.model import ModelRequestedEvent
@@ -44,7 +44,7 @@ async def test_every_log_prefix_reconstructs_the_same_history_and_requests():
         ]
     )
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), features]
+        model=model, plugins=[Approvals.allow_all(), features]
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("Add", context={"ticket": "one"})
@@ -65,9 +65,7 @@ async def test_every_log_prefix_reconstructs_the_same_history_and_requests():
 async def test_exact_requests_include_request_hook_changes_without_rerunning_the_hook():
     extensions = Bundle("configured")
     model = ScriptedModel(["done"])
-    harness = Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), extensions]
-    )
+    harness = Application(model=model, plugins=[Approvals.allow_all(), extensions])
     invocations = []
 
     @extensions.on(PrepareRequest)

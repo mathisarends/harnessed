@@ -4,7 +4,7 @@ from typing import Annotated, get_args, get_origin
 import pytest
 from pydantic import Field, TypeAdapter
 
-from harnessed import Agent, Plugin, PolicyDecision, ToolCall, events, tool
+from harnessed import Agent, Plugin, ToolCall, events, tool
 from harnessed.core.events.unions import SESSION_EVENT_TYPES
 from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.events import (
@@ -103,7 +103,7 @@ async def test_direct_public_event_imports_observe_the_canonical_runtime_events(
 
     agent = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=ToolCall("echo", {"value": "hello"}))], "done"]),
-        plugins=[Observer(), Approvals(default=PolicyDecision.ALLOW)],
+        plugins=[Observer(), Approvals.allow_all()],
     )
     async with agent.session() as session:
         session_audit = Audit(session)

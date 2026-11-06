@@ -73,7 +73,7 @@ async def main() -> None:
     coordinator = Agent(
         model=CallbackModel(coordinator_model),
         prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
-        plugins=[Subagents({"review": reviewer}), Approvals(trust=[Subagents.spawn])],
+        plugins=[Subagents({"review": reviewer}), Approvals(allow=[Subagents.spawn])],
     )
 
     # Offline coordination only: let inspection finish once a real report is requested.

@@ -38,7 +38,7 @@ async def main():
             FailureNudge(threshold=2),
             Approvals(
                 default=PolicyDecision.ALLOW,
-                require=[WorkspaceTools.count_lines],
+                ask=[WorkspaceTools.count_lines],
                 approver=approve,
             ),
         ],

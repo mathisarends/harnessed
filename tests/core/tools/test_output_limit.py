@@ -9,7 +9,6 @@ from harnessed import (
 from harnessed import (
     Plugin,
     PluginOrder,
-    PolicyDecision,
     SystemPrompt,
     ToolCall,
     ToolResult,
@@ -68,7 +67,7 @@ async def test_two_megabyte_result_is_bounded_in_model_log_and_replay_by_default
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("cat"))], "done"])
     async with Application(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), features],
+        plugins=[Approvals.allow_all(), features],
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("inspect")
@@ -109,7 +108,7 @@ async def test_final_guard_also_limits_review_enrichment_and_tool_errors(stage):
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("large"))], "done"])
     async with Application(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), ToolOutputLimit(512), features],
+        plugins=[Approvals.allow_all(), ToolOutputLimit(512), features],
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("go")
@@ -136,7 +135,7 @@ async def test_output_budget_is_configured_with_the_plugin_slot():
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("large"))], "done"])
     harness = Application(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), ToolOutputLimit(512), features],
+        plugins=[Approvals.allow_all(), ToolOutputLimit(512), features],
     )
     async with harness.session() as agent:
         agent_audit = Audit(agent)
@@ -160,7 +159,7 @@ async def test_spill_retains_full_output_before_the_final_limit_is_applied(tmp_p
     async with Application(
         prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), ToolOutputLimit(4096), features, spill],
+        plugins=[Approvals.allow_all(), ToolOutputLimit(4096), features, spill],
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("go")
@@ -182,7 +181,7 @@ async def test_read_file_supports_bounded_unicode_character_ranges_and_continuat
         prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([]),
         plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
+            Approvals.allow_all(),
             Service(FileSystemBackend, LocalFileSystem(tmp_path)),
             FilesystemTools(),
         ],
@@ -231,7 +230,7 @@ async def test_large_shell_stdout_stderr_and_exit_code_remain_bounded(tmp_path):
         prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
         plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
+            Approvals.allow_all(),
             ToolOutputLimit(1024),
             Service(ShellBackend, LocalShell()),
             ShellTools(tmp_path),

@@ -29,7 +29,7 @@ agent = Agent(
         WorkspaceTools(),
         Approvals(
             default=PolicyDecision.ALLOW,
-            require=[WorkspaceTools.count_lines],
+            ask=[WorkspaceTools.count_lines],
             approver=approve,
         ),
     ],
@@ -41,17 +41,28 @@ Rules are evaluated in this order:
 | Rule | Decision |
 | --- | --- |
 | In `deny` | DENY, without asking |
-| In `require` | ASK, including read-only/trusted tools and an allowing policy |
+| In `ask` | ASK, including explicitly allowed or read-only tools |
+| In `allow` | ALLOW, including a tool marked `confirm=True` |
+| `@tool(confirm=True)` | ASK |
+| `@tool(readonly=True)` | ALLOW |
 | Explicit `policy(call)` result | Its PolicyDecision |
-| In `trust`, or read-only | ALLOW |
 | Remaining tools | `default`, initially PolicyDecision.ASK |
 
-`default=PolicyDecision.ALLOW` replaces the old string sentinel. `trust`, `require`
-and `deny` accept decorated class methods or methods bound to a configured plugin
-instance. References retain renamed tool metadata, check the active declaration,
+`Approvals.allow_all()` and `Approvals.ask_all()` choose the fallback. Both accept
+`approver=` and `timeout=`. Tool flags and explicit rules still take precedence.
+A tool author uses `@tool(confirm=True)` for actions that need confirmation;
+combining `readonly=True` and `confirm=True` raises `TypeError` at decoration.
+Application selectors have the final say, and the resulting `ToolPolicyAppliedEvent`
+records a policy or human-approval source.
+
+`allow`, `ask` and `deny` accept decorated class methods or methods bound to a
+configured plugin instance. If a tool appears in both `ask` and `allow`, `ask`
+wins. References retain renamed tool metadata, check the active declaration,
 and fail session startup when their tool is missing. An instance reference must
 belong to that mounted recipe. Explicit string names remain an escape hatch for
 dynamic integrations; they cannot receive the same declaration checks.
+Policy reads the tool flags captured for the scheduled call, even if a binding
+is subsequently replaced. Descriptive MCP annotations never grant permission.
 
 An approver is a sync/async callback receiving `ApprovalRequestedEvent`, or a structural
 service with `async ask(request)`. Both receive the same immutable request data.
@@ -71,9 +82,10 @@ Without a callback or an active UI responder, ASK immediately produces an
 unavailable tool result. `Approvals(timeout=...)` sets a finite positive deadline.
 `run()`, `submit()` and raw subscriptions do not install a UI responder.
 
-Independent hard guards can use `ApprovalGate(risky=[WorkspaceTools.count_lines],
+Independent hard guards can use `ToolApprovalGuard(risky=[WorkspaceTools.count_lines],
 scope="workspace")` or the `ToolPolicy` hook. They remain active when their
-optional approver disappears. `Service(Approver, CallbackApprover(callback))` is
+optional approver disappears or the `approvals` slot is replaced. This guard can
+protect local and external/MCP tools independently of ordinary application policy. `Service(Approver, CallbackApprover(callback))` is
 available for advanced service composition and receives the same request data;
 normal application composition passes `approver=callback` directly.
 

@@ -181,7 +181,7 @@ async def test_default_approvals_allow_reads_and_reject_side_effects_without_a_r
 
 def test_explicit_duplicate_slots_raise_instead_of_silently_overriding():
     with pytest.raises(PluginConflict, match="approvals"):
-        Agent(plugins=[Approvals(), Approvals(default=PolicyDecision.ALLOW)])
+        Agent(plugins=[Approvals(), Approvals.allow_all()])
 
 
 @pytest.mark.parametrize("user_answer", [False, True])
