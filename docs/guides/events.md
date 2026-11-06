@@ -36,7 +36,7 @@ not required.
 
 | Activity | Identity | Completion |
 | --- | --- | --- |
-| Turn | `turn_id` | `TurnEndedEvent` in the execution stream; `TurnFinishedEvent.result.turn_id` on normal UI stream exhaustion |
+| Turn | `turn_id` | `TurnEndedEvent` in the execution stream; `TurnResultEvent.result.turn_id` on normal UI stream exhaustion |
 | Model request | `request_id` | `AssistantMessageEvent` or `ModelRequestFailedEvent` |
 | Observed provider attempt | `(retry_kind, retry_group_id, attempt)` with `retry_kind=PROVIDER` | `ModelAttemptFinishedEvent`; unknown provider counts remain `None` |
 | Runtime recovery or correction | `(retry_kind, retry_group_id)` | Attempt notifications correlate distinct model `request_id` values within that group |
@@ -53,7 +53,7 @@ message and must not be used alone as session-wide tool identities.
 
 Durable completion records describe runtime state. A UI consumer may disconnect,
 overflow or fail before receiving them, and a failed stream need not emit
-`TurnFinishedEvent`. Applications own their local activity state and cleanup;
+`TurnResultEvent`. Applications own their local activity state and cleanup;
 see [completion and delivery](streaming.md#completion-and-delivery).
 
 ## Observe events in plugins
@@ -73,7 +73,7 @@ class TurnObserver(Plugin):
 ```
 
 `TurnEndedEvent` is the durable record closing a turn, with its ID and outcome.
-`TurnFinishedEvent[T]` is the terminal UI stream notification carrying the
+`TurnResultEvent[T]` is the terminal UI stream notification carrying the
 assembled `RunResult[T]`. Likewise, `ToolExecutionFinishedEvent` records execution
 before result review, while `ToolCallFinishedEvent` commits the final result to
 history and the UI stream. These remain separate events.
@@ -246,7 +246,7 @@ schema = adapter.json_schema()
 `StreamEvent[T]` is the concrete discriminated union of built-in UI notifications,
 including compaction and spill. `BuiltinEvent` also includes the durable audit
 events. The open return type `EventStream[T]` includes application extension
-bases; class patterns preserve the structured `TurnFinishedEvent[T]` result type.
+bases; class patterns preserve the structured `TurnResultEvent[T]` result type.
 An explicit application union gives the type checker knowledge of its custom
 variants. Loading a plugin dynamically cannot alter an existing static union.
 Consumers can ignore unmatched event classes. Applications that use exhaustive

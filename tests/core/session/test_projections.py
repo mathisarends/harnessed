@@ -11,7 +11,7 @@ from harnessed.core.events.approvals import (
 from harnessed.core.events.inbox import InboxAddedEvent, InboxMode, InboxRemovedEvent
 from harnessed.core.events.messages import AssistantMessageEvent, UserMessageEvent
 from harnessed.core.events.model import ModelRequestedEvent
-from harnessed.core.events.session import AgentControlChangedEvent
+from harnessed.core.events.session import SessionControlChangedEvent
 from harnessed.core.events.turn import (
     StepEndedEvent,
     StepStartedEvent,
@@ -77,7 +77,7 @@ async def test_incremental_snapshots_equal_full_folds_for_generated_valid_logs(s
             await append(AssistantMessageEvent(AssistantMessage("reply"), request_id="request"))
             await append(StepEndedEvent(str(turn), step))
         await append(TurnEndedEvent(str(turn)))
-        await append(AgentControlChangedEvent(rng.choice(["active", "paused", "stopped"])))
+        await append(SessionControlChangedEvent(rng.choice(["active", "paused", "stopped"])))
 
     for events, inbox, approvals, turns in snapshots:
         assert inbox == Inbox(events) and approvals == ApprovalState(events)

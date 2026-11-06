@@ -11,7 +11,7 @@ from harnessed.core.events.approvals import ApprovalRequestedEvent, ApprovalReso
 from harnessed.core.events.base import DurableEvent
 from harnessed.core.events.inbox import InboxAddedEvent
 from harnessed.core.events.registry import EventRegistry
-from harnessed.core.events.session import AgentControlChangedEvent
+from harnessed.core.events.session import SessionControlChangedEvent
 from harnessed.core.events.turn import TurnEndedEvent, TurnStartedEvent
 from harnessed.core.events.unions import SESSION_EVENT_TYPES, LogEvent
 from harnessed.core.messages import JSONMapping, freeze, to_dict
@@ -91,7 +91,7 @@ class SessionCheckpoint:
 
     state: SessionState
     offset: Annotated[int, Field(ge=0)]
-    control: AgentControlChangedEvent
+    control: SessionControlChangedEvent
     seed: tuple[CheckpointSeed, ...] = ()
     events: tuple[CheckpointEntry, ...] = ()
     assets: tuple[AssetValue, ...] = ()

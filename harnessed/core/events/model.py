@@ -81,10 +81,12 @@ class ModelUsageRecordedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class CacheMetricsEvent(SessionEvent):
+class ModelCacheMetricsEvent(SessionEvent):
     __hash__ = None
 
-    type: Literal[EventKind.CACHE_METRICS] = field(default=EventKind.CACHE_METRICS, kw_only=True)
+    type: Literal[EventKind.MODEL_CACHE_METRICS] = field(
+        default=EventKind.MODEL_CACHE_METRICS, kw_only=True
+    )
     usage: ModelUsage
     hit_rate: float | None = None
 

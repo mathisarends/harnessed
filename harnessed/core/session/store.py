@@ -13,7 +13,7 @@ from harnessed.core.events.compaction import CompactionAppliedEvent
 from harnessed.core.events.inbox import InboxAddedEvent, InboxRemovedEvent
 from harnessed.core.events.messages import ContextValueChangedEvent
 from harnessed.core.events.model import ModelRequestedEvent
-from harnessed.core.events.session import AgentControlChangedEvent
+from harnessed.core.events.session import SessionControlChangedEvent
 from harnessed.core.events.tools import (
     ToolCallFinishedEvent,
     ToolExecutionFinishedEvent,
@@ -114,7 +114,7 @@ class SessionPersistence:
             | ToolExecutionFinishedEvent
             | ToolCallFinishedEvent
             | TurnEndedEvent
-            | AgentControlChangedEvent
+            | SessionControlChangedEvent
             | ApprovalRequestedEvent
             | ApprovalResolvedEvent
             | ApprovalRevokedEvent

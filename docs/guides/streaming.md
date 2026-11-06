@@ -15,7 +15,7 @@ async def show(session: Session) -> None:
             match event:
                 case events.TextDeltaEvent(text=text):
                     print(text, end="", flush=True)
-                case events.TurnFinishedEvent(result=result):
+                case events.TurnResultEvent(result=result):
                     print("\nFinished:", result.stop_reason)
 ```
 
@@ -37,10 +37,10 @@ The sections below add individual capabilities; the
 imply an idle session: another queued turn may have started. Compaction, spill and
 [declared custom events](events.md) also pass through the UI stream.
 
-Tags are namespaced, for example `text.delta`, `reasoning.delta` and `turn.finished`.
+Tags are namespaced, for example `text.delta`, `reasoning.delta` and `turn.result`.
 `StreamEvent[T]` is a Pydantic-compatible discriminated union of the built-in UI
 variants. The open `EventStream[T]` adds custom-event bases. With structured
-output, a class pattern or `isinstance(event, events.TurnFinishedEvent)` preserves
+output, a class pattern or `isinstance(event, events.TurnResultEvent)` preserves
 `RunResult[T]`, including its typed output. Define an explicit application union
 when you want exhaustive static knowledge of your custom variants.
 
@@ -227,7 +227,7 @@ manual compaction and cancellation.
 
 ## Completion and delivery
 
-A normally exhausted stream yields exactly one `TurnFinishedEvent[T]` as its
+A normally exhausted stream yields exactly one `TurnResultEvent[T]` as its
 last event. Its result may represent a completed, stopped, aborted or discarded
 turn; check `result.stop_reason` or `result.completed` before using the output.
 An abort requested with `session.abort()` can finish the stream with an aborted

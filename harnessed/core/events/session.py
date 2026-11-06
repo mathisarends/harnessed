@@ -24,11 +24,11 @@ class ControlState(StrEnum):
 
 
 @dataclass(frozen=True)
-class AgentControlChangedEvent(SessionEvent):
+class SessionControlChangedEvent(SessionEvent):
     __hash__ = None
 
-    type: Literal[EventKind.AGENT_CONTROL_CHANGED] = field(
-        default=EventKind.AGENT_CONTROL_CHANGED, kw_only=True
+    type: Literal[EventKind.SESSION_CONTROL_CHANGED] = field(
+        default=EventKind.SESSION_CONTROL_CHANGED, kw_only=True
     )
     state: ControlState
     keep_inbox: bool = False
@@ -45,5 +45,7 @@ class AgentControlChangedEvent(SessionEvent):
 
 @dataclass(frozen=True, slots=True)
 class SessionStatusChangedEvent(TransientEvent):
-    type: Literal[EventKind.STATUS_CHANGED] = field(default=EventKind.STATUS_CHANGED, kw_only=True)
+    type: Literal[EventKind.SESSION_STATUS_CHANGED] = field(
+        default=EventKind.SESSION_STATUS_CHANGED, kw_only=True
+    )
     status: SessionStatus

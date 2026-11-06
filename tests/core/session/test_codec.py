@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import pytest
 
 from harnessed.core.errors import SessionFormatError
@@ -16,8 +19,8 @@ def test_canonical_tags_roundtrip_with_discriminated_schema():
     assert set(EventRegistry().schema()["discriminator"]["mapping"]) == set(SESSION_EVENT_TYPES)
     event = TurnStartedEvent("one")
     assert encode_event(event) == {
-        "version": 3,
-        "type": "turn.start",
+        "version": 4,
+        "type": "turn.started",
         "data": {
             "turn_id": "one",
             "input_id": None,
@@ -30,22 +33,40 @@ def test_canonical_tags_roundtrip_with_discriminated_schema():
     assert decode_event(encode_event(event)) == event
 
 
+def test_version_three_audit_records_are_rejected():
+    record = encode_event(TurnStartedEvent("one"))
+    record["version"] = 3
+    with pytest.raises(SessionFormatError, match="Unsupported session record version"):
+        decode_event(record)
+
+
+def test_model_request_fixture_uses_the_canonical_codec():
+    path = Path(__file__).with_name("fixtures") / "model_requests.jsonl"
+    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    events = [decode_event(record) for record in records]
+    assert len(events) == 7
+    assert isinstance(events[2], ModelRequestedEvent)
+    assert events[2].request_id == "request"
+    assert events[2].request.messages[0].text == "hello"
+    assert [encode_event(event)["type"] for event in events] == [r["type"] for r in records]
+
+
 @pytest.mark.parametrize(
     "record",
     [
-        {"type": "turn.start", "data": {"turn_id": "one"}},
-        {"version": True, "type": "turn.start", "data": {"turn_id": "one"}},
-        {"version": 1, "type": "turn.start", "data": {"turn_id": "one"}},
-        {"version": 2, "type": "turn.start", "data": {"turn_id": "one"}},
-        {"version": 3, "type": "turn/start", "data": {"turn_id": "one"}},
-        {"version": 3, "type": "TurnStartedEvent", "data": {"turn_id": "one"}},
-        {"version": 3, "type": "turn.start", "data": {"turn_id": "one", "extra": 1}},
-        {"version": 3, "type": "turn.start", "data": {"turn_id": ""}},
-        {"version": 3, "type": "step.start", "data": {"turn_id": "one", "step": True}},
-        {"version": 3, "type": "step.start", "data": {"turn_id": "one", "step": 0}},
-        {"version": 3, "type": "turn.end", "data": {"turn_id": "one", "reason": "typo"}},
-        {"version": 3, "type": "turn.start", "seq": False, "data": {"turn_id": "one"}},
-        {"version": 3, "type": "turn.start", "data": {"turn_id": "one", "type": "turn.end"}},
+        {"type": "turn.started", "data": {"turn_id": "one"}},
+        {"version": True, "type": "turn.started", "data": {"turn_id": "one"}},
+        {"version": 1, "type": "turn.started", "data": {"turn_id": "one"}},
+        {"version": 2, "type": "turn.started", "data": {"turn_id": "one"}},
+        {"version": 4, "type": "turn/start", "data": {"turn_id": "one"}},
+        {"version": 4, "type": "TurnStartedEvent", "data": {"turn_id": "one"}},
+        {"version": 4, "type": "turn.started", "data": {"turn_id": "one", "extra": 1}},
+        {"version": 4, "type": "turn.started", "data": {"turn_id": ""}},
+        {"version": 4, "type": "step.started", "data": {"turn_id": "one", "step": True}},
+        {"version": 4, "type": "step.started", "data": {"turn_id": "one", "step": 0}},
+        {"version": 4, "type": "turn.ended", "data": {"turn_id": "one", "reason": "typo"}},
+        {"version": 4, "type": "turn.started", "seq": False, "data": {"turn_id": "one"}},
+        {"version": 4, "type": "turn.started", "data": {"turn_id": "one", "type": "turn.ended"}},
     ],
 )
 def test_invalid_records_fail_at_the_codec_boundary(record):
@@ -74,7 +95,7 @@ def test_messages_reject_fields_from_other_variants(role):
     if role == "tool":
         payload["tool_call_id"] = "call"
     record = {
-        "version": 3,
+        "version": 4,
         "type": "model.requested",
         "data": {"request": {"model": "test", "messages": [payload]}},
     }

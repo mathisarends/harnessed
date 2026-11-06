@@ -26,7 +26,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from harnessed import Agent, ApprovalAnswer, Plugin, PolicyDecision, ToolCall, tool
-from harnessed.core.events.session import AgentControlChangedEvent, ControlState
+from harnessed.core.events.session import ControlState, SessionControlChangedEvent
 from harnessed.core.hooks import SessionAppended
 from harnessed.core.messages import AssistantMessage, ToolResult, ToolStatus
 from harnessed.core.model import ModelChunk, ModelUsage
@@ -691,7 +691,7 @@ async def test_graceful_stop_is_not_recorded_as_an_exception(telemetry):
 
         def release_on_stop(event: SessionAppended) -> None:
             if (
-                isinstance(event.event, AgentControlChangedEvent)
+                isinstance(event.event, SessionControlChangedEvent)
                 and event.event.state == ControlState.STOPPING
             ):
                 release.set()

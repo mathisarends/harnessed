@@ -4,6 +4,20 @@
 
 ### Breaking changes
 
+- Audit-event envelopes now require version **4**; version 3 is rejected without
+  migration. Conversation state, execution checkpoint and JSON-store envelope
+  versions remain unchanged. Start a new audit log when upgrading.
+- Update event tag consumers: `turn.start` → `turn.started`, `turn.end` →
+  `turn.ended`, `step.start` → `step.started`, `step.end` → `step.ended`,
+  `model.usage` → `model.usage.recorded`, `model.cache` → `model.cache.metrics`,
+  and `context.changed` → `context.value.changed`. Matching `EventKind` members
+  now use `TURN_STARTED`, `TURN_ENDED`, `STEP_STARTED`, `STEP_ENDED`,
+  `MODEL_CACHE_METRICS`, `SESSION_CONTROL_CHANGED` and `SESSION_STATUS_CHANGED`.
+- Replace `CacheMetricsEvent` with `ModelCacheMetricsEvent`,
+  `AgentControlChangedEvent` with `SessionControlChangedEvent`, and the terminal
+  stream `TurnFinishedEvent[T]` with `TurnResultEvent[T]` (`turn.result`,
+  `EventKind.TURN_RESULT`). `TurnEndedEvent` remains the durable outcome record.
+  Import the new classes from `harnessed.events`; there are no aliases.
 - Rename `Kit` to `PluginPack`, `KitPromptPolicy` to `PluginPackPromptPolicy`
   and `ResolvedKit` to `ResolvedPluginPack`. Update imports from `harnessed`
   and references to these types; the old names have no compatibility aliases.

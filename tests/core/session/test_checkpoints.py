@@ -9,10 +9,10 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 from harnessed import Agent, Plugin, SessionState, ToolContext, tool
 from harnessed.errors import SessionFormatError
 from harnessed.events import (
-    AgentControlChangedEvent,
     ControlState,
     DurableEvent,
     EventRegistry,
+    SessionControlChangedEvent,
     TurnStartedEvent,
     UserMessageEvent,
 )
@@ -36,7 +36,7 @@ class BackendEnvelope(BaseModel):
 def test_checkpoint_has_typed_messages_and_nested_pydantic_roundtrip():
     value = replace(
         checkpoint(),
-        control=AgentControlChangedEvent(ControlState.PAUSED),
+        control=SessionControlChangedEvent(ControlState.PAUSED),
         events=(TurnStartedEvent("turn"), UserMessageEvent(UserMessage("hello", id="user-id"))),
     )
     envelope = BackendEnvelope(checkpoint=value)
@@ -84,11 +84,11 @@ def test_checkpoint_rejects_invalid_documents(change):
     elif change == "offset":
         data["offset"] = -1
     elif change == "seed":
-        data["seed"] = [{"type": "turn.start", "turn_id": "turn"}]
+        data["seed"] = [{"type": "turn.started", "turn_id": "turn"}]
     else:
         data["events"] = [
-            {"type": "turn.start", "turn_id": "turn"},
-            {"type": "turn.end", "turn_id": "turn"},
+            {"type": "turn.started", "turn_id": "turn"},
+            {"type": "turn.ended", "turn_id": "turn"},
         ]
     with pytest.raises(SessionFormatError):
         SessionCheckpoint.from_json(json.dumps(data))
@@ -97,7 +97,7 @@ def test_checkpoint_rejects_invalid_documents(change):
 def test_checkpoint_construction_and_type_adapter_validate_without_json():
     with pytest.raises(ValidationError):
         SessionCheckpoint(
-            state=SessionState(), offset=-1, control=AgentControlChangedEvent("active")
+            state=SessionState(), offset=-1, control=SessionControlChangedEvent("active")
         )
     with pytest.raises(SessionFormatError):
         SessionCheckpoint.from_json("{}")

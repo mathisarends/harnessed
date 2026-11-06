@@ -71,7 +71,7 @@ import sys
 from harnessed.errors import SessionWriteConflict
 from harnessed.integrations.json import JsonSessionStore
 from harnessed import SessionState
-from harnessed.events import AgentControlChangedEvent, ControlState
+from harnessed.events import SessionControlChangedEvent, ControlState
 from harnessed.sessions import SessionCheckpoint, SessionCommit
 
 async def main():
@@ -79,7 +79,7 @@ async def main():
         await JsonSessionStore(root=sys.argv[1]).save_session(
             "shared", SessionCommit(SessionCheckpoint(
                 state=SessionState(context={"marker": sys.argv[2]}), offset=0,
-                control=AgentControlChangedEvent(ControlState.ACTIVE),
+                control=SessionControlChangedEvent(ControlState.ACTIVE),
             )), expected_revision=1
         )
     except SessionWriteConflict:

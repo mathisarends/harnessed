@@ -12,7 +12,7 @@ from harnessed.core.events.compaction import (
     CompactionFinishedEvent,
     CompactionStartedEvent,
 )
-from harnessed.core.events.completion import TurnFinishedEvent
+from harnessed.core.events.completion import TurnResultEvent
 from harnessed.core.events.messages import ReasoningDeltaEvent, TextDeltaEvent
 from harnessed.core.events.model import (
     ModelAttemptFinishedEvent,
@@ -24,8 +24,8 @@ from harnessed.core.events.model import (
 from harnessed.core.events.observations import SpillCreatedEvent, SpillExpiredEvent
 from harnessed.core.events.output import OutputValidatedEvent, OutputValidationFailedEvent
 from harnessed.core.events.session import (
-    AgentControlChangedEvent,
     ControlState,
+    SessionControlChangedEvent,
     SessionStatusChangedEvent,
 )
 from harnessed.core.events.stream import EventStream
@@ -106,22 +106,22 @@ async def project_stream_events(
                 case ToolCallFinishedEvent(call_id=call_id) if call_id in calls:
                     yield event
                     calls.discard(call_id)
-                case TurnStartedEvent() | AgentControlChangedEvent():
+                case TurnStartedEvent() | SessionControlChangedEvent():
                     # A subsequent turn may already be running when this consumer resumes.
                     status = _stream_status(event)
                     if status != previous_status:
                         previous_status = status
                         yield SessionStatusChangedEvent(status)
-        yield TurnFinishedEvent(await completion())
+        yield TurnResultEvent(await completion())
     finally:
         await raw.aclose()
 
 
-def _stream_status(event: TurnStartedEvent | AgentControlChangedEvent) -> SessionStatus:
+def _stream_status(event: TurnStartedEvent | SessionControlChangedEvent) -> SessionStatus:
     match event:
-        case AgentControlChangedEvent(state=ControlState.PAUSED):
+        case SessionControlChangedEvent(state=ControlState.PAUSED):
             return SessionStatus.PAUSED
-        case AgentControlChangedEvent(
+        case SessionControlChangedEvent(
             state=ControlState.STOPPING | ControlState.ABORTING | ControlState.STOPPED
         ):
             return SessionStatus.STOPPING

@@ -14,7 +14,7 @@ from harnessed.events import (
     ToolCallGenerationStartedEvent,
     ToolCallRequestedEvent,
     ToolProgressEvent,
-    TurnFinishedEvent,
+    TurnResultEvent,
 )
 from harnessed.models import ModelChunk, ToolCallDelta, ToolCallStart
 from harnessed.testing import ScriptedModel
@@ -75,7 +75,7 @@ async def main():
                         # A UI would present this choice; the demo explicitly approves.
                         print("Approving:", call.name)
                         await session.approvals.answer(request_id, ApprovalAnswer.ALLOW)
-                    case TurnFinishedEvent(result=result):
+                    case TurnResultEvent(result=result):
                         print("Report:", result.output.summary)
                         print("Stop reason:", result.stop_reason)
                     case SessionStatusChangedEvent(status=status):

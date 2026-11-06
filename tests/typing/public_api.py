@@ -36,8 +36,8 @@ from harnessed.events import (
     ToolCallGenerationStartedEvent,
     ToolExecutionFinishedEvent,
     TurnEndedEvent,
-    TurnFinishedEvent,
     TurnOutcome,
+    TurnResultEvent,
 )
 from harnessed.kernel import (
     Context,
@@ -160,8 +160,8 @@ async def structured_consumer(agent: AppAgent, session: Session) -> None:
 async def typed_stream(session: Session) -> None:
     async for event in session.stream("Triage", output=OutputContract("triage.v1", Triage)):
         assert_type(event, EventStream[Triage])
-        if isinstance(event, TurnFinishedEvent):
-            assert_type(event, TurnFinishedEvent[Triage])
+        if isinstance(event, TurnResultEvent):
+            assert_type(event, TurnResultEvent[Triage])
             assert_type(event.result, RunResult[Triage])
             assert_type(event.result.output.severity, int)
         elif isinstance(event, ToolCallGenerationStartedEvent):

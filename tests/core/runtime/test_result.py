@@ -6,7 +6,7 @@ import pytest
 from harnessed import Agent as Application
 from harnessed import Plugin, PolicyDecision, StopReason, ToolCall, tool
 from harnessed.core.errors import OutputTokenLimit
-from harnessed.core.events.completion import TurnFinishedEvent
+from harnessed.core.events.completion import TurnResultEvent
 from harnessed.core.events.inbox import InboxAddedEvent, InboxMode
 from harnessed.core.events.messages import TextDeltaEvent
 from harnessed.core.events.turn import TurnLimits
@@ -86,7 +86,7 @@ async def test_stream_ends_with_its_turn_and_does_not_emit_the_following_turn():
                 "".join(event.text for event in events if isinstance(event, TextDeltaEvent))
                 == "reply 1"
             )
-            assert isinstance(events[-1], TurnFinishedEvent)
+            assert isinstance(events[-1], TurnResultEvent)
             assert events[-1].result.text == "reply 1"
         finally:
             model.release[1].set()

@@ -21,7 +21,7 @@ from harnessed import (
     SystemPrompt, Instructions, tool,
 )
 from harnessed.errors import ConfigError
-from harnessed.events import TextDeltaEvent, TurnFinishedEvent
+from harnessed.events import TextDeltaEvent, TurnResultEvent
 from harnessed.plugins import Service, Skill, Skills
 from harnessed.integrations.json import JsonSessionStore
 from harnessed.sessions import StoredSession
@@ -160,7 +160,7 @@ async def main():
     assert isinstance(typed.output, Answer) and typed.output.value == 42
     async with Agent(model=ScriptedModel([call('final_answer', value=43)])).session() as session:
         notifications = [event async for event in session.stream('Answer', output=Answer)]
-        assert isinstance(notifications[-1], TurnFinishedEvent)
+        assert isinstance(notifications[-1], TurnResultEvent)
         assert notifications[-1].result.output.value == 43
     async with Agent(model=ScriptedModel([reply('queued result')])).session() as session:
         handle = await session.submit('Submit')

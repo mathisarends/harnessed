@@ -179,7 +179,7 @@ approver for that case. A finished stream is not an approval responder for later
 Child `ToolProgressEvent` messages are forwarded as parent tool progress tagged
 with the specialist and child ID. Child text and reasoning deltas stay in the
 child session. Parent streams also expose durable lifecycle and approval-link
-events; their `TurnFinishedEvent` still describes the parent turn.
+events; their `TurnResultEvent` still describes the parent turn.
 
 ## Ownership, persistence and recovery
 

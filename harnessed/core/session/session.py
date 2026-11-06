@@ -32,7 +32,7 @@ from harnessed.core.events.model import (
 from harnessed.core.events.observations import IncludedObservation
 from harnessed.core.events.publishing import SessionPublished
 from harnessed.core.events.registry import EventRegistry
-from harnessed.core.events.session import AgentControlChangedEvent, ControlState
+from harnessed.core.events.session import ControlState, SessionControlChangedEvent
 from harnessed.core.events.stream import coalesce_deltas
 from harnessed.core.events.subagents import (
     SubagentFinishedEvent,
@@ -242,7 +242,7 @@ class SessionLog:
             events=tuple(
                 self._checkpoint_entry(event) for event in (turn.events if turn is not None else ())
             ),
-            control=AgentControlChangedEvent(self._control.state, self._control.keep_inbox),
+            control=SessionControlChangedEvent(self._control.state, self._control.keep_inbox),
             assets=tuple(
                 value for value in self._assets.snapshot() if value.ref.sha256 not in assets
             ),
@@ -656,7 +656,7 @@ class SessionLog:
                 self._last = {
                     kind: record
                     for kind, record in self._last.items()
-                    if kind in (CompactionAppliedEvent, AgentControlChangedEvent)
+                    if kind in (CompactionAppliedEvent, SessionControlChangedEvent)
                 }
                 if not self._restoring:
                     self._retain_resources()
@@ -684,7 +684,7 @@ class SessionLog:
                     approval.request_id
                 ] = approval
                 self._approvals = None
-            if isinstance(event, AgentControlChangedEvent):
+            if isinstance(event, SessionControlChangedEvent):
                 self._control = RunControl((event,))
             if isinstance(event, ModelRequestedEvent):
                 self._requests.append(event.request)
@@ -847,9 +847,9 @@ class SessionLog:
                 )
                 await self.append(TurnEndedEvent(turn, reason))
         if control.state == ControlState.PAUSING:
-            await self.append(AgentControlChangedEvent(ControlState.PAUSED))
+            await self.append(SessionControlChangedEvent(ControlState.PAUSED))
         if control.stopped and not control.keep_inbox:
             for item in self.inbox.pending:
                 await self.append(InboxRemovedEvent(item.message.id, InboxRemovalReason.DISCARDED))
         if control.stopped:
-            await self.append(AgentControlChangedEvent(ControlState.ACTIVE))
+            await self.append(SessionControlChangedEvent(ControlState.ACTIVE))
