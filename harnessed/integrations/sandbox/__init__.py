@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 from harnessed.core.plugin import Plugin
-from harnessed.kernel import Context, Key, run_sync
+from harnessed.kernel import Key, Scope, run_sync
 from harnessed.plugins.filesystem import FileSystemBackend
 from harnessed.plugins.shell import ShellBackend
 
@@ -65,9 +65,9 @@ class Sandbox(Plugin[SandboxConfig], slot="sandbox"):
         self.backend_factory = backend
         self._services_key = Key[SandboxServices]("sandbox services")
 
-    async def setup(self, ctx: Context) -> None:
+    async def setup(self, scope: Scope) -> None:
         backend = self.backend_factory()
-        ctx.effect(backend.aclose)
+        scope.effect(backend.aclose)
         startup = asyncio.create_task(backend.start(self.config))
         try:
             async with asyncio.timeout(self.config.startup_timeout):
@@ -80,13 +80,13 @@ class Sandbox(Plugin[SandboxConfig], slot="sandbox"):
                 pass
             raise
         services = SandboxServices(backend.shell, backend.file_system)
-        ctx.provide(self.recipe._services_key, services)
-        ctx.provide(ShellBackend, services.shell)
-        ctx.provide(FileSystemBackend, services.file_system)
+        scope.provide(self.recipe._services_key, services)
+        scope.provide(ShellBackend, services.shell)
+        scope.provide(FileSystemBackend, services.file_system)
 
     def services(self, session: Session) -> SandboxServices:
         """Resolve this recipe's ready shell and file_system in the selected live session."""
-        return session.ctx[self.recipe._services_key]
+        return session.scope[self.recipe._services_key]
 
     async def export(self, session: Session, *, source: str, destination: str | Path) -> None:
         """Export one bounded binary file through this recipe's live session mount."""

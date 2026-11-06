@@ -115,7 +115,7 @@ def test_optional_integrations_and_features_are_isolated():
 def test_kernel_import_is_independent_of_agents_adapters_and_third_party_packages():
     code = """
 import sys
-from harnessed.kernel import Context, PluginBase, Bundle, Event, Key, plugin
+from harnessed.kernel import Scope, PluginBase, Bundle, Event, Key, plugin
 for layer in ('core', 'seams', 'plugins', 'adapters', 'presets'):
     assert not any(name == 'harnessed.' + layer or name.startswith('harnessed.' + layer + '.')
                    for name in sys.modules), (layer, sorted(sys.modules))
@@ -206,7 +206,27 @@ def test_application_facade_stays_small_and_has_no_transitional_names():
         "FileSystemBackend",
         "Shell",
         "Section",
+        "Context",
+        "Scope",
     } & set(harnessed.__all__)
+
+
+def test_kernel_scope_has_one_canonical_public_name():
+    import harnessed.kernel as kernel
+
+    assert kernel.Scope.__name__ == "Scope"
+    assert kernel.ScopeClosed.__name__ == "ScopeClosed"
+    assert not hasattr(kernel, "Context") and not hasattr(kernel, "ContextClosed")
+
+
+async def test_session_exposes_its_kernel_scope_without_a_legacy_alias():
+    from harnessed import Agent
+    from harnessed.kernel import Scope
+    from harnessed.testing import ScriptedModel
+
+    async with Agent(model=ScriptedModel([])).session() as session:
+        assert isinstance(session.scope, Scope)
+        assert not hasattr(session, "ctx")
 
 
 @pytest.mark.parametrize(
@@ -245,31 +265,31 @@ def test_package_root_has_only_public_entrypoints_and_no_transition_modules():
 
 
 async def test_typed_keys_have_identity_and_work_with_temporal_needs():
-    from harnessed.kernel import Context, Key, plugin
+    from harnessed.kernel import Key, Scope, plugin
 
     first, second = Key[str]("backend"), Key[str]("backend")
     seen = []
 
     @plugin(needs=[first])
-    async def feature(ctx):
-        seen.append(ctx[first])
+    async def feature(scope):
+        seen.append(scope[first])
         yield
 
-    async with Context() as ctx:
-        ctx.provide(second, "other")
-        handle = await ctx.plugin(feature())
+    async with Scope() as scope:
+        scope.provide(second, "other")
+        handle = await scope.plugin(feature())
         assert handle.status == PluginStatus.WAITING
-        remove = ctx.provide(first, "one")
-        await ctx.settle()
-        assert seen == ["one"] and ctx[second] == "other"
+        remove = scope.provide(first, "one")
+        await scope.settle()
+        assert seen == ["one"] and scope[second] == "other"
         await remove()
-        await ctx.settle()
+        await scope.settle()
         assert handle.status == PluginStatus.WAITING
 
 
 async def test_kernel_registration_recipes_extend_lifetimes_without_agent_imports():
-    from harnessed.kernel import Context
     from harnessed.kernel import PluginBase as Plugin
+    from harnessed.kernel import Scope
 
     class Sink:
         def __init__(self):
@@ -278,10 +298,10 @@ async def test_kernel_registration_recipes_extend_lifetimes_without_agent_import
     class CallbackRegistration:
         needs = (Sink,)
 
-        def mount(self, ctx, callback):
-            callbacks = ctx[Sink].callbacks
+        def mount(self, scope, callback):
+            callbacks = scope[Sink].callbacks
             callbacks.append(callback)
-            ctx.effect(lambda: callbacks.remove(callback))
+            scope.effect(lambda: callbacks.remove(callback))
 
     def callback(fn):
         fn._harnessed_registrations = (CallbackRegistration(),)
@@ -292,13 +312,13 @@ async def test_kernel_registration_recipes_extend_lifetimes_without_agent_import
         def answer(self):
             return 42
 
-    async with Context() as ctx:
+    async with Scope() as scope:
         sink = Sink()
-        remove = ctx.provide(Sink, sink)
-        handle = await ctx.plugin(Feature())
+        remove = scope.provide(Sink, sink)
+        handle = await scope.plugin(Feature())
         assert sink.callbacks[0]() == 42
         await remove()
-        await ctx.settle()
+        await scope.settle()
         assert sink.callbacks == [] and handle.status == PluginStatus.WAITING
 
 

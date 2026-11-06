@@ -20,14 +20,14 @@ from harnessed.core.model import (
 from harnessed.core.outputs import FINAL_ANSWER, OutputTypes, OutputValues, validation_note
 from harnessed.core.runtime.options import AgentOptions
 from harnessed.core.session.session import SessionLog
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 
 class OutputHandler:
     def __init__(
-        self, ctx: Context, log: SessionLog, options: AgentOptions, values: OutputValues
+        self, scope: Scope, log: SessionLog, options: AgentOptions, values: OutputValues
     ) -> None:
-        self.ctx = ctx
+        self.scope = scope
         self.log = log
         self.options = options
         self.values = values
@@ -38,7 +38,7 @@ class OutputHandler:
         """Expose either native JSON output or one reserved, side-effect-free answer tool."""
         if schema is None:
             return request
-        self.ctx[OutputTypes].resolve(schema)
+        self.scope[OutputTypes].resolve(schema)
         if any(tool.name == FINAL_ANSWER for tool in request.tools):
             raise ConfigError("The tool name 'final_answer' is reserved for structured output")
         mode = OutputMode.NATIVE if model.info.supports_structured_output else OutputMode.TOOL
@@ -75,7 +75,7 @@ class OutputHandler:
             and self.options.on_max_tokens != TokenLimitBehavior.CONTINUE
         ):
             return {}, None
-        compiled = self.ctx[OutputTypes].resolve(schema)
+        compiled = self.scope[OutputTypes].resolve(schema)
         try:
             if ordinary or len(outputs) > 1:
                 raise ValueError("Finish application tools before returning one final answer")

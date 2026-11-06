@@ -47,7 +47,7 @@ from harnessed.core.runtime.retries import RequestRetries
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import TokenCounter
 from harnessed.core.tools import ToolRegistry
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 if TYPE_CHECKING:
     from harnessed.core.runtime.session import Session
@@ -56,7 +56,7 @@ if TYPE_CHECKING:
 class StepRunner:
     def __init__(
         self,
-        ctx: Context,
+        scope: Scope,
         log: SessionLog,
         options: AgentOptions,
         control: SessionControl,
@@ -66,7 +66,7 @@ class StepRunner:
         responder: ModelResponder,
         session: Session,
     ) -> None:
-        self.ctx = ctx
+        self.scope = scope
         self.log = log
         self.options = options
         self.control = control
@@ -91,11 +91,11 @@ class StepRunner:
         final: bool = False,
     ) -> bool:
         await self.control.checkpoint()
-        await self.ctx.settle()
+        await self.scope.settle()
         inbox = self.log.inbox
         pending = inbox.for_step(step)
         incoming = tuple(item.message for item in pending)
-        decision = await self.ctx.dispatch(
+        decision = await self.scope.dispatch(
             PreStep(self.session, incoming, step, max_steps=max_steps, is_final_step=final),
             default=lambda incoming=incoming: StepDecision(incoming),
         )
@@ -108,7 +108,7 @@ class StepRunner:
             return False
         accepted = decision.messages
         await self.log.append(StepStartedEvent(turn, step))
-        prompt = await self.ctx[SystemPromptStore].render()
+        prompt = await self.scope[SystemPromptStore].render()
         previous_event = self.log.last(SystemMessageEvent)
         previous = previous_event.content if previous_event is not None else None
         if prompt != previous:
@@ -138,17 +138,17 @@ class StepRunner:
         self._observations.clear()
         for observation in observations:
             await self.log.append(ObservationRecordedEvent(observation, turn, step))
-        model = self.ctx[Model]
+        model = self.scope[Model]
         request = ModelRequest(
-            (*self.log.messages, *self.ctx[DynamicContext].owned_messages),
-            self.ctx[ToolRegistry].visible_definitions(self.ctx),
+            (*self.log.messages, *self.scope[DynamicContext].owned_messages),
+            self.scope[ToolRegistry].visible_definitions(self.scope),
             settings=settings,
         )
-        request = await self.ctx.dispatch(
+        request = await self.scope.dispatch(
             PrepareRequest(self.session, request),
             default=lambda request=request: request,
         )
-        request = await self.ctx.dispatch(
+        request = await self.scope.dispatch(
             ConfigureRequest(self.session, request),
             default=lambda request=request: request,
         )
@@ -168,11 +168,11 @@ class StepRunner:
         request = await self.compaction.prepare(request, model=model)
         if final:
             request = replace(request, tools=(), output_schema=None)
-        if ContextBudget in self.ctx:
-            await self.ctx[ContextBudget].check(
+        if ContextBudget in self.scope:
+            await self.scope[ContextBudget].check(
                 request,
                 context_window=self.options.context_window or model.info.context_window,
-                counter=self.ctx[TokenCounter],
+                counter=self.scope[TokenCounter],
             )
         request_id = uuid4().hex
         record = self.retries.request(request, request_id, model.info)
@@ -181,7 +181,7 @@ class StepRunner:
         except ContextLengthExceeded:
             current = self.log.current_turn()
             if (
-                CompactionPolicy not in self.ctx
+                CompactionPolicy not in self.scope
                 or step >= max_steps
                 or any(item.reason == StepOutcome.CONTEXT_LIMIT for item in current.steps)
                 or any(

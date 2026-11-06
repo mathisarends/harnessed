@@ -24,7 +24,7 @@ from harnessed.core.runtime.stepper import StepRunner
 from harnessed.core.session.session import SessionLog
 from harnessed.core.session.turns import Step
 from harnessed.core.tracing import span
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 if TYPE_CHECKING:
     from harnessed.core.runtime.session import Session
@@ -33,14 +33,14 @@ if TYPE_CHECKING:
 class TurnRunner:
     def __init__(
         self,
-        ctx: Context,
+        scope: Scope,
         log: SessionLog,
         options: AgentOptions,
         control: SessionControl,
         steps: StepRunner,
         session: Session,
     ) -> None:
-        self.ctx = ctx
+        self.scope = scope
         self.log = log
         self.options = options
         self.control = control
@@ -50,7 +50,7 @@ class TurnRunner:
     async def run(self) -> bool:
         previous = self.log.open_turn
         turn = previous.id if previous is not None else uuid4().hex
-        with span(self.ctx, "turn", session_id=self.log.id, turn_id=turn) as current:
+        with span(self.scope, "turn", session_id=self.log.id, turn_id=turn) as current:
             result = await self._run(turn)
             ended = self.log.last(TurnEndedEvent)
             if ended is not None and ended.turn_id == turn:
@@ -93,7 +93,7 @@ class TurnRunner:
                 await self.log.append(TurnEndedEvent(turn, TurnOutcome.TOKEN_BUDGET))
                 return True
             final = step == max_steps and start.final_step is FinalStepPolicy.SUMMARIZE
-            with span(self.ctx, "step", session_id=self.log.id, turn_id=turn, step=step):
+            with span(self.scope, "step", session_id=self.log.id, turn_id=turn, step=step):
                 if not await self.steps.run(turn, step, settings, max_steps=max_steps, final=final):
                     return True
             await self.control.checkpoint()
@@ -140,5 +140,5 @@ class TurnRunner:
             or self.log.has_step_wakeup
         ):
             return True
-        continuation = await self.ctx.dispatch(TurnStopping(self.session))
+        continuation = await self.scope.dispatch(TurnStopping(self.session))
         return bool(continuation or self.log.has_step_wakeup)

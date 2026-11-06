@@ -26,7 +26,7 @@ from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.prompt.values import Instructions, SystemPrompt
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tools import ToolError, tool
-from harnessed.kernel import Context, Inject, Key, hook
+from harnessed.kernel import Inject, Key, Scope, hook
 
 type SkillName = Annotated[
     str, StringConstraints(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$", max_length=64)
@@ -301,9 +301,9 @@ class Skills(Plugin, slot="skills", needs=(SessionLog, DynamicContext)):
             )
         )
 
-    async def _catalog(self, ctx: Context) -> _Catalog:
+    async def _catalog(self, scope: Scope) -> _Catalog:
         key = self.recipe._key
-        if key not in ctx:
+        if key not in scope:
             try:
                 catalog = await asyncio.to_thread(_discover, self.sources)
             except ConfigError:
@@ -312,11 +312,11 @@ class Skills(Plugin, slot="skills", needs=(SessionLog, DynamicContext)):
                 raise ConfigError(
                     f"Cannot read configured skill sources {self.sources!r}: {error}"
                 ) from error
-            ctx.provide(key, catalog)
-        return ctx[key]
+            scope.provide(key, catalog)
+        return scope[key]
 
-    async def _render_catalog(self, ctx: Context) -> str:
-        catalog = await self._catalog(ctx)
+    async def _render_catalog(self, scope: Scope) -> str:
+        catalog = await self._catalog(scope)
         if not catalog.entries:
             return ""
         items = [
@@ -331,10 +331,10 @@ class Skills(Plugin, slot="skills", needs=(SessionLog, DynamicContext)):
         )
 
     async def setup(
-        self, ctx: Context, session: Inject[SessionLog], context: Inject[DynamicContext]
+        self, scope: Scope, session: Inject[SessionLog], context: Inject[DynamicContext]
     ) -> None:
-        catalog = await self._catalog(ctx)
-        ctx.provide(SkillCatalog, catalog)
+        catalog = await self._catalog(scope)
+        scope.provide(SkillCatalog, catalog)
         self._entries = {entry.info.name: entry for entry in catalog.entries}
         self._log = session
         self._context = context

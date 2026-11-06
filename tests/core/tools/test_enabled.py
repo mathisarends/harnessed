@@ -16,7 +16,7 @@ from harnessed import (
 )
 from harnessed.core.tools.registry import ToolRegistry, ToolSpec
 from harnessed.events import ApprovalRequestedEvent, ToolCallFinishedEvent
-from harnessed.kernel import Context, Inject, InjectMarker, Key
+from harnessed.kernel import Inject, InjectMarker, Key, Scope
 from harnessed.models import AssistantMessage, ModelResponse
 from harnessed.plugins import AgentLoop, Approvals, Service
 from harnessed.testing import ScriptedModel, call, reply
@@ -156,16 +156,16 @@ async def test_bound_condition_uses_isolated_mount_state_and_inherited_tools():
     recipe = Inherited()
     agent = Agent(model=ScriptedModel([]), plugins=[recipe])
     async with agent.session() as first, agent.session() as second:
-        first.ctx[Stateful].ready = True
-        assert [t.name for t in first.ctx[ToolRegistry].definitions] == ["click"]
-        assert second.ctx[ToolRegistry].definitions == ()
-        assert (await first.ctx[ToolRegistry].execute(ToolCall("click"))).text == "clicked"
-        assert (await second.ctx[ToolRegistry].execute(ToolCall("click"))).status == "unavailable"
+        first.scope[Stateful].ready = True
+        assert [t.name for t in first.scope[ToolRegistry].definitions] == ["click"]
+        assert second.scope[ToolRegistry].definitions == ()
+        assert (await first.scope[ToolRegistry].execute(ToolCall("click"))).text == "clicked"
+        assert (await second.scope[ToolRegistry].execute(ToolCall("click"))).status == "unavailable"
 
 
 async def test_predicate_services_are_resolved_in_the_current_scope_and_per_check():
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
 
         @registry.tool(enabled=has_snapshot)
         async def click() -> str:
@@ -173,15 +173,15 @@ async def test_predicate_services_are_resolved_in_the_current_scope_and_per_chec
 
         assert registry.definitions == ()
         assert (await registry.execute(ToolCall("click"))).status == "unavailable"
-        ctx.provide(PointerState, PointerState(has_snapshot=True))
+        scope.provide(PointerState, PointerState(has_snapshot=True))
         assert [t.name for t in registry.definitions] == ["click"]
-        replacement = ctx.provide(PointerState, PointerState())
+        replacement = scope.provide(PointerState, PointerState())
         assert registry.definitions == ()
         await replacement()
-        async with ctx.extend() as child:
+        async with scope.extend() as child:
             child.provide(PointerState, PointerState())
             assert registry.visible_definitions(child) == ()
-            assert (await registry.execute(ToolCall("click"), ctx=child)).status == "unavailable"
+            assert (await registry.execute(ToolCall("click"), scope=child)).status == "unavailable"
         assert (await registry.execute(ToolCall("click"))).text == "clicked"
 
 
@@ -194,20 +194,20 @@ async def test_optional_and_named_predicate_dependencies():
     def named_snapshot(state: Annotated[PointerState, InjectMarker(snapshot)]) -> bool:
         return state.has_snapshot
 
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
 
         @registry.tool(enabled=can_click)
         async def click() -> str:
             return "clicked"
 
         assert (await registry.execute(ToolCall("click"))).text == "clicked"
-        ctx.provide(PointerState, PointerState())
+        scope.provide(PointerState, PointerState())
         assert registry.definitions == ()
         assert (await registry.execute(ToolCall("click"))).status == "unavailable"
         registry.register(lambda: "named", name="named", enabled=named_snapshot)
         assert registry.definitions == ()
-        ctx.provide(snapshot, PointerState(has_snapshot=True))
+        scope.provide(snapshot, PointerState(has_snapshot=True))
         assert [definition.name for definition in registry.definitions] == ["named"]
 
 
@@ -219,7 +219,7 @@ async def test_static_enabled_is_supported_by_the_public_decorator(enabled: bool
             return "clicked"
 
     async with Agent(model=ScriptedModel([]), plugins=[Tools()]).session() as session:
-        registry = session.ctx[ToolRegistry]
+        registry = session.scope[ToolRegistry]
         assert bool(registry.definitions) is enabled
         assert (await registry.execute(ToolCall("click"))).status == (
             "ok" if enabled else "unavailable"
@@ -227,8 +227,8 @@ async def test_static_enabled_is_supported_by_the_public_decorator(enabled: bool
 
 
 async def test_disabled_override_never_falls_back_and_stale_plan_never_follows_replacement():
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
 
         @registry.tool
         async def click() -> str:
@@ -243,9 +243,9 @@ async def test_disabled_override_never_falls_back_and_stale_plan_never_follows_r
         disabled = registry.plan(ToolCall("click"))
         assert registry.definitions == ()
         assert (await registry.execute(ToolCall("click"))).status == "unavailable"
-        assert "registration changed" in registry.check_enabled(original, ctx=ctx).text
+        assert "registration changed" in registry.check_enabled(original, scope=scope).text
         await remove()
-        assert "registration changed" in registry.check_enabled(disabled, ctx=ctx).text
+        assert "registration changed" in registry.check_enabled(disabled, scope=scope).text
         assert (await registry.execute(ToolCall("click"))).text == "original"
 
 
@@ -269,7 +269,7 @@ def test_async_predicates_and_async_callable_objects_are_rejected():
             return True
 
     with pytest.raises(TypeError, match="synchronous"):
-        ToolRegistry(Context()).register(lambda: "clicked", enabled=Predicate())
+        ToolRegistry(Scope()).register(lambda: "clicked", enabled=Predicate())
 
 
 def test_predicates_cannot_take_model_arguments_or_call_scoped_context():
@@ -277,19 +277,19 @@ def test_predicates_cannot_take_model_arguments_or_call_scoped_context():
         return x > 0
 
     with pytest.raises(TypeError, match="parameters must use Inject"):
-        ToolRegistry(Context()).register(lambda: "clicked", enabled=by_argument)
+        ToolRegistry(Scope()).register(lambda: "clicked", enabled=by_argument)
 
     def by_call(call: Inject[ToolContext]) -> bool:
         return not call.cancelled
 
     with pytest.raises(TypeError, match="per-call ToolContext"):
-        ToolRegistry(Context()).register(lambda: "clicked", enabled=by_call)
+        ToolRegistry(Scope()).register(lambda: "clicked", enabled=by_call)
 
 
 @pytest.mark.parametrize("predicate", [lambda: 1, lambda: None])
 async def test_non_boolean_predicate_results_fail_closed(predicate: Callable[[], object]):
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
         registry.register(lambda: "clicked", name="click", enabled=predicate)
         with pytest.raises(TypeError, match="return a bool"):
             _ = registry.definitions

@@ -4,7 +4,7 @@ from typing import Annotated, Protocol
 import pytest
 from pydantic import Field
 
-from harnessed import Agent, Context, Inject, Plugin, ToolCall
+from harnessed import Agent, Inject, Plugin, ToolCall
 from harnessed.core.messages import ToolResult
 from harnessed.core.model import ModelChunk
 from harnessed.core.plugin import Bundle
@@ -12,7 +12,7 @@ from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.tools.context import ToolContext
 from harnessed.core.tools.decorator import tool
 from harnessed.core.tools.registry import ToolRegistry
-from harnessed.kernel import InjectMarker, PluginStatus
+from harnessed.kernel import InjectMarker, PluginStatus, Scope
 from harnessed.testing import ScriptedModel
 
 
@@ -29,19 +29,19 @@ class MemoryBackend:
 
 
 async def test_injected_arguments_are_hidden_and_services_resolve_per_call():
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
 
         @registry.tool
         async def read(path: str, backend: Inject[Backend]) -> str:
             return f"{path}: {await backend.read()}"
 
         assert registry.definitions == ()
-        first = ctx.provide(Backend, MemoryBackend("first"))
+        first = scope.provide(Backend, MemoryBackend("first"))
         assert list(registry.definitions[0].parameters["properties"]) == ["path"]
         call = ToolCall("read", {"path": "test"})
         assert (await registry.execute(call)).content == "test: first"
-        replacement = ctx.provide(Backend, MemoryBackend("second"))
+        replacement = scope.provide(Backend, MemoryBackend("second"))
         assert (await registry.execute(call)).content == "test: second"
         await replacement()
         assert (await registry.execute(call)).content == "test: first"
@@ -51,9 +51,9 @@ async def test_injected_arguments_are_hidden_and_services_resolve_per_call():
 
 
 async def test_caller_cannot_supply_injected_parameters():
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
-        ctx.provide(int, 42)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
+        scope.provide(int, 42)
 
         @registry.tool
         async def show(number: Inject[int]) -> int:
@@ -67,9 +67,9 @@ async def test_caller_cannot_supply_injected_parameters():
 
 
 async def test_explicit_annotated_marker_is_supported():
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
-        ctx.provide(int, 7)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
+        scope.provide(int, 7)
 
         @registry.tool()
         async def show(number: Annotated[int, InjectMarker()]) -> int:
@@ -79,8 +79,8 @@ async def test_explicit_annotated_marker_is_supported():
 
 
 async def test_decorators_preserve_original_functions_and_annotated_descriptions():
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
 
         async def original(value: Annotated[int, "An integer"]) -> int:
             return value * 2
@@ -92,7 +92,7 @@ async def test_decorators_preserve_original_functions_and_annotated_descriptions
         bundle = Bundle("test")
         assert not hasattr(bundle, "tool")
         assert not hasattr(bundle, "add_tool")
-        assert not hasattr(ctx, "tool")
+        assert not hasattr(scope, "tool")
         assert await original(3) == 6
         schema = registry.definitions[0].parameters["properties"]["value"]
         assert schema["description"] == "An integer"
@@ -134,8 +134,8 @@ async def test_registry_description_precedence_and_missing_docstring_fallback():
     def undocumented() -> str:
         return "value"
 
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
         registry.register(documented, name="direct", description="Direct prompt.")
         registry.tool(name="decorated", description="Decorator prompt.")(documented)
         registry.register(documented, name="fallback")
@@ -158,13 +158,13 @@ def test_tool_descriptions_reject_non_string_values(description):
     with pytest.raises(TypeError, match="description must be a string or None"):
         tool(description=description)(callback)
     with pytest.raises(TypeError, match="description must be a string or None"):
-        ToolRegistry(Context()).register(callback, description=description)
+        ToolRegistry(Scope()).register(callback, description=description)
 
 
 @pytest.mark.parametrize("arguments", [{}, {"value": True}, {"value": "1"}, {"other": 1}])
 async def test_invalid_model_arguments_are_errors_without_running_tool(arguments):
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
 
         @registry.tool
         async def typed(value: int) -> int:
@@ -174,8 +174,8 @@ async def test_invalid_model_arguments_are_errors_without_running_tool(arguments
 
 
 async def test_nested_types_defaults_sync_execution_and_errors():
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
 
         @registry.tool
         def count(items: list[dict[str, int]], limit: int | None = None) -> int:
@@ -188,8 +188,8 @@ async def test_nested_types_defaults_sync_execution_and_errors():
 
 
 async def test_async_tool_timeout_cancels_its_body():
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
         canceled = asyncio.Event()
 
         @registry.tool(timeout=0.01)
@@ -219,14 +219,14 @@ async def test_result_converters_follow_their_owner_lifetime():
     class ForeignResult:
         pass
 
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
 
         @registry.tool
         def custom() -> str:
             return ForeignResult()
 
-        owner = ctx.extend()
+        owner = scope.extend()
         registry.result_converter(ForeignResult, lambda value: ToolResult("converted"), owner=owner)
         assert (await registry.execute(ToolCall("custom"))).content == "converted"
         await owner.aclose()
@@ -258,20 +258,20 @@ async def test_functional_context_tools_follow_explicit_needs_and_temporal_resta
         async def read(self, *, backend: Inject[Backend]) -> str:
             return await backend.read()
 
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
-        ctx.provide(ToolRegistry, registry)
-        handle = await ctx.plugin(Tools())
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
+        scope.provide(ToolRegistry, registry)
+        handle = await scope.plugin(Tools())
         assert handle.status == PluginStatus.WAITING
-        first = ctx.provide(Backend, MemoryBackend("first"))
-        await ctx.settle()
+        first = scope.provide(Backend, MemoryBackend("first"))
+        await scope.settle()
         assert handle.status == PluginStatus.ACTIVE
         assert (await registry.execute(ToolCall("read"))).content == "first"
         await first()
-        await ctx.settle()
+        await scope.settle()
         assert handle.status == PluginStatus.WAITING and not registry.definitions
-        ctx.provide(Backend, MemoryBackend("second"))
-        await ctx.settle()
+        scope.provide(Backend, MemoryBackend("second"))
+        await scope.settle()
         assert (await registry.execute(ToolCall("read"))).content == "second"
         await handle.aclose()
         assert not registry.definitions
@@ -299,4 +299,4 @@ def test_unmarked_positional_tool_context_requires_the_explicit_marker():
         return "bad"
 
     with pytest.raises(TypeError, match="keyword-only"):
-        ToolRegistry(Context()).register(bad)
+        ToolRegistry(Scope()).register(bad)

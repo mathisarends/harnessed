@@ -4,11 +4,11 @@ from harnessed.core.errors import ToolNameConflict
 from harnessed.core.messages import ToolCall
 from harnessed.core.prompt.system_prompt import SystemPromptStore
 from harnessed.core.tools.registry import ToolError, ToolRegistry
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 
 async def test_explicit_owner_controls_tool_and_prompt_lifetime():
-    async with Context() as root:
+    async with Scope() as root:
         owner = root.extend()
         registry, prompt = ToolRegistry(root), SystemPromptStore(root)
 
@@ -23,8 +23,8 @@ async def test_explicit_owner_controls_tool_and_prompt_lifetime():
 
 
 async def test_duplicate_tool_names_fail_unless_override_is_explicit():
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
 
         def original() -> str:
             return "original"
@@ -39,8 +39,8 @@ async def test_duplicate_tool_names_fail_unless_override_is_explicit():
 
 
 async def test_tool_errors_redact_secrets_but_preserve_explicit_safe_messages(caplog):
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
 
         @registry.tool
         def broken() -> str:

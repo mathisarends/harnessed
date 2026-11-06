@@ -27,7 +27,7 @@ from harnessed.core.session.state import SessionState
 from harnessed.core.session.store import SessionStore
 from harnessed.core.tools.output_limit import ToolOutputLimit
 from harnessed.core.tracing import NoopTracer
-from harnessed.kernel import Context, PluginLike
+from harnessed.kernel import PluginLike, Scope
 from harnessed.models import PydanticAIModel
 
 
@@ -129,18 +129,18 @@ class Agent:
         restore_outputs: Iterable[type[Any] | OutputContract[Any]] = (),
         child: ChildSessionRequest | None = None,
     ) -> AsyncGenerator[Session]:
-        async with Context() as ctx:
+        async with Scope() as scope:
             if child is not None:
-                ctx.provide(ChildSessionRequest, child)
-            ctx.provide(EventRegistry, self._events.copy())
+                scope.provide(ChildSessionRequest, child)
+            scope.provide(EventRegistry, self._events.copy())
             # Validators are per session, so dynamic output types never leak between them.
             outputs = OutputTypes()
             for output in restore_outputs:
                 outputs.register(output)
-            ctx.provide(OutputTypes, outputs)
-            await ctx.install(self.plugins, settle=True)
+            scope.provide(OutputTypes, outputs)
+            await scope.install(self.plugins, settle=True)
             yield await open_session(
-                ctx, state, plugin_validation=self.plugin_validation, store=self.store, id=id
+                scope, state, plugin_validation=self.plugin_validation, store=self.store, id=id
             )
 
     @overload

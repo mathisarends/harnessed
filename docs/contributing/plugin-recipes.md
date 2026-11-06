@@ -22,7 +22,7 @@ annotation or arbitrary keyword-forwarding API remains. Runtime schema resolutio
 uses generic base declarations, including inherited substitutions. Typed feature
 constructors may build and pass their own explicit model internally.
 
-State and dependencies remain available through teardown and Context-owned
+State and dependencies remain available through teardown and Scope-owned
 cleanup, including partial setup failure and cancellation, then become invalid.
 Prepared tool calls still retain the original registration; they never follow a
 replacement. Direct recipe tool calls fail without activating anything.

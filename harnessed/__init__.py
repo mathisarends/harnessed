@@ -19,7 +19,6 @@ def __getattr__(name: str) -> Any:
 _EXPORTS = {
     "Agent": ("harnessed.agent", "Agent"),
     "ApprovalAnswer": ("harnessed.core.messages", "ApprovalAnswer"),
-    "Context": ("harnessed.kernel", "Context"),
     "CompositionDescription": ("harnessed.core.composition", "CompositionDescription"),
     "File": ("harnessed.core.attachments", "File"),
     "Image": ("harnessed.core.attachments", "Image"),

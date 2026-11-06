@@ -127,7 +127,7 @@ Events are immutable typed values with stable tags such as `text.delta` and
 | Tool calls and progress | `ToolCallRequestedEvent`, `ToolProgressEvent`, `ToolCallFinishedEvent` |
 | Approval questions | `ApprovalNeededEvent` |
 | Model requests and retries | `ModelRequestedEvent`, `ModelRequestFailedEvent`, `ModelRetryScheduledEvent` |
-| Context compaction | `CompactionStartedEvent`, `CompactionAppliedEvent`, `CompactionFinishedEvent` |
+| Scope compaction | `CompactionStartedEvent`, `CompactionAppliedEvent`, `CompactionFinishedEvent` |
 | Large tool-output artifacts | `SpillCreatedEvent`, `SpillExpiredEvent` |
 | Session status and turn result | `SessionStatusChangedEvent`, `TurnFinishedEvent` |
 

@@ -14,19 +14,23 @@ from harnessed.core.model import Model, ModelRequest, ModelStream
 from harnessed.core.runtime.diagnostics import RequestDiagnostics
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tracing import Span, span
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 
 class ModelResponder:
-    def __init__(self, ctx: Context, log: SessionLog) -> None:
-        self.ctx = ctx
+    def __init__(self, scope: Scope, log: SessionLog) -> None:
+        self.scope = scope
         self.log = log
 
     async def respond(
         self, request: ModelRequest, *, model: Model, request_id: str
     ) -> AssistantMessage:
         with span(
-            self.ctx, "model", session_id=self.log.id, model=model.info.name, request_id=request_id
+            self.scope,
+            "model",
+            session_id=self.log.id,
+            model=model.info.name,
+            request_id=request_id,
         ) as current:
             current.set_attribute("request", request)
             diagnostics = RequestDiagnostics(self.log, request_id)

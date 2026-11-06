@@ -6,7 +6,7 @@ from harnessed.core.budget import ContextBudget
 from harnessed.core.model import ModelInfo, ModelRequest, ModelUsage
 from harnessed.core.runtime.options import AgentLoopConfig
 from harnessed.core.tools.registry import ToolRegistry
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 from harnessed.models import GenerationSettings
 
 
@@ -52,7 +52,7 @@ def test_context_budget_options_are_strict(options):
 def test_tool_timeouts_reject_invalid_values_at_both_configuration_boundaries(timeout):
     with pytest.raises(ValidationError):
         AgentLoopConfig(tool_timeout=timeout)
-    registry = ToolRegistry(Context())
+    registry = ToolRegistry(Scope())
     with pytest.raises(ValidationError):
         registry.register(lambda: None, timeout=timeout)
 

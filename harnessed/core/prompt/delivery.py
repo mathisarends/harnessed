@@ -6,7 +6,7 @@ from typing import Any
 from uuid import uuid4
 
 from harnessed.core.errors import ConfigError
-from harnessed.kernel import Context, PluginLike, PluginSpec, as_plugin_spec
+from harnessed.kernel import PluginLike, PluginSpec, Scope, as_plugin_spec
 
 from .context import DynamicContext
 from .values import (
@@ -34,15 +34,15 @@ def runtime_sections(
     key = f"runtime.sections.{spec.name}.{uuid4().hex}"
 
     @wraps(spec.factory)
-    async def mount(ctx: Context, *args: Any, **kwargs: Any) -> AsyncGenerator[object, None]:
-        async with asynccontextmanager(spec.factory)(ctx, *args, **kwargs) as instance:
+    async def mount(scope: Scope, *args: Any, **kwargs: Any) -> AsyncGenerator[object, None]:
+        async with asynccontextmanager(spec.factory)(scope, *args, **kwargs) as instance:
             composition = PromptComposition(
                 SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
                 contributions=(contribution,),
             )
-            text = await composition.render(ctx)
+            text = await composition.render(scope)
             if text:
-                ctx[DynamicContext].register(key, text, owner=ctx)
+                scope[DynamicContext].register(key, text, owner=scope)
             yield instance
 
     return replace(

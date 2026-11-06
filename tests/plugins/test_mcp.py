@@ -185,7 +185,7 @@ async def test_filters_readonly_and_runtime_unmount():
     agent = Agent(model=ScriptedModel(["done"]))
     async with agent.session() as session:
         handle = await session.use(MCP("docs", transport=transport, include_tools=["search"]))
-        registry = session.ctx[ToolRegistry]
+        registry = session.scope[ToolRegistry]
         assert [tool.name for tool in registry.definitions] == ["docs__search"]
         assert not registry.is_readonly("docs__search")
         plan = registry.plan(ToolCall("docs__search", {"query": "old"}))
@@ -245,7 +245,7 @@ async def test_recipe_isolated_between_concurrent_sessions():
     second = Agent(model=ScriptedModel(["second"]), plugins=[plugin])
     async with first.session() as a, second.session() as b:
         assert transport.opened == 2 and transport.closed == 0
-        assert a.ctx[ToolRegistry].definitions == b.ctx[ToolRegistry].definitions
+        assert a.scope[ToolRegistry].definitions == b.scope[ToolRegistry].definitions
     assert transport.closed == 2
 
 
@@ -410,7 +410,7 @@ if __name__ == "__main__":
                 startup_timeout=15,
             )
         )
-        result = await session.ctx[ToolRegistry].execute(ToolCall("local__inspect", {}))
+        result = await session.scope[ToolRegistry].execute(ToolCall("local__inspect", {}))
     assert not result.is_error
     value = json.loads(result.content[-1].text)
     assert value == {"secret": None, "mode": "explicit", "args": [argument], "cwd": str(tmp_path)}
@@ -443,7 +443,7 @@ if __name__ == "__main__":
                 "local", command=sys.executable, args=[str(server), failure], startup_timeout=15
             )
         )
-        registry = session.ctx[ToolRegistry]
+        registry = session.scope[ToolRegistry]
         async with asyncio.timeout(5):
             result = await registry.execute(ToolCall("local__fail", {}))
         assert result.status is ToolStatus.ERROR
@@ -457,7 +457,7 @@ async def test_business_error_does_not_close_the_connection():
     )
     async with Agent(model=ScriptedModel(["unused"])).session() as session:
         await session.use(MCP("docs", transport=transport))
-        registry = session.ctx[ToolRegistry]
+        registry = session.scope[ToolRegistry]
         first = await registry.execute(ToolCall("docs__search", {"query": "missing"}))
         assert first.status is ToolStatus.ERROR and registry.definitions
         transport.result = CallToolResult(content=[TextContent(type="text", text="found")])
@@ -473,7 +473,7 @@ async def test_idle_disconnect_hides_tools_on_the_next_call():
         await session.use(MCP("docs", transport=transport))
         await transport.server_output.aclose()
         await asyncio.wait_for(transport.server_stopped.wait(), 2)
-        registry = session.ctx[ToolRegistry]
+        registry = session.scope[ToolRegistry]
         result = await registry.execute(ToolCall("docs__search", {"query": "disconnected"}))
         assert result.status is ToolStatus.ERROR
         assert registry.definitions == ()
@@ -556,9 +556,9 @@ async def test_long_names_are_stable_and_provider_safe():
     recipe = MCP("docs", transport=transport)
     agent = Agent(model=ScriptedModel(["unused"]), plugins=[recipe])
     async with agent.session() as session:
-        first = session.ctx[ToolRegistry].definitions[0].name
+        first = session.scope[ToolRegistry].definitions[0].name
     async with agent.session() as session:
-        second = session.ctx[ToolRegistry].definitions[0].name
+        second = session.scope[ToolRegistry].definitions[0].name
     assert first == second and len(first) == 64
     assert set(first) <= set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
 
@@ -692,7 +692,7 @@ class Block(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0, Block())
 import harnessed
 import harnessed.plugins
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 assert not any(name == 'mcp' or name.startswith('mcp.') for name in sys.modules)
 assert not any(name == 'fastmcp' or name.startswith('fastmcp.') for name in sys.modules)
 """

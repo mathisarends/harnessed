@@ -116,7 +116,7 @@ async def test_native_fastmcp_http_with_bearer_auth(serve_http, stateless):
             plugins=[MCP.http("native", url=url, auth="native-token", readonly_tools=["echo"])],
         )
         async with agent.session() as session:
-            registry = session.ctx[ToolRegistry]
+            registry = session.scope[ToolRegistry]
             plan = registry.plan(ToolCall("native__echo", {"query": "FastMCP works"}))
             presentation = plan.tool.presentation
             assert presentation.title == "Echo documentation"
@@ -281,7 +281,7 @@ async def test_http_protocol_failure_disables_tools_without_retry(serve_http):
     async with serve_http(app) as url:
         async with Agent(model=ScriptedModel(["unused"])).session() as session:
             await session.use(MCP.http("web", url=url, readonly_tools=["echo"]))
-            registry = session.ctx[ToolRegistry]
+            registry = session.scope[ToolRegistry]
             fail = True
             result = await registry.execute(ToolCall("web__echo", {"query": "once"}))
             assert result.status is ToolStatus.ERROR
@@ -330,7 +330,7 @@ async def test_malformed_http_response_fails_without_waiting_for_call_timeout(se
         async with Agent(model=ScriptedModel(["unused"])).session() as session:
             await session.use(MCP.http("web", url=url, call_timeout=1))
             fail = True
-            registry = session.ctx[ToolRegistry]
+            registry = session.scope[ToolRegistry]
             async with asyncio.timeout(0.5):
                 result = await registry.execute(ToolCall("web__echo", {"query": "x"}))
             assert result.status is ToolStatus.ERROR
@@ -452,7 +452,7 @@ async def test_parallel_http_calls_keep_results_and_sessions_isolated(serve_http
         async with agent.session() as first, agent.session() as second:
             tasks = [
                 asyncio.create_task(
-                    owner.ctx[ToolRegistry].execute(ToolCall("web__echo", {"query": query}))
+                    owner.scope[ToolRegistry].execute(ToolCall("web__echo", {"query": query}))
                 )
                 for owner, query in [(first, "one"), (first, "two"), (second, "three")]
             ]
@@ -488,7 +488,7 @@ async def test_http_timeout_abort_and_unmount_wake_shared_connection_waiters(ser
                     "web", url=url, parallel=True, call_timeout=0.5 if action == "timeout" else 10
                 )
             )
-            registry = session.ctx[ToolRegistry]
+            registry = session.scope[ToolRegistry]
             first = asyncio.create_task(registry.execute(ToolCall("web__slow", {"query": "one"})))
             second = asyncio.create_task(registry.execute(ToolCall("web__slow", {"query": "two"})))
             try:

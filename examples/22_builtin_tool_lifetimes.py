@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 
 from harnessed import Agent, PluginValidation, ToolCall
-from harnessed.kernel import Context, plugin
+from harnessed.kernel import Scope, plugin
 from harnessed.models import ModelChunk
 from harnessed.plugins import Approvals
 from harnessed.plugins.shell import ProcResult, ShellTools
@@ -21,8 +21,8 @@ class DemoShell:
 
 
 @plugin
-async def shell_backend(ctx: Context, name: str):
-    ctx.provide(Shell, DemoShell(name))
+async def shell_backend(scope: Scope, name: str):
+    scope.provide(Shell, DemoShell(name))
     yield
 
 

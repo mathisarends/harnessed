@@ -41,7 +41,7 @@ The [offline example](examples.md#subagents) uses scripted models instead.
 The task is the child's only inherited input. It does not receive the parent's
 instructions, conversation, context values, tools, approval grants or attachments.
 Include the information it needs in the task. Each specialist uses its own model,
-instructions, plugins and session store. Context isolation is not an operating
+instructions, plugins and session store. Scope isolation is not an operating
 system sandbox: configured backends still determine access to shared resources.
 
 The `Subagents.instructions()` block lists available names. Select

@@ -7,7 +7,7 @@ from harnessed.core.events.messages import UserMessageEvent
 from harnessed.core.events.tools import ToolCallFinishedEvent, ToolExecutionFinishedEvent
 from harnessed.core.messages import ToolCall, ToolResult, UserMessage
 from harnessed.core.session.session import SessionLog
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 
 @pytest.mark.parametrize("event_type", [ToolExecutionFinishedEvent, ToolCallFinishedEvent])
@@ -31,15 +31,15 @@ async def test_result_is_admitted_before_observers_and_observers_remain_cancella
     observing = asyncio.Event()
     call = ToolCall("work", id="call") if event_type is ToolCallFinishedEvent else "call"
     receipt = event_type(call, ToolResult("finished result"))
-    async with Context() as ctx:
-        log = SessionLog("checkpoint", ctx=ctx)
+    async with Scope() as scope:
+        log = SessionLog("checkpoint", scope=scope)
 
         async def observer(event):
             assert log.events == (receipt,)
             observing.set()
             await asyncio.Event().wait()
 
-        ctx.on(event_type, observer)
+        scope.on(event_type, observer)
         append = asyncio.create_task(log.append(receipt))
         await asyncio.wait_for(observing.wait(), 2)
         append.cancel()

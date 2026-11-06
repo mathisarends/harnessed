@@ -23,8 +23,8 @@ class Recorder(Plugin, slot="tracer"):
         instance.finished = self.finished
         return instance
 
-    async def setup(self, ctx):
-        ctx.provide(Tracer, self)
+    async def setup(self, scope):
+        scope.provide(Tracer, self)
 
     @contextmanager
     def span(self, name, **attributes):

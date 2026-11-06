@@ -13,7 +13,7 @@ from harnessed import (
 )
 from harnessed.core.composition import compose_plugins
 from harnessed.errors import PluginConflict, PluginDependencyError
-from harnessed.kernel import Bundle, Context, PluginLike, plugin
+from harnessed.kernel import Bundle, PluginLike, Scope, plugin
 from harnessed.plugins import AgentLoop, Compaction
 from harnessed.testing import ScriptedModel
 
@@ -161,7 +161,7 @@ def test_composition_inputs_require_plugins_or_explicit_packs(invalid):
 
 def test_function_factories_are_configured_once_and_kernel_bundles_remain_recipes():
     @plugin(slot="example.function")
-    async def factory(ctx: Context):
+    async def factory(scope: Scope):
         yield
 
     bundle = Bundle("hooks")

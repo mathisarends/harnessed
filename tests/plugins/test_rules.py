@@ -70,7 +70,7 @@ async def test_rule_note_context_steer_order_and_structured_exit_code():
         assert [e.mode for e in inbox] == ["followup", "steer"]
         assert inbox[-1].message.role == Role.USER
         assert any("Consider the failure." in m.text for m in model.requests[-1].messages)
-        assert agent.ctx[DynamicContext].values["rule:rules:1"] == "Consider the failure."
+        assert agent.scope[DynamicContext].values["rule:rules:1"] == "Consider the failure."
         triggered = [e for e in agent_audit.events if isinstance(e, RuleTriggeredEvent)]
         assert triggered[0].actions == ("note", "steer")
         assert AuditProjection(agent_audit.events).messages == agent.log.messages
@@ -222,8 +222,8 @@ async def test_process_return_values_are_normalized_with_exit_codes():
     from harnessed.plugins.shell import proc_result
 
     @plugin(needs=[ToolRegistry])
-    async def converters(ctx):
-        ctx[ToolRegistry].result_converter(ProcResult, proc_result)
+    async def converters(scope):
+        scope[ToolRegistry].result_converter(ProcResult, proc_result)
         yield
 
     class ToolsPlugin(Plugin):
@@ -297,10 +297,10 @@ async def test_canonical_match_metadata_survives_output_limits_and_context_reset
         assert len(first.tool_calls[0][1].content) == 256
         assert dict(first.tool_calls[0][1].rule_matches)["rules:0"] is True
         await session.run("Second")
-        assert session.ctx[DynamicContext].values["rule:rules:0"] == "Use a smaller range."
+        assert session.scope[DynamicContext].values["rule:rules:0"] == "Use a smaller range."
         source[0] = "fixed"
         await session.run("Success")
-        assert "rule:rules:0" not in session.ctx[DynamicContext].values
+        assert "rule:rules:0" not in session.scope[DynamicContext].values
 
 
 def test_rules_are_immutable_and_require_actions():
@@ -350,20 +350,20 @@ async def test_rule_and_observation_policies_mount_with_narrow_services_without_
     from harnessed.core.runtime.control import SessionControl
     from harnessed.core.runtime.inbox import InboxWriter, SessionInbox
     from harnessed.core.tokens import ApproximateTokenCounter, TokenCounter
-    from harnessed.kernel import Context
+    from harnessed.kernel import Scope
     from harnessed.plugins import LatestObservationOnly
 
     async def unused_driver():
         pytest.fail("Mounting a policy started the driver")
 
-    async with Context() as ctx:
-        log = SessionLog("policy", ctx=ctx)
+    async with Scope() as scope:
+        log = SessionLog("policy", scope=scope)
         control = SessionControl(log, unused_driver, lambda: False)
-        ctx.provide(SessionLog, log)
-        ctx.provide(DynamicContext, DynamicContext(log))
-        ctx.provide(SessionInbox, SessionInbox(log, control, InboxWriter(log, control)))
-        ctx.provide(TokenCounter, ApproximateTokenCounter())
-        handles = await ctx.install(
+        scope.provide(SessionLog, log)
+        scope.provide(DynamicContext, DynamicContext(log))
+        scope.provide(SessionInbox, SessionInbox(log, control, InboxWriter(log, control)))
+        scope.provide(TokenCounter, ApproximateTokenCounter())
+        handles = await scope.install(
             [Rules([when(tool="test").context("fact")]), LatestObservationOnly()], settle=True
         )
         assert len(handles) == 2

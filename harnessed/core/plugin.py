@@ -14,11 +14,11 @@ from harnessed.core.tools import ToolSpec
 from harnessed.core.tools.decorator import _activation_tool
 from harnessed.kernel import Bundle as KernelBundle
 from harnessed.kernel import (
-    Context,
     HookEntry,
     Key,
     PluginLike,
     Registration,
+    Scope,
     ServiceKey,
     as_plugin_spec,
     hook,
@@ -45,7 +45,7 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
 
     Declare lifetime service bindings with dependency() and mutable runtime data
     with PluginState. Constructors describe capabilities; setup acquires resources
-    and registers cleanup on its Context. Plugin instruction collection requires
+    and registers cleanup on its Scope. Plugin instruction collection requires
     an explicit prompt strategy.
     """
 
@@ -211,7 +211,7 @@ def plugin_contribution(value: PluginLike) -> PromptContribution:
         or len(description) != 2
         or not all(isinstance(part, str) for part in description)
     ):
-        raise TypeError("Context descriptions must contain a name and text")
+        raise TypeError("Scope descriptions must contain a name and text")
     return PromptContribution(spec.name, provider, description)
 
 
@@ -224,10 +224,10 @@ class Service[T](Plugin):
         self.value = value
         self.slot = "model" if key is Model else None
 
-    async def setup(self, ctx: Context) -> None:
+    async def setup(self, scope: Scope) -> None:
         if self.key is Model and isinstance(self.value, AbstractAsyncContextManager):
-            await ctx.enter(self.value)
-        ctx.provide(self.key, self.value)
+            await scope.enter(self.value)
+        scope.provide(self.key, self.value)
 
 
 __all__ = [

@@ -25,7 +25,7 @@ async def pause_and_resume():
     work = Work()
     model = ScriptedModel([call("process", item="a"), "First complete.", "Second complete."])
     async with Agent(model=model, plugins=[work]).session() as session:
-        active = session.ctx[Work]
+        active = session.scope[Work]
         first = await session.submit("Process a.")
         await asyncio.wait_for(active.started.wait(), 3)
         second = await session.submit("Then summarize.")
@@ -42,7 +42,7 @@ async def end_a_turn(*, immediate: bool):
     work = Work()
     model = ScriptedModel([call("process", item="a"), "Fresh work complete."])
     async with Agent(model=model, plugins=[work]).session() as session:
-        active = session.ctx[Work]
+        active = session.scope[Work]
         running = await session.submit("Start work.")
         await asyncio.wait_for(active.started.wait(), 3)
         queued = await session.submit("Queued work.")

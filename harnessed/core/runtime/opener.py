@@ -16,11 +16,11 @@ from harnessed.core.session.session import SessionLog
 from harnessed.core.session.state import SessionState
 from harnessed.core.session.store import SessionPersistence, SessionStore
 from harnessed.core.tools import ToolRegistry
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 
 async def open_session(
-    ctx: Context,
+    scope: Scope,
     state: SessionState | None,
     *,
     plugin_validation: PluginValidation,
@@ -32,11 +32,11 @@ async def open_session(
         raise ConfigError("state must be a SessionState or None")
     if id is not None and (not isinstance(id, str) or not id.strip()):
         raise ConfigError("Conversation IDs must be non-empty strings")
-    if id is not None and store is None and ChildSessionRequest not in ctx:
+    if id is not None and store is None and ChildSessionRequest not in scope:
         raise ConfigError("Opening a conversation by ID requires an explicit store")
     session_id = uuid4().hex if id is None else id
     stored = await store.load_session(session_id) if store is not None else None
-    if ChildSessionRequest in ctx and (stored is not None or state is not None):
+    if ChildSessionRequest in scope and (stored is not None or state is not None):
         raise ConfigError("A delegation cannot reopen an existing child session")
     if stored is not None and state is not None:
         raise ConfigError("An existing stored conversation cannot also receive state")
@@ -49,7 +49,7 @@ async def open_session(
     )
     log = SessionLog(
         session_id,
-        ctx=ctx,
+        scope=scope,
         state=selected,
         persistence=persistence,
         assets=(
@@ -63,22 +63,22 @@ async def open_session(
             else None
         ),
     )
-    ctx.provide(AssetStore, log.assets)
-    ctx.provide(SessionFiles, log.files)
-    ctx.effect(log.close_resources)
-    ctx.effect(log.finish_subscriptions)
-    if ChildSessionRequest in ctx:
-        await log.append(ctx[ChildSessionRequest].link)
+    scope.provide(AssetStore, log.assets)
+    scope.provide(SessionFiles, log.files)
+    scope.effect(log.close_resources)
+    scope.effect(log.finish_subscriptions)
+    if ChildSessionRequest in scope:
+        await log.append(scope[ChildSessionRequest].link)
         await log.flush()
     if checkpoint is not None:
         await log.restore(checkpoint)
-        _restore_output_schemas(ctx[OutputTypes], log)
+        _restore_output_schemas(scope[OutputTypes], log)
         await log.repair_interrupted()
     elif selected is not None:
         await log.repair_interrupted()
-    runtime = ctx[AgentFactory].create(ctx, log)
+    runtime = scope[AgentFactory].create(scope, log)
     try:
-        await ctx.install(
+        await scope.install(
             [
                 Service(SessionLog, log),
                 Service(Session, runtime),
@@ -88,14 +88,14 @@ async def open_session(
     except BaseException:
         await runtime.aclose()
         raise
-    ctx.effect(runtime.aclose)
-    if ChildSessionRequest in ctx:
-        reporter = ctx[ChildSessionRequest].reporter
+    scope.effect(runtime.aclose)
+    if ChildSessionRequest in scope:
+        reporter = scope[ChildSessionRequest].reporter
         if reporter is not None:
-            await ctx.plugin(ChildReports(reporter))
-    await ctx.settle()
-    validate_plugins(ctx, plugin_validation)
-    ctx[ToolRegistry].validate_references()
+            await scope.plugin(ChildReports(reporter))
+    await scope.settle()
+    validate_plugins(scope, plugin_validation)
+    scope[ToolRegistry].validate_references()
     runtime.start()
     return runtime
 

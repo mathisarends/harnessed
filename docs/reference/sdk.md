@@ -84,6 +84,12 @@ Each mount owns one connection and a fixed catalog of namespaced tools. See
 
 ## Session tool inspection and plugin services
 
+Plugin lifetime ownership uses `Scope` from `harnessed.kernel`. A setup method
+accepts `scope: Scope`; service resolution, owned registrations and cleanup all
+belong to that scope. Advanced session integrations use `session.scope`.
+Model-visible input uses `add_context()` and `DynamicContext`; per-call services
+use `ToolContext`.
+
 `session.tools` is a live, read-only mapping. Use `session.tools.names` for a
 `frozenset[str]`, `session.tools["read_file"]` for a visible `ToolDefinition`,
 and `session.tools.values()` to iterate definitions. Iterating the mapping
@@ -317,7 +323,7 @@ entries in public plugin lists are ignored.
 `Instructions(text="", title=None, description="")` is a content value, not a
 plugin descriptor. `from_file(path=..., title=..., missing_ok=False)` and
 `from_factory(factory=..., title=..., description=...)` defer reads or async
-Context callbacks until each session opens. Session effects have session ownership.
+Scope callbacks until each session opens. Session effects have session ownership.
 `print(agent.prompt)` shows final order and origins;
 `await session.prompt.render()` returns the actual session text.
 
@@ -365,7 +371,7 @@ after completion it raises `SessionStateError` instead of starting a new turn.
 | approvals.request(call, reason) / answer(id, decision) / revoke(id) | Ask, answer, or revoke live-session grants; `pending` / `grants` / `grant_for()` read them |
 | id / prompt | Session ID / effective system prompt |
 | tools | Read-only `SessionTools` mapping of currently visible tool names to definitions; `.names` returns a frozenset |
-| ctx | Advanced: resolve services in this session's scope (`session.ctx[ToolRegistry]`) |
+| scope | Advanced: resolve services in this session's scope (`session.scope[ToolRegistry]`); import container types from `harnessed.kernel` |
 | control | Advanced: the SessionControl service for plugins and external UIs |
 | log | Advanced: live SessionLog state owner, current-turn buffer and event catalog |
 
@@ -451,12 +457,12 @@ unhashable. See [values and record versions](../concepts/values.md).
 | Plugin.create_instance() | Customize fresh instance construction; defaults to replaying explicit constructor arguments |
 | @plugin | Kernel services and hooks in an async generator |
 | class Capability(Plugin, needs=(Backend,)) / Inject[T] | Temporal lifetime / per-call service resolution |
-| @hook / Context.hook | Typed observer, bail or waterfall extension |
+| @hook / Scope.hook | Typed observer, bail or waterfall extension |
 | @hook(EventA, EventB, ...) | One handler accepting every listed event; shared priority and prepend options |
 | ToolContext | Call, log, signal, cancelled, progress, emit and approve(reason) |
-| ctx.register(install) / RegistrationState.active | Owned registration and lifecycle visibility |
-| ctx.effect(cleanup) | Owned idempotent sync/async cleanup |
-| await ctx.enter(manager) | Async context manager exited when the scope closes |
+| scope.register(install) / RegistrationState.active | Owned registration and lifecycle visibility |
+| scope.effect(cleanup) | Owned idempotent sync/async cleanup |
+| await scope.enter(manager) | Async context manager exited when the scope closes |
 | Service(T, implementation) | Structural dependency registration |
 | mount_plugin(recipe, services=...) | Typed test activation with cleanup; exported by harnessed.testing |
 

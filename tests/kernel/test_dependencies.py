@@ -4,13 +4,13 @@ from typing import Protocol
 import pytest
 
 from harnessed.kernel import (
-    Context,
     Emit,
     Inject,
     Key,
     PluginBase,
     PluginState,
     PluginStatus,
+    Scope,
     as_plugin_spec,
     dependency,
     hook,
@@ -36,10 +36,10 @@ async def test_fields_wait_without_needs_and_preserve_binding_during_every_clean
         backend = dependency(Backend)
         state = PluginState(list[str])
 
-        async def setup(self, ctx: Context) -> None:
+        async def setup(self, scope: Scope) -> None:
             instances.append(self)
             self.state.append(self.backend.read())
-            ctx.effect(lambda: cleaned.append((self.backend.read(), tuple(self.state))))
+            scope.effect(lambda: cleaned.append((self.backend.read(), tuple(self.state))))
 
         async def teardown(self) -> None:
             self.state.append("teardown")
@@ -47,24 +47,24 @@ async def test_fields_wait_without_needs_and_preserve_binding_during_every_clean
     recipe = Feature()
     with pytest.raises(RuntimeError, match="recipe"):
         _ = recipe.backend
-    async with Context() as ctx:
-        handle = await ctx.plugin(recipe)
+    async with Scope() as scope:
+        handle = await scope.plugin(recipe)
         assert handle.status is PluginStatus.WAITING
         assert handle.missing_services == (Backend,)
-        assert ctx.plugin_diagnostics()[0].missing == (Backend,)
-        ctx.provide(Backend, FakeBackend("one"))
-        await ctx.settle()
+        assert scope.plugin_diagnostics()[0].missing == (Backend,)
+        scope.provide(Backend, FakeBackend("one"))
+        await scope.settle()
         first = handle.instance
         assert first is instances[0] and first is not recipe
-        restore = ctx.provide(Backend, FakeBackend("two"))
-        await ctx.settle()
+        restore = scope.provide(Backend, FakeBackend("two"))
+        await scope.settle()
         assert instances[1] is not first
         assert instances[1].state == ["two"]
         assert cleaned == [("one", ("one", "teardown"))]
         with pytest.raises(RuntimeError, match="disposed activation"):
             _ = instances[0].backend
         await restore()
-        await ctx.settle()
+        await scope.settle()
         assert instances[2].backend.read() == "one"
         assert instances[2].state == ["one"]
     assert cleaned[-1] == ("one", ("one", "teardown"))
@@ -78,28 +78,28 @@ async def test_optional_field_restarts_on_appearance_replacement_and_disappearan
         backend = dependency(str, optional=True)
         values = PluginState(list[str])
 
-        async def setup(self, ctx: Context) -> None:
+        async def setup(self, scope: Scope) -> None:
             starts.append(self)
-            ctx.effect(lambda: cleaned.append(self.backend))
+            scope.effect(lambda: cleaned.append(self.backend))
 
     recipe = Feature()
     spec = as_plugin_spec(recipe)
     assert spec.needs == () and spec.observes == (str,)
-    async with Context() as ctx:
-        handle = await ctx.plugin(recipe)
+    async with Scope() as scope:
+        handle = await scope.plugin(recipe)
         assert handle.status is PluginStatus.ACTIVE and starts[0].backend is None
-        assert ctx.plugin_diagnostics() == ()
-        remove = ctx.provide(str, "first")
-        await ctx.settle()
+        assert scope.plugin_diagnostics() == ()
+        remove = scope.provide(str, "first")
+        await scope.settle()
         assert starts[1].backend == "first" and starts[1].values == []
-        override = ctx.provide(str, "second")
-        await ctx.settle()
+        override = scope.provide(str, "second")
+        await scope.settle()
         assert starts[2].backend == "second"
         await override()
-        await ctx.settle()
+        await scope.settle()
         assert starts[3].backend == "first"
         await remove()
-        await ctx.settle()
+        await scope.settle()
         assert starts[4].backend is None
     assert cleaned == [None, "first", "second", "first", None]
     assert len({id(instance) for instance in starts}) == 5
@@ -119,7 +119,7 @@ async def test_named_fields_inheritance_overrides_and_normalized_requirements():
     recipe = Child(needs=(key, int, key))
     spec = as_plugin_spec(recipe)
     assert spec.needs == (key, int) and spec.observes == ()
-    async with Context() as root:
+    async with Scope() as root:
         root.provide(key, "parent")
         root.provide(int, 1)
         child = root.extend()
@@ -145,7 +145,7 @@ async def test_constructor_values_are_fresh_and_explicit_clients_keep_identity()
             self.values: list[str] = []
 
     recipe = Feature(client, label="workspace")
-    async with Context() as one, Context() as two:
+    async with Scope() as one, Scope() as two:
         first = (await one.plugin(recipe)).instance
         second = (await two.plugin(recipe)).instance
         assert isinstance(first, Feature) and isinstance(second, Feature)
@@ -175,9 +175,9 @@ async def test_event_observers_need_no_producer():
         def observe(self, event: Notice) -> None:
             seen.append(event)
 
-    async with Context() as ctx:
-        handle = await ctx.plugin(Observer())
+    async with Scope() as scope:
+        handle = await scope.plugin(Observer())
         assert handle.status is PluginStatus.ACTIVE and handle.spec.needs == ()
         event = Notice()
-        await ctx.dispatch(event)
+        await scope.dispatch(event)
         assert seen == [event]

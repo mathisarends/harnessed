@@ -78,7 +78,7 @@ async def test_all_registration_routes_capture_metadata(route):
         return ToolResult("external")
 
     async with Agent(model=ScriptedModel(["unused"])).session() as session:
-        registry = session.ctx[ToolRegistry]
+        registry = session.scope[ToolRegistry]
         annotations = (AuditTag(route),)
         if route == "register":
             registry.register(python_tool, name="work", metadata=annotations)
@@ -88,7 +88,7 @@ async def test_all_registration_routes_capture_metadata(route):
             registry.register_external(
                 ToolDefinition("work", "External work", {}),
                 external,
-                owner=session.ctx,
+                owner=session.scope,
                 spec=ToolSpec(metadata=annotations),
             )
         plan = registry.plan(ToolCall("work"))
@@ -103,7 +103,7 @@ async def test_overrides_do_not_change_metadata_of_a_prepared_call():
         pytest.fail("A scheduled call must not follow a replacement")
 
     async with Agent(model=ScriptedModel(["unused"])).session() as session:
-        registry = session.ctx[ToolRegistry]
+        registry = session.scope[ToolRegistry]
         registry.register(original, name="work", metadata=(AuditTag("original"),))
         plan = registry.plan(ToolCall("work"))
         registry.register(

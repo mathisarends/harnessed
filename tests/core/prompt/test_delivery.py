@@ -2,19 +2,10 @@ import asyncio
 
 import pytest
 
-from harnessed import (
-    Agent,
-    Context,
-    Inject,
-    Instructions,
-    Plugin,
-    SectionDelivery,
-    SystemPrompt,
-    tool,
-)
+from harnessed import Agent, Inject, Instructions, Plugin, SectionDelivery, SystemPrompt, tool
 from harnessed.core.events.messages import ContextValueChangedEvent
 from harnessed.core.prompt.context import DynamicContext
-from harnessed.kernel import PluginStatus
+from harnessed.kernel import PluginStatus, Scope
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit
 
@@ -33,7 +24,7 @@ async def test_context_delivery_is_mount_owned_and_leaves_system_text_fixed():
     async with Agent(model=model, instructions="Fixed.").session() as session:
         session_audit = Audit(session)
         handle = await session.use(Feature(), section_delivery=SectionDelivery.CONTEXT)
-        assert list(session.ctx[DynamicContext].values.values()) == ["Runtime guidance."]
+        assert list(session.scope[DynamicContext].values.values()) == ["Runtime guidance."]
         assert not any(isinstance(e, ContextValueChangedEvent) for e in session_audit.events)
         await session.run("Use the capability")
         first = model.requests[-1]
@@ -41,7 +32,7 @@ async def test_context_delivery_is_mount_owned_and_leaves_system_text_fixed():
         assert any("Runtime guidance." in m.text for m in first.messages[1:])
         assert [definition.name for definition in first.tools] == ["inspect"]
         await handle.aclose()
-        assert session.ctx[DynamicContext].values == {}
+        assert session.scope[DynamicContext].values == {}
         await session.run("After unmount")
         assert all("Runtime guidance." not in m.text for m in model.requests[-1].messages)
         assert model.requests[-1].tools == ()
@@ -64,26 +55,26 @@ async def test_context_delivery_suspends_and_restarts_with_the_plugin():
     async with Agent(model=model).session() as session:
         handle = await session.use(Temporal(), section_delivery=SectionDelivery.CONTEXT)
         assert handle.status is PluginStatus.WAITING
-        assert calls == [] and session.ctx[DynamicContext].values == {}
-        remove = session.ctx.provide(Backend, Backend())
-        await session.ctx.settle()
-        assert list(session.ctx[DynamicContext].values.values()) == ["Activation 1."]
+        assert calls == [] and session.scope[DynamicContext].values == {}
+        remove = session.scope.provide(Backend, Backend())
+        await session.scope.settle()
+        assert list(session.scope[DynamicContext].values.values()) == ["Activation 1."]
         await session.run("Mounted")
         await remove()
-        await session.ctx.settle()
-        assert session.ctx[DynamicContext].values == {}
+        await session.scope.settle()
+        assert session.scope[DynamicContext].values == {}
         await session.run("Suspended")
         assert all("Activation 1." not in m.text for m in model.requests[-1].messages)
-        session.ctx.provide(Backend, Backend())
-        await session.ctx.settle()
-        assert list(session.ctx[DynamicContext].values.values()) == ["Activation 2."]
+        session.scope.provide(Backend, Backend())
+        await session.scope.settle()
+        assert list(session.scope[DynamicContext].values.values()) == ["Activation 2."]
         await session.run("Restarted")
         assert any("Activation 2." in m.text for m in model.requests[-1].messages)
         assert len(calls) == 2
 
 
 async def test_ignore_does_not_execute_providers_or_factories_or_read_files(tmp_path):
-    async def factory(ctx: Context) -> str:
+    async def factory(scope: Scope) -> str:
         pytest.fail("Ignored factories must not run")
 
     class Ignored(Feature):
@@ -97,7 +88,7 @@ async def test_ignore_does_not_execute_providers_or_factories_or_read_files(tmp_
     async with Agent(model=ScriptedModel(["done"])).session() as session:
         handle = await session.use(Ignored(), section_delivery=SectionDelivery.IGNORE)
         assert handle.status is PluginStatus.ACTIVE
-        assert session.ctx[DynamicContext].values == {}
+        assert session.scope[DynamicContext].values == {}
         await session.run("Tools still mounted")
         assert await session.prompt.render() == ""
 
@@ -106,8 +97,8 @@ async def test_ignore_does_not_execute_providers_or_factories_or_read_files(tmp_
 async def test_delivery_failures_roll_back_tools_context_and_owned_effects(failure, tmp_path):
     effects = []
 
-    async def factory(ctx: Context) -> str:
-        ctx.effect(lambda: effects.append("factory cleaned"))
+    async def factory(scope: Scope) -> str:
+        scope.effect(lambda: effects.append("factory cleaned"))
         if failure == "cancel":
             raise asyncio.CancelledError
         if failure == "factory":
@@ -115,8 +106,8 @@ async def test_delivery_failures_roll_back_tools_context_and_owned_effects(failu
         return "Session rules."
 
     class Broken(Feature):
-        async def setup(self, ctx: Context) -> None:
-            ctx.effect(lambda: effects.append("setup cleaned"))
+        async def setup(self, scope: Scope) -> None:
+            scope.effect(lambda: effects.append("setup cleaned"))
             if failure == "setup":
                 raise ValueError("setup failed")
 
@@ -146,7 +137,7 @@ async def test_delivery_failures_roll_back_tools_context_and_owned_effects(failu
         )
         with pytest.raises(error):
             await session.use(Broken(), section_delivery=SectionDelivery.CONTEXT)
-        assert session.ctx[DynamicContext].values == {}
+        assert session.scope[DynamicContext].values == {}
         assert "setup cleaned" in effects
         if failure != "setup":
             assert "teardown" in effects
@@ -161,9 +152,9 @@ async def test_factory_runs_once_per_mount_activation_and_cleanup_belongs_to_mou
     calls = []
     cleaned = []
 
-    async def factory(ctx: Context) -> str:
-        calls.append(ctx)
-        ctx.effect(lambda: cleaned.append(ctx))
+    async def factory(scope: Scope) -> str:
+        calls.append(scope)
+        scope.effect(lambda: cleaned.append(scope))
         return "Factory guidance."
 
     class Factory(Plugin):
@@ -176,7 +167,7 @@ async def test_factory_runs_once_per_mount_activation_and_cleanup_belongs_to_mou
         await session.run("Second")
         assert len(calls) == 1 and cleaned == []
         await handle.aclose()
-        assert cleaned == calls and session.ctx[DynamicContext].values == {}
+        assert cleaned == calls and session.scope[DynamicContext].values == {}
 
 
 async def test_duplicate_plugin_names_have_independent_mount_context():
@@ -187,11 +178,11 @@ async def test_duplicate_plugin_names_have_independent_mount_context():
     async with Agent(model=ScriptedModel([])).session() as session:
         one = await session.use(Guidance(), section_delivery=SectionDelivery.CONTEXT)
         two = await session.use(Guidance(), section_delivery=SectionDelivery.CONTEXT)
-        assert len(session.ctx[DynamicContext].values) == 2
+        assert len(session.scope[DynamicContext].values) == 2
         await one.aclose()
-        assert list(session.ctx[DynamicContext].values.values()) == ["Runtime guidance."]
+        assert list(session.scope[DynamicContext].values.values()) == ["Runtime guidance."]
         await two.aclose()
-        assert session.ctx[DynamicContext].values == {}
+        assert session.scope[DynamicContext].values == {}
 
 
 async def test_runtime_guidance_is_not_restored_as_a_durable_fact():
@@ -201,7 +192,7 @@ async def test_runtime_guidance_is_not_restored_as_a_durable_fact():
         await session.use(Feature(), section_delivery=SectionDelivery.CONTEXT)
         await session.run("Mounted")
     async with agent.session() as restored:
-        assert restored.ctx[DynamicContext].values == {}
+        assert restored.scope[DynamicContext].values == {}
         await restored.run("Reopened")
         assert all("Runtime guidance." not in m.text for m in model.requests[-1].messages)
 

@@ -17,7 +17,7 @@ and select it with `Plugin[MyPluginConfig]`. Pass one validated
 `config=MyPluginConfig(...)` object; the generic declares typed `self.config`.
 Constructors must be repeatable configuration code: each activation replays
 explicit constructor inputs. Keep mutable activation state in `PluginState` or
-`setup()`. Register resource cleanup with `ctx.effect()` as soon as allocation
+`setup()`. Register resource cleanup with `scope.effect()` as soon as allocation
 succeeds; these effects also run when setup fails. Applications retain ownership
 of explicitly supplied shared clients unless the plugin explicitly owns them.
 
@@ -37,7 +37,7 @@ prepended. See the [context guide](docs/guides/context.md).
 
 Hook priorities run in ascending order: `Priority.GUARD`, `Priority.DEFAULT`,
 then `Priority.OBSERVE`. Equal priorities keep registration order. Use explicit
-`owner=ctx` when registration happens outside the plugin's activated call chain.
+`owner=scope` when registration happens outside the plugin's activated call chain.
 Duplicate tool names require `override=True`. Plugin instruction blocks follow
 the resolved plugin list; replace a block by overriding `instructions()`.
 

@@ -41,7 +41,7 @@ async def test_virtual_and_local_filesystems_share_ranges_newlines_and_edit_sema
         model=ScriptedModel([]),
         plugins=[inmemoryfs],
     ).session() as session:
-        files = session.ctx[FileSystemBackend] if memory else LocalFileSystem(tmp_path)
+        files = session.scope[FileSystemBackend] if memory else LocalFileSystem(tmp_path)
         text = "ä😀\r\nlast\rline\n"
         await files.write(Path("nested/test.txt"), text)
         assert await files.read(Path("nested/test.txt")) == text

@@ -189,7 +189,7 @@ for removal in description.removed:
 ```
 
 `print(description)` provides a readable view of the same data. This is a static
-configuration snapshot; `session.ctx.plugin_diagnostics()` remains the live view
+configuration snapshot; `session.scope.plugin_diagnostics()` remains the live view
 of waiting plugins and missing services.
 
 Composition completes before prompt contributions and event declarations are
@@ -202,7 +202,7 @@ without a collection strategy raises `ConfigError` before providers run.
 See [ordered plugin instructions](context.md#select-plugin-order-explicitly).
 
 Plugin packs are accepted by `Agent(plugins=...)` and other packs, not by kernel
-`Context.plugin()` / `install()` or live `session.use()`. Runtime dependency
+`Scope.plugin()` / `install()` or live `session.use()`. Runtime dependency
 injection, binding overlays and plugin lifetimes retain their existing semantics.
 Run `uv run python -m examples.36_plugin_packs` for a complete offline example.
 
@@ -249,8 +249,8 @@ on recipes or disposed activations raise `RuntimeError`; use the active instance
 `PluginConfig` models are frozen, and `plugin.config` cannot be replaced.
 
 Allocate asynchronous resources in `setup` and register cleanup immediately with
-`ctx.effect(resource.aclose)`, or enter an async context manager with
-`await ctx.enter(...)`. Effects run even if setup fails. `teardown` runs only
+`scope.effect(resource.aclose)`, or enter an async context manager with
+`await scope.enter(...)`. Effects run even if setup fails. `teardown` runs only
 after successful setup. State factories should create plain values, not resources
 requiring cleanup. Tools, listeners and services already register their own
 reversible effects. `PluginState` is also available from `harnessed.kernel` for
@@ -329,7 +329,7 @@ leaves it waiting, removing the service tears it down, and replacing or restorin
 it restarts the plugin. `Inject[T]` resolves an argument from the current scope
 for each invocation; it does not infer lifetime requirements from class, setup,
 hook or tool annotations. Declare `needs` for required services whether accessed
-through injection or dynamically through `ctx[Database]`. Function plugins use
+through injection or dynamically through `scope[Database]`. Function plugins use
 `@plugin(needs=(Database,))`; bundles use `Bundle("name", needs=(Database,))`.
 Tool declarations contribute their own registration requirement for `ToolRegistry`.
 
@@ -406,9 +406,9 @@ to the session opened by `agent.run()`.
 
 Validation guarantees startup readiness. Later service removal, restoration and
 `session.use()` retain their temporal lifecycle behavior. The standalone kernel's
-`Context.install()` continues to allow deferred services by default; its `strict`
-option is unchanged. `ctx.plugin_diagnostics()` provides a read-only snapshot of
-waiting plugins in its shared runtime after `await ctx.settle()`, resolving each
+`Scope.install()` continues to allow deferred services by default; its `strict`
+option is unchanged. `scope.plugin_diagnostics()` provides a read-only snapshot of
+waiting plugins in its shared runtime after `await scope.settle()`, resolving each
 plugin's needs in its own mount scope.
 
 ## Separate a backend from its tools

@@ -1,7 +1,7 @@
 from collections.abc import Iterator, Mapping
 
 from harnessed.core.model import ToolDefinition
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 from .registry import ToolRegistry
 
@@ -14,9 +14,9 @@ class SessionTools(Mapping[str, ToolDefinition]):
     replacement without owning or changing registrations.
     """
 
-    def __init__(self, registry: ToolRegistry, ctx: Context) -> None:
+    def __init__(self, registry: ToolRegistry, scope: Scope) -> None:
         self._registry = registry
-        self._ctx = ctx
+        self._ctx = scope
 
     def __getitem__(self, name: str) -> ToolDefinition:
         for definition in self._registry.visible_definitions(self._ctx):

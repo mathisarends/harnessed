@@ -22,7 +22,7 @@ from harnessed.core.session.files import FileOffset, ReadLimit, SessionFiles
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import TokenCounter
 from harnessed.core.tools import ToolError, tool
-from harnessed.kernel import Context, Inject, Priority, hook
+from harnessed.kernel import Inject, Priority, Scope, hook
 
 logger = logging.getLogger(__name__)
 
@@ -159,11 +159,11 @@ class Spill(Plugin[SpillConfig], slot="spill", needs=(SessionLog, SessionFiles, 
         return SystemPrompt(_SPILL_INSTRUCTIONS)
 
     async def setup(
-        self, ctx: Context, session: Inject[SessionLog], files: Inject[SessionFiles]
+        self, scope: Scope, session: Inject[SessionLog], files: Inject[SessionFiles]
     ) -> None:
         self.store = _SessionSpills(files, session, self.config)
         await self.store.restore()
-        ctx.provide(SpillStore, self.store)
+        scope.provide(SpillStore, self.store)
 
     @hook(SessionAppended, priority=Priority.GUARD)
     def recorded(self, event: SessionAppended) -> None:

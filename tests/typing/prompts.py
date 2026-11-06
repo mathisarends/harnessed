@@ -12,7 +12,7 @@ from harnessed import (
     SystemPrompt,
 )
 from harnessed.core.prompt.values import PromptPart
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 
 class PromptFeature(Plugin):
@@ -38,7 +38,7 @@ parts: list[PromptPart | None] = ["Role.", None, feature.instructions()]
 assert_type(SystemPrompt(*parts).sections, tuple[PromptPart, ...])
 
 
-async def catalog(ctx: Context) -> str:
+async def catalog(scope: Scope) -> str:
     return "Catalog."
 
 

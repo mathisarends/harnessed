@@ -33,7 +33,7 @@ from harnessed.core.model import (
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import TokenCounter, count_request
 from harnessed.core.tracing import span
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 logger = logging.getLogger(__name__)
 _TRIGGER_RESULT = TypeAdapter(bool, config=ConfigDict(strict=True, hide_input_in_errors=True))
@@ -140,9 +140,9 @@ class CompactionManager:
     """Serialize summaries and commit only smaller, replayable projections."""
 
     def __init__(
-        self, ctx: Context, session_log: SessionLog, *, context_window: int | None
+        self, scope: Scope, session_log: SessionLog, *, context_window: int | None
     ) -> None:
-        self.ctx = ctx
+        self.scope = scope
         self.session_log = session_log
         self.context_window = context_window
         self._lock = asyncio.Lock()
@@ -151,19 +151,19 @@ class CompactionManager:
         self._retry_through = 0
 
     async def state(self, request: ModelRequest, *, model: Model) -> ContextState:
-        budget = self.ctx[ContextBudget] if ContextBudget in self.ctx else ContextBudget()
+        budget = self.scope[ContextBudget] if ContextBudget in self.scope else ContextBudget()
         return ContextState(
-            await count_request(self.ctx[TokenCounter], request),
+            await count_request(self.scope[TokenCounter], request),
             budget.output_reserve(request),
             budget.window_limit(self.context_window or model.info.context_window),
             self.session_log.uncompacted_turn_count,
         )
 
     async def prepare(self, request: ModelRequest, *, model: Model) -> ModelRequest:
-        if CompactionPolicy not in self.ctx:
+        if CompactionPolicy not in self.scope:
             return request
         state = await self.state(request, model=model)
-        policy = self.ctx[CompactionPolicy]
+        policy = self.scope[CompactionPolicy]
         if not set(policy.settings.preserve_turns) <= self.session_log._known_turns:
             raise ValueError("preserve_turns must refer to existing turns in the session log")
         decision = policy.trigger(state)
@@ -182,7 +182,7 @@ class CompactionManager:
         self, request: ModelRequest, *, model: Model, force: bool = True
     ) -> tuple[CompactionAppliedEvent | None, ModelRequest]:
         async with self._lock:
-            policy = self.ctx[CompactionPolicy] if CompactionPolicy in self.ctx else None
+            policy = self.scope[CompactionPolicy] if CompactionPolicy in self.scope else None
             settings = policy.settings if policy is not None else CompactionSettings()
             current = self.session_log.open_turn
             plan = _plan_compaction(
@@ -235,16 +235,16 @@ class CompactionManager:
         *,
         model: Model,
     ) -> tuple[CompactionAppliedEvent | None, ModelRequest]:
-        policy = self.ctx[CompactionPolicy] if CompactionPolicy in self.ctx else None
+        policy = self.scope[CompactionPolicy] if CompactionPolicy in self.scope else None
         current = self.session_log.open_turn
-        counter = self.ctx[TokenCounter]
+        counter = self.scope[TokenCounter]
         summarizer = policy.summarizer if policy is not None else None
         if summarizer is None:
             summarizer = ModelSummarizer(model, focus=settings.focus)
         # The input request stays a snapshot even if new inbox/context records arrive.
         previous = self.session_log.last(CompactionAppliedEvent)
         with span(
-            self.ctx, "compaction", session_id=self.session_log.id, through=plan.through
+            self.scope, "compaction", session_id=self.session_log.id, through=plan.through
         ) as trace:
             try:
                 summary = await summarizer.summarize(

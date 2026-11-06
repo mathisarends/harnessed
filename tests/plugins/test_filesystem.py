@@ -90,7 +90,7 @@ async def test_filesystem_plugin_schema_bounds_search_notices_and_safe_approvals
         plugins=[filesystem],
     )
     async with app.session() as session:
-        registry = session.ctx[ToolRegistry]
+        registry = session.scope[ToolRegistry]
         schemas = {definition.name: definition.parameters for definition in registry.definitions}
         assert schemas["read_file"]["properties"]["offset"]["minimum"] == 0
         assert schemas["read_file"]["properties"]["limit"]["maximum"] == 16_000

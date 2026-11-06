@@ -12,7 +12,7 @@ from importlib.metadata import distribution
 from pathlib import Path
 import re
 
-from harnessed.kernel import Context, Key, dependency
+from harnessed.kernel import Scope, Key, dependency
 assert 'pydantic' not in sys.modules
 from harnessed import (
     Agent, CompositionDescription, PluginPack, SessionState, OutputContract, Plugin, PluginConfig,

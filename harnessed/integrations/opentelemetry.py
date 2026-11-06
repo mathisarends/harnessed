@@ -27,7 +27,7 @@ from harnessed.core.model import ModelRequest, ModelUsage
 from harnessed.core.plugin import Plugin, PluginConfig
 from harnessed.core.runtime.control import StopAtBoundary
 from harnessed.core.tracing import Span, Tracer
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 _correlation: ContextVar[dict[str, str | int] | None] = ContextVar(
     "harnessed_trace_scope", default=None
@@ -221,9 +221,9 @@ class OpenTelemetryTracer(Plugin[OpenTelemetryConfig], slot="tracer"):
             raise TypeError("content_filter must be a synchronous callable or None")
         self.content_filter = content_filter
 
-    async def setup(self, ctx: Context) -> None:
+    async def setup(self, scope: Scope) -> None:
         self._tracer = trace.get_tracer("harnessed", tracer_provider=self.tracer_provider)
-        ctx.provide(Tracer, self)
+        scope.provide(Tracer, self)
 
     @contextmanager
     def span(self, name: str, **attributes: Any) -> Generator[Span]:

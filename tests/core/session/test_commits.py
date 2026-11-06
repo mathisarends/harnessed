@@ -158,7 +158,7 @@ async def test_coalescing_retains_ordered_changes_and_empty_flush_does_not_write
     monkeypatch.setattr(persistence_store, "_CHECKPOINT_INTERVAL", 60.0)
     store = RecordingStore()
     async with Agent(model=ScriptedModel([]), store=store).session(id="batch") as session:
-        await session.ctx[DynamicContext].set("seed", "ready")
+        await session.scope[DynamicContext].set("seed", "ready")
         before = len(store.commits)
         await session.emit(ContextMessageEvent(UserMessage("first")))
         await session.emit(ContextMessageEvent(UserMessage("second")))

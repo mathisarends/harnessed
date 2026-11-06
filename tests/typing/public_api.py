@@ -41,10 +41,10 @@ from harnessed.events import (
     TurnResultEvent,
 )
 from harnessed.kernel import (
-    Context,
     Inject,
     PluginDependencyIssue,
     PluginSpec,
+    Scope,
     dependency,
     hook,
     plugin,
@@ -55,7 +55,7 @@ from harnessed.services import SessionTools
 
 
 @plugin
-async def configured(ctx: Context, root: str, *, enabled: bool = True) -> AsyncGenerator[None]:
+async def configured(scope: Scope, root: str, *, enabled: bool = True) -> AsyncGenerator[None]:
     yield
 
 
@@ -186,12 +186,12 @@ async def typed_stream(session: Session) -> None:
             assert_type(event.outcome, ModelAttemptOutcome)
 
 
-async def functional_scope(ctx: Context) -> None:
-    # The standalone kernel Context stays independent of agent tools.
-    assert_type(ctx.extend(), Context)
+async def functional_scope(scope: Scope) -> None:
+    # The standalone kernel Scope stays independent of agent tools.
+    assert_type(scope.extend(), Scope)
 
 
-async def tool_scope(ctx: Context) -> None:
+async def tool_scope(scope: Scope) -> None:
     class Echo(Plugin):
         @tool(readonly=True)
         async def echo(self, value: str, *, call: ToolContext) -> str:
@@ -199,7 +199,7 @@ async def tool_scope(ctx: Context) -> None:
             return value
 
     assert_type(await Echo().echo("value", call=ToolContext.__new__(ToolContext)), str)
-    assert_type(ctx.extend(), Context)
+    assert_type(scope.extend(), Scope)
 
 
 def invalid_message_shapes() -> None:
@@ -220,8 +220,8 @@ def plugin_configuration_signatures() -> None:
     AgentLoop(max_step=8)  # ty: ignore[unknown-argument]
 
 
-def dependency_diagnostics(ctx: Context, error: PluginDependencyError) -> None:
-    assert_type(ctx.plugin_diagnostics(), tuple[PluginDependencyIssue, ...])
+def dependency_diagnostics(scope: Scope, error: PluginDependencyError) -> None:
+    assert_type(scope.plugin_diagnostics(), tuple[PluginDependencyIssue, ...])
     assert_type(error.issues, tuple[PluginDependencyIssue, ...])
     assert_type(error.issues[0].plugin, PluginSpec)
 

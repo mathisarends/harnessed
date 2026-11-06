@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import dataclass
 
 from harnessed import Plugin, ToolCall, tool
-from harnessed.kernel import Context, Emit, Inject
+from harnessed.kernel import Emit, Inject, Scope
 from harnessed.services import SystemPromptStore, ToolRegistry
 
 
@@ -23,12 +23,12 @@ class PageChanged(Emit):
 class BrowserTools(Plugin):
     needs = (Browser, ToolRegistry, SystemPromptStore)
 
-    async def setup(self, ctx: Context, browser: Inject[Browser]):
+    async def setup(self, scope: Scope, browser: Inject[Browser]):
         self.browser = browser
         print(f"Setup with {browser.name}")
-        ctx[SystemPromptStore].fixed(f"Current browser: {browser.name}")
-        ctx.on(PageChanged, lambda event: print(f"Listener with {browser.name}"))
-        ctx.effect(lambda: print(f"Custom effect cleaned for {browser.name}"))
+        scope[SystemPromptStore].fixed(f"Current browser: {browser.name}")
+        scope.on(PageChanged, lambda event: print(f"Listener with {browser.name}"))
+        scope.effect(lambda: print(f"Custom effect cleaned for {browser.name}"))
 
     @tool(readonly=True)
     async def title(self) -> str:
@@ -40,32 +40,32 @@ class BrowserTools(Plugin):
 
 
 async def main():
-    async with Context() as ctx:
-        ctx.provide(ToolRegistry, ToolRegistry(ctx))
-        ctx.provide(SystemPromptStore, SystemPromptStore(ctx))
-        feature = await ctx.plugin(BrowserTools())
+    async with Scope() as scope:
+        scope.provide(ToolRegistry, ToolRegistry(scope))
+        scope.provide(SystemPromptStore, SystemPromptStore(scope))
+        feature = await scope.plugin(BrowserTools())
         print("Before browser:", feature.status)
 
-        remove = ctx.provide(Browser, Browser("local browser"))
-        await ctx.settle()
+        remove = scope.provide(Browser, Browser("local browser"))
+        await scope.settle()
         print("Available:", feature.status)
-        print((await ctx[ToolRegistry].execute(ToolCall("title"))).content)
-        print("Prompt:", await ctx[SystemPromptStore].render())
-        await ctx.dispatch(PageChanged())
+        print((await scope[ToolRegistry].execute(ToolCall("title"))).content)
+        print("Prompt:", await scope[SystemPromptStore].render())
+        await scope.dispatch(PageChanged())
 
         await remove()
-        await ctx.settle()
+        await scope.settle()
         print("After service removal:", feature.status)
-        print("Visible tools:", [t.name for t in ctx[ToolRegistry].definitions])
-        print("Prompt after removal:", repr(await ctx[SystemPromptStore].render()))
-        await ctx.dispatch(PageChanged())
+        print("Visible tools:", [t.name for t in scope[ToolRegistry].definitions])
+        print("Prompt after removal:", repr(await scope[SystemPromptStore].render()))
+        await scope.dispatch(PageChanged())
 
-        ctx.provide(Browser, Browser("replacement browser"))
-        await ctx.settle()
+        scope.provide(Browser, Browser("replacement browser"))
+        await scope.settle()
         print("Recomposed:", feature.status)
-        print((await ctx[ToolRegistry].execute(ToolCall("title"))).content)
-        print("Fresh prompt:", await ctx[SystemPromptStore].render())
-        await ctx.dispatch(PageChanged())
+        print((await scope[ToolRegistry].execute(ToolCall("title"))).content)
+        print("Fresh prompt:", await scope[SystemPromptStore].render())
+        await scope.dispatch(PageChanged())
 
         # Permanent removal: this recipe will no longer restart.
         await feature.aclose()

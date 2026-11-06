@@ -190,8 +190,8 @@ async def test_builtin_writes_are_barriers_between_read_groups_and_same_file_ali
         await asyncio.to_thread((tmp_path / name).write_text, name)
 
     @plugin
-    async def filesystem(ctx):
-        ctx.provide(FileSystemBackend, ObservedFS(tmp_path))
+    async def filesystem(scope):
+        scope.provide(FileSystemBackend, ObservedFS(tmp_path))
         yield
 
     calls = (
@@ -516,7 +516,7 @@ async def test_replaced_tool_registration_cannot_run_with_stale_parallel_metadat
             nonlocal replaced
             if not replaced:
                 replaced = True
-                event.session.ctx[ToolRegistry].register(replacement, name="work", override=True)
+                event.session.scope[ToolRegistry].register(replacement, name="work", override=True)
             return await next_()
 
     tools = ToolsPlugin(name="replacement")

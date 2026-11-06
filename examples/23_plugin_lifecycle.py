@@ -15,7 +15,7 @@ from harnessed import (
 )
 from harnessed.events import TurnEndedEvent
 from harnessed.hooks import ExecuteTool, SessionAppended
-from harnessed.kernel import Context, Inject, PluginState, plugin
+from harnessed.kernel import Inject, PluginState, Scope, plugin
 from harnessed.models import ModelChunk
 from harnessed.plugins import Approvals
 from harnessed.testing import ScriptedModel
@@ -38,8 +38,8 @@ class MemoryNotes:
 
 
 @plugin()
-async def notes_backend(ctx: Context):
-    ctx.provide(Notes, MemoryNotes())
+async def notes_backend(scope: Scope):
+    scope.provide(Notes, MemoryNotes())
     yield
 
 
@@ -70,15 +70,15 @@ class NotesTools(Plugin, needs=(Notes,)):
 
 
 @plugin()
-async def trace(ctx: Context):
-    @ctx.on(ExecuteTool)
+async def trace(scope: Scope):
+    @scope.on(ExecuteTool)
     async def around_tool(event, next_):
         print(f"before {event.call.name}")
         result = await next_()
         print(f"after {event.call.name}: {result.status}")
         return result
 
-    @ctx.on(SessionAppended)
+    @scope.on(SessionAppended)
     def record(event):
         if isinstance(event.event, TurnEndedEvent):
             print(f"{event.log.id}: turn ended at event {event.seq}")
@@ -106,7 +106,7 @@ async def main():
 
     async with harness.session() as agent:
         print((await agent.run("Save a note.")).text)
-        print(agent.ctx[Notes].entries)
+        print(agent.scope[Notes].entries)
 
 
 if __name__ == "__main__":

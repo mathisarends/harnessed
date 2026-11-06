@@ -17,7 +17,7 @@ from harnessed.core.messages import ApprovalAnswer, PolicyDecision
 from harnessed.core.plugin import Plugin, PluginConfig
 from harnessed.core.tools import ToolRegistry
 from harnessed.core.tools.references import ToolReference, ToolSelector, tool_selector
-from harnessed.kernel import Context, Inject, Next, Priority, hook
+from harnessed.kernel import Inject, Next, Priority, Scope, hook
 
 from .messages import ToolCall
 
@@ -75,9 +75,9 @@ class ToolApprovalGuard(Plugin[ToolApprovalGuardConfig], needs=(ToolRegistry,)):
         self.risky = tuple(tool_selector(item) for item in self.config.risky)
         self.ask = self.config.ask
 
-    async def setup(self, ctx: Context, tools: Inject[ToolRegistry]) -> None:
-        self.risky = tuple(tools.reference(item, owner=ctx) for item in self.risky)
-        ctx.on(ToolPolicy, self._gate, priority=self.config.priority)
+    async def setup(self, scope: Scope, tools: Inject[ToolRegistry]) -> None:
+        self.risky = tuple(tools.reference(item, owner=scope) for item in self.risky)
+        scope.on(ToolPolicy, self._gate, priority=self.config.priority)
 
     async def _gate(
         self, event: ToolPolicy, next_: Next[PolicyDecision], tools: Inject[ToolRegistry]
@@ -254,13 +254,13 @@ class Approvals(Plugin[ApprovalsConfig], slot="approvals", needs=(ToolRegistry,)
         """Use ASK as the fallback, preserving explicit tool policy and guards."""
         return cls(default=PolicyDecision.ASK, approver=approver, timeout=timeout)
 
-    async def setup(self, ctx: Context, tools: Inject[ToolRegistry]) -> None:
-        self.allow = tuple(tools.reference(item, owner=ctx) for item in self.allow)
-        self.ask = tuple(tools.reference(item, owner=ctx) for item in self.ask)
-        self.deny = tuple(tools.reference(item, owner=ctx) for item in self.deny)
+    async def setup(self, scope: Scope, tools: Inject[ToolRegistry]) -> None:
+        self.allow = tuple(tools.reference(item, owner=scope) for item in self.allow)
+        self.ask = tuple(tools.reference(item, owner=scope) for item in self.ask)
+        self.deny = tuple(tools.reference(item, owner=scope) for item in self.deny)
         if self.approver is not None:
             # Tools and other guards asking mid-call reach the same human.
-            ctx.provide(Approver, self.approver)
+            scope.provide(Approver, self.approver)
 
     @hook(ToolPolicy, priority=Priority.GUARD)
     async def authorize(

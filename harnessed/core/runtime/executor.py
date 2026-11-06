@@ -36,7 +36,7 @@ from harnessed.core.tools.policy import OutputLimit
 from harnessed.core.tools.registry import ToolRegistry, format_tool_error
 from harnessed.core.tools.scheduling import PreparedToolCall, ToolScheduler, ToolScheduling
 from harnessed.core.tracing import span
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 if TYPE_CHECKING:
     from harnessed.core.runtime.session import Session
@@ -51,9 +51,9 @@ class ToolBatch:
 
 class ToolExecutor:
     def __init__(
-        self, ctx: Context, log: SessionLog, options: AgentOptions, session: Session
+        self, scope: Scope, log: SessionLog, options: AgentOptions, session: Session
     ) -> None:
-        self.ctx = ctx
+        self.scope = scope
         self.log = log
         self.options = options
         self.session = session
@@ -68,7 +68,7 @@ class ToolExecutor:
         if not calls:
             return
         plans: list[PreparedToolCall] = []
-        registry = self.ctx[ToolRegistry]
+        registry = self.scope[ToolRegistry]
         for call in calls:
             await self.log.append(ToolCallRequestedEvent(call))
             if not allow_execution:
@@ -99,7 +99,7 @@ class ToolExecutor:
 
     async def invoke(self, plan: PreparedToolCall, batch: ToolBatch) -> tuple[ToolResult, bool]:
         with span(
-            self.ctx, "tool", session_id=self.log.id, tool=plan.call.name, call_id=plan.call.id
+            self.scope, "tool", session_id=self.log.id, tool=plan.call.name, call_id=plan.call.id
         ) as current:
             current.set_attribute("input", plan.call)
             result, reviewable = await self.execute(plan, batch)
@@ -108,16 +108,16 @@ class ToolExecutor:
 
     async def execute(self, plan: PreparedToolCall, batch: ToolBatch) -> tuple[ToolResult, bool]:
         call = plan.call
-        execution = self.ctx[ToolContexts].create(call)
+        execution = self.scope[ToolContexts].create(call)
         result: ToolResult | None = None
         reviewable = False
         try:
             await self.log.append(ToolExecutionStartedEvent(call.id))
-            returned = await self.ctx.dispatch(
+            returned = await self.scope.dispatch(
                 ExecuteTool(call, self.session, tool=plan.tool),
-                default=lambda: self.ctx[ToolRegistry].execute(
+                default=lambda: self.scope[ToolRegistry].execute(
                     call,
-                    ctx=self.ctx,
+                    scope=self.scope,
                     call_context=execution,
                     _expected=plan.binding,
                     error_formatter=self.options.error_formatter,
@@ -207,11 +207,11 @@ class ToolExecutor:
         try:
             if plan.error is not None:
                 return plan.error
-            unavailable = self.ctx[ToolRegistry].check_enabled(plan, ctx=self.ctx)
+            unavailable = self.scope[ToolRegistry].check_enabled(plan, scope=self.scope)
             if unavailable is not None:
                 return unavailable
             previous = self.log.latest_approval(call.id)
-            decision = await self.ctx.dispatch(
+            decision = await self.scope.dispatch(
                 ToolPolicy(call, self.session, tool=plan.tool),
                 default=lambda: PolicyDecision.ALLOW,
             )
@@ -252,7 +252,7 @@ class ToolExecutor:
         result: ToolResult,
     ) -> ToolResult:
         try:
-            result = await self.ctx.dispatch(
+            result = await self.scope.dispatch(
                 ReviewToolResult(
                     plan.call, result, self.session, output_limit=plan.output_limit, tool=plan.tool
                 ),

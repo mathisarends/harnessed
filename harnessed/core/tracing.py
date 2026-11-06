@@ -2,7 +2,7 @@ from contextlib import AbstractContextManager, nullcontext
 from typing import Any, Protocol
 
 from harnessed.core.plugin import Plugin
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 
 class Span(Protocol):
@@ -19,9 +19,9 @@ class Tracer(Protocol):
     def span(self, name: str, **attributes: Any) -> AbstractContextManager[Span]: ...
 
 
-def span(ctx: Context, name: str, **attributes: Any) -> AbstractContextManager[Span]:
+def span(scope: Scope, name: str, **attributes: Any) -> AbstractContextManager[Span]:
     """Open a configured span, including for independently assembled runtimes."""
-    return ctx[Tracer].span(name, **attributes) if Tracer in ctx else nullcontext(_NoopSpan())
+    return scope[Tracer].span(name, **attributes) if Tracer in scope else nullcontext(_NoopSpan())
 
 
 class _NoopSpan:
@@ -35,5 +35,5 @@ class NoopTracer(Plugin, slot="tracer"):
     def span(self, name: str, **attributes: Any) -> AbstractContextManager[Span]:
         return nullcontext(_NoopSpan())
 
-    async def setup(self, ctx: Context) -> None:
-        ctx.provide(Tracer, self)
+    async def setup(self, scope: Scope) -> None:
+        scope.provide(Tracer, self)

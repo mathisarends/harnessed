@@ -10,7 +10,7 @@ from harnessed import (
     tool,
 )
 from harnessed.core.tools import ToolRegistry
-from harnessed.kernel import Context, PluginState, dependency
+from harnessed.kernel import PluginState, Scope, dependency
 from harnessed.plugins import Service
 from harnessed.testing import mount_plugin
 
@@ -26,8 +26,8 @@ class Feature(Plugin[FeatureConfig]):
     def instructions(self) -> SystemPrompt:
         return SystemPrompt(Instructions(text="Explicit placement is required only in an agent."))
 
-    async def setup(self, ctx: Context) -> None:
-        ctx.effect(lambda: self.values.append("closed"))
+    async def setup(self, scope: Scope) -> None:
+        scope.effect(lambda: self.values.append("closed"))
 
     @tool(readonly=True)
     async def read(self) -> str:
@@ -114,18 +114,18 @@ async def test_prepared_call_keeps_original_activation_after_dependency_replacem
             executed.append(self.backend)
             return self.backend
 
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
-        ctx.provide(ToolRegistry, registry)
-        ctx.provide(str, "first")
-        handle = await ctx.plugin(Reader())
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
+        scope.provide(ToolRegistry, registry)
+        scope.provide(str, "first")
+        handle = await scope.plugin(Reader())
         original = handle.instance
         plan = registry.plan(ToolCall("read"))
-        assert registry.check_enabled(plan, ctx=ctx) is None
-        ctx.provide(str, "replacement")
-        await ctx.settle()
+        assert registry.check_enabled(plan, scope=scope) is None
+        scope.provide(str, "replacement")
+        await scope.settle()
         assert handle.instance is not original
-        rejected = registry.check_enabled(plan, ctx=ctx)
+        rejected = registry.check_enabled(plan, scope=scope)
         assert rejected is not None and rejected.is_error
         assert "registration changed" in rejected.text
         assert executed == []

@@ -60,7 +60,7 @@ async def test_large_results_spill_to_session_files_and_keep_structured_metadata
         result = (await agent.run("go")).tool_calls[0][1]
         assert result.exit_code == 3 and result.status == ToolStatus.ERROR
         assert result.spill is not None and result.content != original
-        files = agent.ctx[SessionFiles]
+        files = agent.scope[SessionFiles]
         chunks = [
             await files.read(result.spill.path, offset=offset, limit=16000)
             for offset in range(0, len(original), 16000)
@@ -83,7 +83,7 @@ async def test_large_results_spill_to_session_files_and_keep_structured_metadata
         model=ScriptedModel([]),
         plugins=[spill_2],
     ).session(state=state) as restored:
-        assert await restored.ctx[SpillStore].read(ref.path, offset=7, limit=6) == "output"
+        assert await restored.scope[SpillStore].read(ref.path, offset=7, limit=6) == "output"
 
 
 async def test_session_spill_reads_unicode_ranges_reject_escape_and_reuse_content(tmp_path):
@@ -93,7 +93,7 @@ async def test_session_spill_reads_unicode_ranges_reject_escape_and_reuse_conten
         model=ScriptedModel([]),
         plugins=[spill],
     ).session() as session:
-        store = session.ctx[SpillStore]
+        store = session.scope[SpillStore]
         refs = await asyncio.gather(*(store.put("ä😀abc") for _ in range(20)))
         first = refs[0]
         assert all(ref == first for ref in refs)
@@ -114,7 +114,7 @@ async def test_read_spill_tool_returns_bounded_ranges_without_respilling():
         plugins=[spill_5],
     ).session() as agent:
         agent_audit = Audit(agent)
-        ref = await agent.ctx[SpillStore].put("x" * 100)
+        ref = await agent.scope[SpillStore].put("x" * 100)
         model.responses.extend(
             [
                 [ModelChunk(tool_call=ToolCall("read_spill", {"path": ref.path, "limit": 40}))],

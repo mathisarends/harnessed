@@ -5,7 +5,7 @@ from pydantic import Field
 
 from harnessed.core.messages import OutputTruncation, ToolResult
 from harnessed.core.plugin import Plugin, PluginConfig
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 
 class ToolOutputLimitConfig(PluginConfig):
@@ -22,8 +22,8 @@ class ToolOutputLimit(Plugin[ToolOutputLimitConfig], slot="output_limit"):
     def max_chars(self) -> int:
         return self.config.max_chars
 
-    async def setup(self, ctx: Context) -> None:
-        ctx.provide(ToolOutputLimit, self)
+    async def setup(self, scope: Scope) -> None:
+        scope.provide(ToolOutputLimit, self)
 
     def apply(self, result: ToolResult) -> ToolResult:
         text = result.text

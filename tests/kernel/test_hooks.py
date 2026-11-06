@@ -3,12 +3,12 @@ import pytest
 from harnessed.core.plugin import Plugin
 from harnessed.kernel import (
     Bail,
-    Context,
     Emit,
     Inject,
     Next,
     Parallel,
     PluginBase,
+    Scope,
     Waterfall,
     hook,
 )
@@ -58,21 +58,21 @@ async def test_multi_event_methods_dispatch_with_injection_and_follow_plugin_lif
             seen.append((event, value))
 
     events = (Ping(), Pong(), Together())
-    async with Context() as ctx:
-        ctx.provide(int, 1)
+    async with Scope() as scope:
+        scope.provide(int, 1)
         recipe = Recorder()
-        handle = await ctx.plugin(recipe)
+        handle = await scope.plugin(recipe)
         for event in events:
-            await ctx.dispatch(event)
+            await scope.dispatch(event)
         await handle.aclose()
         for event in events:
-            await ctx.dispatch(event)
-        ctx.provide(int, 2)
-        await ctx.plugin(recipe)
+            await scope.dispatch(event)
+        scope.provide(int, 2)
+        await scope.plugin(recipe)
         for event in events:
-            await ctx.dispatch(event)
+            await scope.dispatch(event)
     for event in events:
-        await ctx.dispatch(event)
+        await scope.dispatch(event)
     assert seen == [(event, value) for value in (1, 2) for event in events]
 
 
@@ -85,16 +85,16 @@ async def test_multi_event_priority_prepend_and_stacked_hooks() -> None:
         def forward(self, event: Ping | Pong | Together) -> None:
             seen.append("shared")
 
-    async with Context() as ctx:
+    async with Scope() as scope:
         for event in (Ping, Pong):
-            ctx.on(event, lambda event: seen.append("default"))
-            ctx.on(event, lambda event: seen.append("early"), priority=-10)
-            ctx.on(event, lambda event: seen.append("first"), priority=-20)
-        await ctx.plugin(Recorder())
-        await ctx.dispatch(Ping())
+            scope.on(event, lambda event: seen.append("default"))
+            scope.on(event, lambda event: seen.append("early"), priority=-10)
+            scope.on(event, lambda event: seen.append("first"), priority=-20)
+        await scope.plugin(Recorder())
+        await scope.dispatch(Ping())
         assert seen == ["first", "early", "default", "shared"]
         seen.clear()
-        await ctx.dispatch(Pong())
+        await scope.dispatch(Pong())
         assert seen == ["first", "shared", "early", "default"]
 
 
@@ -108,13 +108,13 @@ async def test_multi_event_bail_and_waterfall_keep_their_dispatch_semantics() ->
         async def wrap(self, event: FirstWrap | SecondWrap, next_: Next[str]) -> str:
             return "[" + await next_() + "]"
 
-    async with Context() as ctx:
-        await ctx.plugin(Handlers())
+    async with Scope() as scope:
+        await scope.plugin(Handlers())
         for choice in (FirstChoice, SecondChoice):
-            ctx.on(choice, lambda event: pytest.fail("Bail must stop at zero"))
-            assert await ctx.dispatch(choice()) == 0
+            scope.on(choice, lambda event: pytest.fail("Bail must stop at zero"))
+            assert await scope.dispatch(choice()) == 0
         for wrap in (FirstWrap(), SecondWrap()):
-            assert await ctx.dispatch(wrap, default=lambda: "core") == "[core]"
+            assert await scope.dispatch(wrap, default=lambda: "core") == "[core]"
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
@@ -128,16 +128,16 @@ async def test_waterfall_terminal_supports_sync_and_async_results(asynchronous: 
     async def async_terminal() -> str:
         return terminal()
 
-    async with Context() as ctx:
+    async with Scope() as scope:
 
-        @ctx.hook(FirstWrap)
+        @scope.hook(FirstWrap)
         async def wrap(event: FirstWrap, next_: Next[str]) -> str:
             result = await next_()
             seen.append(result)
             return f"[{result}]"
 
         default = async_terminal if asynchronous else terminal
-        assert await ctx.dispatch(FirstWrap(), default=default) == "[core]"
+        assert await scope.dispatch(FirstWrap(), default=default) == "[core]"
     assert seen == ["terminal", "core"]
 
 
@@ -165,10 +165,10 @@ async def test_multi_event_keys_create_independent_listeners(
             seen.append(event)
 
     event = Ping()
-    async with Context() as ctx:
-        await ctx.plugin(Recorder())
+    async with Scope() as scope:
+        await scope.plugin(Recorder())
         seen.clear()
-        await ctx.dispatch(event)
+        await scope.dispatch(event)
     assert seen == [event, event]
 
 

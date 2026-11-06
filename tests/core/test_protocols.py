@@ -20,7 +20,7 @@ from harnessed.core.messages import ApprovalAnswer, PolicyDecision
 from harnessed.core.model import Model, ModelChunk
 from harnessed.core.runtime.agent_loop import AgentFactory
 from harnessed.core.tokens import TokenCounter
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 from harnessed.plugins import Approvals
 from harnessed.plugins.filesystem import FileSystemBackend, FilesystemTools
 from harnessed.plugins.shell import ProcResult, ShellTools
@@ -82,8 +82,8 @@ async def test_foreign_fs_and_model_work_through_di_without_framework_inheritanc
     )
 
     @plugin
-    async def foreign_files(ctx: Context):
-        ctx.provide(FileSystemBackend, files)
+    async def foreign_files(scope: Scope):
+        scope.provide(FileSystemBackend, files)
         yield
 
     assert ForeignFiles.__bases__ == (object,)
@@ -132,15 +132,15 @@ async def test_foreign_shell_and_approver_are_accepted_structurally(tmp_path):
     model = ForeignModel([[ModelChunk(tool_call=call)], [ModelChunk(text="reviewed")]])
 
     @plugin
-    async def foreign_services(ctx: Context):
-        ctx.provide(Shell, shell)
-        ctx.provide(Approver, approver)
+    async def foreign_services(scope: Scope):
+        scope.provide(Shell, shell)
+        scope.provide(Approver, approver)
         yield
 
     @plugin(needs=[Approver])
-    async def policy(ctx: Context):
+    async def policy(scope: Scope):
 
-        @ctx.on(ToolPolicy)
+        @scope.on(ToolPolicy)
         async def ask(event, next_):
             return PolicyDecision.ASK
 

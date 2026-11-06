@@ -1,37 +1,16 @@
 # SDK ergonomics tickets
 
-These tickets come from an SDK ergonomics review of `origin/main` at `2a1047f`.
-They are **proposals for review**. They are not implemented API contracts, and
-the roadmap in `docs/contributing/roadmap.md` stays authoritative for scheduled
-scope. When a ticket is accepted and implemented, delete its file in the same PR
-and record user-visible changes in `Changelog.md`.
+The seven numbered tickets from the SDK review at `2a1047f` are implemented and
+their proposal files have been removed. The changes cover domain event modules,
+consistent event tags and audit format v4, shared event roles and plugin-owned
+events, UI stream delivery, approval policy, session tool inspection and public
+services, and the kernel scope API.
 
-Each ticket is self-contained, so another agent can pick it up without the
-review conversation. Every ticket lists:
+Current contracts live in the SDK reference and topic guides. Upgrade notes are
+in `Changelog.md`. Future scope remains in `docs/contributing/roadmap.md`; the
+unverified ideas below are not implemented API contracts.
 
-- **Problem**, with evidence from `origin/main` (paths, counts).
-- **Target API**, as the code an application or plugin author would write.
-- **Scope**, the affected modules, tests and docs.
-- **Steps**, an implementation order that keeps the repository green.
-- **Acceptance**, the checks that must pass.
-- **Decisions**, open questions the reviewer must answer before work starts.
-
-## Status values
-
-`proposed` → `accepted` → `in progress` → done (file deleted).
-`rejected` tickets get a one-line reason and are then deleted.
-
-## Index
-
-| # | Ticket | Priority | Breaking | Depends on | Status |
-|---|--------|----------|----------|------------|--------|
-| 07 | [Rename kernel `Context` to `Scope`](07-kernel-context-to-scope.md) | medium | yes | 06 | proposed |
-
-Tickets 01–04 belong together. Do 01 first because it is a pure move that later
-diffs can build on. 02 and 04 are breaking, so ideally they ship in the same
-release as one log-format bump.
-
-## Acceptance baseline for every ticket
+## Acceptance baseline
 
 From `AGENTS.md`:
 

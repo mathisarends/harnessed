@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, RootModel, ValidationError, m
 
 from harnessed import Agent, Plugin, ToolCall, ToolContext, tool
 from harnessed.core.tools.registry import ToolRegistry, ToolSpec
-from harnessed.kernel import Context, Inject
+from harnessed.kernel import Inject, Scope
 from harnessed.plugins import Service
 from harnessed.testing import ScriptedModel, call
 
@@ -77,8 +77,8 @@ async def test_parameter_model_mount_schema_execution_and_scripted_references(bo
     ],
 )
 async def test_invalid_parameter_models_fail_before_invocation_and_in_scripted_calls(arguments):
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
 
         @registry.tool(params=SearchParams)
         async def search(params: SearchParams) -> str:
@@ -97,9 +97,9 @@ async def test_parameter_model_direct_registration_sync_tools_and_annotated_alia
         assert type(request) is SearchParams
         return request.limit + count
 
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
-        ctx.provide(int, 2)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
+        scope.provide(int, 2)
         dispose = registry.register(search, params=SearchParams)
         assert (await registry.execute(ToolCall("search", {"query": "keyboard"}))).text == "7"
         await dispose()
@@ -113,8 +113,8 @@ class FilterParams(BaseModel):
 
 
 async def test_parameter_models_preserve_aliases_json_types_and_per_call_default_factories():
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
 
         @registry.tool(params=FilterParams)
         async def filter_products(request: FilterParams) -> FilterParams:
@@ -142,8 +142,8 @@ async def test_parameter_models_forbid_extra_inputs_even_when_model_allows_them(
         model_config = ConfigDict(extra="allow")
         query: str
 
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
 
         @registry.tool(params=OpenParams)
         def search(params: OpenParams) -> str:
@@ -160,8 +160,8 @@ class TreeParams(BaseModel):
 
 
 async def test_recursive_parameter_models_keep_nested_schema_references():
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
 
         @registry.tool(params=TreeParams)
         async def tree(params: TreeParams) -> str:
@@ -214,8 +214,8 @@ def variadic(params: SearchParams, **kwargs: str) -> None: ...
     ],
 )
 async def test_invalid_parameter_model_signatures_fail_registration_atomically(callback):
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
         with pytest.raises(TypeError):
             registry.register(callback, params=SearchParams)
         assert registry.definitions == ()
@@ -235,7 +235,7 @@ def test_parameter_fields_cannot_be_combined_with_a_parameter_model():
         tool(params=SearchParams, parameter_fields=lambda owner: {"query": Field(min_length=3)})(
             wrong_annotation
         )
-    registry = ToolRegistry(Context())
+    registry = ToolRegistry(Scope())
     with pytest.raises(ValueError, match="params cannot be combined with parameter_fields"):
         registry.register(wrong_annotation, params=SearchParams, parameter_fields={})
     assert registry.definitions == ()
@@ -247,10 +247,13 @@ def test_external_tools_cannot_declare_a_python_parameter_model():
     async def handler(arguments, context):
         pytest.fail("Invalid external registration was invoked")
 
-    ctx = Context()
-    registry = ToolRegistry(ctx)
+    scope = Scope()
+    registry = ToolRegistry(scope)
     with pytest.raises(ValueError, match="External tools use their definition's parameter schema"):
         registry.register_external(
-            ToolDefinition("search", "", {}), handler, owner=ctx, spec=ToolSpec(params=SearchParams)
+            ToolDefinition("search", "", {}),
+            handler,
+            owner=scope,
+            spec=ToolSpec(params=SearchParams),
         )
     assert registry.definitions == ()

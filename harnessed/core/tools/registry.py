@@ -34,10 +34,10 @@ from harnessed.core.tools.scheduling import (
 )
 from harnessed.kernel import (
     BindingPlan,
-    Context,
     Dependency,
     Disposer,
     RegistrationState,
+    Scope,
     binding_plan,
     run_sync,
 )
@@ -112,13 +112,15 @@ class ToolSpec:
     def needs(self) -> tuple[type, ...]:
         return (ToolRegistry,)
 
-    def mount(self, ctx: Context, callback: Callable) -> Disposer:
+    def mount(self, scope: Scope, callback: Callable) -> Disposer:
         fields = None
         if self.parameter_fields is not None:
             if not isinstance(callback, MethodType):
                 raise TypeError("parameter_fields requires a bound @tool method")
             fields = self.parameter_fields(callback.__self__)
-        return ctx[ToolRegistry].register(callback, spec=self, owner=ctx, parameter_fields=fields)
+        return scope[ToolRegistry].register(
+            callback, spec=self, owner=scope, parameter_fields=fields
+        )
 
 
 type ErrorFormatter = Callable[[ToolCall, Exception], str]
@@ -141,10 +143,10 @@ def format_tool_error(
 class _RegisteredTool:
     definition: ToolDefinition
     callback: Callable
-    owner: Context
+    owner: Scope
     registration: RegistrationState
     spec: ToolSpec
-    enabled: Callable[[Context], bool]
+    enabled: Callable[[Scope], bool]
 
 
 @dataclass(eq=False)
@@ -171,13 +173,13 @@ class _Converter:
 
 
 class ToolRegistry:
-    def __init__(self, ctx: Context) -> None:
-        self._ctx = ctx
+    def __init__(self, scope: Scope) -> None:
+        self._ctx = scope
         self._tools: dict[str, list[_Tool]] = {}
         self._converters: dict[type, list[_Converter]] = {}
         self._references: list[ToolReference] = []
 
-    def reference(self, selector: ToolSelector, *, owner: Context) -> str | ToolReference:
+    def reference(self, selector: ToolSelector, *, owner: Scope) -> str | ToolReference:
         selected = tool_selector(selector)
         if isinstance(selected, ToolReference):
 
@@ -204,10 +206,10 @@ class ToolRegistry:
         return tool is not None and selector.matches(tool.callback)
 
     def result_converter[T](
-        self, kind: type[T], callback: Callable[[T], ToolResult], *, owner: Context | None = None
+        self, kind: type[T], callback: Callable[[T], ToolResult], *, owner: Scope | None = None
     ) -> Disposer:
         """Own a converter for a feature's result value for the plugin lifetime."""
-        owner = owner if owner is not None else Context.current() or self._ctx
+        owner = owner if owner is not None else Scope.current() or self._ctx
 
         def install(registration: RegistrationState):
             entries = self._converters.setdefault(kind, [])
@@ -254,7 +256,7 @@ class ToolRegistry:
         confirm: bool = False,
         output_limit: OutputLimitSetting = OutputLimit.INHERIT,
         override: bool = False,
-        owner: Context | None = None,
+        owner: Scope | None = None,
         params: type[BaseModel] | None = None,
         metadata: tuple[object, ...] = (),
         chain: ToolChain = ToolChain.CONTINUE,
@@ -280,7 +282,7 @@ class ToolRegistry:
         confirm: bool = False,
         output_limit: OutputLimitSetting = OutputLimit.INHERIT,
         override: bool = False,
-        owner: Context | None = None,
+        owner: Scope | None = None,
         params: type[BaseModel] | None = None,
         metadata: tuple[object, ...] = (),
         chain: ToolChain = ToolChain.CONTINUE,
@@ -331,7 +333,7 @@ class ToolRegistry:
         confirm: bool = False,
         output_limit: OutputLimitSetting = OutputLimit.INHERIT,
         override: bool = False,
-        owner: Context | None = None,
+        owner: Scope | None = None,
         spec: ToolSpec | None = None,
         parameter_fields: Mapping[str, FieldInfo] | None = None,
         params: type[BaseModel] | None = None,
@@ -358,7 +360,7 @@ class ToolRegistry:
         )
         name, timeout, parallel = spec.name, spec.timeout, spec.parallel
         resources, readonly, override = spec.resources, spec.readonly, spec.override
-        owner = owner if owner is not None else Context.current() or self._ctx
+        owner = owner if owner is not None else Scope.current() or self._ctx
         check_enabled = bind_enabled(spec.enabled, callback, owner)
         ToolScheduling(parallel)
         resources = resource_spec(resources)
@@ -417,7 +419,7 @@ class ToolRegistry:
         definition: ToolDefinition,
         handler: ExternalToolHandler,
         *,
-        owner: Context,
+        owner: Scope,
         spec: ToolSpec | None = None,
     ) -> Disposer:
         """Own a schema-defined tool on the normal execution and policy pipeline.
@@ -466,36 +468,36 @@ class ToolRegistry:
     def definitions(self) -> tuple[ToolDefinition, ...]:
         return self.visible_definitions(self._ctx)
 
-    def _available(self, tool: _Tool, ctx: Context) -> bool:
+    def _available(self, tool: _Tool, scope: Scope) -> bool:
         if isinstance(tool, _ExternalTool):
-            return ToolContexts in ctx
+            return ToolContexts in scope
         return all(
             dependency.optional
-            or dependency.key in ctx
-            or (dependency.key is ToolContext and ToolContexts in ctx)
+            or dependency.key in scope
+            or (dependency.key is ToolContext and ToolContexts in scope)
             for dependency in tool.plan.dependencies.values()
         )
 
-    def visible_definitions(self, ctx: Context) -> tuple[ToolDefinition, ...]:
+    def visible_definitions(self, scope: Scope) -> tuple[ToolDefinition, ...]:
         return tuple(
             tool.definition
             for entries in self._tools.values()
             if (tool := self._visible(entries)) is not None
-            and self._available(tool, ctx)
-            and tool.enabled(ctx)
+            and self._available(tool, scope)
+            and tool.enabled(scope)
         )
 
     def _visible(self, entries: list[_Tool]) -> _Tool | None:
         return next((tool for tool in reversed(entries) if tool.registration.active), None)
 
-    def check_enabled(self, plan: PreparedToolCall, *, ctx: Context) -> ToolResult | None:
+    def check_enabled(self, plan: PreparedToolCall, *, scope: Scope) -> ToolResult | None:
         """Reject disabled calls before policy/approval without following a replaced binding."""
         tool = self._visible(self._tools.get(plan.call.name, []))
         if tool is not plan.binding:
             return ToolResult.error(
                 "Tool registration changed during batch planning; issue a fresh call"
             )
-        if tool is not None and not tool.enabled(ctx):
+        if tool is not None and not tool.enabled(scope):
             return ToolResult.unavailable(f"Tool {plan.call.name} is currently disabled")
         return None
 
@@ -537,7 +539,7 @@ class ToolRegistry:
         self,
         call: ToolCall,
         *,
-        ctx: Context | None = None,
+        scope: Scope | None = None,
         call_context: ToolContext | None = None,
         _expected: object = _UNSPECIFIED,
         error_formatter: ErrorFormatter | None = None,
@@ -553,11 +555,11 @@ class ToolRegistry:
             )
         if tool is None:
             return ToolResult.error(f"Unknown tool: {call.name}")
-        ctx = ctx or self._ctx
+        scope = scope or self._ctx
         try:
-            if not tool.enabled(ctx):
+            if not tool.enabled(scope):
                 return ToolResult.unavailable(f"Tool {call.name} is currently disabled")
-            if not self._available(tool, ctx):
+            if not self._available(tool, scope):
                 return ToolResult.error(
                     f"Tool {call.name} is unavailable: missing injected service"
                 )
@@ -568,7 +570,7 @@ class ToolRegistry:
                 )
             )
             if call_context is None and needs_context:
-                call_context = ctx[ToolContexts].create(call)
+                call_context = scope[ToolContexts].create(call)
             with tool.owner.activate():
                 async with asyncio.timeout(
                     tool.spec.timeout if tool.spec.timeout is not None else default_timeout
@@ -581,7 +583,7 @@ class ToolRegistry:
                     extra: dict[type, Any] = (
                         {ToolContext: call_context} if call_context is not None else {}
                     )
-                    bound = tool.plan.bind(ctx, kwargs=arguments, extra=extra)
+                    bound = tool.plan.bind(scope, kwargs=arguments, extra=extra)
                     if inspect.iscoroutinefunction(tool.callback):
                         value = await tool.callback(*bound.args, **bound.kwargs)
                     else:

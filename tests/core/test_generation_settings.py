@@ -9,7 +9,7 @@ from harnessed.core.hooks import ConfigureRequest
 from harnessed.core.model import Model, ModelRequest, resolve_request_settings
 from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.events import ModelRequestedEvent
-from harnessed.kernel import Context, plugin
+from harnessed.kernel import Scope, plugin
 from harnessed.models import GenerationSettings, ModelInfo
 from harnessed.testing import ScriptedModel
 
@@ -79,7 +79,7 @@ async def test_request_uses_the_model_binding_captured_before_request_hooks():
     )
 
     @plugin
-    async def swap(ctx: Context):
+    async def swap(scope: Scope):
         changed = False
 
         async def configure(
@@ -87,11 +87,11 @@ async def test_request_uses_the_model_binding_captured_before_request_hooks():
         ) -> ModelRequest:
             nonlocal changed
             if not changed:
-                ctx.provide(Model, replacement)
+                scope.provide(Model, replacement)
                 changed = True
             return await next_()
 
-        ctx.on(ConfigureRequest, configure)
+        scope.on(ConfigureRequest, configure)
         yield
 
     async with Agent(model=original, plugins=[swap()]).session() as session:

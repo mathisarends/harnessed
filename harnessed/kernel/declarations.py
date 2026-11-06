@@ -14,7 +14,7 @@ from .spec import PluginSpec
 from .state import PluginState
 
 if TYPE_CHECKING:
-    from .context import Context
+    from .scope import Scope
 
 type HookEntry = tuple[type[Event], Callable] | tuple[type[Event], Callable, int]
 
@@ -32,7 +32,7 @@ class Registration(Protocol):
     @property
     def needs(self) -> tuple[ServiceKey[Any], ...]: ...
 
-    def mount(self, ctx: Context, callback: Callable) -> Any: ...
+    def mount(self, scope: Scope, callback: Callable) -> Any: ...
 
 
 class Bundle:
@@ -66,11 +66,11 @@ class Bundle:
         needs = list(self.needs)
         needs.extend(key for registration, _ in registrations for key in registration.needs)
 
-        async def mount(ctx):
+        async def mount(scope):
             for event, callback, prepend, priority in hooks:
-                ctx.on(event, callback, prepend=prepend, priority=priority)
+                scope.on(event, callback, prepend=prepend, priority=priority)
             for registration, callback in registrations:
-                await resolve(registration.mount(ctx, callback))
+                await resolve(registration.mount(scope, callback))
             yield
 
         return PluginSpec(self.name, mount, tuple(dict.fromkeys(needs)), (), {})
@@ -81,7 +81,7 @@ class PluginBase:
 
     Constructors must only describe configuration and capabilities. Inputs retain
     their identity; constructor-created values and PluginState are fresh per mount.
-    Acquire resources in setup and register their cleanup on its Context.
+    Acquire resources in setup and register their cleanup on its Scope.
     """
 
     needs: tuple[ServiceKey[Any], ...] = ()
@@ -215,7 +215,7 @@ class PluginBase:
         needs.extend(binding.key for binding in dependencies.values() if not binding.optional)
         needs.extend(key for registration, _ in registrations for key in registration.needs)
 
-        async def mount(ctx):
+        async def mount(scope):
             instance = self.create_instance()
             if instance is self or type(instance) is not type(self):
                 raise TypeError("create_instance must return a fresh instance of the recipe class")
@@ -227,31 +227,31 @@ class PluginBase:
                 instance._mount_state = None
                 instance._mount_injections = None
 
-            ctx.effect(clear_state)
+            scope.effect(clear_state)
             instance._mount_state = {member: member.factory() for member in state_fields}
             instance._mount_injections = {
-                name: dependency.resolve(ctx) for name, dependency in dependencies.items()
+                name: dependency.resolve(scope) for name, dependency in dependencies.items()
             }
             if self._provides is not None:
-                ctx.provide(self._provides, instance)
-            bound = _lifecycle_arguments(instance.setup, ctx)
+                scope.provide(self._provides, instance)
+            bound = _lifecycle_arguments(instance.setup, scope)
             await resolve(instance.setup(*bound.args, **bound.kwargs))
             try:
                 for event, callback, priority in _hooks(getattr(instance, "hooks", ())):
-                    ctx.on(event, callback, priority=priority)
+                    scope.on(event, callback, priority=priority)
                 for registration, callback in instance._registration_entries():
-                    await resolve(registration.mount(ctx, callback))
+                    await resolve(registration.mount(scope, callback))
                 for name, member in members.items():
                     if not callable(member):
                         continue
                     callback = getattr(instance, name)
                     for event, prepend, priority in getattr(member, "_harnessed_hooks", ()):
-                        ctx.on(event, callback, prepend=prepend, priority=priority)
+                        scope.on(event, callback, prepend=prepend, priority=priority)
                     for registration in getattr(member, "_harnessed_registrations", ()):
-                        await resolve(registration.mount(ctx, callback))
+                        await resolve(registration.mount(scope, callback))
                 yield instance
             finally:
-                bound = _lifecycle_arguments(instance.teardown, ctx)
+                bound = _lifecycle_arguments(instance.teardown, scope)
                 await resolve(instance.teardown(*bound.args, **bound.kwargs))
 
         return PluginSpec(
@@ -277,7 +277,7 @@ def _class_dependencies(cls: type[PluginBase]) -> dict[str, Dependency]:
     }
 
 
-def _lifecycle_arguments(callback, ctx):
+def _lifecycle_arguments(callback, scope):
     parameters = tuple(inspect.signature(callback).parameters)
-    args = (ctx,) if parameters and parameters[0] not in injections(callback) else ()
-    return bind_injected(callback, ctx, args)
+    args = (scope,) if parameters and parameters[0] not in injections(callback) else ()
+    return bind_injected(callback, scope, args)

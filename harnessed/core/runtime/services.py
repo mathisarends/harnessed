@@ -6,7 +6,7 @@ from harnessed.core.plugin import Plugin
 from harnessed.core.prompt.system_prompt import SystemPromptStore
 from harnessed.core.tokens import CalibratedTokenCounter, TokenCounter
 from harnessed.core.tools import ToolRegistry
-from harnessed.kernel import Context
+from harnessed.kernel import Scope
 
 
 class RuntimeServices(Plugin):
@@ -17,12 +17,12 @@ class RuntimeServices(Plugin):
     default token counter calibrates itself against reported input tokens.
     """
 
-    async def setup(self, ctx: Context) -> None:
+    async def setup(self, scope: Scope) -> None:
         counter = CalibratedTokenCounter()
-        ctx.provide(ToolRegistry, ToolRegistry(ctx))
-        ctx.provide(SystemPromptStore, SystemPromptStore(ctx))
-        ctx.provide(TokenCounter, counter)
-        ctx.provide(ContextBudget, ContextBudget())
+        scope.provide(ToolRegistry, ToolRegistry(scope))
+        scope.provide(SystemPromptStore, SystemPromptStore(scope))
+        scope.provide(TokenCounter, counter)
+        scope.provide(ContextBudget, ContextBudget())
 
         def calibrate(event: SessionAppended) -> None:
             usage = event.event
@@ -35,7 +35,7 @@ class RuntimeServices(Plugin):
             if request is not None:
                 counter.calibrate(request.request, usage.usage.input_tokens)
 
-        ctx.on(SessionAppended, calibrate)
+        scope.on(SessionAppended, calibrate)
 
 
 __all__ = ["RuntimeServices"]

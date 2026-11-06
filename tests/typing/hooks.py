@@ -8,7 +8,7 @@ from harnessed.events import (
     ModelAttemptStartedEvent,
     ModelRetryScheduledEvent,
 )
-from harnessed.kernel import Bail, Context, Emit, Inject, Next, PluginBase, Waterfall, hook
+from harnessed.kernel import Bail, Emit, Inject, Next, PluginBase, Scope, Waterfall, hook
 
 
 class Notice(Emit):
@@ -143,12 +143,12 @@ async def wrong_shared_transform_result(event: Transform | OtherTransform, next_
     return 42
 
 
-async def consumer(ctx: Context) -> None:
-    ctx.on(Notice, lambda event: None)
-    ctx.on(Question, answer)
-    ctx.on(Transform, transform)
+async def consumer(scope: Scope) -> None:
+    scope.on(Notice, lambda event: None)
+    scope.on(Question, answer)
+    scope.on(Transform, transform)
 
-    @ctx.hook(Transform)
+    @scope.hook(Transform)
     async def owned(event: Transform, next_: Next[str]) -> str:
         return await next_()
 
@@ -177,11 +177,11 @@ async def consumer(ctx: Context) -> None:
     hook(Question)(wrong_answer)  # ty: ignore[no-matching-overload]
     hook(Transform)(wrong_continuation)  # ty: ignore[no-matching-overload]
     hook(Transform)(wrong_transform_result)  # ty: ignore[no-matching-overload]
-    ctx.hook(Notice)(wrong_event)  # ty: ignore[no-matching-overload]
-    ctx.hook(Transform)(wrong_transform_result)  # ty: ignore[no-matching-overload]
-    ctx.on(Notice, wrong_observer_result)  # ty: ignore[no-matching-overload]
-    ctx.on(Transform, wrong_continuation)  # ty: ignore[no-matching-overload]
-    ctx.add_listener(Question, wrong_answer)  # ty: ignore[invalid-argument-type]
+    scope.hook(Notice)(wrong_event)  # ty: ignore[no-matching-overload]
+    scope.hook(Transform)(wrong_transform_result)  # ty: ignore[no-matching-overload]
+    scope.on(Notice, wrong_observer_result)  # ty: ignore[no-matching-overload]
+    scope.on(Transform, wrong_continuation)  # ty: ignore[no-matching-overload]
+    scope.add_listener(Question, wrong_answer)  # ty: ignore[invalid-argument-type]
 
 
 class InvalidHooks(PluginBase):

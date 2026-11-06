@@ -38,7 +38,7 @@ async def test_a_tool_asks_the_configured_approver_mid_call():
         assert [e.scope for e in requests] == ["tool-call"] * 3
         assert requests[-1].grant_id is not None  # the ALWAYS grant answered the third call
         assert tools.deleted == []
-        active = session.ctx[Cleanup]
+        active = session.scope[Cleanup]
         assert active.deleted == ["c1", "c2"]
 
 
@@ -52,5 +52,5 @@ async def test_a_stream_consumer_answers_a_tool_approval():
                 assert event.reason == "Delete 3 generated files?"
                 await session.approvals.answer(event.request_id, ApprovalAnswer.ALLOW)
         assert tools.deleted == []
-        active = session.ctx[Cleanup]
+        active = session.scope[Cleanup]
         assert active.deleted == ["c0"]

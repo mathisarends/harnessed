@@ -3,7 +3,7 @@
 import asyncio
 
 from harnessed import Agent
-from harnessed.kernel import Context, Key, plugin
+from harnessed.kernel import Key, Scope, plugin
 from harnessed.plugins import Approvals
 from harnessed.plugins.rules import Rules, when
 from harnessed.testing import ScriptedModel
@@ -12,20 +12,20 @@ backend = Key[str]("backend")
 
 
 @plugin(needs=[backend])
-async def feature(ctx: Context):
-    print(f"Independent kernel setup: {ctx[backend]}")
+async def feature(scope: Scope):
+    print(f"Independent kernel setup: {scope[backend]}")
     yield
     print("Independent kernel teardown")
 
 
 async def main():
-    async with Context() as ctx:
-        handle = await ctx.plugin(feature())
+    async with Scope() as scope:
+        handle = await scope.plugin(feature())
         print("Before service:", handle.status)
-        remove = ctx.provide(backend, "local")
-        await ctx.settle()
+        remove = scope.provide(backend, "local")
+        await scope.settle()
         await remove()
-        await ctx.settle()
+        await scope.settle()
         print("After service removal:", handle.status)
     agent = Agent(
         model=ScriptedModel(["The layered SDK is ready."]),

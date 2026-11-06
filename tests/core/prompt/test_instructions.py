@@ -7,16 +7,16 @@ from harnessed import (
     SystemPrompt,
 )
 from harnessed.core.prompt.system_prompt import SystemPromptStore
-from harnessed.kernel import Context, plugin
+from harnessed.kernel import Scope, plugin
 from harnessed.testing import ScriptedModel
 
 
 async def test_session_section_factories_render_once_and_own_their_registrations(tmp_path):
     calls = []
 
-    async def catalog(ctx: Context) -> str:
-        calls.append(ctx)
-        ctx.provide(str, "catalog dependency")
+    async def catalog(scope: Scope) -> str:
+        calls.append(scope)
+        scope.provide(str, "catalog dependency")
         return "Available catalog."
 
     instructions = tmp_path / "instructions.md"
@@ -33,7 +33,7 @@ async def test_session_section_factories_render_once_and_own_their_registrations
     async with app.session() as first:
         await first.run("One")
         await first.run("Two")
-        assert len(calls) == 1 and first.ctx[str] == "catalog dependency"
+        assert len(calls) == 1 and first.scope[str] == "catalog dependency"
         assert await first.prompt.render() == "Project rules.\n\nAvailable catalog."
     assert str not in calls[0]
     async with app.session() as second:
@@ -42,7 +42,7 @@ async def test_session_section_factories_render_once_and_own_their_registrations
 
 
 async def test_session_section_factory_requires_an_explicit_owner():
-    async def catalog(ctx: Context) -> str:
+    async def catalog(scope: Scope) -> str:
         return "catalog"
 
     with pytest.raises(ValueError, match="session context"):
@@ -50,10 +50,10 @@ async def test_session_section_factory_requires_an_explicit_owner():
 
 
 async def test_owned_snapshot_restores_the_previous_prompt_on_disposal():
-    async with Context() as ctx:
-        prompt = SystemPromptStore(ctx)
+    async with Scope() as scope:
+        prompt = SystemPromptStore(scope)
         prompt.fixed("base")
-        owner = ctx.extend()
+        owner = scope.extend()
         remove = prompt.fixed("override", owner=owner)
         assert await prompt.render() == "override"
         await remove()
@@ -65,8 +65,8 @@ async def test_owned_snapshot_restores_the_previous_prompt_on_disposal():
 
 
 async def test_equal_snapshot_values_still_have_independent_disposers():
-    async with Context() as ctx:
-        prompt = SystemPromptStore(ctx)
+    async with Scope() as scope:
+        prompt = SystemPromptStore(scope)
         first = prompt.fixed("same")
         prompt.fixed("middle")
         last = prompt.fixed("same")
@@ -78,15 +78,15 @@ async def test_equal_snapshot_values_still_have_independent_disposers():
 
 async def test_failed_plugin_setup_rolls_back_its_prompt_snapshot():
     @plugin(needs=[SystemPromptStore])
-    async def broken(ctx):
-        ctx[SystemPromptStore].fixed("must disappear")
+    async def broken(scope):
+        scope[SystemPromptStore].fixed("must disappear")
         raise ValueError("setup failed")
         yield
 
-    async with Context() as ctx:
-        prompt = SystemPromptStore(ctx)
-        ctx.provide(SystemPromptStore, prompt)
+    async with Scope() as scope:
+        prompt = SystemPromptStore(scope)
+        scope.provide(SystemPromptStore, prompt)
         prompt.fixed("base")
         with pytest.raises(ValueError, match="setup failed"):
-            await ctx.plugin(broken())
+            await scope.plugin(broken())
         assert await prompt.render() == "base"

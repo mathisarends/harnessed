@@ -9,7 +9,7 @@ from harnessed import (
     ResolvedPluginPack,
 )
 from harnessed.core.composition import PluginDescription, PluginInput, PluginRemoval
-from harnessed.kernel import Context, PluginLike, plugin
+from harnessed.kernel import PluginLike, Scope, plugin
 from harnessed.plugins import AgentLoop
 
 
@@ -18,7 +18,7 @@ class OptionalFeature(Plugin):
 
 
 @plugin
-async def configured(ctx: Context):
+async def configured(scope: Scope):
     yield
 
 
@@ -41,5 +41,5 @@ PluginPack("optional", [None])
 pack.without(OptionalFeature())  # ty: ignore[invalid-argument-type]
 
 
-async def cannot_mount_a_pack(ctx: Context) -> None:
-    await ctx.plugin(pack)  # ty: ignore[invalid-argument-type]
+async def cannot_mount_a_pack(scope: Scope) -> None:
+    await scope.plugin(pack)  # ty: ignore[invalid-argument-type]

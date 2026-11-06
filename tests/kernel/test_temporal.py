@@ -3,13 +3,13 @@ from dataclasses import dataclass
 
 import pytest
 
-from harnessed import Context, Inject, Plugin, ToolCall, plugin
+from harnessed import Inject, Plugin, ToolCall, plugin
 from harnessed.core.plugin import Bundle
 from harnessed.core.prompt.system_prompt import SystemPromptStore
 from harnessed.core.runtime.services import RuntimeServices
 from harnessed.core.tools.decorator import tool
 from harnessed.core.tools.registry import ToolRegistry
-from harnessed.kernel import Emit, MissingService, PluginStatus
+from harnessed.kernel import Emit, MissingService, PluginStatus, Scope
 
 
 @dataclass
@@ -24,17 +24,17 @@ async def test_class_keyword_dependencies_suspend_and_restart_the_plugin():
         async def setup(self, backend: Inject[Backend]) -> None:
             seen.append(backend.name)
 
-    async with Context() as ctx:
-        handle = await ctx.plugin(Feature())
+    async with Scope() as scope:
+        handle = await scope.plugin(Feature())
         assert handle.status == PluginStatus.WAITING
-        remove = ctx.provide(Backend, Backend("first"))
-        await ctx.settle()
+        remove = scope.provide(Backend, Backend("first"))
+        await scope.settle()
         assert seen == ["first"]
         await remove()
-        await ctx.settle()
+        await scope.settle()
         assert handle.status == PluginStatus.WAITING
-        ctx.provide(Backend, Backend("second"))
-        await ctx.settle()
+        scope.provide(Backend, Backend("second"))
+        await scope.settle()
         assert seen == ["first", "second"]
 
 
@@ -50,12 +50,12 @@ async def test_explicit_needs_waits_and_rebuilds_with_fresh_scope_and_local_stat
     lifecycle, seen = [], []
 
     @plugin(needs=[Backend])
-    async def consumer(ctx):
-        backend = ctx[Backend]
+    async def consumer(scope):
+        backend = scope[Backend]
         calls = 0
         lifecycle.append(f"start:{backend.name}")
 
-        @ctx.on(Ping)
+        @scope.on(Ping)
         def observe(event):
             nonlocal calls
             calls += 1
@@ -64,22 +64,22 @@ async def test_explicit_needs_waits_and_rebuilds_with_fresh_scope_and_local_stat
         yield
         lifecycle.append(f"stop:{backend.name}")
 
-    async with Context() as ctx:
-        handle = await ctx.plugin(consumer())
+    async with Scope() as scope:
+        handle = await scope.plugin(consumer())
         assert handle.status == PluginStatus.WAITING
-        remove = ctx.provide(Backend, Backend("one"))
-        await ctx.settle()
-        first_scope = handle.ctx
+        remove = scope.provide(Backend, Backend("one"))
+        await scope.settle()
+        first_scope = handle.scope
         assert handle.status == PluginStatus.ACTIVE
-        await ctx.dispatch(Ping())
+        await scope.dispatch(Ping())
         await remove()
-        await ctx.settle()
+        await scope.settle()
         assert handle.status == PluginStatus.WAITING and first_scope._closed
-        await ctx.dispatch(Ping())
-        ctx.provide(Backend, Backend("two"))
-        await ctx.settle()
-        assert handle.ctx is not first_scope
-        await ctx.dispatch(Ping())
+        await scope.dispatch(Ping())
+        scope.provide(Backend, Backend("two"))
+        await scope.settle()
+        assert handle.scope is not first_scope
+        await scope.dispatch(Ping())
         assert seen == [("one", 1), ("two", 1)]
         assert lifecycle == ["start:one", "stop:one", "start:two"]
     assert lifecycle[-1] == "stop:two"
@@ -89,22 +89,22 @@ async def test_provider_unload_suspends_consumers_and_another_provider_reactivat
     observed = []
 
     @plugin
-    async def provider(ctx, name):
-        ctx.provide(Backend, Backend(name))
+    async def provider(scope, name):
+        scope.provide(Backend, Backend(name))
         yield
 
     @plugin(needs=[Backend])
-    async def consumer(ctx):
-        observed.append(ctx[Backend].name)
+    async def consumer(scope):
+        observed.append(scope[Backend].name)
         yield
 
-    async with Context() as ctx:
-        old = await ctx.plugin(provider("one"))
-        dependent = await ctx.plugin(consumer())
+    async with Scope() as scope:
+        old = await scope.plugin(provider("one"))
+        dependent = await scope.plugin(consumer())
         await old.aclose()
         assert old.status == PluginStatus.DISPOSED and dependent.status == PluginStatus.WAITING
-        await ctx.plugin(provider("two"))
-        await ctx.settle()
+        await scope.plugin(provider("two"))
+        await scope.settle()
         assert dependent.status == PluginStatus.ACTIVE and observed == ["one", "two"]
 
 
@@ -112,30 +112,30 @@ async def test_transitive_needs_teardown_and_rebuild_in_dependency_order():
     lifecycle = []
 
     @plugin(needs=[Backend])
-    async def middle(ctx):
-        ctx.provide(Feature, Feature())
+    async def middle(scope):
+        scope.provide(Feature, Feature())
         lifecycle.append("middle+")
         yield
         lifecycle.append("middle-")
 
     @plugin(needs=[Feature])
-    async def leaf(ctx):
+    async def leaf(scope):
         lifecycle.append("leaf+")
         yield
         lifecycle.append("leaf-")
 
-    async with Context() as ctx:
-        handles = await ctx.install([leaf(), middle()])
+    async with Scope() as scope:
+        handles = await scope.install([leaf(), middle()])
         assert all(handle.status == PluginStatus.WAITING for handle in handles)
-        remove = ctx.provide(Backend, Backend("one"))
-        await ctx.settle()
+        remove = scope.provide(Backend, Backend("one"))
+        await scope.settle()
         assert lifecycle == ["middle+", "leaf+"]
         await remove()
-        await ctx.settle()
+        await scope.settle()
         assert lifecycle[-2:] == ["leaf-", "middle-"]
-        assert Feature not in ctx
-        ctx.provide(Backend, Backend("two"))
-        await ctx.settle()
+        assert Feature not in scope
+        scope.provide(Backend, Backend("two"))
+        await scope.settle()
         assert lifecycle[-2:] == ["middle+", "leaf+"]
 
 
@@ -143,17 +143,17 @@ async def test_service_shadow_and_fallback_each_recompose_the_consumer():
     seen = []
 
     @plugin(needs=[Backend])
-    async def consumer(ctx):
-        seen.append(ctx[Backend].name)
+    async def consumer(scope):
+        seen.append(scope[Backend].name)
         yield
 
-    async with Context() as ctx:
-        ctx.provide(Backend, Backend("base"))
-        await ctx.plugin(consumer())
-        override = ctx.provide(Backend, Backend("override"))
-        await ctx.settle()
+    async with Scope() as scope:
+        scope.provide(Backend, Backend("base"))
+        await scope.plugin(consumer())
+        override = scope.provide(Backend, Backend("override"))
+        await scope.settle()
         await override()
-        await ctx.settle()
+        await scope.settle()
         assert seen == ["base", "override", "base"]
 
 
@@ -161,11 +161,11 @@ async def test_scope_isolation_and_permanent_disposal_of_waiting_plugin():
     seen = []
 
     @plugin(needs=[Backend])
-    async def consumer(ctx, label):
-        seen.append((label, ctx[Backend].name))
+    async def consumer(scope, label):
+        seen.append((label, scope[Backend].name))
         yield
 
-    async with Context() as root:
+    async with Scope() as root:
         left, right = root.extend(), root.extend()
         left.provide(Backend, Backend("local"))
         one = await left.plugin(consumer("left"))
@@ -184,8 +184,8 @@ async def test_scope_isolation_and_permanent_disposal_of_waiting_plugin():
 
 async def test_class_and_bundle_explicit_needs_remove_tools_and_prompt_sections():
     class FeaturePlugin(Plugin, needs=(Backend, SystemPromptStore)):
-        async def setup(self, ctx, prompt: Inject[SystemPromptStore]):
-            self.name = ctx[Backend].name
+        async def setup(self, scope, prompt: Inject[SystemPromptStore]):
+            self.name = scope[Backend].name
             self.calls = 0
             prompt.fixed(self.name)
 
@@ -198,43 +198,43 @@ async def test_class_and_bundle_explicit_needs_remove_tools_and_prompt_sections(
     events = []
     bundle.on(Ping, lambda event: events.append("ping"))
 
-    async with Context() as ctx:
-        await ctx.install([RuntimeServices(), FeaturePlugin(), bundle])
-        remove = ctx.provide(Backend, Backend("first"))
-        await ctx.settle()
-        assert await ctx[SystemPromptStore].render() == "first"
-        assert (await ctx[ToolRegistry].execute(ToolCall("read"))).content == "first:1"
-        await ctx.dispatch(Ping())
+    async with Scope() as scope:
+        await scope.install([RuntimeServices(), FeaturePlugin(), bundle])
+        remove = scope.provide(Backend, Backend("first"))
+        await scope.settle()
+        assert await scope[SystemPromptStore].render() == "first"
+        assert (await scope[ToolRegistry].execute(ToolCall("read"))).content == "first:1"
+        await scope.dispatch(Ping())
         await remove()
-        await ctx.settle()
-        assert ctx[ToolRegistry].definitions == ()
-        assert await ctx[SystemPromptStore].render() == ""
-        await ctx.dispatch(Ping())
-        ctx.provide(Backend, Backend("second"))
-        await ctx.settle()
-        assert (await ctx[ToolRegistry].execute(ToolCall("read"))).content == "second:1"
+        await scope.settle()
+        assert scope[ToolRegistry].definitions == ()
+        assert await scope[SystemPromptStore].render() == ""
+        await scope.dispatch(Ping())
+        scope.provide(Backend, Backend("second"))
+        await scope.settle()
+        assert (await scope[ToolRegistry].execute(ToolCall("read"))).content == "second:1"
         assert events == ["ping"]
 
 
 async def test_background_setup_failure_rolls_back_and_reports_once_then_recovers():
     @plugin(needs=[Backend])
-    async def conditional(ctx):
-        ctx.provide(Feature, Feature())
-        if ctx[Backend].name == "broken":
+    async def conditional(scope):
+        scope.provide(Feature, Feature())
+        if scope[Backend].name == "broken":
             raise ValueError("activation failed")
         yield
 
-    async with Context() as ctx:
-        handle = await ctx.plugin(conditional())
-        remove = ctx.provide(Backend, Backend("broken"))
+    async with Scope() as scope:
+        handle = await scope.plugin(conditional())
+        remove = scope.provide(Backend, Backend("broken"))
         with pytest.raises(ExceptionGroup, match="composition failed"):
-            await ctx.settle()
-        assert handle.status == PluginStatus.FAILED and Feature not in ctx
-        await ctx.settle()
+            await scope.settle()
+        assert handle.status == PluginStatus.FAILED and Feature not in scope
+        await scope.settle()
         await remove()
-        ctx.provide(Backend, Backend("fixed"))
-        await ctx.settle()
-        assert handle.status == PluginStatus.ACTIVE and Feature in ctx and handle.error is None
+        scope.provide(Backend, Backend("fixed"))
+        await scope.settle()
+        assert handle.status == PluginStatus.ACTIVE and Feature in scope and handle.error is None
 
 
 async def test_services_are_not_published_to_consumers_until_provider_setup_yields():
@@ -242,44 +242,44 @@ async def test_services_are_not_published_to_consumers_until_provider_setup_yiel
     seen = []
 
     @plugin
-    async def provider(ctx):
-        ctx.provide(Backend, Backend("ready"))
-        assert ctx[Backend].name == "ready"
+    async def provider(scope):
+        scope.provide(Backend, Backend("ready"))
+        assert scope[Backend].name == "ready"
         started.set()
         await ready.wait()
         yield
 
     @plugin(needs=[Backend])
-    async def consumer(ctx):
-        seen.append(ctx[Backend].name)
+    async def consumer(scope):
+        seen.append(scope[Backend].name)
         yield
 
-    async with Context() as ctx:
-        handle = await ctx.plugin(consumer())
-        mounting = asyncio.create_task(ctx.plugin(provider()))
+    async with Scope() as scope:
+        handle = await scope.plugin(consumer())
+        mounting = asyncio.create_task(scope.plugin(provider()))
         await asyncio.wait_for(started.wait(), timeout=5)
-        await ctx.settle()
-        assert Backend not in ctx and handle.status == PluginStatus.WAITING and seen == []
+        await scope.settle()
+        assert Backend not in scope and handle.status == PluginStatus.WAITING and seen == []
         with pytest.raises(MissingService):
-            ctx[Backend]
+            scope[Backend]
         ready.set()
         await asyncio.wait_for(mounting, timeout=5)
-        await ctx.settle()
+        await scope.settle()
         assert seen == ["ready"]
 
 
 async def test_missing_multiple_needs_stay_dormant_without_busy_retry():
     @plugin(needs=[Backend, Feature])
-    async def both(ctx):
+    async def both(scope):
         yield
 
-    async with Context() as ctx:
-        handle = await ctx.plugin(both())
-        ctx.provide(Backend, Backend("one"))
-        await asyncio.wait_for(ctx.settle(), 1)
+    async with Scope() as scope:
+        handle = await scope.plugin(both())
+        scope.provide(Backend, Backend("one"))
+        await asyncio.wait_for(scope.settle(), 1)
         assert handle.status == PluginStatus.WAITING
-        ctx.provide(Feature, Feature())
-        await ctx.settle()
+        scope.provide(Feature, Feature())
+        await scope.settle()
         assert handle.status == PluginStatus.ACTIVE
 
 
@@ -287,13 +287,13 @@ async def test_recomposition_runs_automatically_without_an_explicit_settle():
     started = asyncio.Event()
 
     @plugin(needs=[Backend])
-    async def consumer(ctx):
+    async def consumer(scope):
         started.set()
         yield
 
-    async with Context() as ctx:
-        handle = await ctx.plugin(consumer())
-        ctx.provide(Backend, Backend("one"))
+    async with Scope() as scope:
+        handle = await scope.plugin(consumer())
+        scope.provide(Backend, Backend("one"))
         await asyncio.wait_for(started.wait(), 1)
         assert handle.status == PluginStatus.ACTIVE
 
@@ -302,22 +302,22 @@ async def test_dependency_loss_cancels_unfinished_setup_and_retries_when_service
     started, cleaned = asyncio.Event(), []
 
     @plugin(needs=[Backend])
-    async def consumer(ctx):
-        ctx.effect(lambda: cleaned.append("cleanup"))
-        if ctx[Backend].name == "slow":
+    async def consumer(scope):
+        scope.effect(lambda: cleaned.append("cleanup"))
+        if scope[Backend].name == "slow":
             started.set()
             await asyncio.Event().wait()
         yield
 
-    async with Context() as ctx:
-        handle = await ctx.plugin(consumer())
-        remove = ctx.provide(Backend, Backend("slow"))
+    async with Scope() as scope:
+        handle = await scope.plugin(consumer())
+        remove = scope.provide(Backend, Backend("slow"))
         await asyncio.wait_for(started.wait(), timeout=5)
         await remove()
-        await asyncio.wait_for(ctx.settle(), 1)
+        await asyncio.wait_for(scope.settle(), 1)
         assert handle.status == PluginStatus.WAITING and cleaned == ["cleanup"]
-        ctx.provide(Backend, Backend("fast"))
-        await ctx.settle()
+        scope.provide(Backend, Backend("fast"))
+        await scope.settle()
         assert handle.status == PluginStatus.ACTIVE
 
 
@@ -325,58 +325,58 @@ async def test_context_close_cancels_background_setup():
     started, cleaned = asyncio.Event(), []
 
     @plugin(needs=[Backend])
-    async def consumer(ctx):
-        ctx.effect(lambda: cleaned.append("cleanup"))
+    async def consumer(scope):
+        scope.effect(lambda: cleaned.append("cleanup"))
         started.set()
         await asyncio.Event().wait()
         yield
 
-    ctx = Context()
-    handle = await ctx.plugin(consumer())
-    ctx.provide(Backend, Backend("one"))
+    scope = Scope()
+    handle = await scope.plugin(consumer())
+    scope.provide(Backend, Backend("one"))
     await asyncio.wait_for(started.wait(), timeout=5)
-    await asyncio.wait_for(ctx.aclose(), 1)
+    await asyncio.wait_for(scope.aclose(), 1)
     assert handle.status == PluginStatus.DISPOSED and cleaned == ["cleanup"]
 
 
 async def test_wrapping_a_needed_service_keeps_the_upstream_dependency():
     @plugin(needs=[Backend])
-    async def wrapper(ctx):
-        upstream = ctx[Backend]
-        ctx.provide(Backend, Backend(f"wrapped {upstream.name}"))
+    async def wrapper(scope):
+        upstream = scope[Backend]
+        scope.provide(Backend, Backend(f"wrapped {upstream.name}"))
         yield
 
-    async with Context() as ctx:
-        remove = ctx.provide(Backend, Backend("one"))
-        handle = await ctx.plugin(wrapper())
-        await ctx.settle()
-        assert ctx[Backend].name == "wrapped one"
+    async with Scope() as scope:
+        remove = scope.provide(Backend, Backend("one"))
+        handle = await scope.plugin(wrapper())
+        await scope.settle()
+        assert scope[Backend].name == "wrapped one"
         await remove()
-        await ctx.settle()
-        assert Backend not in ctx and handle.status == PluginStatus.WAITING
-        ctx.provide(Backend, Backend("two"))
-        await ctx.settle()
-        assert ctx[Backend].name == "wrapped two"
+        await scope.settle()
+        assert Backend not in scope and handle.status == PluginStatus.WAITING
+        scope.provide(Backend, Backend("two"))
+        await scope.settle()
+        assert scope[Backend].name == "wrapped two"
 
 
 async def test_dynamic_dependency_cycle_reports_without_busy_loop_and_can_recover():
     @plugin(needs=[Backend])
-    async def first(ctx):
-        ctx.provide(Feature, Feature())
+    async def first(scope):
+        scope.provide(Feature, Feature())
         yield
 
     @plugin(needs=[Feature])
-    async def second(ctx):
-        ctx.provide(Backend, Backend("cyclic"))
+    async def second(scope):
+        scope.provide(Backend, Backend("cyclic"))
         yield
 
-    async with Context() as ctx:
-        ctx.provide(Backend, Backend("base"))
-        one = await ctx.plugin(first())
-        two = await ctx.plugin(second())
+    async with Scope() as scope:
+        scope.provide(Backend, Backend("base"))
+        one = await scope.plugin(first())
+        two = await scope.plugin(second())
         with pytest.raises(ExceptionGroup) as error:
-            await asyncio.wait_for(ctx.settle(), 1)
+            await asyncio.wait_for(scope.settle(), 1)
         assert "Cyclic plugin needs" in str(error.value.exceptions[0])
         await two.aclose()
-        await ctx.settle()
-        assert one.status == PluginStatus.ACTIVE and ctx[Backend].name == "base"
+        await scope.settle()
+        assert one.status == PluginStatus.ACTIVE and scope[Backend].name == "base"

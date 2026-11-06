@@ -27,7 +27,7 @@ MCP endpoint; the native-provider example requires its provider extra and creden
 | Validated forms | `uv run python -m examples.21_validated_forms` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/21_validated_forms.py) |
 
 Application examples compose `Agent` with explicit plugins. Kernel examples use a
-standalone `Context` to show service lifetimes and temporal composition. Start with
+standalone `Scope` to show service lifetimes and temporal composition. Start with
 the listed examples when building a new application.
 
 ## Structured output

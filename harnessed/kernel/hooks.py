@@ -4,9 +4,9 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Concatenate, Protocol, overload
 
 if TYPE_CHECKING:
-    from .context import Context
     from .declarations import PluginBase
     from .events import Event
+    from .scope import Scope
 
 type Next[R] = Callable[[], Awaitable[R]]
 type ObserverCallback[E, R] = Callable[Concatenate[E, ...], R | Awaitable[R]]
@@ -21,7 +21,7 @@ class HookFactory[H](Protocol):
     """An event class carries its callback's exact event and result types."""
 
     def _hook(
-        self, owner: Context | None = None, *, prepend: bool = False, priority: int = 0
+        self, owner: Scope | None = None, *, prepend: bool = False, priority: int = 0
     ) -> H: ...
 
 
@@ -39,7 +39,7 @@ class WaterfallFactory[E, R](Protocol):
 
 class _Declaration:
     def __init__(
-        self, event: type[Event[Any]], owner: Context | None, prepend: bool, priority: int
+        self, event: type[Event[Any]], owner: Scope | None, prepend: bool, priority: int
     ) -> None:
         self.event = event
         self.owner = owner

@@ -70,22 +70,22 @@ async def test_context_plugin_is_inspectable_reversible_and_does_not_wake_idle_s
     assert "date: <evaluated per step>" in str(app.prompt)
     async with app.session() as session:
         mounted = await session.use(ContextValue("temporary", "value"))
-        await session.ctx[DynamicContext].set("temporary", "value")
-        assert session.ctx[DynamicContext].values == {"temporary": "value"}
+        await session.scope[DynamicContext].set("temporary", "value")
+        assert session.scope[DynamicContext].values == {"temporary": "value"}
         await mounted.aclose()
-        assert session.ctx[DynamicContext].values == {} and not model.requests
+        assert session.scope[DynamicContext].values == {} and not model.requests
 
 
 async def test_replacing_the_loop_slot_keeps_shared_tools_and_prompt():
     from harnessed import Plugin, tool
     from harnessed.core.runtime.agent_loop import AgentFactory, ReactLoopFactory
     from harnessed.core.runtime.options import AgentLoopConfig
-    from harnessed.kernel import Context
+    from harnessed.kernel import Scope
     from harnessed.testing import call
 
     class CustomLoop(Plugin, slot="loop"):
-        async def setup(self, ctx: Context) -> None:
-            ctx.provide(AgentFactory, ReactLoopFactory(AgentLoopConfig(max_steps=3), None))
+        async def setup(self, scope: Scope) -> None:
+            scope.provide(AgentFactory, ReactLoopFactory(AgentLoopConfig(max_steps=3), None))
 
     class Math(Plugin):
         @tool(readonly=True)
@@ -101,7 +101,7 @@ async def test_replacing_the_loop_slot_keeps_shared_tools_and_prompt():
 async def test_default_token_counter_calibrates_against_reported_input_tokens():
     model = ScriptedModel([[ModelChunk(text="ok"), ModelChunk(usage=ModelUsage(1_000, 1))]])
     async with Agent(model=model).session() as session:
-        counter = session.ctx[TokenCounter]
+        counter = session.scope[TokenCounter]
         text = "def handler(event): return event"
         assert counter.count_text(text) == ApproximateTokenCounter().count_text(text)
         await session.run("hello")

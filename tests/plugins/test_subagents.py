@@ -203,8 +203,8 @@ async def test_cleanup_cancels_child_driver_and_drains_effects(mode):
             cancelled.set()
 
     class Resource(Plugin):
-        async def setup(self, ctx):
-            ctx.effect(cleaned.set)
+        async def setup(self, scope):
+            scope.effect(cleaned.set)
 
     child = Agent(model=CallbackModel(blocked), plugins=[Resource()])
     parent = coordinator(child, timeout=1.0 if mode == "timeout" else 5.0)
@@ -590,13 +590,13 @@ async def test_repeated_cancellation_does_not_interrupt_child_cleanup():
     cleaned = asyncio.Event()
 
     class Resource(Plugin):
-        async def setup(self, ctx):
+        async def setup(self, scope):
             async def cleanup():
                 cleaning.set()
                 await asyncio.wait_for(release.wait(), timeout=5)
                 cleaned.set()
 
-            ctx.effect(cleanup)
+            scope.effect(cleanup)
 
     async def blocked(request):
         started.set()

@@ -7,8 +7,9 @@ from uuid import UUID
 import pytest
 from pydantic import BaseModel, ConfigDict, Field
 
-from harnessed import Agent, Context, Inject, Plugin, ToolCall, tool
+from harnessed import Agent, Inject, Plugin, ToolCall, tool
 from harnessed.core.tools.registry import ToolRegistry
+from harnessed.kernel import Scope
 from harnessed.plugins import Service
 from harnessed.testing import ScriptedModel
 
@@ -53,9 +54,9 @@ async def test_nested_form_models_are_validated_instantiated_and_serialized_as_j
         "priority": "high",
         "address": {"city": "Berlin", "postal_code": "10115"},
     }
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
-        ctx.provide(int, 7)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
+        scope.provide(int, 7)
 
         @registry.tool
         async def submit(ticket: Ticket, owner: Inject[int]) -> Ticket:
@@ -85,8 +86,8 @@ async def test_nested_form_models_are_validated_instantiated_and_serialized_as_j
     ],
 )
 async def test_invalid_nested_form_values_never_reach_the_tool(changes):
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
 
         @registry.tool
         async def submit(ticket: Ticket) -> str:
@@ -109,8 +110,8 @@ type PageSize = Annotated[int, Field(ge=1, le=100)]
 
 @pytest.mark.parametrize("size", [0, 101, "5", True, 2.5])
 async def test_pep695_annotated_constraints_use_strict_json_validation(size):
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
 
         @registry.tool
         async def search(size: PageSize = 10) -> int:
@@ -121,8 +122,8 @@ async def test_pep695_annotated_constraints_use_strict_json_validation(size):
 
 
 async def test_json_native_enum_date_and_uuid_forms_arrive_as_native_python_values():
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
 
         @registry.tool
         async def schedule(priority: Priority, day: date, reference: UUID) -> dict:
@@ -140,8 +141,8 @@ async def test_json_native_enum_date_and_uuid_forms_arrive_as_native_python_valu
 
 
 async def test_parameter_names_cannot_collide_with_pydantic_fields_or_internal_aliases():
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
 
         @registry.tool
         async def names(model_dump: str, _private: int) -> str:
@@ -154,8 +155,8 @@ async def test_parameter_names_cannot_collide_with_pydantic_fields_or_internal_a
 
 
 async def test_default_factories_and_constraints_are_evaluated_for_each_call():
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
         default_values = Field(default_factory=list)
 
         @registry.tool
@@ -168,8 +169,8 @@ async def test_default_factories_and_constraints_are_evaluated_for_each_call():
 
 
 async def test_nonfinite_results_are_not_silently_serialized_as_null():
-    async with Context() as ctx:
-        registry = ToolRegistry(ctx)
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
 
         @registry.tool
         async def invalid() -> dict:

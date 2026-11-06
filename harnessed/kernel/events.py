@@ -24,8 +24,8 @@ _Result = TypeVar("_Result")
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from .context import Context
     from .plugin import PluginHandle
+    from .scope import Scope
 
 
 class Event(Generic[_Result]):  # noqa: UP046 -- Invariance keeps the result contract fixed.
@@ -115,7 +115,7 @@ class Parallel(Event[None]):
 class _Listener:
     event: type[Event[Any]]
     callback: Any
-    owner: Context
+    owner: Scope
     plan: BindingPlan
     priority: int = 0
     active: bool = True
@@ -126,7 +126,7 @@ class EventBus:
         self.parent = parent
         self.listeners: list[_Listener] = []
 
-    def on(self, owner: Context, event, callback, *, prepend=False, priority=0) -> Disposer:
+    def on(self, owner: Scope, event, callback, *, prepend=False, priority=0) -> Disposer:
         if not isinstance(event, type) or not issubclass(event, Event):
             raise TypeError("Listener keys must be Event classes")
         owner._check_open()
@@ -163,7 +163,7 @@ class EventBus:
 
     async def dispatch[R](
         self,
-        ctx: Context,
+        scope: Scope,
         event: Event[R],
         *,
         default: Callable[[], R | Awaitable[R]] | None = None,
@@ -174,7 +174,7 @@ class EventBus:
             if not listener.active or not listener.owner._registrations_active():
                 return None
             with listener.owner.activate():
-                bound = listener.plan.bind(ctx, args)
+                bound = listener.plan.bind(scope, args)
                 return await resolve(listener.callback(*bound.args, **bound.kwargs))
 
         if isinstance(event, Waterfall):

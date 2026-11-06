@@ -77,7 +77,7 @@ from harnessed.plugins.skills import SkillCatalog
 
 async def inspect(agent: Agent):
     async with agent.session() as session:
-        for entry in session.ctx[SkillCatalog].entries:
+        for entry in session.scope[SkillCatalog].entries:
             print(entry.info.name, entry.directory, entry.shadows)
 ```
 
