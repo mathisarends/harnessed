@@ -51,6 +51,7 @@ from harnessed.kernel import (
 )
 from harnessed.models import ToolArgumentsMode, ToolCallDelta, ToolCallStart
 from harnessed.plugins import AgentLoop, Spill
+from harnessed.services import SessionTools
 
 
 @plugin
@@ -159,6 +160,8 @@ async def structured_consumer(agent: AppAgent, session: Session) -> None:
 
 
 async def typed_stream(session: Session) -> None:
+    assert_type(session.tools, SessionTools)
+    assert_type(session.tools.names, frozenset[str])
     async for event in session.stream("Triage", output=OutputContract("triage.v1", Triage)):
         assert_type(event, StreamItem[Triage])
         if isinstance(event, TurnResultEvent):

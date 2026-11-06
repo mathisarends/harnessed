@@ -44,7 +44,8 @@ Do not restore `seams`,
 `adapters`, `app`, `llms` or `presets`, or add native provider clients. Prefer
 canonical `core.messages` / `core.model` imports inside the library. Applications
 use the small root SDK, `harnessed.plugins`, `harnessed.models`, `harnessed.errors`
-and `harnessed.hooks`.
+and `harnessed.hooks`. Plugin service types are explicitly exported by
+`harnessed.services`; application tool inspection uses `session.tools`.
 
 Ruff enforces the parent-relative import rule with `TID252` and
 `ban-relative-imports = "parents"`. Run `uv run ruff check .` before committing;

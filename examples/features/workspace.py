@@ -3,10 +3,10 @@ from pathlib import Path
 from pydantic import Field
 
 from harnessed import Plugin, PluginConfig, ToolContext, tool
-from harnessed.core.prompt.context import DynamicContext
 from harnessed.hooks import ReviewToolResult
 from harnessed.kernel import Inject, hook
 from harnessed.plugins.filesystem import FileSystemBackend
+from harnessed.services import DynamicContext
 
 
 class WorkspaceTools(Plugin):

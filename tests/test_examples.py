@@ -83,22 +83,13 @@ def test_offline_sdk_example_runs(module):
     assert result.stdout
 
 
-# Names without a public facade yet. Shrink this, never grow it.
-_INTERNAL_EXAMPLE_IMPORTS = {
-    ("harnessed.core.prompt.system_prompt", "SystemPromptStore"),
-    ("harnessed.core.session.codec", "decode_event"),
-    ("harnessed.core.session.codec", "encode_event"),
-    ("harnessed.core.tools.registry", "ToolRegistry"),
-}
-
-
-def test_examples_use_public_facades_except_for_known_gaps():
+def test_examples_do_not_import_core():
     root = Path(__file__).resolve().parents[1] / "examples"
     found = set()
-    for path in root.glob("*.py"):
+    for path in root.rglob("*.py"):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.ImportFrom) and (node.module or "").startswith(
                 "harnessed.core"
             ):
                 found.update((node.module, alias.name) for alias in node.names)
-    assert found <= _INTERNAL_EXAMPLE_IMPORTS, found - _INTERNAL_EXAMPLE_IMPORTS
+    assert found == set()

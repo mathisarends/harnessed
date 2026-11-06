@@ -25,7 +25,6 @@ review conversation. Every ticket lists:
 
 | # | Ticket | Priority | Breaking | Depends on | Status |
 |---|--------|----------|----------|------------|--------|
-| 06 | [Public session views instead of `harnessed.core`](06-public-session-views.md) | high | no (additive) | – | proposed |
 | 07 | [Rename kernel `Context` to `Scope`](07-kernel-context-to-scope.md) | medium | yes | 06 | proposed |
 
 Tickets 01–04 belong together. Do 01 first because it is a pure move that later

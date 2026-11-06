@@ -24,6 +24,7 @@ architecture:
     harnessed.integrations: integrations
     harnessed.testing: testing
     harnessed.events: events
+    harnessed.services: sdk
   layers:
     kernel:
       path: kernel

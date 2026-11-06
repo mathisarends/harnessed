@@ -4,7 +4,6 @@ import asyncio
 from pathlib import Path
 
 from harnessed import Agent, PluginValidation, ToolCall
-from harnessed.core.tools.registry import ToolRegistry
 from harnessed.kernel import Context, plugin
 from harnessed.models import ModelChunk
 from harnessed.plugins import Approvals
@@ -44,19 +43,19 @@ async def main():
     )
     outputs = []
     async with agent.session() as session:
-        registry = session.ctx[ToolRegistry]
-        assert registry.definitions == ()
+        tools = session.tools
+        assert tools.names == frozenset()
         print("Before a backend: no shell tools")
         first = await session.use(shell_backend("local"))
-        assert [tool.name for tool in registry.definitions] == ["run_command"]
+        assert list(tools) == ["run_command"]
         first_result = await session.run("Say hello using the shell.")
         print(first_result.text)
         outputs.extend(result.content for _, result in first_result.tool_calls)
         await first.aclose()
-        assert registry.definitions == ()
+        assert tools.names == frozenset()
         print("Backend removed: no shell tools")
         await session.use(shell_backend("remote"))
-        assert [tool.name for tool in registry.definitions] == ["run_command"]
+        assert list(tools) == ["run_command"]
         second_result = await session.run("Run another command.")
         print(second_result.text)
         outputs.extend(result.content for _, result in second_result.tool_calls)
