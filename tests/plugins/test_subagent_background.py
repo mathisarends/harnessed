@@ -498,10 +498,19 @@ async def test_queued_child_accepts_guidance_and_status_without_starting_an_extr
         assert session.children[1].status is SubagentStatus.COMPLETED
 
 
-@pytest.mark.parametrize("ending", ["timeout", "parent_error"])
+@pytest.mark.parametrize("ending", ["timeout", "startup_timeout", "parent_error"])
 async def test_background_timeout_or_parent_failure_drains_children(ending):
     started, cleaned, notified = [asyncio.Event() for _ in range(3)]
+    startup_entered, startup_cleaned = asyncio.Event(), asyncio.Event()
     parent_calls = 0
+
+    class SlowStartup(Plugin):
+        async def setup(self) -> None:
+            startup_entered.set()
+            try:
+                await asyncio.wait_for(asyncio.Event().wait(), 3)
+            finally:
+                startup_cleaned.set()
 
     async def child_response(request):
         started.set()
@@ -517,18 +526,23 @@ async def test_background_timeout_or_parent_failure_drains_children(ending):
         if parent_calls == 1:
             yield ModelChunk(tool_call=_spawn())
         elif parent_calls == 2:
-            await asyncio.wait_for(started.wait(), 2)
             if ending == "parent_error":
+                await asyncio.wait_for(started.wait(), 2)
                 raise RuntimeError("Coordinator failed")
+            # The delegation deadline includes startup. A timeout need not enter
+            # the child model, so the coordinator must not wait for that signal.
             yield ModelChunk(text="Continue")
         else:
             notified.set()
             yield ModelChunk(text="Child timed out")
 
     parent = _parent(
-        Agent(model=CallbackModel(child_response)),
+        Agent(
+            model=CallbackModel(child_response),
+            plugins=[SlowStartup()] if ending == "startup_timeout" else (),
+        ),
         CallbackModel(parent_response),
-        timeout=0.1 if ending == "timeout" else 5,
+        timeout=5 if ending == "parent_error" else 0.1,
     )
     async with parent.session() as session:
         if ending == "parent_error":
@@ -539,4 +553,7 @@ async def test_background_timeout_or_parent_failure_drains_children(ending):
             await session.run("Start")
             await asyncio.wait_for(notified.wait(), 2)
             assert session.children[0].status is SubagentStatus.TIMED_OUT
-        assert cleaned.is_set()
+        assert cleaned.is_set() == started.is_set()
+        assert startup_cleaned.is_set() == startup_entered.is_set()
+        if ending == "startup_timeout":
+            assert not started.is_set()
