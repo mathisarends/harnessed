@@ -26,7 +26,6 @@ review conversation. Every ticket lists:
 | # | Ticket | Priority | Breaking | Depends on | Status |
 |---|--------|----------|----------|------------|--------|
 | 03 | [Stream surface for UIs](03-stream-surface.md) | high | alias rename only | 01, 04 | proposed |
-| 04 | [Fewer event bases, plugin-owned events](04-event-bases-and-ownership.md) | medium | yes | 01 | proposed |
 | 05 | [Approvals API ergonomics](05-approvals-api.md) | high | yes | – | proposed |
 | 06 | [Public session views instead of `harnessed.core`](06-public-session-views.md) | high | no (additive) | – | proposed |
 | 07 | [Rename kernel `Context` to `Scope`](07-kernel-context-to-scope.md) | medium | yes | 06 | proposed |

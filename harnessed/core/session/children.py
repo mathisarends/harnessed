@@ -2,7 +2,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 
 from harnessed.core.child_status import ChildActivity, ChildReportState, ChildRuntimeState
-from harnessed.core.events.base import SessionEvent
+from harnessed.core.events.base import DurableEvent
 from harnessed.core.events.subagents import (
     SubagentApprovalRequestedEvent,
     SubagentFinishedEvent,
@@ -44,7 +44,7 @@ class ChildProjection:
             raise ValueError("A child requires one valid parent link")
         self.parent = parent
 
-    def validate(self, event: SessionEvent) -> None:
+    def validate(self, event: DurableEvent) -> None:
         if isinstance(event, SubagentLinkedEvent):
             if self.parent is not None or not 1 <= event.depth <= event.depth_limit:
                 raise ValueError("A child requires one valid parent link")
@@ -62,7 +62,7 @@ class ChildProjection:
             if child is None or child.status is not SubagentStatus.RUNNING:
                 raise ValueError("A child receipt or approval requires a running child")
 
-    def apply(self, event: SessionEvent) -> None:
+    def apply(self, event: DurableEvent) -> None:
         if isinstance(event, SubagentStartedEvent):
             self.calls.add(event.call_id)
             self.children[event.child_session_id] = ChildSession(

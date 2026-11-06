@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal
 
-from harnessed.core.events.base import Identifier, SessionEvent, StepNumber
+from harnessed.core.events.base import DurableEvent, Identifier, StepNumber
 from harnessed.core.events.kinds import EventKind
 from harnessed.core.messages import Observation, SpillRef
 
@@ -13,7 +13,7 @@ class SpillExpirationReason(StrEnum):
 
 
 @dataclass(frozen=True)
-class ObservationRecordedEvent(SessionEvent):
+class ObservationRecordedEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.OBSERVATION_RECORDED] = field(
@@ -39,7 +39,7 @@ class IncludedObservation:
 
 
 @dataclass(frozen=True)
-class ObservationsIncludedEvent(SessionEvent):
+class ObservationsIncludedEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.OBSERVATIONS_INCLUDED] = field(
@@ -53,7 +53,7 @@ class ObservationsIncludedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class ObservationPolicyAppliedEvent(SessionEvent):
+class ObservationPolicyAppliedEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.OBSERVATION_POLICY_APPLIED] = field(
@@ -69,7 +69,7 @@ class ObservationPolicyAppliedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class SpillCreatedEvent(SessionEvent):
+class SpillCreatedEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.SPILL_CREATED] = field(default=EventKind.SPILL_CREATED, kw_only=True)
@@ -79,7 +79,7 @@ class SpillCreatedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class SpillExpiredEvent(SessionEvent):
+class SpillExpiredEvent(DurableEvent):
     __hash__ = None
     type: Literal[EventKind.SPILL_EXPIRED] = field(default=EventKind.SPILL_EXPIRED, kw_only=True)
     ref: SpillRef

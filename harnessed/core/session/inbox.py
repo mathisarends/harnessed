@@ -2,7 +2,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Self
 
-from harnessed.core.events.base import SessionEvent
+from harnessed.core.events.base import DurableEvent
 from harnessed.core.events.inbox import InboxAddedEvent, InboxRemovedEvent, InboxTarget
 from harnessed.core.events.messages import ContextMessageEvent, UserMessageEvent
 
@@ -17,7 +17,7 @@ class Inbox:
         object.__setattr__(snapshot, "pending", tuple(pending))
         return snapshot
 
-    def __init__(self, events: Iterable[SessionEvent]) -> None:
+    def __init__(self, events: Iterable[DurableEvent]) -> None:
         pending: dict[str, InboxAddedEvent] = {}
         for event in events:
             if isinstance(event, InboxAddedEvent):

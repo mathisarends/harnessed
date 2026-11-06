@@ -4,7 +4,7 @@ from dataclasses import replace
 from functools import partial
 
 from harnessed.core.assets import AssetRef, AssetStore
-from harnessed.core.events.base import SessionEvent
+from harnessed.core.events.base import DurableEvent
 from harnessed.core.events.inbox import InboxAddedEvent
 from harnessed.core.events.messages import ContextMessageEvent, UserMessageEvent
 from harnessed.core.events.model import ModelRequestedEvent
@@ -106,7 +106,7 @@ class _SessionImages:
             else replace(request, messages=messages)
         )
 
-    async def retain_event(self, event: SessionEvent) -> SessionEvent:
+    async def retain_event(self, event: DurableEvent) -> DurableEvent:
         if isinstance(event, InboxAddedEvent):
             message = await self.retain_message(event.message)
             context = tuple([await self.retain_message(item) for item in event.context])

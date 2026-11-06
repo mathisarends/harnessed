@@ -8,7 +8,7 @@ from typing import Any, ClassVar, Self, TypeVar, cast, get_args, get_origin, ove
 
 from pydantic import BaseModel, ConfigDict
 
-from harnessed.core.events.base import SessionEvent, TransientEvent
+from harnessed.core.events.base import DurableEvent, TransientEvent
 from harnessed.core.prompt.values import PromptContribution, SystemPrompt
 from harnessed.core.tools import ToolSpec
 from harnessed.core.tools.decorator import _activation_tool
@@ -50,7 +50,7 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
     """
 
     config: ConfigT
-    events: tuple[type[SessionEvent | TransientEvent], ...] = ()
+    events: tuple[type[DurableEvent | TransientEvent], ...] = ()
     _configuration_type: ClassVar[type[BaseModel] | None] = None
 
     @overload
@@ -192,7 +192,7 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         return selected
 
 
-def plugin_events(value: PluginLike) -> tuple[type[SessionEvent | TransientEvent], ...]:
+def plugin_events(value: PluginLike) -> tuple[type[DurableEvent | TransientEvent], ...]:
     """Event types a plugin declares; only core Plugin recipes declare any."""
     return value.events if isinstance(value, Plugin) else ()
 

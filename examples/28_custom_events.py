@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 from pydantic import Field, TypeAdapter
 
 from harnessed import Agent, Plugin, ToolContext, tool
-from harnessed.events import BuiltinEvent, DurableEvent, TextDeltaEvent
+from harnessed.events import DurableEvent, StreamEvent, TextDeltaEvent
 from harnessed.testing import ScriptedModel, call
 
 
@@ -32,7 +32,7 @@ class Indexer(Plugin):
         return "Indexed 42 files."
 
 
-type ProjectEvent = Annotated[BuiltinEvent | ProjectIndexed, Field(discriminator="type")]
+type ProjectEvent = Annotated[StreamEvent[str] | ProjectIndexed, Field(discriminator="type")]
 
 
 async def main():

@@ -2,7 +2,7 @@ from collections.abc import Iterable
 
 from harnessed import Session
 from harnessed.core.approvals import ApprovalState
-from harnessed.core.events.base import SessionEvent
+from harnessed.core.events.base import DurableEvent
 from harnessed.core.events.model import ModelUsageRecordedEvent
 from harnessed.core.events.registry import EventRegistry
 from harnessed.core.events.turn import (
@@ -23,14 +23,14 @@ class Audit:
     """Test-owned capture; the runtime deliberately does not archive old turns."""
 
     def __init__(self, session: Session) -> None:
-        self._events: list[SessionEvent] = list(session.events)
+        self._events: list[DurableEvent] = list(session.events)
         session.on(SessionAppended, self._record)
 
     def _record(self, event: SessionAppended) -> None:
         self._events.append(event.event)
 
     @property
-    def events(self) -> tuple[SessionEvent, ...]:
+    def events(self) -> tuple[DurableEvent, ...]:
         return tuple(self._events)
 
     @property
@@ -45,9 +45,9 @@ class Audit:
 class AuditProjection:
     """Read exported audit records without creating or restoring a runtime."""
 
-    def __init__(self, events: Iterable[SessionEvent]) -> None:
+    def __init__(self, events: Iterable[DurableEvent]) -> None:
         self.events = tuple(events)
-        registry = EventRegistry()
+        registry = EventRegistry({type(event) for event in self.events})
         for event in self.events:
             registry.validate(event)
         self.approvals = ApprovalState(self.events)
@@ -61,7 +61,7 @@ class AuditProjection:
         )
 
 
-def derive_turns(events: Iterable[SessionEvent]) -> tuple[Turn, ...]:
+def derive_turns(events: Iterable[DurableEvent]) -> tuple[Turn, ...]:
     events = tuple(events)
     turns, steps = [], []
     turn_start = step_start = None

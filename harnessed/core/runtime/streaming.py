@@ -1,12 +1,10 @@
-from __future__ import annotations
-
 from collections.abc import AsyncGenerator, Awaitable, Callable
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from harnessed.core.events.approvals import (
     ApprovalNeededEvent,
 )
-from harnessed.core.events.base import CustomTransientEvent, DurableEvent
+from harnessed.core.events.base import DurableEvent, TransientEvent
 from harnessed.core.events.compaction import (
     CompactionAppliedEvent,
     CompactionFinishedEvent,
@@ -28,7 +26,7 @@ from harnessed.core.events.session import (
     SessionControlChangedEvent,
     SessionStatusChangedEvent,
 )
-from harnessed.core.events.stream import EventStream
+from harnessed.core.events.stream import STREAM_EVENT_TYPES, EventStream
 from harnessed.core.events.subagents import (
     SubagentApprovalRequestedEvent,
     SubagentFinishedEvent,
@@ -45,15 +43,13 @@ from harnessed.core.events.tools import (
     ToolProgressEvent,
 )
 from harnessed.core.events.turn import TurnStartedEvent
+from harnessed.core.events.unions import SESSION_EVENT_TYPES
 from harnessed.core.result import RunResult
 from harnessed.core.runtime.control import SessionStatus
 
-if TYPE_CHECKING:
-    from harnessed.core.runtime.session import AgentEvent
-
 
 async def project_stream_events(
-    raw: AsyncGenerator[AgentEvent, None],
+    raw: AsyncGenerator[DurableEvent | TransientEvent, None],
     *,
     completion: Callable[[], Awaitable[RunResult[Any]]],
 ) -> AsyncGenerator[EventStream[Any], None]:
@@ -87,7 +83,9 @@ async def project_stream_events(
                     yield event
                 case CompactionAppliedEvent() | SpillCreatedEvent() | SpillExpiredEvent():
                     yield event
-                case DurableEvent() | CustomTransientEvent():
+                case DurableEvent() | TransientEvent() if (
+                    event.type not in SESSION_EVENT_TYPES and event.type not in STREAM_EVENT_TYPES
+                ):
                     yield event
                 case (
                     SubagentLinkedEvent()

@@ -4,16 +4,16 @@ from harnessed import Agent as Application
 from harnessed import Plugin, PolicyDecision, ToolCall, ToolResult, tool
 from harnessed.core.events.inbox import InboxAddedEvent
 from harnessed.core.events.messages import ContextValueChangedEvent
-from harnessed.core.events.rules import RuleTriggeredEvent
 from harnessed.core.events.tools import ToolCallFinishedEvent
 from harnessed.core.messages import Role, ToolStatus
 from harnessed.core.model import ModelChunk
 from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.core.session.session import SessionLog
+from harnessed.errors import SessionFormatError
 from harnessed.kernel import PluginStatus
 from harnessed.plugins import Approvals
-from harnessed.plugins.rules import Rules, when
+from harnessed.plugins.rules import RuleAction, Rules, RuleTriggeredEvent, when
 from harnessed.plugins.shell import ProcResult
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit, AuditProjection
@@ -24,6 +24,21 @@ def scripted_commands(commands):
         *[[ModelChunk(tool_call=ToolCall("bash", {"command": command}))] for command in commands],
         "done",
     ]
+
+
+async def test_rules_events_require_the_plugin_catalog_for_replay():
+    rules = Rules([when(tool="publish").note("Record publication")])
+    event = RuleTriggeredEvent("rules:0", "call", 1, (RuleAction.NOTE,))
+    async with Application(model=ScriptedModel([]), plugins=[rules]).session() as session:
+        audit = Audit(session)
+        await session.emit(event)
+        assert audit.events == (event,)
+        record = session.log.registry.encode(event)
+    async with Application(model=ScriptedModel([]), plugins=[rules]).session() as restored:
+        assert restored.log.registry.decode(record) == event
+    async with Application(model=ScriptedModel([])).session() as bare:
+        with pytest.raises(SessionFormatError, match="Unknown session event type: rule.triggered"):
+            bare.log.registry.decode(record)
 
 
 async def test_rule_note_context_steer_order_and_structured_exit_code():

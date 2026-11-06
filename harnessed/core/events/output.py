@@ -4,13 +4,13 @@ from uuid import uuid4
 
 from pydantic import PlainSerializer
 
-from harnessed.core.events.base import Identifier, SessionEvent, StepNumber
+from harnessed.core.events.base import DurableEvent, Identifier, StepNumber
 from harnessed.core.events.kinds import EventKind
 from harnessed.core.messages import freeze, to_dict
 
 
 @dataclass(frozen=True)
-class OutputValidatedEvent(SessionEvent):
+class OutputValidatedEvent(DurableEvent):
     """An accepted JSON answer, tied to the exact assistant message it validates."""
 
     __hash__ = None
@@ -29,7 +29,7 @@ class OutputValidatedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class OutputValidationFailedEvent(SessionEvent):
+class OutputValidationFailedEvent(DurableEvent):
     """A bounded repair attempt; rejected input values are never echoed here."""
 
     __hash__ = None

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, cast
 from pydantic import ConfigDict, TypeAdapter, ValidationError
 
 from harnessed.core.errors import SessionFormatError
-from harnessed.core.events.base import SessionEvent
+from harnessed.core.events.base import DurableEvent
 from harnessed.core.events.unions import SESSION_EVENT_TYPES, LogEvent
 from harnessed.core.messages import (
     freeze,
@@ -25,12 +25,12 @@ CURRENT_VERSION = 4
 
 
 def _validate_event(
-    event: SessionEvent | TransientEvent,
+    event: DurableEvent | TransientEvent,
     kinds: Mapping[str, type] | None = None,
 ) -> None:
     kinds = SESSION_EVENT_TYPES if kinds is None else kinds
     if kinds.get(getattr(event, "type", None)) is not type(event):
-        raise TypeError("Only registered frozen SessionEvent instances may be appended")
+        raise TypeError("Only registered frozen DurableEvent instances may be appended")
 
     def immutable(value: object) -> None:
         if value is None or isinstance(value, str | bool | int):
@@ -71,9 +71,9 @@ _ADAPTER = TypeAdapter(
 )
 
 
-def encode_event(event: SessionEvent, *, registry: EventRegistry | None = None) -> dict[str, Any]:
+def encode_event(event: DurableEvent, *, registry: EventRegistry | None = None) -> dict[str, Any]:
     """Encode a canonical dotted tag and the current version without mutable state."""
-    if not isinstance(event, SessionEvent):
+    if not isinstance(event, DurableEvent):
         raise TypeError("Only durable events can be persisted")
     registry.validate(event) if registry is not None else _validate_event(event)
     data = to_dict(event)
@@ -81,7 +81,7 @@ def encode_event(event: SessionEvent, *, registry: EventRegistry | None = None) 
     return {"version": CURRENT_VERSION, "type": event.type, "data": data}
 
 
-def decode_event(record: dict[str, Any], *, registry: EventRegistry | None = None) -> SessionEvent:
+def decode_event(record: dict[str, Any], *, registry: EventRegistry | None = None) -> DurableEvent:
     """Validate the canonical envelope and frozen discriminated event payload."""
     if not isinstance(record, dict) or set(record) - {"version", "seq", "type", "data"}:
         raise SessionFormatError("Invalid session record envelope")
@@ -94,7 +94,7 @@ def decode_event(record: dict[str, Any], *, registry: EventRegistry | None = Non
     if not isinstance(tag, str):
         raise SessionFormatError("Session records require a type tag")
     kinds = registry._types if registry is not None else SESSION_EVENT_TYPES
-    if tag not in kinds or not issubclass(kinds[tag], SessionEvent):
+    if tag not in kinds or not issubclass(kinds[tag], DurableEvent):
         raise SessionFormatError(f"Unknown session event type: {tag}")
     body = record.get("data")
     if not isinstance(body, dict):

@@ -1,10 +1,10 @@
-from dataclasses import replace
-from typing import Annotated
+from dataclasses import fields, replace
+from typing import Annotated, get_args, get_origin
 
 from pydantic import Field
 
 from harnessed.core.events.approvals import ApprovalNeededEvent
-from harnessed.core.events.base import CustomTransientEvent, DurableEvent
+from harnessed.core.events.base import DurableEvent, TransientEvent
 from harnessed.core.events.compaction import (
     CompactionAppliedEvent,
     CompactionFinishedEvent,
@@ -71,7 +71,14 @@ type StreamEvent[T] = Annotated[
 ]
 
 
-type EventStream[T] = StreamEvent[T] | DurableEvent | CustomTransientEvent
+STREAM_EVENT_TYPES: dict[str, type] = {
+    str(next(f.default for f in fields(kind) if f.name == "type")): kind
+    for item in get_args(get_args(StreamEvent.__value__)[0])
+    for kind in (get_origin(item) or item,)
+}
+
+
+type EventStream[T] = StreamEvent[T] | DurableEvent | TransientEvent[T]
 
 
 def coalesce_deltas[E](previous: E, event: E) -> E | None:

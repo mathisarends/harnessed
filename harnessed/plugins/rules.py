@@ -4,13 +4,15 @@ import inspect
 import json
 from collections import Counter
 from collections.abc import Callable, Iterable
-from dataclasses import replace
-from typing import Annotated, Self
+from dataclasses import dataclass as event_dataclass
+from dataclasses import field, replace
+from enum import StrEnum
+from typing import Annotated, Literal, Self
 
 from pydantic import AfterValidator, ConfigDict, Field, StringConstraints, TypeAdapter
 from pydantic.dataclasses import dataclass
 
-from harnessed.core.events.rules import RuleAction, RuleTriggeredEvent
+from harnessed.core.events.base import DurableEvent, Identifier
 from harnessed.core.hooks import ReviewToolResult
 from harnessed.core.messages import ToolCall, ToolResult, to_dict, user
 from harnessed.core.plugin import Plugin
@@ -19,6 +21,30 @@ from harnessed.core.runtime.inbox import SessionInbox
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import TokenCounter, count_content
 from harnessed.kernel import Inject, Next, PluginState, hook
+
+
+class RuleEventKind(StrEnum):
+    TRIGGERED = "rule.triggered"
+
+
+class RuleAction(StrEnum):
+    NOTE = "note"
+    CONTEXT = "context"
+    STEER = "steer"
+
+
+@event_dataclass(frozen=True)
+class RuleTriggeredEvent(DurableEvent):
+    __hash__ = None
+
+    type: Literal[RuleEventKind.TRIGGERED] = field(default=RuleEventKind.TRIGGERED, kw_only=True)
+    rule: str
+    call_id: Identifier
+    occurrence: int
+    actions: tuple[RuleAction, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "actions", tuple(self.actions))
 
 
 def _synchronous(callback):
@@ -109,6 +135,7 @@ def when(
 
 
 class Rules(Plugin, needs=(SessionLog, DynamicContext, TokenCounter, SessionInbox)):
+    events = (RuleTriggeredEvent,)
     _counts = PluginState[Counter[tuple[int, str]]](Counter)
     _last_counts = PluginState[dict[int, int]](dict)
 

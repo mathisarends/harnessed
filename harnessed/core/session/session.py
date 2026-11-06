@@ -9,7 +9,7 @@ from harnessed.core.assets import AssetStore, _MemoryAssets
 from harnessed.core.buffering import EventBuffer
 from harnessed.core.errors import SessionFormatError, SessionStateError
 from harnessed.core.events.approvals import ApprovalResolvedEvent, ApprovalStatus
-from harnessed.core.events.base import DurableEvent, SessionEvent, TransientEvent
+from harnessed.core.events.base import DurableEvent, TransientEvent
 from harnessed.core.events.compaction import CompactionAppliedEvent
 from harnessed.core.events.inbox import (
     InboxAddedEvent,
@@ -52,7 +52,7 @@ from harnessed.core.events.turn import (
     TurnOutcome,
     TurnStartedEvent,
 )
-from harnessed.core.events.unions import LogEvent
+from harnessed.core.events.unions import SESSION_EVENT_TYPES, LogEvent
 from harnessed.core.hooks import SessionAppended
 from harnessed.core.messages import (
     AssistantMessage,
@@ -109,16 +109,16 @@ class SessionLog:
         self.registry = registry
         self.id = session_id
         self.ctx = ctx
-        self._events: list[SessionEvent] = []
-        self._snapshot: tuple[SessionEvent, ...] | None = None
-        self._last: dict[type[SessionEvent], tuple[int, SessionEvent]] = {}
+        self._events: list[DurableEvent] = []
+        self._snapshot: tuple[DurableEvent, ...] | None = None
+        self._last: dict[type[DurableEvent], tuple[int, DurableEvent]] = {}
         self._files = files if files is not None else MemoryFiles(state.files if state else ())
         self._assets = (
             assets if assets is not None else _MemoryAssets(state.assets if state else ())
         )
         self._images = _SessionImages(self._assets)
         self._usage: ModelUsage | None = None
-        self._observers: dict[EventBuffer[SessionEvent | TransientEvent | None], bool] = {}
+        self._observers: dict[EventBuffer[DurableEvent | TransientEvent | None], bool] = {}
         self._subscriptions_closed = False
         self._lock = asyncio.Lock()
         self._repair_lock = asyncio.Lock()
@@ -249,9 +249,9 @@ class SessionLog:
             files=tuple(value for value in self._files.snapshot() if files.get(value.key) != value),
         )
 
-    def _checkpoint_entry(self, event: SessionEvent) -> CheckpointEntry:
-        # The log admits only catalog-validated built-ins or DurableEvent extensions.
-        if isinstance(event, DurableEvent):
+    def _checkpoint_entry(self, event: DurableEvent) -> CheckpointEntry:
+        # The log admits only catalog-validated built-ins or declared extensions.
+        if event.type not in SESSION_EVENT_TYPES:
             return CheckpointExtension.from_event(event, registry=self.registry)
         return cast(LogEvent, event)
 
@@ -308,7 +308,7 @@ class SessionLog:
         return await self._images.resolve(request)
 
     @property
-    def events(self) -> tuple[SessionEvent, ...]:
+    def events(self) -> tuple[DurableEvent, ...]:
         if self._snapshot is None:
             self._snapshot = tuple(self._events)
         return self._snapshot
@@ -401,11 +401,11 @@ class SessionLog:
 
     async def subscribe(
         self, *, transient: bool = False, buffer_size: int = 256
-    ) -> AsyncIterator[SessionEvent | TransientEvent]:
+    ) -> AsyncIterator[DurableEvent | TransientEvent]:
         """Observe acknowledged records; optionally include live notifications."""
         if self._subscriptions_closed:
             return
-        queue: EventBuffer[SessionEvent | TransientEvent | None] = EventBuffer(
+        queue: EventBuffer[DurableEvent | TransientEvent | None] = EventBuffer(
             buffer_size, merge=coalesce_deltas
         )
         self._observers[queue] = transient
@@ -415,9 +415,9 @@ class SessionLog:
         finally:
             self._observers.pop(queue, None)
 
-    def _notify(self, event: SessionEvent | TransientEvent) -> None:
+    def _notify(self, event: DurableEvent | TransientEvent) -> None:
         for queue, transient in tuple(self._observers.items()):
-            if isinstance(event, SessionEvent) or transient:
+            if isinstance(event, DurableEvent) or transient:
                 if not queue.put(event):
                     self._observers.pop(queue, None)
 
@@ -434,12 +434,12 @@ class SessionLog:
     def uncompacted_turn_count(self) -> int:
         return self._uncompacted_turns
 
-    def last[E: SessionEvent](self, kind: type[E]) -> E | None:
+    def last[E: DurableEvent](self, kind: type[E]) -> E | None:
         """Return the last event of an exact registered kind in constant time."""
         indexed = self._last.get(kind)
         return cast(E, indexed[1]) if indexed is not None else None
 
-    def since[E: SessionEvent](self, kind: type[E]) -> tuple[SessionEvent, ...]:
+    def since[E: DurableEvent](self, kind: type[E]) -> tuple[DurableEvent, ...]:
         """Return the suffix after the last event of this exact kind."""
         indexed = self._last.get(kind)
         start = indexed[0] + 1 - (self._sequence - len(self._events)) if indexed else 0
@@ -531,7 +531,7 @@ class SessionLog:
 
     async def append(
         self,
-        event: SessionEvent,
+        event: DurableEvent,
         *,
         on_committed: Callable[[], None] | None = None,
         during_run: str | None = None,
@@ -575,10 +575,10 @@ class SessionLog:
 
     async def _append(
         self,
-        event: SessionEvent,
+        event: DurableEvent,
         *,
         during_run: str | None = None,
-    ) -> tuple[int, SessionEvent]:
+    ) -> tuple[int, DurableEvent]:
         async with self._lock:
             self.registry.validate(event)
             if self._persistence is not None and not self._restoring:
@@ -717,9 +717,9 @@ class SessionLog:
             await self.ctx.dispatch(SessionPublished(self, event))
             await self.ctx.dispatch(event)
 
-    async def emit(self, event: SessionEvent | TransientEvent) -> None:
+    async def emit(self, event: DurableEvent | TransientEvent) -> None:
         """Admit an execution record or publish a live notification through the same catalog."""
-        if isinstance(event, SessionEvent):
+        if isinstance(event, DurableEvent):
             await self.append(event)
         elif isinstance(event, TransientEvent):
             await self.publish(event)

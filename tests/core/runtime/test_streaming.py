@@ -23,6 +23,7 @@ from harnessed.events import (
     ApprovalNeededEvent,
     ApprovalResolvedEvent,
     AssistantMessageEvent,
+    DurableEvent,
     EventStream,
     InboxAddedEvent,
     ModelAttemptFinishedEvent,
@@ -30,7 +31,6 @@ from harnessed.events import (
     ModelRequestFailedEvent,
     ModelRequestOutcome,
     ReasoningDeltaEvent,
-    SessionEvent,
     SessionStatusChangedEvent,
     TextDeltaEvent,
     ToolCallFinishedEvent,
@@ -204,7 +204,7 @@ async def test_stream_has_model_lifecycle_a_durable_approval_and_one_terminal_re
         assert isinstance(events[-1], TurnResultEvent)
         assert events[-1].result.text == "Finished" and events[-1].result.output is None
         assert sum(isinstance(e, TurnResultEvent) for e in events) == 1
-        durable = [event for event in events if isinstance(event, SessionEvent)]
+        durable = [event for event in events if isinstance(event, DurableEvent)]
         assert {type(event) for event in durable} == {
             ModelRequestedEvent,
             ToolCallRequestedEvent,

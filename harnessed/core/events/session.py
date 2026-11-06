@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal
 
-from harnessed.core.events.base import SessionEvent, TransientEvent
+from harnessed.core.events.base import DurableEvent, TransientEvent
 from harnessed.core.events.kinds import EventKind
 
 
@@ -24,7 +24,7 @@ class ControlState(StrEnum):
 
 
 @dataclass(frozen=True)
-class SessionControlChangedEvent(SessionEvent):
+class SessionControlChangedEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.SESSION_CONTROL_CHANGED] = field(

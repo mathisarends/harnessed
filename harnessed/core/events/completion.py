@@ -8,7 +8,7 @@ from harnessed.core.result import RunResult
 
 @final
 @dataclass(frozen=True, slots=True)
-class TurnResultEvent[T](TransientEvent):
+class TurnResultEvent[T](TransientEvent[T]):
     """End a normally exhausted UI stream with its assembled run result.
 
     Stream errors or consumer cancellation can prevent this notification.

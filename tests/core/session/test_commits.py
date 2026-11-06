@@ -15,7 +15,6 @@ from harnessed.events import (
     ContextMessageEvent,
     DurableEvent,
     ReasoningDeltaEvent,
-    SessionEvent,
     TextDeltaEvent,
     ToolArgumentsDeltaEvent,
     UserMessageEvent,
@@ -126,7 +125,7 @@ async def test_commits_cover_each_live_event_once_even_after_compaction_and_reop
         store=store,
         plugins=[Compaction(trigger=every_turns(1), keep_turns=0, summarizer=Brief())],
     )
-    observed: list[tuple[int, SessionEvent]] = []
+    observed: list[tuple[int, DurableEvent]] = []
 
     def observe(event: SessionAppended) -> None:
         observed.append((event.seq, event.event))

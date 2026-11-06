@@ -10,7 +10,7 @@ from harnessed.core.attachments import Attachment
 from harnessed.core.buffering import EventBuffer
 from harnessed.core.compaction import CompactionManager
 from harnessed.core.errors import SessionClosed, SessionStateError
-from harnessed.core.events.base import SessionEvent, TransientEvent
+from harnessed.core.events.base import DurableEvent, TransientEvent
 from harnessed.core.events.compaction import CompactionAppliedEvent
 from harnessed.core.events.inbox import InboxAddedEvent, InboxMode, InboxRemovedEvent
 from harnessed.core.events.messages import ContextMessageEvent
@@ -70,7 +70,6 @@ from harnessed.kernel import (
     PluginLike,
 )
 
-type AgentEvent = SessionEvent | TransientEvent
 _driving: ContextVar[Session | None] = ContextVar("harnessed_driving", default=None)
 
 
@@ -95,7 +94,7 @@ class Session:
         ctx.provide(SessionControl, self.control)
         ctx.provide(SessionInbox, self.inbox)
         ctx.provide(ToolContexts, BoundToolContexts(session, self.inbox, self.approvals))
-        self._subscribers: set[EventBuffer[AgentEvent | None]] = set()
+        self._subscribers: set[EventBuffer[DurableEvent | TransientEvent | None]] = set()
         self._submissions: dict[RunHandle[Any], SubmittedRun] = {}
         self._queued_submissions: dict[str, SubmittedRun] = {}
         self._submitted_turns: dict[str, SubmittedRun] = {}
@@ -124,7 +123,7 @@ class Session:
         return self.ctx[SystemPromptStore]
 
     @property
-    def events(self) -> tuple[SessionEvent, ...]:
+    def events(self) -> tuple[DurableEvent, ...]:
         return self.log.events
 
     @property
@@ -152,7 +151,7 @@ class Session:
     def turns(self) -> tuple[Turn, ...]:
         return self.log.turns
 
-    def last[E: SessionEvent](self, kind: type[E]) -> E | None:
+    def last[E: DurableEvent](self, kind: type[E]) -> E | None:
         return self.log.last(kind)
 
     def snapshot(self) -> SessionState:
@@ -166,7 +165,7 @@ class Session:
             raise SessionStateError("Export requires an idle session with no queued input")
         return self.log.snapshot()
 
-    async def emit(self, event: SessionEvent | TransientEvent) -> None:
+    async def emit(self, event: DurableEvent | TransientEvent) -> None:
         self.control.check_open()
         await self.log.emit(event)
 
@@ -177,7 +176,7 @@ class Session:
 
     async def subscribe(
         self, *, transient: bool = False, buffer_size: int = 256
-    ) -> AsyncIterator[AgentEvent]:
+    ) -> AsyncIterator[DurableEvent | TransientEvent]:
         """Observe the raw log independently of any individual run/stream call."""
         async for event in self.log.subscribe(transient=transient, buffer_size=buffer_size):
             yield event
@@ -317,7 +316,7 @@ class Session:
                 self.control.notify()
             self._publish(event.event)
 
-    def _submission_event(self, event: SessionEvent) -> None:
+    def _submission_event(self, event: DurableEvent) -> None:
         submitted = None
         if isinstance(event, TurnStartedEvent):
             submitted = self._queued_submissions.pop(event.input_id, None)
@@ -363,7 +362,7 @@ class Session:
         submitted.finish(value)
         self._output_values.release(submitted.schema)
 
-    def _publish(self, event: AgentEvent | None) -> None:
+    def _publish(self, event: DurableEvent | TransientEvent | None) -> None:
         if event is None:
             failure = self.control.error
             if failure is None and (self.control.closing or self.status is SessionStatus.CLOSED):
@@ -544,7 +543,9 @@ class Session:
         compiled = self.ctx[OutputTypes].register(output) if output is not None else None
         schema = compiled.definition if compiled is not None else None
         async with StreamApprovals(self, self._live_approvals) as approvals:
-            queue: EventBuffer[AgentEvent | None] = EventBuffer(buffer_size, merge=coalesce_deltas)
+            queue: EventBuffer[DurableEvent | TransientEvent | None] = EventBuffer(
+                buffer_size, merge=coalesce_deltas
+            )
             self._subscribers.add(queue)
             try:
                 handle = await self._enqueue(
@@ -627,9 +628,9 @@ class Session:
 
     async def _stream_turn(
         self,
-        queue: EventBuffer[AgentEvent | None],
+        queue: EventBuffer[DurableEvent | TransientEvent | None],
         input_id: str,
-    ) -> AsyncGenerator[AgentEvent, None]:
+    ) -> AsyncGenerator[DurableEvent | TransientEvent, None]:
         try:
             turn_id = None
             while True:

@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 
-from harnessed.core.events.base import Identifier, SessionEvent, StepNumber
+from harnessed.core.events.base import DurableEvent, Identifier, StepNumber
 from harnessed.core.events.kinds import EventKind
 from harnessed.core.limits import FinalStepPolicy
 from harnessed.core.model import GenerationSettings, OutputSchema
@@ -46,7 +46,7 @@ def _check_limit(name: str, value: int | None) -> None:
 
 
 @dataclass(frozen=True)
-class TurnStartedEvent(SessionEvent):
+class TurnStartedEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.TURN_STARTED] = field(default=EventKind.TURN_STARTED, kw_only=True)
@@ -64,7 +64,7 @@ class TurnStartedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class TurnEndedEvent(SessionEvent):
+class TurnEndedEvent(DurableEvent):
     """Durably close a turn with its outcome; the UI result is a separate event."""
 
     __hash__ = None
@@ -78,7 +78,7 @@ class TurnEndedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class StepStartedEvent(SessionEvent):
+class StepStartedEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.STEP_STARTED] = field(default=EventKind.STEP_STARTED, kw_only=True)
@@ -87,7 +87,7 @@ class StepStartedEvent(SessionEvent):
 
 
 @dataclass(frozen=True)
-class StepEndedEvent(SessionEvent):
+class StepEndedEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.STEP_ENDED] = field(default=EventKind.STEP_ENDED, kw_only=True)

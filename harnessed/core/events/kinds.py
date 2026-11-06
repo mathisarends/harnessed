@@ -34,7 +34,6 @@ class EventKind(StrEnum):
     OBSERVATION_POLICY_APPLIED = "observation.policy.applied"
     SPILL_CREATED = "spill.created"
     SPILL_EXPIRED = "spill.expired"
-    RULE_TRIGGERED = "rule.triggered"
     ASSISTANT_MESSAGE = "assistant.message"
     TOOL_CALL_REQUESTED = "tool.call.requested"
     TOOL_CALL_FINISHED = "tool.call.finished"

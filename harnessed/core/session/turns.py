@@ -2,7 +2,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from harnessed.core.errors import SessionFormatError
-from harnessed.core.events.base import SessionEvent
+from harnessed.core.events.base import DurableEvent
 from harnessed.core.events.messages import AssistantMessageEvent
 from harnessed.core.events.model import ModelRequestedEvent
 from harnessed.core.events.output import OutputValidatedEvent, OutputValidationFailedEvent
@@ -22,7 +22,7 @@ class Step:
     __hash__ = None
     turn_id: str
     number: int
-    events: tuple[SessionEvent, ...]
+    events: tuple[DurableEvent, ...]
     reason: StepOutcome | None = None
 
     def __post_init__(self) -> None:
@@ -48,7 +48,7 @@ class Step:
 class Turn:
     __hash__ = None
     id: str
-    events: tuple[SessionEvent, ...]
+    events: tuple[DurableEvent, ...]
     steps: tuple[Step, ...]
     reason: TurnOutcome | None = None
 
@@ -72,12 +72,12 @@ class Turn:
 class TurnProjection:
     """Incremental builder; immutable snapshots never reference its mutable buffers."""
 
-    def __init__(self, events: Iterable[SessionEvent] = ()) -> None:
+    def __init__(self, events: Iterable[DurableEvent] = ()) -> None:
         self._closed: list[Turn] = []
         self._turn: str | None = None
-        self._events: list[SessionEvent] = []
+        self._events: list[DurableEvent] = []
         self._steps: list[Step] = []
-        self._step: list[SessionEvent] | None = None
+        self._step: list[DurableEvent] | None = None
         self._requests = 0
         self._open_snapshot: Turn | None = None
         self._snapshot: tuple[Turn, ...] | None = None
@@ -93,7 +93,7 @@ class TurnProjection:
     def closed_count(self) -> int:
         return len(self._closed)
 
-    def validate(self, event: SessionEvent) -> None:
+    def validate(self, event: DurableEvent) -> None:
         if isinstance(event, OutputValidatedEvent | OutputValidationFailedEvent):
             start = self._events[0] if self._events else None
             answer = next(
@@ -138,7 +138,7 @@ class TurnProjection:
         elif isinstance(event, ModelRequestedEvent) and self._step is not None and self._requests:
             raise ValueError("A completed step must contain exactly one model request")
 
-    def apply(self, event: SessionEvent) -> None:
+    def apply(self, event: DurableEvent) -> None:
         if isinstance(event, TurnStartedEvent):
             self._turn = event.turn_id
             self._events = []

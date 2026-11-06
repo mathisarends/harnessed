@@ -12,7 +12,7 @@ class SessionEvent(Emit):
 
 
 class DurableEvent(SessionEvent):
-    """Extension point for application data that survives session replay."""
+    """A persisted event, built-in or application-defined, replayed with the log."""
 
 
 type Identifier = Annotated[str, Field(min_length=1)]
@@ -21,13 +21,9 @@ type Identifier = Annotated[str, Field(min_length=1)]
 type StepNumber = Annotated[int, Field(ge=1)]
 
 
-class TransientEvent(Emit):
-    """A live notification; never accepted by Session.append or the log codec."""
+class TransientEvent[T](SessionEvent):
+    """A live notification, never persisted; T preserves a stream's result type.
 
-    @property
-    def type(self) -> str:
-        return type(self).__name__
-
-
-class CustomTransientEvent(TransientEvent):
-    """Extension point for live application notifications."""
+    Ordinary notifications need no type argument. Terminal result notifications
+    bind T so narrowing an open stream retains the application's output type.
+    """

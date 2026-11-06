@@ -1,10 +1,10 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Literal
 
 import pytest
-from pydantic import Field, TypeAdapter, ValidationError
+from pydantic import TypeAdapter, ValidationError
 from pydantic.errors import PydanticInvalidForJsonSchema
 
 from harnessed import Agent, Plugin, ToolContext, events, tool
@@ -101,9 +101,12 @@ def test_custom_event_schema_is_strict_and_registry_rejects_collisions_atomicall
 
 
 def test_full_builtin_and_application_unions_support_schemas_and_terminal_results():
-    annotation = Annotated[events.BuiltinEvent | ProjectIndexed, Field(discriminator="type")]
+    annotation = events.LogEvent | events.StreamEvent[object] | ProjectIndexed
     adapter = TypeAdapter(annotation)
-    assert "project.indexed" in adapter.json_schema()["discriminator"]["mapping"]
+    assert adapter.json_schema()["$defs"]["ProjectIndexed"]["properties"]["files"] == {
+        "title": "Files",
+        "type": "integer",
+    }
     assert adapter.validate_json(adapter.dump_json(ProjectIndexed(3))) == ProjectIndexed(3)
     registry = events.EventRegistry([ProjectIndexed])
     value = events.TurnResultEvent(RunResult("done", (ProjectIndexed(3),), _output=None))
@@ -129,7 +132,15 @@ def test_mutable_untagged_and_builtin_subclass_events_are_not_extension_points()
     class Unsafe(events.ToolCallRequestedEvent, events.DurableEvent):
         type: Literal["project.unsafe"] = field(default="project.unsafe", kw_only=True)
 
-    for kind in (Mutable, Untagged, Unsafe):
+    @dataclass(frozen=True)
+    class RootOnly(events.SessionEvent):
+        type: Literal["project.root"] = field(default="project.root", kw_only=True)
+
+    @dataclass(frozen=True)
+    class UnsafeLive(events.TextDeltaEvent):
+        type: Literal["project.unsafe.live"] = field(default="project.unsafe.live", kw_only=True)
+
+    for kind in (Mutable, Untagged, Unsafe, RootOnly, UnsafeLive):
         with pytest.raises(TypeError):
             events.EventRegistry([kind])
 

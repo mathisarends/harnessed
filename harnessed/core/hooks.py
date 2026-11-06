@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Self
 
 from harnessed.core.events.approvals import ApprovalRequestedEvent
-from harnessed.core.events.base import SessionEvent
+from harnessed.core.events.base import DurableEvent
 from harnessed.core.events.messages import UserMessageEvent
 from harnessed.core.messages import (
     ApprovalAnswer,
@@ -125,7 +125,7 @@ class SessionAppended(Emit):
     """Dispatched after an event is appended to the session log, before its own hooks."""
 
     log: SessionLog
-    event: SessionEvent
+    event: DurableEvent
     seq: int
 
 

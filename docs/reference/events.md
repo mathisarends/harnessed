@@ -5,8 +5,9 @@ Import concrete event classes directly from `harnessed.events`, or use
 explicit namespaced `type` discriminator. Tags are independent of class names.
 
 `StreamEvent[T]` is the discriminated union of built-in UI notifications below.
-`EventStream[T]` also admits declared application events. `BuiltinEvent` includes
-the UI notifications and durable audit events. See
+`EventStream[T]` also admits declared application events. `LogEvent` is the
+closed union of built-in durable events. Every built-in or custom event derives
+from `DurableEvent` or `TransientEvent`; `SessionEvent` is their common root. See
 [event schemas and extensions](../guides/events.md#discriminated-unions-and-json)
 for validation, codecs and explicit application unions.
 
@@ -135,7 +136,6 @@ in a new step receives a new identity. See the
 | `ApprovalRevokedEvent` | `approval.revoked` | Revoke a reusable grant identified by approval `request_id` |
 | `OutputValidatedEvent` | `output.validated` | Validated output data for `turn_id`, `schema_id` and `message_id` |
 | `OutputValidationFailedEvent` | `output.validation.failed` | Failed output-validation attempt and feedback for `turn_id` |
-| `RuleTriggeredEvent` | `rule.triggered` | Rule occurrence and selected actions for `call_id` |
 
 Execution completion and call completion describe different stages: the raw
 receipt precedes review and limits, while `ToolCallFinishedEvent` commits the

@@ -9,9 +9,12 @@ from harnessed.core.events.unions import SESSION_EVENT_TYPES
 from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.events import (
     AssistantMessageEvent,
+    DurableEvent,
+    LogEvent,
     SessionEvent,
     StreamEvent,
     ToolExecutionFinishedEvent,
+    TransientEvent,
     TurnEndedEvent,
 )
 from harnessed.kernel import hook
@@ -30,6 +33,14 @@ type Notification = Annotated[
 @pytest.mark.parametrize("event_type", builtin_event_types())
 def test_event_tag_matches_class_name(event_type: type) -> None:
     assert default_tag(event_type) == tag_from_class_name(event_type.__name__)
+
+
+@pytest.mark.parametrize("event_type", builtin_event_types())
+def test_builtin_event_bases_describe_persistence(event_type: type) -> None:
+    durable = event_type in get_args(get_args(LogEvent.__value__)[0])
+    assert issubclass(event_type, SessionEvent)
+    assert issubclass(event_type, DurableEvent) is durable
+    assert issubclass(event_type, TransientEvent) is not durable
 
 
 def test_public_event_exports_cover_every_builtin_with_one_canonical_class_name():
@@ -71,7 +82,7 @@ def test_short_name_event_namespaces_are_removed(namespace):
 
 
 async def test_direct_public_event_imports_observe_the_canonical_runtime_events():
-    observed: list[SessionEvent] = []
+    observed: list[DurableEvent] = []
 
     class Observer(Plugin):
         @tool(readonly=True)
