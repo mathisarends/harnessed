@@ -194,7 +194,7 @@ its commit; successful terminal completion still awaits committed storage.
 | `offset` | Sequence position where the execution suffix begins |
 | `seed` | Typed pending inputs and active approval grants |
 | `events` | Discriminated built-in events plus explicit `CheckpointExtension` values |
-| `control` | Typed `AgentControlChangedEvent` with its `ControlState` |
+| `control` | Typed `SessionControlChangedEvent` with its `ControlState` |
 | `assets` / `files` | Resources needed in addition to the conversation baseline |
 | `version` | Current checkpoint format, `Literal[2]` |
 

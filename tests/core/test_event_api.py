@@ -19,11 +19,17 @@ from harnessed.models import ModelChunk
 from harnessed.plugins import Approvals
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit
+from tests._events import builtin_event_types, default_tag, tag_from_class_name
 
 type Notification = Annotated[
     events.TextDeltaEvent | events.ReasoningDeltaEvent | events.ApprovalNeededEvent,
     Field(discriminator="type"),
 ]
+
+
+@pytest.mark.parametrize("event_type", builtin_event_types())
+def test_event_tag_matches_class_name(event_type: type) -> None:
+    assert default_tag(event_type) == tag_from_class_name(event_type.__name__)
 
 
 def test_public_event_exports_cover_every_builtin_with_one_canonical_class_name():
@@ -102,8 +108,8 @@ async def test_direct_public_event_imports_observe_the_canonical_runtime_events(
 
 def test_current_record_format_roundtrips_the_turn_end_payload():
     record = {
-        "version": 3,
-        "type": "turn.end",
+        "version": 4,
+        "type": "turn.ended",
         "data": {"turn_id": "turn", "reason": "completed"},
     }
     event = decode_event(record)
@@ -130,8 +136,8 @@ def test_data_notifications_roundtrip_through_a_discriminated_union():
 def test_namespaced_log_events_use_canonical_tags_only():
     event = events.TurnStartedEvent("turn")
     record = encode_event(event)
-    assert record["type"] == "turn.start" and record["version"] == 3
-    record.update(type="TurnStartedEvent", version=3)
+    assert record["type"] == "turn.started" and record["version"] == 4
+    record.update(type="TurnStartedEvent", version=4)
     with pytest.raises(ValueError):
         decode_event(record)
     assert events.CompactionAppliedEvent.type == "compaction.applied"

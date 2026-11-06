@@ -17,7 +17,7 @@ from harnessed.core.events.compaction import (
     CompactionOutcome,
     CompactionStartedEvent,
 )
-from harnessed.core.events.completion import TurnFinishedEvent
+from harnessed.core.events.completion import TurnResultEvent
 from harnessed.core.events.inbox import (
     InboxAddedEvent,
     InboxMode,
@@ -37,9 +37,9 @@ from harnessed.core.events.messages import (
     UserMessageEvent,
 )
 from harnessed.core.events.model import (
-    CacheMetricsEvent,
     ModelAttemptFinishedEvent,
     ModelAttemptStartedEvent,
+    ModelCacheMetricsEvent,
     ModelRequestedEvent,
     ModelRequestFailedEvent,
     ModelRequestOutcome,
@@ -59,8 +59,8 @@ from harnessed.core.events.output import OutputValidatedEvent, OutputValidationF
 from harnessed.core.events.registry import EventRegistry
 from harnessed.core.events.rules import RuleAction, RuleTriggeredEvent
 from harnessed.core.events.session import (
-    AgentControlChangedEvent,
     ControlState,
+    SessionControlChangedEvent,
     SessionStatusChangedEvent,
 )
 from harnessed.core.events.stream import EventStream, StreamEvent
@@ -100,7 +100,6 @@ from harnessed.core.model import (
 type BuiltinEvent = LogEvent | StreamEvent[Any]
 
 __all__ = [
-    "AgentControlChangedEvent",
     "ApprovalNeededEvent",
     "ApprovalRequestedEvent",
     "ApprovalResolvedEvent",
@@ -108,7 +107,6 @@ __all__ = [
     "ApprovalStatus",
     "AssistantMessageEvent",
     "BuiltinEvent",
-    "CacheMetricsEvent",
     "CompactionAppliedEvent",
     "CompactionFinishedEvent",
     "CompactionOutcome",
@@ -130,6 +128,7 @@ __all__ = [
     "ModelAttemptFinishedEvent",
     "ModelAttemptOutcome",
     "ModelAttemptStartedEvent",
+    "ModelCacheMetricsEvent",
     "ModelRequestFailedEvent",
     "ModelRequestOutcome",
     "ModelRequestedEvent",
@@ -146,6 +145,7 @@ __all__ = [
     "RetryReason",
     "RuleAction",
     "RuleTriggeredEvent",
+    "SessionControlChangedEvent",
     "SessionEvent",
     "SessionStatusChangedEvent",
     "SpillCreatedEvent",
@@ -175,8 +175,8 @@ __all__ = [
     "ToolProgressEvent",
     "TransientEvent",
     "TurnEndedEvent",
-    "TurnFinishedEvent",
     "TurnOutcome",
+    "TurnResultEvent",
     "TurnStartedEvent",
     "UsagePurpose",
     "UserMessageEvent",

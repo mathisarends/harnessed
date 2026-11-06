@@ -18,7 +18,7 @@ from harnessed.core.events.messages import (
     UserMessageEvent,
 )
 from harnessed.core.events.model import (
-    CacheMetricsEvent,
+    ModelCacheMetricsEvent,
     ModelRequestedEvent,
     ModelRequestFailedEvent,
     ModelUsageRecordedEvent,
@@ -32,7 +32,7 @@ from harnessed.core.events.observations import (
 )
 from harnessed.core.events.output import OutputValidatedEvent, OutputValidationFailedEvent
 from harnessed.core.events.rules import RuleTriggeredEvent
-from harnessed.core.events.session import AgentControlChangedEvent
+from harnessed.core.events.session import SessionControlChangedEvent
 from harnessed.core.events.subagents import (
     SubagentApprovalRequestedEvent,
     SubagentFinishedEvent,
@@ -58,7 +58,7 @@ from harnessed.core.events.turn import (
 
 type LogEvent = Annotated[
     (
-        AgentControlChangedEvent
+        SessionControlChangedEvent
         | ApprovalRequestedEvent
         | ApprovalResolvedEvent
         | ApprovalRevokedEvent
@@ -78,7 +78,7 @@ type LogEvent = Annotated[
         | ModelRequestedEvent
         | ModelRequestFailedEvent
         | ModelUsageRecordedEvent
-        | CacheMetricsEvent
+        | ModelCacheMetricsEvent
         | CompactionAppliedEvent
         | ObservationPolicyAppliedEvent
         | SpillCreatedEvent

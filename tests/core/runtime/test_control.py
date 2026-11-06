@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import pytest
 
 from harnessed import Agent, Inject, Plugin, SessionClosed, SessionStatus, StopReason
-from harnessed.core.events.session import AgentControlChangedEvent, ControlState
+from harnessed.core.events.session import ControlState, SessionControlChangedEvent
 from harnessed.core.events.tools import ToolCallFinishedEvent
 from harnessed.core.messages import ApprovalAnswer, ToolCall
 from harnessed.core.model import ModelChunk
@@ -241,7 +241,7 @@ async def test_control_service_rejects_self_waits_and_abort_before_runner_starts
 @pytest.mark.parametrize("state, keep_inbox", [("unknown", False), ("paused", True), ("active", 1)])
 def test_invalid_control_events_cannot_enter_the_log(state, keep_inbox):
     with pytest.raises(ValueError):
-        AgentControlChangedEvent(state, keep_inbox)
+        SessionControlChangedEvent(state, keep_inbox)
 
 
 async def test_cancelling_a_stop_caller_does_not_cancel_the_step():
@@ -267,7 +267,7 @@ async def test_resume_from_a_durable_pause_listener_does_not_deadlock():
             if event.state == ControlState.PAUSED:
                 await session.resume()
 
-        session.on(AgentControlChangedEvent, resume)
+        session.on(SessionControlChangedEvent, resume)
         await wait(session.pause())
         assert session.status is SessionStatus.IDLE
         assert (await session.run("task")).text == "done"

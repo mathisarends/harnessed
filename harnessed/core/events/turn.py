@@ -49,7 +49,7 @@ def _check_limit(name: str, value: int | None) -> None:
 class TurnStartedEvent(SessionEvent):
     __hash__ = None
 
-    type: Literal[EventKind.TURN_START] = field(default=EventKind.TURN_START, kw_only=True)
+    type: Literal[EventKind.TURN_STARTED] = field(default=EventKind.TURN_STARTED, kw_only=True)
     turn_id: Identifier
     input_id: str | None = None
     settings: GenerationSettings = field(default_factory=GenerationSettings)
@@ -69,7 +69,7 @@ class TurnEndedEvent(SessionEvent):
 
     __hash__ = None
 
-    type: Literal[EventKind.TURN_END] = field(default=EventKind.TURN_END, kw_only=True)
+    type: Literal[EventKind.TURN_ENDED] = field(default=EventKind.TURN_ENDED, kw_only=True)
     turn_id: Identifier
     reason: TurnOutcome = TurnOutcome.COMPLETED
 
@@ -81,7 +81,7 @@ class TurnEndedEvent(SessionEvent):
 class StepStartedEvent(SessionEvent):
     __hash__ = None
 
-    type: Literal[EventKind.STEP_START] = field(default=EventKind.STEP_START, kw_only=True)
+    type: Literal[EventKind.STEP_STARTED] = field(default=EventKind.STEP_STARTED, kw_only=True)
     turn_id: Identifier
     step: StepNumber
 
@@ -90,7 +90,7 @@ class StepStartedEvent(SessionEvent):
 class StepEndedEvent(SessionEvent):
     __hash__ = None
 
-    type: Literal[EventKind.STEP_END] = field(default=EventKind.STEP_END, kw_only=True)
+    type: Literal[EventKind.STEP_ENDED] = field(default=EventKind.STEP_ENDED, kw_only=True)
     turn_id: Identifier
     step: StepNumber
     reason: StepOutcome = StepOutcome.COMPLETED

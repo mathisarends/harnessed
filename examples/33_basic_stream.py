@@ -14,7 +14,7 @@ async def main() -> None:
                 match event:
                     case events.TextDeltaEvent(text=text):
                         print(text, end="", flush=True)
-                    case events.TurnFinishedEvent(result=result):
+                    case events.TurnResultEvent(result=result):
                         print("\nFinished:", result.stop_reason)
 
 

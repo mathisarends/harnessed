@@ -22,7 +22,7 @@ from harnessed.core.errors import SessionClosed, SessionFormatError, SessionStat
 from harnessed.core.messages import ImageReference, UserMessage
 from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.session.session import SessionLog
-from harnessed.events import TurnEndedEvent, TurnFinishedEvent, TurnStartedEvent
+from harnessed.events import TurnEndedEvent, TurnResultEvent, TurnStartedEvent
 from harnessed.kernel import Context
 from harnessed.plugins import Compaction, LatestObservationOnly, Spill, every_turns
 from harnessed.plugins.spill import SpillStore
@@ -189,7 +189,7 @@ async def test_queued_stream_results_have_their_own_turn_boundary_state():
         assert session.snapshot() == two.state
     async with Agent(model=ScriptedModel(["streamed"])).session(state=one.state) as session:
         events = [event async for event in session.stream("Next.")]
-        assert isinstance(events[-1], TurnFinishedEvent)
+        assert isinstance(events[-1], TurnResultEvent)
         assert events[-1].result.state.history[-1].message.text == "streamed"
 
 

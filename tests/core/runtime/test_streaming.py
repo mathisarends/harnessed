@@ -36,7 +36,7 @@ from harnessed.events import (
     ToolCallFinishedEvent,
     ToolCallRequestedEvent,
     ToolProgressEvent,
-    TurnFinishedEvent,
+    TurnResultEvent,
 )
 from harnessed.plugins import Approvals
 from harnessed.testing import CallbackModel, ScriptedModel
@@ -70,7 +70,7 @@ async def test_model_failure_raises_without_a_terminal_ui_event(partial: bool) -
                 async for event in stream:
                     received.append(event)
 
-        assert not any(isinstance(event, TurnFinishedEvent) for event in received)
+        assert not any(isinstance(event, TurnResultEvent) for event in received)
         assert "".join(event.text for event in received if isinstance(event, TextDeltaEvent)) == (
             "partial" if partial else ""
         )
@@ -199,11 +199,11 @@ async def test_stream_has_model_lifecycle_a_durable_approval_and_one_terminal_re
             ToolCallFinishedEvent,
             ApprovalNeededEvent,
             SessionStatusChangedEvent,
-            TurnFinishedEvent,
+            TurnResultEvent,
         }
-        assert isinstance(events[-1], TurnFinishedEvent)
+        assert isinstance(events[-1], TurnResultEvent)
         assert events[-1].result.text == "Finished" and events[-1].result.output is None
-        assert sum(isinstance(e, TurnFinishedEvent) for e in events) == 1
+        assert sum(isinstance(e, TurnResultEvent) for e in events) == 1
         durable = [event for event in events if isinstance(event, SessionEvent)]
         assert {type(event) for event in durable} == {
             ModelRequestedEvent,
@@ -269,7 +269,7 @@ async def test_answer_waits_for_admission_and_caller_cancellation_does_not_revok
         events = [event async for event in stream]
         await session.approvals.answer(question.request_id, ApprovalAnswer.ALLOW)
         assert effects == ["published"]
-        assert isinstance(events[-1], TurnFinishedEvent)
+        assert isinstance(events[-1], TurnResultEvent)
         assert session.last(ApprovalResolvedEvent).decision is ApprovalAnswer.ALLOW
 
 
@@ -317,7 +317,7 @@ async def test_expired_ui_approval_cannot_be_answered_and_still_finishes_the_tur
         with pytest.raises(ApprovalUnavailable):
             await session.approvals.answer(question.request_id, ApprovalAnswer.ALLOW)
         rest = [event async for event in stream]
-        assert isinstance(rest[-1], TurnFinishedEvent) and effects == []
+        assert isinstance(rest[-1], TurnResultEvent) and effects == []
         assert (
             next(e.result.status for e in rest if isinstance(e, ToolCallFinishedEvent))
             == "unavailable"
@@ -342,7 +342,7 @@ async def test_abort_during_ui_approval_returns_an_aborted_terminal_result():
         await asyncio.wait_for(ready.wait(), 3)
         await session.abort()
         events = await asyncio.wait_for(streaming, 3)
-        assert isinstance(events[-1], TurnFinishedEvent)
+        assert isinstance(events[-1], TurnResultEvent)
         assert events[-1].result.stop_reason is StopReason.ABORTED
         assert effects == [] and not session.approvals.pending
         with pytest.raises(ApprovalUnavailable):
@@ -356,7 +356,7 @@ async def test_structured_stream_preserves_the_output_type_without_control_tool_
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("final_answer", {"text": "ready"}))]])
     async with Agent(model=model).session() as session:
         events = [e async for e in session.stream("Report", output=Report)]
-        assert isinstance(events[-1], TurnFinishedEvent)
+        assert isinstance(events[-1], TurnResultEvent)
         assert isinstance(events[-1].result.output, Report)
         assert events[-1].result.output.text == "ready"
         assert not any(
@@ -381,7 +381,7 @@ async def test_discarded_structured_stream_has_a_terminal_result_without_an_outp
         await asyncio.wait_for(ready.wait(), 3)
         await session.inbox.remove(session.inbox.pending[0].id)
         events = await asyncio.wait_for(streaming, 3)
-        assert isinstance(events[-1], TurnFinishedEvent)
+        assert isinstance(events[-1], TurnResultEvent)
         assert events[-1].result.stop_reason is StopReason.DISCARDED
         with pytest.raises(OutputUnavailable):
             _ = events[-1].result.output
@@ -421,7 +421,7 @@ async def test_slow_stream_consumers_do_not_repeat_validators_after_many_complet
                 await session.wait_until_idle()
             assert len(validated) == 130
             rest = [event async for event in streams[0]]
-            assert isinstance(rest[-1], TurnFinishedEvent)
+            assert isinstance(rest[-1], TurnResultEvent)
             assert rest[-1].result.output.value == 1 and len(validated) == 130
         finally:
             for stream in streams:

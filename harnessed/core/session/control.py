@@ -2,7 +2,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from harnessed.core.events.base import SessionEvent
-from harnessed.core.events.session import AgentControlChangedEvent, ControlState
+from harnessed.core.events.session import ControlState, SessionControlChangedEvent
 
 
 @dataclass(frozen=True, init=False)
@@ -13,7 +13,7 @@ class RunControl:
     def __init__(self, events: Iterable[SessionEvent]) -> None:
         state, keep_inbox = ControlState.ACTIVE, False
         for event in events:
-            if isinstance(event, AgentControlChangedEvent):
+            if isinstance(event, SessionControlChangedEvent):
                 state, keep_inbox = event.state, event.keep_inbox
         object.__setattr__(self, "state", state)
         object.__setattr__(self, "keep_inbox", keep_inbox)

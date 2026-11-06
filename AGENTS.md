@@ -68,7 +68,7 @@ Prefer `StrEnum` for closed domain choices, states, outcomes and policies. Event
 and message discriminators retain a concrete `Literal[Enum.MEMBER]` so unions
 remain discriminated. Custom plugins may define their own discriminator enums.
 Use stable dot-separated event tags, such as `assistant.message`, `tool.progress`
-and `step.end`. JSON-schema keys remain ordinary strings.
+and `step.ended`. JSON-schema keys remain ordinary strings.
 
 Plugins inherit the small `Plugin` base and declare Python tools as `@tool` methods.
 Schema-defined remote tools use `ToolRegistry.register_external()` as an explicit

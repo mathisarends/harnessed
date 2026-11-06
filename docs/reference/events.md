@@ -28,7 +28,7 @@ events. Live approval questions need an answer or a configured approver.
 | `ToolCallFinishedEvent` | `tool.call.finished` | Yes | Final reviewed result for `call.id`, including denial or interruption |
 | `ApprovalNeededEvent` | `approval.needed` | No | Live question identified by approval `request_id`; answer through `session.approvals` |
 | `SessionStatusChangedEvent` | `session.status.changed` | No | Session control status observed during this turn |
-| `TurnFinishedEvent[T]` | `turn.finished` | No | Assembled `RunResult[T]`; terminal on normal stream exhaustion |
+| `TurnResultEvent[T]` | `turn.result` | No | Assembled `RunResult[T]`; terminal on normal stream exhaustion |
 | `ModelRequestedEvent` | `model.requested` | Yes | Final request and selected ModelInfo for `request_id`, with runtime retry metadata |
 | `ModelRequestFailedEvent` | `model.request.failed` | Yes | Close `request_id` without an assistant message |
 | `ModelAttemptStartedEvent` | `model.attempt.started` | No | Observed provider or runtime retry attempt starts, scoped by `retry_kind` |
@@ -92,13 +92,13 @@ turn are also included in its final `RunResult.events`.
 | --- | --- | --- |
 | `InboxAddedEvent` | `inbox.added` | Queued input `message.id` with its target, context and turn options |
 | `InboxRemovedEvent` | `inbox.removed` | Input `message_id` removed for the given `reason` |
-| `TurnStartedEvent` | `turn.start` | Turn `turn_id` started from queued `input_id` |
-| `TurnEndedEvent` | `turn.end` | Durable outcome of `turn_id` |
-| `StepStartedEvent` | `step.start` | Step `(turn_id, step)` started |
-| `StepEndedEvent` | `step.end` | Outcome of step `(turn_id, step)` |
-| `AgentControlChangedEvent` | `session.control.changed` | Committed control `state` and inbox retention policy |
+| `TurnStartedEvent` | `turn.started` | Turn `turn_id` started from queued `input_id` |
+| `TurnEndedEvent` | `turn.ended` | Durable outcome of `turn_id` |
+| `StepStartedEvent` | `step.started` | Step `(turn_id, step)` started |
+| `StepEndedEvent` | `step.ended` | Outcome of step `(turn_id, step)` |
+| `SessionControlChangedEvent` | `session.control.changed` | Committed control `state` and inbox retention policy |
 
-`TurnEndedEvent` records the durable outcome. `TurnFinishedEvent[T]` carries the
+`TurnEndedEvent` records the durable outcome. `TurnResultEvent[T]` carries the
 assembled result to one UI stream. The latter can be absent when the stream
 raises or disconnects; neither event means that the session has no queued work.
 
@@ -107,13 +107,13 @@ raises or disconnects; neither event means that the session has no queued work.
 | Event class | Tag | Meaning / identity |
 | --- | --- | --- |
 | `AssistantMessageEvent` | `assistant.message` | Accepted or interrupted partial message closing `request_id` |
-| `ModelUsageRecordedEvent` | `model.usage` | Usage and purpose; response usage has a model `request_id` |
-| `CacheMetricsEvent` | `model.cache` | Recorded usage and derived cache hit rate |
+| `ModelUsageRecordedEvent` | `model.usage.recorded` | Usage and purpose; response usage has a model `request_id` |
+| `ModelCacheMetricsEvent` | `model.cache.metrics` | Recorded usage and derived cache hit rate |
 | `ObservationsIncludedEvent` | `observations.included` | Observation sources and forms present in `request_id` |
 | `SystemMessageEvent` | `system.message` | Effective fixed system content |
 | `UserMessageEvent` | `user.message` | Accepted user `message` |
 | `ContextMessageEvent` | `context.message` | Context `message` with its lifetime and optional `turn_id` |
-| `ContextValueChangedEvent` | `context.changed` | Named context fact changed or removed |
+| `ContextValueChangedEvent` | `context.value.changed` | Named context fact changed or removed |
 | `ObservationRecordedEvent` | `observation.recorded` | Observation received at `(turn_id, step)` |
 | `ObservationPolicyAppliedEvent` | `observation.policy.applied` | Explicit observation-count retention policy changed |
 

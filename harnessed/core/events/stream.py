@@ -10,7 +10,7 @@ from harnessed.core.events.compaction import (
     CompactionFinishedEvent,
     CompactionStartedEvent,
 )
-from harnessed.core.events.completion import TurnFinishedEvent
+from harnessed.core.events.completion import TurnResultEvent
 from harnessed.core.events.messages import ReasoningDeltaEvent, TextDeltaEvent
 from harnessed.core.events.model import (
     ModelAttemptFinishedEvent,
@@ -49,7 +49,7 @@ type StreamEvent[T] = Annotated[
         | ToolCallFinishedEvent
         | ApprovalNeededEvent
         | SessionStatusChangedEvent
-        | TurnFinishedEvent[T]
+        | TurnResultEvent[T]
         | CompactionAppliedEvent
         | CompactionStartedEvent
         | CompactionFinishedEvent

@@ -15,7 +15,7 @@ from harnessed.core.events.compaction import CompactionAppliedEvent
 from harnessed.core.events.inbox import InboxAddedEvent, InboxMode, InboxRemovedEvent
 from harnessed.core.events.messages import ContextMessageEvent
 from harnessed.core.events.publishing import SessionPublished
-from harnessed.core.events.session import AgentControlChangedEvent
+from harnessed.core.events.session import SessionControlChangedEvent
 from harnessed.core.events.stream import EventStream, coalesce_deltas
 from harnessed.core.events.subagents import SubagentLinkedEvent
 from harnessed.core.events.turn import TurnEndedEvent, TurnLimits, TurnStartedEvent
@@ -311,7 +311,7 @@ class Session:
             if isinstance(event.event, TurnEndedEvent):
                 self._boundary_state = self.log.snapshot()
             self._submission_event(event.event)
-            if isinstance(event.event, AgentControlChangedEvent):
+            if isinstance(event.event, SessionControlChangedEvent):
                 self.control.synchronize()
             else:
                 self.control.notify()
@@ -536,7 +536,7 @@ class Session:
     ) -> AsyncGenerator[EventStream[Any], None]:
         """Queue one turn and yield its UI and declared application events.
 
-        Normal exhaustion ends with TurnFinishedEvent. Runtime failures raise
+        Normal exhaustion ends with TurnResultEvent. Runtime failures raise
         without that notification. Closing the iterator removes its approval
         responder but does not abort the turn; use abort() to cancel its work.
         """

@@ -320,7 +320,7 @@ after completion it raises `SessionStateError` instead of starting a new turn.
 | --- | --- |
 | run(prompt, output=None, attachments=(), context=None, settings=None, max_steps=None, token_budget=None) | Queue and await this turn's RunResult[T] |
 | submit(prompt, output=None, ...) | Acknowledge queued input and return RunHandle[T] |
-| stream(prompt, output=None, ...) | Typed UI and custom events, ending with TurnFinishedEvent |
+| stream(prompt, output=None, ...) | Typed UI and custom events, ending with TurnResultEvent |
 | steer(content, attachments=()) | Send a next-step correction and return its InboxItem |
 | observe(observation) | Buffer the latest text/image snapshot per source for the next step; recorded snapshots stay unchanged until compaction or an explicit retention policy |
 | add_context(content: str) | Append text for subsequent model requests without starting a turn or invoking the model; commit before returning when a store is configured |
@@ -474,10 +474,10 @@ as step history rather than protected user instructions.
 
 `harnessed.events` exposes `TextDeltaEvent`, `ReasoningDeltaEvent`, `ToolCallRequestedEvent`,
 `ToolCallGenerationStartedEvent`, `ToolArgumentsDeltaEvent`, `ToolCallFinishedEvent`, `ApprovalNeededEvent`,
-`TurnFinishedEvent`, `CompactionAppliedEvent` and `SpillCreatedEvent`, among other
+`TurnResultEvent`, `CompactionAppliedEvent` and `SpillCreatedEvent`, among other
 classes. Import these full names directly; they are the canonical class names,
 also used by `@hook`. `TurnEndedEvent` is the durable turn-end record;
-`TurnFinishedEvent[T]` carries the assembled result at the end of a UI stream.
+`TurnResultEvent[T]` carries the assembled result at the end of a UI stream.
 Every event has an explicit namespaced `type` discriminator.
 See [events and schemas](../guides/events.md).
 The [event reference](events.md) lists every built-in event, its discriminator

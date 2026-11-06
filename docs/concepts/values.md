@@ -22,7 +22,7 @@ Its immutable mappings and tuples are detached from mutable runtime containers.
 Old JSONL archives are not accepted as conversation state. Unknown fields,
 invalid versions and incomplete tool pairs fail validation.
 
-Standalone audit-event envelopes retain their separate version 3 and dotted tags.
+Standalone audit-event envelopes use version 4 and dotted tags.
 Applications can encode events while executing a turn; these records are not an
 implicit session archive. [Application events](../guides/events.md) use a
 session-local catalog assembled before runtime startup. Frozen dataclasses remain
