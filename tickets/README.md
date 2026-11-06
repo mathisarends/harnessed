@@ -27,7 +27,7 @@ review conversation. Every ticket lists:
 |---|--------|----------|----------|------------|--------|
 | 01 | [Event package structure](01-event-package-structure.md) | high | no | – | proposed |
 | 02 | [Consistent event tags and format v4](02-event-tag-consistency.md) | high | yes (log format) | 01 | proposed |
-| 03 | [Stream surface for UIs](03-stream-surface.md) | high | no (additive) | 01 | proposed |
+| 03 | [Stream surface for UIs](03-stream-surface.md) | high | alias rename only | 01, 04 | proposed |
 | 04 | [Fewer event bases, plugin-owned events](04-event-bases-and-ownership.md) | medium | yes | 01 | proposed |
 | 05 | [Approvals API ergonomics](05-approvals-api.md) | high | yes | – | proposed |
 | 06 | [Public session views instead of `harnessed.core`](06-public-session-views.md) | high | no (additive) | – | proposed |

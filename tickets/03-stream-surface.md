@@ -2,8 +2,8 @@
 
 - **Status:** proposed
 - **Priority:** high
-- **Breaking:** no (additive)
-- **Depends on:** 01
+- **Breaking:** only the `EventStream[T]` → `StreamItem[T]` rename (decision 2); the rest is additive
+- **Depends on:** 01; problem 2 is solved by ticket 04
 
 ## Problem
 
@@ -15,7 +15,9 @@
 2. `harnessed.events` exports about 80 names in one flat namespace. A UI author
    cannot tell from an import which events can arrive on `session.stream()` and
    which exist only in the log (`session.events`). `docs/reference/events.md`
-   has a *Durable* column, but the code doesn't show the split.
+   has a *Durable* column, but the code doesn't show the split. Ticket 04 fixes
+   this with one `DurableEvent` / `TransientEvent` base per event; this ticket
+   only documents it.
 3. There are several overlapping union aliases: `StreamEvent[T]`,
    `EventStream[T]`, `LogEvent`, `BuiltinEvent`. `EventStream[T]` (what
    `session.stream()` yields) and `StreamEvent[T]` (the built-in subset) look
@@ -40,20 +42,28 @@ async for event in session.stream("Refactor utils.py"):
             ui.tool_done(call.id, result)
 ```
 
-### Optional: role-scoped import paths
+### Where an event can appear: base class, not import path
 
-The flat root stays and remains canonical. Two read-only submodules re-export
-the same class objects grouped by where they appear:
+There are no `harnessed.events.stream` or `harnessed.events.log` submodules.
+The log and the stream are two **consumers** of one event vocabulary, and the
+two sets overlap: `ToolCallRequestedEvent` and `ToolCallFinishedEvent` are in
+the log and also arrive on the stream. Split import paths would either export
+those events twice or make users guess where to import them from. They would
+also suggest that `events.log` is the log itself. The log as a mechanism
+(`SessionLog`, codec, checkpoints, store) already lives in
+`harnessed/core/session/` and does not belong to the event package.
+
+The role is visible on the class instead, through the two bases from ticket 04:
 
 ```python
-from harnessed.events.stream import TextDeltaEvent, ToolExecutionStartedEvent  # what stream() yields
-from harnessed.events.log import TurnEndedEvent, ModelUsageRecordedEvent       # what session.events holds
+from harnessed.events import DurableEvent, TransientEvent
+
+isinstance(event, DurableEvent)    # in the log (and possibly projected onto the stream)
+isinstance(event, TransientEvent)  # stream only, never persisted
 ```
 
-- `harnessed.events.stream.__all__` == the members of `StreamEvent[Any]`.
-- `harnessed.events.log.__all__` == the members of `LogEvent`.
-- An event present in both is exported from both, as the same object.
-- A test asserts both `__all__` lists against the unions, so they cannot drift.
+`docs/reference/events.md` keeps its table and gains an explicit *On stream*
+column next to *Durable*, so all four combinations can be read at a glance.
 
 ### One name per union
 
@@ -71,11 +81,10 @@ from harnessed.events.log import TurnEndedEvent, ModelUsageRecordedEvent       #
 - `core/runtime/streaming.py`: project `ToolExecutionStartedEvent` from the log
   onto the stream.
 - `harnessed/events/__init__.py`: `StreamItem`; drop `BuiltinEvent`.
-- New: `harnessed/events/stream.py`, `harnessed/events/log.py` (if accepted).
 - Tests: stream ordering test for requested → approval → execution started →
-  finished, plus the `__all__` drift tests.
-- Docs: `docs/guides/events.md` (UI example like the one above),
-  `docs/reference/events.md`.
+  finished.
+- Docs: `docs/guides/events.md` (UI example like the one above, plus a short
+  "log vs. stream" section), `docs/reference/events.md` (*On stream* column).
 
 ## Acceptance
 
@@ -90,8 +99,8 @@ from harnessed.events.log import TurnEndedEvent, ModelUsageRecordedEvent       #
 
 ## Decisions
 
-1. Add the `stream` / `log` submodules, or only document the split? The ticket
-   recommends adding them. They cost little, need no aliases (same objects),
-   and make autocomplete useful.
+1. ~~Add `harnessed.events.stream` / `harnessed.events.log` submodules?~~
+   Rejected in review: the log and the stream overlap, so role-scoped import
+   paths are misleading. The base classes from ticket 04 carry this information.
 2. Rename `EventStream[T]` → `StreamItem[T]` (breaking type alias rename), or
    keep it? The ticket recommends renaming before the first stable release.
