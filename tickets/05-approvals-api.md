@@ -22,9 +22,9 @@ Agent(model, plugins=[Approvals(default=PolicyDecision.ALLOW)])
 ```python
 Approvals(
     default=PolicyDecision.ASK,
-    trust=["read_file"],      # → PolicyDecision.ALLOW
-    require=["shell"],        # → PolicyDecision.ASK
-    deny=["rm"],              # → PolicyDecision.DENY
+    trust=["read_file"],  # → PolicyDecision.ALLOW
+    require=["shell"],  # → PolicyDecision.ASK
+    deny=["rm"],  # → PolicyDecision.DENY
 )
 ```
 
@@ -54,13 +54,13 @@ tools and keeps working when the approvals slot is replaced. It is referenced in
 ```python
 from harnessed.plugins import Approvals
 
-Approvals.allow_all()                       # replaces Approvals(default=PolicyDecision.ALLOW)
-Approvals.ask_all()                         # explicit form of the default
+Approvals.allow_all()  # replaces Approvals(default=PolicyDecision.ALLOW)
+Approvals.ask_all()  # explicit form of the default
 
 Approvals(
     default=PolicyDecision.ASK,
-    allow=["read_file", "list_dir"],        # was trust=
-    ask=["shell"],                          # was require=
+    allow=["read_file", "list_dir"],  # was trust=
+    ask=["shell"],  # was require=
     deny=["rm"],
     approver=my_approver,
     timeout=60,
@@ -69,10 +69,10 @@ Approvals(
 
 ```python
 class Deploy(Plugin):
-    @tool(confirm=True)                     # always ASK, unless the app explicitly denies it
+    @tool(confirm=True)  # always ASK, unless the app explicitly denies it
     async def deploy(self, env: str) -> str: ...
 
-    @tool(readonly=True)                    # unchanged: auto-ALLOW
+    @tool(readonly=True)  # unchanged: auto-ALLOW
     async def status(self) -> str: ...
 ```
 

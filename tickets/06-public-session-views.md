@@ -15,11 +15,13 @@ basic questions:
 ```python
 # examples/06_explicit_registration.py
 from harnessed.core.tools.registry import ToolRegistry
+
 assert "temporary_echo" in {t.name for t in session.ctx[ToolRegistry].definitions}
 
 # examples/11_temporal_needs.py
 from harnessed.core.prompt.system_prompt import SystemPromptStore
 from harnessed.core.tools.registry import ToolRegistry
+
 ctx[SystemPromptStore].fixed(f"Current browser: {browser.name}")
 
 # examples/22_builtin_tool_lifetimes.py
@@ -43,10 +45,10 @@ There are two separate gaps:
 ### Read-only `session.tools`
 
 ```python
-names = session.tools.names                 # frozenset[str], currently visible
-"temporary_echo" in session.tools           # bool
-definition = session.tools["read_file"]     # ToolDefinition, KeyError if absent
-for definition in session.tools:            # iterate visible definitions
+names = session.tools.names  # frozenset[str], currently visible
+"temporary_echo" in session.tools  # bool
+definition = session.tools["read_file"]  # ToolDefinition, KeyError if absent
+for definition in session.tools:  # iterate visible definitions
     print(definition.name, definition.description)
 ```
 
@@ -60,6 +62,7 @@ for definition in session.tools:            # iterate visible definitions
 
 ```python
 from harnessed.services import DynamicContext, SystemPromptStore, ToolRegistry
+
 
 class BrowserTools(Plugin):
     needs = (Browser, ToolRegistry, SystemPromptStore)

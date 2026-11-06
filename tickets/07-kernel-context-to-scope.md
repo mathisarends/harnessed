@@ -30,12 +30,14 @@ The kernel object is a lifetime scope: it owns registrations, resolves
 ```python
 from harnessed.kernel import Inject, Scope, hook, plugin
 
+
 class Browser(Plugin):
     def setup(self, scope: Scope) -> None:
         scope.provide(Page, Page())
         scope.register(...)
 
-session.scope[ToolRegistry]          # was session.ctx[ToolRegistry]; rare after ticket 06
+
+session.scope[ToolRegistry]  # was session.ctx[ToolRegistry]; rare after ticket 06
 ```
 
 - `harnessed.kernel.Scope` replaces `harnessed.kernel.Context`, with no alias

@@ -49,13 +49,15 @@ from dataclasses import dataclass, field
 from typing import Literal
 from harnessed.events import DurableEvent, TransientEvent
 
+
 @dataclass(frozen=True)
-class DeployFinishedEvent(DurableEvent):        # persisted, replayed, on the stream
+class DeployFinishedEvent(DurableEvent):  # persisted, replayed, on the stream
     type: Literal["deploy.finished"] = field(default="deploy.finished", kw_only=True)
     env: str
 
+
 @dataclass(frozen=True)
-class DeployLogLineEvent(TransientEvent):       # stream only
+class DeployLogLineEvent(TransientEvent):  # stream only
     type: Literal["deploy.log.line"] = field(default="deploy.log.line", kw_only=True)
     line: str
 ```
@@ -82,12 +84,13 @@ class RuleTriggeredEvent(DurableEvent):
     type: Literal["rule.triggered"] = field(default="rule.triggered", kw_only=True)
     ...
 
+
 class Rules(Plugin[RulesConfig]):
     events = (RuleTriggeredEvent,)
 ```
 
 ```python
-from harnessed.plugins.rules import RuleTriggeredEvent   # new import path
+from harnessed.plugins.rules import RuleTriggeredEvent  # new import path
 ```
 
 `RuleAction` moves with it. `EventKind.RULE_TRIGGERED` is removed from core.

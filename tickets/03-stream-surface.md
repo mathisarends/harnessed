@@ -34,7 +34,7 @@ async for event in session.stream("Refactor utils.py"):
             ui.tool_pending(call.id, call.name)
         case ApprovalNeededEvent(call=call, reason=reason):
             ui.tool_awaiting_approval(call.id, reason)
-        case ToolExecutionStartedEvent(call_id=call_id):     # new on the stream
+        case ToolExecutionStartedEvent(call_id=call_id):  # new on the stream
             ui.tool_running(call_id)
         case ToolProgressEvent(call_id=call_id, text=text):
             ui.tool_progress(call_id, text)
@@ -58,7 +58,7 @@ The role is visible on the class instead, through the two bases from ticket 04:
 ```python
 from harnessed.events import DurableEvent, TransientEvent
 
-isinstance(event, DurableEvent)    # in the log (and possibly projected onto the stream)
+isinstance(event, DurableEvent)  # in the log (and possibly projected onto the stream)
 isinstance(event, TransientEvent)  # stream only, never persisted
 ```
 
