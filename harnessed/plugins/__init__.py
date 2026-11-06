@@ -1,5 +1,5 @@
-from harnessed.core.approvals import ApprovalGate as ApprovalGate
 from harnessed.core.approvals import Approvals as Approvals
+from harnessed.core.approvals import ToolApprovalGuard as ToolApprovalGuard
 from harnessed.core.compaction import ContextState as ContextState
 from harnessed.core.limits import FinalStepPolicy as FinalStepPolicy
 from harnessed.core.messages import ApprovalAnswer as ApprovalAnswer
@@ -28,7 +28,6 @@ from harnessed.plugins.subagents import Subagents as Subagents
 __all__ = [
     "AgentLoop",
     "ApprovalAnswer",
-    "ApprovalGate",
     "Approvals",
     "BackgroundShell",
     "Compaction",
@@ -48,6 +47,7 @@ __all__ = [
     "Skills",
     "Spill",
     "Subagents",
+    "ToolApprovalGuard",
     "ToolOutputLimit",
     "at_ratio",
     "every_turns",

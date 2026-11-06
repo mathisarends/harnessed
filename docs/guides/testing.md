@@ -79,7 +79,7 @@ commands = FakeShell({"pytest": "1 passed"})
 agent = Agent(
     prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     model=ScriptedModel([call("run_command", argv=["pytest"]), reply("Tests pass")]),
-    plugins=[files, commands, Approvals(default=PolicyDecision.ALLOW)],
+    plugins=[files, commands, Approvals.allow_all()],
 )
 ```
 

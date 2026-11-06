@@ -75,7 +75,7 @@ Server annotations such as `readOnlyHint` do not grant local trust. Set
 `readonly_tools` only for tools your application trusts as read-only. Other
 tools follow the existing [approval policy](approvals.md); with the default
 policy they need a callback or a UI approval responder. Rules such as
-`Approvals(require=["docs__search"])` use the model-facing, namespaced name.
+`Approvals(ask=["docs__search"])` use the model-facing, namespaced name.
 Required approval still takes precedence over `readonly_tools`.
 
 `enabled=` accepts the same bool or synchronous injectable predicate as

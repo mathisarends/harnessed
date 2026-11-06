@@ -9,7 +9,6 @@ from harnessed import (
     Agent,
     ApprovalAnswer,
     Plugin,
-    PolicyDecision,
     StopReason,
     StreamOverflow,
     ToolCall,
@@ -243,7 +242,7 @@ async def test_execution_start_precedes_progress_without_approval():
     effects = []
     async with Agent(
         model=ScriptedModel([work(), "done"]),
-        plugins=[Work(effects), Approvals(default=PolicyDecision.ALLOW)],
+        plugins=[Work(effects), Approvals.allow_all()],
     ).session() as session:
         events = [event async for event in session.stream("Publish")]
     assert effects == ["published"]

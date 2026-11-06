@@ -4,6 +4,22 @@
 
 ### Breaking changes
 
+| Approval configuration before | Current API |
+| --- | --- |
+| `Approvals(trust=[...])` | `Approvals(allow=[...])` |
+| `Approvals(require=[...])` | `Approvals(ask=[...])` |
+| `Approvals(default=PolicyDecision.ALLOW)` | `Approvals.allow_all()` |
+| `ApprovalGate(...)` | `ToolApprovalGuard(...)` |
+
+- Configure `Approvals` with `allow=` and `ask=` instead of `trust=` and
+  `require=`. Precedence is `deny`, `ask`, `allow`, `confirm`, `readonly`,
+  `policy`, then `default`; explicit application rules now precede the callable
+  policy. Use `Approvals.allow_all()` or `ask_all()` for fallback defaults.
+  `@tool(confirm=True)` requests approval unless application selectors override
+  it; combining it with `readonly=True` raises `TypeError`.
+- Replace `ApprovalGate` with `ToolApprovalGuard` from `harnessed.plugins`.
+  It retains independent gating for local or external tools across approvals-slot
+  replacement. Its options and scoped grants retain their existing semantics.
 - Rename the open stream return annotation `EventStream[T]` to `StreamItem[T]`.
   Import it from `harnessed.events`. `StreamEvent[T]` remains the closed built-in
   stream union. Streams now also include `ToolExecutionStartedEvent` before tool

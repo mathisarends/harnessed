@@ -1,7 +1,7 @@
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import Plugin, PolicyDecision, ToolCall, ToolResult, tool
+from harnessed import Plugin, ToolCall, ToolResult, tool
 from harnessed.core.events.inbox import InboxAddedEvent
 from harnessed.core.events.messages import ContextValueChangedEvent
 from harnessed.core.events.tools import ToolCallFinishedEvent
@@ -60,7 +60,7 @@ async def test_rule_note_context_steer_order_and_structured_exit_code():
     )
     model = ScriptedModel(scripted_commands(["git push origin main"]))
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), tools, rules]
+        model=model, plugins=[Approvals.allow_all(), tools, rules]
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("go")
@@ -101,7 +101,7 @@ async def test_repeated_failures_are_grouped_by_command_reset_on_success_and_fir
         [when(tool="bash", exit_code=lambda c: c != 0, repeated=3).context("Third failure")]
     )
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), tools, rules]
+        model=model, plugins=[Approvals.allow_all(), tools, rules]
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("go")
@@ -126,7 +126,7 @@ async def test_repeat_counters_start_fresh_in_each_live_session(tmp_path):
     rules = Rules([when(tool="bash", exit_code=1, repeated=3).context("Third")])
     harness = Application(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), tools, rules],
+        plugins=[Approvals.allow_all(), tools, rules],
     )
     async with harness.session() as agent:
         agent_audit = Audit(agent)
@@ -149,9 +149,7 @@ async def test_rules_have_independent_state_in_different_sessions():
 
     model = ScriptedModel([*scripted_commands(["same"]), *scripted_commands(["same"])])
     rules = Rules([when(tool="bash", repeated=2).note("twice")])
-    harness = Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), tools, rules]
-    )
+    harness = Application(model=model, plugins=[Approvals.allow_all(), tools, rules])
     for _ in range(2):
         async with harness.session() as agent:
             agent_audit = Audit(agent)
@@ -179,7 +177,7 @@ async def test_repeat_counters_do_not_restore_from_previous_session_audits(tmp_p
     model = ScriptedModel([*scripted_commands(["same"]), *scripted_commands(["same"])])
     harness = Application(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), tools, rules],
+        plugins=[Approvals.allow_all(), tools, rules],
     )
     async with harness.session() as agent:
         await agent.run("one")
@@ -209,7 +207,7 @@ async def test_size_predicate_and_missing_exit_code_and_tool_filters():
     )
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("read_file"))], "done"])
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), tools, rules]
+        model=model, plugins=[Approvals.allow_all(), tools, rules]
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("go")
@@ -242,7 +240,7 @@ async def test_process_return_values_are_normalized_with_exit_codes():
         ]
     )
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), tools, converters()]
+        model=model, plugins=[Approvals.allow_all(), tools, converters()]
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("go")

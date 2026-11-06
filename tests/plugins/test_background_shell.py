@@ -7,7 +7,6 @@ import pytest
 from harnessed import (
     Agent,
     PluginOrder,
-    PolicyDecision,
     SystemPrompt,
     ToolCall,
 )
@@ -201,7 +200,7 @@ async def test_completion_arrives_in_next_step_while_agent_keeps_working(tmp_pat
         plugins=[
             Shell(tmp_path),
             BackgroundShell(tmp_path),
-            Approvals(default=PolicyDecision.ALLOW),
+            Approvals.allow_all(),
         ],
     )
     async with app.session() as session:

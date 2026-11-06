@@ -9,7 +9,7 @@ from harnessed.events import ApprovalStatus, ToolCallFinishedEvent
 from harnessed.hooks import RequestApproval, ToolPolicy
 from harnessed.kernel import hook
 from harnessed.models import ModelChunk
-from harnessed.plugins import AgentLoop, ApprovalGate, Approvals
+from harnessed.plugins import AgentLoop, Approvals, ToolApprovalGuard
 from harnessed.testing import ScriptedModel
 
 
@@ -25,9 +25,9 @@ async def without_ui():
     async with Agent(
         model=model,
         plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
+            Approvals.allow_all(),
             tools,
-            ApprovalGate(risky=[HeadlessTools.publish]),
+            ToolApprovalGuard(risky=[HeadlessTools.publish]),
         ],
     ).session() as session:
         result = await session.run("Publish the artifact.")
@@ -74,9 +74,9 @@ async def listener_and_priorities():
     agent = Agent(
         model=model,
         plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
+            Approvals.allow_all(),
             ApprovedTools(),
-            ApprovalGate(risky=[ApprovedTools.publish], priority=-100),
+            ToolApprovalGuard(risky=[ApprovedTools.publish], priority=-100),
         ],
     )
 

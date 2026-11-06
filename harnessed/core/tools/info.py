@@ -1,5 +1,5 @@
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal, cast
 
@@ -110,3 +110,4 @@ class ToolInfo:
     parallel: bool
     chain: ToolChain
     presentation: ToolPresentation = ToolPresentation()
+    confirm: bool = field(default=False, kw_only=True)
