@@ -4,6 +4,10 @@
 
 ### Breaking changes
 
+- Rename the open stream return annotation `EventStream[T]` to `StreamItem[T]`.
+  Import it from `harnessed.events`. `StreamEvent[T]` remains the closed built-in
+  stream union. Streams now also include `ToolExecutionStartedEvent` before tool
+  progress, so exhaustive consumers must handle that variant.
 - `InboxTarget.NEXT_TURN` and `NEXT_STEP` now serialize as `"next_turn"` and
   `"next_step"`. Update literal routing values and stored inbox payloads;
   hyphenated values are no longer accepted.

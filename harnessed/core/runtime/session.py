@@ -16,7 +16,7 @@ from harnessed.core.events.inbox import InboxAddedEvent, InboxMode, InboxRemoved
 from harnessed.core.events.messages import ContextMessageEvent
 from harnessed.core.events.publishing import SessionPublished
 from harnessed.core.events.session import SessionControlChangedEvent
-from harnessed.core.events.stream import EventStream, coalesce_deltas
+from harnessed.core.events.stream import StreamItem, coalesce_deltas
 from harnessed.core.events.subagents import SubagentLinkedEvent
 from harnessed.core.events.turn import TurnEndedEvent, TurnLimits, TurnStartedEvent
 from harnessed.core.hooks import (
@@ -509,7 +509,7 @@ class Session:
         output: type[T] | OutputContract[T],
         buffer_size: int = 256,
         **options: Unpack[RunOptions],
-    ) -> AsyncGenerator[EventStream[T], None]: ...
+    ) -> AsyncGenerator[StreamItem[T], None]: ...
 
     @overload
     def stream(
@@ -519,7 +519,7 @@ class Session:
         output: None = None,
         buffer_size: int = 256,
         **options: Unpack[RunOptions],
-    ) -> AsyncGenerator[EventStream[None], None]: ...
+    ) -> AsyncGenerator[StreamItem[None], None]: ...
 
     async def stream(
         self,
@@ -532,7 +532,7 @@ class Session:
         token_budget: int | None = None,
         output: type[Any] | OutputContract[Any] | None = None,
         buffer_size: int = 256,
-    ) -> AsyncGenerator[EventStream[Any], None]:
+    ) -> AsyncGenerator[StreamItem[Any], None]:
         """Queue one turn and yield its UI and declared application events.
 
         Normal exhaustion ends with TurnResultEvent. Runtime failures raise

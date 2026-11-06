@@ -26,7 +26,7 @@ from harnessed.core.events.session import (
     SessionControlChangedEvent,
     SessionStatusChangedEvent,
 )
-from harnessed.core.events.stream import STREAM_EVENT_TYPES, EventStream
+from harnessed.core.events.stream import STREAM_EVENT_TYPES, StreamItem
 from harnessed.core.events.subagents import (
     SubagentApprovalRequestedEvent,
     SubagentFinishedEvent,
@@ -40,6 +40,7 @@ from harnessed.core.events.tools import (
     ToolCallFinishedEvent,
     ToolCallGenerationStartedEvent,
     ToolCallRequestedEvent,
+    ToolExecutionStartedEvent,
     ToolProgressEvent,
 )
 from harnessed.core.events.turn import TurnStartedEvent
@@ -52,7 +53,7 @@ async def project_stream_events(
     raw: AsyncGenerator[DurableEvent | TransientEvent, None],
     *,
     completion: Callable[[], Awaitable[RunResult[Any]]],
-) -> AsyncGenerator[EventStream[Any], None]:
+) -> AsyncGenerator[StreamItem[Any], None]:
     """Project UI events, yielding one terminal result after normal exhaustion."""
     calls: set[str] = set()
     control_calls: set[str] = set()
@@ -99,7 +100,9 @@ async def project_stream_events(
                 case ToolCallRequestedEvent(call=call) if call.id not in control_calls:
                     calls.add(call.id)
                     yield event
-                case ToolProgressEvent(call_id=call_id) if call_id in calls:
+                case (
+                    ToolExecutionStartedEvent(call_id=call_id) | ToolProgressEvent(call_id=call_id)
+                ) if call_id in calls:
                     yield event
                 case ToolCallFinishedEvent(call_id=call_id) if call_id in calls:
                     yield event
