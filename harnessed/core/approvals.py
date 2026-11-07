@@ -17,7 +17,7 @@ from harnessed.core.messages import ApprovalAnswer, PolicyDecision
 from harnessed.core.plugin import Plugin, PluginConfig
 from harnessed.core.tools import ToolRegistry
 from harnessed.core.tools.references import ToolReference, ToolSelector, tool_selector
-from harnessed.kernel import Inject, Next, Priority, Scope, hook
+from harnessed.kernel import Inject, Next, Priority, Scope, hook, needs
 
 from .messages import ToolCall
 
@@ -58,8 +58,10 @@ class ToolApprovalGuardConfig(PluginConfig):
     priority: int = Priority.GUARD
 
 
-class ToolApprovalGuard(Plugin[ToolApprovalGuardConfig], needs=(ToolRegistry,)):
+class ToolApprovalGuard(Plugin[ToolApprovalGuardConfig]):
     """Keep a scoped guard active even when its optional approver is unavailable."""
+
+    tools = needs(ToolRegistry)
 
     def __init__(
         self,
@@ -75,8 +77,8 @@ class ToolApprovalGuard(Plugin[ToolApprovalGuardConfig], needs=(ToolRegistry,)):
         self.risky = tuple(tool_selector(item) for item in self.config.risky)
         self.ask = self.config.ask
 
-    async def setup(self, scope: Scope, tools: Inject[ToolRegistry]) -> None:
-        self.risky = tuple(tools.reference(item, owner=scope) for item in self.risky)
+    async def setup(self, scope: Scope) -> None:
+        self.risky = tuple(self.tools.reference(item, owner=scope) for item in self.risky)
         scope.on(ToolPolicy, self._gate, priority=self.config.priority)
 
     async def _gate(
@@ -211,12 +213,14 @@ class ApprovalsConfig(PluginConfig):
 _DEFAULTS = ApprovalsConfig()
 
 
-class Approvals(Plugin[ApprovalsConfig], slot="approvals", needs=(ToolRegistry,)):
+class Approvals(Plugin[ApprovalsConfig], slot="approvals"):
     """Compose tool policy and the default response timeout for every approval.
 
     ``timeout`` is a finite positive number of seconds. Individual approval
     requests may replace it with their own response timeout.
     """
+
+    tools = needs(ToolRegistry)
 
     def __init__(
         self,
@@ -247,11 +251,11 @@ class Approvals(Plugin[ApprovalsConfig], slot="approvals", needs=(ToolRegistry,)
         self.deny = tuple(tool_selector(item) for item in deny)
         self.policy = policy
 
-    async def setup(self, scope: Scope, tools: Inject[ToolRegistry]) -> None:
+    async def setup(self, scope: Scope) -> None:
         scope.provide(ApprovalsConfig, self.config)
-        self.allow = tuple(tools.reference(item, owner=scope) for item in self.allow)
-        self.ask = tuple(tools.reference(item, owner=scope) for item in self.ask)
-        self.deny = tuple(tools.reference(item, owner=scope) for item in self.deny)
+        self.allow = tuple(self.tools.reference(item, owner=scope) for item in self.allow)
+        self.ask = tuple(self.tools.reference(item, owner=scope) for item in self.ask)
+        self.deny = tuple(self.tools.reference(item, owner=scope) for item in self.deny)
         if self.approver is not None:
             # Tools and other guards asking mid-call reach the same human.
             scope.provide(Approver, self.approver)

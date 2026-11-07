@@ -8,6 +8,36 @@ Detailed breaking changes and upgrade instructions are recorded in the repositor
 
 ## Unreleased
 
+### Breaking change: plugin service contracts and explicit tool injection
+
+Import `needs` and `observes` from `harnessed.kernel`. Replace
+`name = dependency(T)` with `name = needs(T)` and
+`name = dependency(T, optional=True)` with `name = observes(T)`.
+The old factory has no compatibility alias. Required fields gate the whole plugin's
+activation; observed fields allow `None`. Both retain their binding through cleanup
+and rebuild the activation and `PluginState` on provider changes. Mutations within
+the bound object do not restart the activation. Neither field constructs or owns
+the service implementation.
+
+Move service `Inject` parameters in higher-level `Plugin.setup()` and `teardown()`
+to fields accessed through `self`. Composition now rejects those parameters before
+setup. Plain `scope: Scope` parameters remain supported for resource ownership.
+Standalone kernel lifecycle injection is unchanged. Tool and hook injection stays
+call-scoped and does not declare plugin lifetime requirements.
+
+Replace every unmarked tool `ctx: ToolContext`, including keyword-only parameters,
+with `ctx: Inject[ToolContext]`. Import `Inject` from `harnessed.kernel`.
+Registration and scripted tool-reference validation now require the marker.
+
+Use `session.tools.explain(name)` to distinguish missing injected tool or predicate
+services, disabled tools, available tools and unregistered names. Its frozen
+`ToolExplanation` and `ToolAvailability` types are exported by `harnessed.services`.
+Waiting plugins have not registered tools; their missing requirements are reported
+by session startup validation. The tool mapping still exposes only visible tools.
+
+See [plugin service bindings](guides/plugins.md#dependencies-and-provided-services)
+and [tool explanations](guides/tools.md#explain-unavailable-tools).
+
 ### Breaking change: plugin packs
 
 Rename `Kit` to `PluginPack`, `KitPromptPolicy` to `PluginPackPromptPolicy`

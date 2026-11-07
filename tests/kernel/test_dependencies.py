@@ -12,8 +12,9 @@ from harnessed.kernel import (
     PluginStatus,
     Scope,
     as_plugin_spec,
-    dependency,
     hook,
+    needs,
+    observes,
 )
 
 
@@ -33,7 +34,7 @@ async def test_fields_wait_without_needs_and_preserve_binding_during_every_clean
     instances, cleaned = [], []
 
     class Feature(PluginBase):
-        backend = dependency(Backend)
+        backend = needs(Backend)
         state = PluginState(list[str])
 
         async def setup(self, scope: Scope) -> None:
@@ -75,7 +76,7 @@ async def test_optional_field_restarts_on_appearance_replacement_and_disappearan
     starts, cleaned = [], []
 
     class Feature(PluginBase):
-        backend = dependency(str, optional=True)
+        backend = observes(str)
         values = PluginState(list[str])
 
         async def setup(self, scope: Scope) -> None:
@@ -105,15 +106,34 @@ async def test_optional_field_restarts_on_appearance_replacement_and_disappearan
     assert len({id(instance) for instance in starts}) == 5
 
 
+async def test_observed_service_mutation_keeps_the_activation_and_state():
+    class Feature(PluginBase):
+        backend = observes(Backend)
+        values = PluginState(list[str])
+
+    backend = FakeBackend("first")
+    async with Scope() as scope:
+        scope.provide(Backend, backend)
+        handle = await scope.plugin(Feature())
+        active = handle.instance
+        assert isinstance(active, Feature)
+        active.values.append("retained")
+        backend.text = "second"
+        await scope.settle()
+        assert handle.instance is active
+        assert active.backend is backend and active.backend.read() == "second"
+        assert active.values == ["retained"]
+
+
 async def test_named_fields_inheritance_overrides_and_normalized_requirements():
     key = Key[str]("workspace.backend")
 
     class Parent(PluginBase, needs=(key, key)):
-        backend = dependency(str)
-        optional = dependency(key, optional=True)
+        backend = needs(str)
+        optional = observes(key)
 
     class Child(Parent):
-        backend = dependency(key)
+        backend = needs(key)
         annotation_only: int
 
     recipe = Child(needs=(key, int, key))
@@ -158,7 +178,7 @@ async def test_constructor_values_are_fresh_and_explicit_clients_keep_identity()
 
 
 def test_class_inject_fields_are_rejected_with_migration_hint():
-    with pytest.raises(TypeError, match=r"use dependency\(key\)"):
+    with pytest.raises(TypeError, match=r"use needs\(key\) or observes\(key\)"):
 
         class Old(PluginBase):
             backend: Inject[str]

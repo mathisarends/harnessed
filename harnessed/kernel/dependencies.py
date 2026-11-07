@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, Self, overload
+from typing import TYPE_CHECKING, Self, overload
 
 from .di import Dependency
 from .keys import Key, ServiceKey
@@ -14,7 +14,7 @@ class DependencyField[T]:
 
     def __init__(self, key: ServiceKey[T], *, optional: bool = False) -> None:
         if not isinstance(key, type | Key):
-            raise TypeError("dependency requires a service class, Protocol or named Key")
+            raise TypeError("Service bindings require a service class, Protocol or named Key")
         self.binding = Dependency(key, optional)
         self._name = ""
 
@@ -41,22 +41,19 @@ class DependencyField[T]:
         raise AttributeError("Dependency bindings are read-only for the entire activation")
 
 
-@overload
-def dependency[T](
-    key: ServiceKey[T], *, optional: Literal[False] = False
-) -> DependencyField[T]: ...
+def needs[T](key: ServiceKey[T]) -> DependencyField[T]:
+    """Require a service for activation and bind it before setup.
 
-
-@overload
-def dependency[T](key: ServiceKey[T], *, optional: Literal[True]) -> DependencyField[T | None]: ...
-
-
-def dependency[T](
-    key: ServiceKey[T], *, optional: bool = False
-) -> DependencyField[T] | DependencyField[T | None]:
-    """Declare a required binding, or a nonblocking observation with optional=True.
-
-    Both restart the activation when the visible provider changes. Ordinary type
-    annotations and call-scoped Inject parameters never add lifetime requirements.
+    The binding stays stable through cleanup. Provider loss ends the activation;
+    replacement or restoration creates a fresh instance and state.
     """
-    return DependencyField(key, optional=optional)
+    return DependencyField(key)
+
+
+def observes[T](key: ServiceKey[T]) -> DependencyField[T | None]:
+    """Bind a service or None without making its presence an activation requirement.
+
+    Appearance, disappearance and replacement create a fresh activation and state.
+    Mutations within the same service object do not restart the plugin.
+    """
+    return DependencyField(key, optional=True)

@@ -1,7 +1,7 @@
 from typing import Protocol, assert_type
 
 from harnessed import Plugin
-from harnessed.kernel import DependencyField, Key, dependency
+from harnessed.kernel import DependencyField, Key, needs, observes
 from harnessed.plugins import Service
 from harnessed.testing import mount_plugin
 
@@ -14,9 +14,9 @@ backend_key = Key[Backend]("backend")
 
 
 class Feature(Plugin):
-    backend = dependency(Backend)
-    named = dependency(backend_key)
-    optional = dependency(Backend, optional=True)
+    backend = needs(Backend)
+    named = needs(backend_key)
+    optional = observes(Backend)
 
 
 assert_type(Feature.backend, DependencyField[Backend])
@@ -33,3 +33,8 @@ async def mounted(backend: Backend) -> None:
     ) as feature:
         assert_type(feature, Feature)
         assert_type(feature.backend.read(), str)
+
+
+def invalid_binding_options() -> None:
+    needs(Backend, optional=True)  # ty: ignore[unknown-argument]
+    observes(Backend, optional=False)  # ty: ignore[unknown-argument]

@@ -28,7 +28,7 @@ class CatalogTools(Plugin):
         params=SearchParams, name="catalog_search", description="Search the catalog", readonly=True
     )
     async def search(
-        self, params: SearchParams, *, catalog: Inject[str], call: ToolContext
+        self, params: SearchParams, *, catalog: Inject[str], call: Inject[ToolContext]
     ) -> dict[str, str | int]:
         assert type(params) is SearchParams
         assert call.call.name == "catalog_search"

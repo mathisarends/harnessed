@@ -1,5 +1,5 @@
 from .declarations import Bundle, HookEntry, PluginBase, Registration
-from .dependencies import DependencyField, dependency
+from .dependencies import DependencyField, needs, observes
 from .di import BindingPlan, Dependency, Inject, InjectMarker, binding_plan
 from .effects import Disposer, effect, run_sync
 from .events import (
@@ -58,7 +58,8 @@ __all__ = [
     "Waterfall",
     "as_plugin_spec",
     "binding_plan",
-    "dependency",
+    "needs",
+    "observes",
     "effect",
     "hook",
     "on",

@@ -479,8 +479,8 @@ unhashable. See [values and record versions](../concepts/values.md).
 | ToolResult(..., break_chain=True) | Request the same boundary dynamically; already-started parallel calls finish |
 | Plugin[MyConfig] / config=MyConfig(...) | One frozen module-level model supplies runtime validation and the type of self.config |
 | PluginState(factory) | Typed state freshly created before each mount's setup; available through cleanup |
-| name = dependency(T) | Stable typed service binding and lifetime requirement; no duplicate needs entry |
-| name = dependency(T, optional=True) | Nonblocking service-or-None binding; provider changes restart the activation |
+| name = needs(T) | Stable typed service binding and lifetime requirement; no duplicate needs entry |
+| name = observes(T) | Nonblocking service-or-None binding; provider changes restart the activation |
 | class Capability(Plugin, provides=True) | Publish the mount under the declaring class; provides=Key selects another key |
 | Plugin.create_instance() | Customize fresh instance construction; defaults to replaying explicit constructor arguments |
 | @plugin | Kernel services and hooks in an async generator |
@@ -502,11 +502,18 @@ non-model, mutable or mismatched configurations fail before activation. The
 may build the model internally while preserving their own typed signatures.
 See [typed configuration](../guides/plugins.md#typed-configuration-without-duplicate-declarations).
 
-A keyword-only ToolContext is implicit; ordinary dependencies use Inject.
-Declare stable service bindings with `dependency` from `harnessed.kernel`; add
+Tool parameters supplied by the framework require `Inject[T]`, including
+`Inject[ToolContext]`. An unmarked `ToolContext` is rejected at registration.
+Declare stable service bindings with `needs` and `observes` from `harnessed.kernel`; add
 `needs=(...)` for lifetime requirements without an attribute. Optional fields are
 reported as `observes`. Class-level `Inject` fields were removed. Callable `Inject`
 parameters bind values without adding lifetime dependencies.
+Higher-level `Plugin.setup()` and `teardown()` require service fields instead of
+`Inject` parameters; standalone kernel lifecycle injection remains available.
+`session.tools.explain(name)` returns a frozen `ToolExplanation` distinguishing
+available, missing-service, disabled and not-registered states through
+`ToolAvailability`. Both types are exported by `harnessed.services`; the existing
+tool mapping continues to contain only model-visible definitions.
 Model-filled parameters become a strict Pydantic form; unknown fields and invalid
 values fail before invocation. `@tool(params=MyParams)` uses a Pydantic `BaseModel`
 subclass as the top-level argument schema and passes its validated instance to the

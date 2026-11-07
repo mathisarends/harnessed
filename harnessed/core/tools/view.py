@@ -3,6 +3,7 @@ from collections.abc import Iterator, Mapping
 from harnessed.core.model import ToolDefinition
 from harnessed.kernel import Scope
 
+from .availability import ToolExplanation
 from .registry import ToolRegistry
 
 
@@ -33,3 +34,11 @@ class SessionTools(Mapping[str, ToolDefinition]):
     @property
     def names(self) -> frozenset[str]:
         return frozenset(self)
+
+    def explain(self, name: str) -> ToolExplanation:
+        """Explain a registered tool's visibility; this does not grant execution permission.
+
+        Missing services take precedence over predicates. Predicate failures
+        propagate as they do when constructing a model request.
+        """
+        return self._registry.explain(name, scope=self._ctx)

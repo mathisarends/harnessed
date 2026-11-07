@@ -14,12 +14,13 @@ the asking task's remaining execution budget.
 
 ```python
 from harnessed import Agent, Plugin, ToolContext, tool
+from harnessed.kernel import Inject
 from harnessed.plugins import Approvals
 
 
 class DeploymentTools(Plugin):
     @tool
-    async def deploy(self, *, context: ToolContext) -> str:
+    async def deploy(self, *, context: Inject[ToolContext]) -> str:
         if not await context.approve("Deploy to production?", timeout=30):
             return "Deployment declined."
         # Perform the approved deployment here.
@@ -40,7 +41,7 @@ agent = Agent(
 ```
 
 `model` and `ask_user` are application-supplied model and approval callback values.
-The framework supplies the `ToolContext` parameter; its name `context` is ordinary
+The framework supplies the `Inject[ToolContext]` parameter; its name `context` is ordinary
 Python naming. `deploy` is the model-facing tool. `context.approve()` asks for
 permission during that tool's execution; it is neither a tool nor a hook.
 The explicit allow rule lets this tool own its confirmation instead of also

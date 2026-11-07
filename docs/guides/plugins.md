@@ -263,22 +263,22 @@ the [tool guide](tools.md).
 
 ## Dependencies and provided services
 
-Declare stable service bindings with `dependency` from the public kernel facade:
+Declare plugin services once with `needs` and `observes` from the public kernel facade:
 
 ```python
 from harnessed import Plugin, SessionLog
-from harnessed.kernel import dependency
+from harnessed.kernel import needs, observes
 
 
 class Activity(Plugin, provides=True):
-    log = dependency(SessionLog)
-    label = dependency(str, optional=True)
+    log = needs(SessionLog)
+    label = observes(str)
 
     async def setup(self) -> None:
         self.session_id = self.log.id
 ```
 
-`dependency(T)` is a typed, read-only descriptor. It both binds the service before
+`needs(T)` is a typed, read-only descriptor. It both binds the service before
 setup and adds its key to the normalized lifetime requirements. A missing required
 service leaves the plugin waiting; provider loss or replacement ends the activation
 and creates a fresh instance, bindings and state. Access on a recipe or after
@@ -286,15 +286,25 @@ cleanup raises `RuntimeError`. No class is instantiated or globally searched for
 Ordinary annotations create no dependencies. Class-level `Inject[T]` fields have
 been removed; `Inject` remains available on callable parameters.
 
-`dependency(T, optional=True)` does not block activation. It captures the visible
+The field expresses one contract: this activation needs the service, and accesses
+that stable binding through the attribute. Do not repeat the key in `needs=(...)`.
+Services are provided explicitly; declaring a field never constructs a provider.
+Declare lifecycle services as fields: `Plugin.setup()` and `teardown()` reject
+`Inject` parameters before activation. They may still accept a `scope: Scope`
+parameter to acquire and own resources. Standalone kernel `PluginBase` and function
+plugins retain their general callable injection support.
+
+`observes(T)` does not block activation. It captures the visible
 service or `None` for that activation. Appearance, disappearance or replacement
 restarts the activation and resets its state. Optional keys appear under `observes`
 in `agent.describe()` and `PluginSpec`; they are distinct from hard `needs`.
+Mutating the same service object does not change its binding or restart the plugin.
+Optionality permits absence; provider and setup failures still propagate.
 Additional `needs=(Readiness,)` requirements remain continuous lifetime
 requirements without an attribute value. Instance `needs=` replaces the extra
 requirements, while field and registration requirements always remain included.
 Duplicate keys normalize once; hard requirements take precedence over observations.
-Use `dependency(Key[T]("name"))` with a shared key to distinguish providers.
+Use `needs(Key[T]("name"))` with a shared key to distinguish providers.
 
 `provides=True` registers the mounted instance under the declaring class before
 setup. Subclasses inherit that key: a subclass of Activity still provides Activity.
@@ -310,7 +320,8 @@ state or setup.
 ```python
 from typing import Protocol
 
-from harnessed import Inject, Plugin, tool
+from harnessed import Plugin, tool
+from harnessed.kernel import needs
 from harnessed.plugins import Service
 
 
@@ -318,29 +329,38 @@ class Database(Protocol):
     async def lookup(self, key: str) -> str: ...
 
 
-class Lookup(Plugin, needs=(Database,)):
+class Lookup(Plugin):
+    database = needs(Database)
+
     @tool(readonly=True)
-    async def lookup(self, key: str, *, db: Inject[Database]) -> str:
-        return await db.lookup(key)
+    async def lookup(self, key: str) -> str:
+        return await self.database.lookup(key)
 ```
 
 `Service(Database, implementation)` provides the structural dependency.
-`needs=(Database,)` declares the plugin's temporal requirement: a missing service
-leaves it waiting, removing the service tears it down, and replacing or restoring
-it restarts the plugin. `Inject[T]` resolves an argument from the current scope
-for each invocation; it does not infer lifetime requirements from class, setup,
-hook or tool annotations. Declare `needs` for required services whether accessed
-through injection or dynamically through `scope[Database]`. Function plugins use
+`database = needs(Database)` declares the plugin's temporal requirement: a missing
+service leaves it waiting, removing the service tears it down, and replacing or
+restoring it restarts the plugin. Tool and hook parameters may deliberately use
+`Inject[T]` to resolve the current service on each invocation. That declaration
+does not require the service for the plugin's lifetime or restart the plugin when
+the provider changes. Prefer a field when the entire plugin needs the service.
+Function plugins use
 `@plugin(needs=(Database,))`; bundles use `Bundle("name", needs=(Database,))`.
 Tool declarations contribute their own registration requirement for `ToolRegistry`.
 
 `Inject[T | None]` is optional and returns None while the service is absent.
 Optional injections do not suspend a plugin unless the service is also declared
 in `needs`. A required injection without a matching service raises `MissingService`
-when resolved. Call-scoped values such as `ToolContext` are supplied for tool
+when resolved; required tool injections instead hide only that tool while missing.
+Use `session.tools.explain(name)` to inspect its missing services. Call-scoped
+values such as `Inject[ToolContext]` are supplied for tool
 execution and do not belong in plugin `needs`. Named `Key[T]` values distinguish
 two implementations of the same contract. A narrow Protocol is the service
 contract; third-party implementations need no Harnessed base class.
+
+`Service(Contract, instance)` makes an existing object available; ordinary service
+registration does not acquire or close that caller-owned resource. A resource-owning
+plugin acquires its resource in `setup()` and registers cleanup on its scope.
 
 `async with session.use(plugin) as handle` mounts a capability for a bounded
 context, removing it on normal exit, an exception or cancellation. Use

@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import dataclass
 
 from harnessed import Plugin, ToolCall, tool
-from harnessed.kernel import Emit, Inject, Scope
+from harnessed.kernel import Emit, Scope, needs
 from harnessed.services import SystemPromptStore, ToolRegistry
 
 
@@ -21,14 +21,14 @@ class PageChanged(Emit):
 
 
 class BrowserTools(Plugin):
-    needs = (Browser, ToolRegistry, SystemPromptStore)
+    browser = needs(Browser)
+    prompt = needs(SystemPromptStore)
 
-    async def setup(self, scope: Scope, browser: Inject[Browser]):
-        self.browser = browser
-        print(f"Setup with {browser.name}")
-        scope[SystemPromptStore].fixed(f"Current browser: {browser.name}")
-        scope.on(PageChanged, lambda event: print(f"Listener with {browser.name}"))
-        scope.effect(lambda: print(f"Custom effect cleaned for {browser.name}"))
+    async def setup(self, scope: Scope) -> None:
+        print(f"Setup with {self.browser.name}")
+        self.prompt.fixed(f"Current browser: {self.browser.name}")
+        scope.on(PageChanged, lambda event: print(f"Listener with {self.browser.name}"))
+        scope.effect(lambda: print(f"Custom effect cleaned for {self.browser.name}"))
 
     @tool(readonly=True)
     async def title(self) -> str:
