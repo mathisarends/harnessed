@@ -10,6 +10,7 @@ from harnessed import (
     PluginState,
     PluginValidation,
     RunHandle,
+    RunStream,
     SessionLog,
     ToolContext,
     tool,
@@ -166,7 +167,7 @@ async def typed_stream(session: Session) -> None:
     assert_type(session.tools, SessionTools)
     assert_type(session.tools.names, frozenset[str])
     async with session.stream("Triage", output=OutputContract("triage.v1", Triage)) as run_stream:
-        assert_type(run_stream, RunHandle[Triage])
+        assert_type(run_stream, RunStream[Triage])
         assert_type(await run_stream.result(), RunResult[Triage])
         async for event in run_stream:
             assert_type(event, StreamItem[Triage])

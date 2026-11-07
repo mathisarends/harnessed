@@ -202,8 +202,8 @@ def test_public_exports_resolve_to_their_canonical_classes_and_functions(module)
 def test_application_facade_stays_small_and_has_no_transitional_names():
     import harnessed
 
-    # Tool display values join the small SDK without importing the MCP integration.
-    assert len(harnessed.__all__) <= 48
+    # RunStream makes live observation explicit alongside the small run handle.
+    assert len(harnessed.__all__) <= 49
     assert {
         "Agent",
         "Session",
@@ -213,6 +213,8 @@ def test_application_facade_stays_small_and_has_no_transitional_names():
         "CompositionDescription",
         "tool",
         "RunResult",
+        "RunHandle",
+        "RunStream",
         "ToolContext",
     } <= set(harnessed.__all__)
     assert "SectionDelivery" in harnessed.__all__ and "PluginOrder" not in harnessed.__all__
