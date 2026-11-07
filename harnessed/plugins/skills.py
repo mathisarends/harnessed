@@ -26,7 +26,7 @@ from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.prompt.values import Instructions, SystemPrompt
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tools import ToolError, tool
-from harnessed.kernel import Inject, Key, Scope, hook
+from harnessed.kernel import Key, Scope, hook, needs
 
 type SkillName = Annotated[
     str, StringConstraints(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$", max_length=64)
@@ -270,8 +270,11 @@ def _read_resource(root: Path, path: str) -> str:
         return stream.read()
 
 
-class Skills(Plugin, slot="skills", needs=(SessionLog, DynamicContext)):
+class Skills(Plugin, slot="skills"):
     """Discover explicit sources once per session, then load instructions and files on demand."""
+
+    _log = needs(SessionLog)
+    _context = needs(DynamicContext)
 
     def __init__(self, *sources: str | Path | Skill | _DirectorySkill) -> None:
         super().__init__()
@@ -301,6 +304,26 @@ class Skills(Plugin, slot="skills", needs=(SessionLog, DynamicContext)):
             )
         )
 
+    async def setup(self, scope: Scope) -> None:
+        catalog = await self._catalog(scope)
+        scope.provide(SkillCatalog, catalog)
+        self._entries = {entry.info.name: entry for entry in catalog.entries}
+        self._calls: set[str] = set()
+        self._loaded = {
+            key.removeprefix("skill:"): value
+            for key, value in self._context.values.items()
+            if key.startswith("skill:")
+        }
+        for message in self._log.messages:
+            if isinstance(message, AssistantMessage):
+                self._calls.update(
+                    call.id for call in message.tool_calls if call.name == "load_skill"
+                )
+            elif isinstance(message, ToolMessage) and message.tool_call_id in self._calls:
+                if message.status is ToolStatus.OK:
+                    self._remember_instructions(message.text)
+                self._calls.discard(message.tool_call_id)
+
     async def _catalog(self, scope: Scope) -> _Catalog:
         key = self.recipe._key
         if key not in scope:
@@ -329,30 +352,6 @@ class Skills(Plugin, slot="skills", needs=(SessionLog, DynamicContext)):
             + "\n".join(items)
             + "\n</skills>"
         )
-
-    async def setup(
-        self, scope: Scope, session: Inject[SessionLog], context: Inject[DynamicContext]
-    ) -> None:
-        catalog = await self._catalog(scope)
-        scope.provide(SkillCatalog, catalog)
-        self._entries = {entry.info.name: entry for entry in catalog.entries}
-        self._log = session
-        self._context = context
-        self._calls: set[str] = set()
-        self._loaded = {
-            key.removeprefix("skill:"): value
-            for key, value in context.values.items()
-            if key.startswith("skill:")
-        }
-        for message in session.messages:
-            if isinstance(message, AssistantMessage):
-                self._calls.update(
-                    call.id for call in message.tool_calls if call.name == "load_skill"
-                )
-            elif isinstance(message, ToolMessage) and message.tool_call_id in self._calls:
-                if message.status is ToolStatus.OK:
-                    self._remember_instructions(message.text)
-                self._calls.discard(message.tool_call_id)
 
     def _remember(self, event) -> None:
         if isinstance(event, ToolCallRequestedEvent):

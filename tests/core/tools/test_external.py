@@ -6,6 +6,7 @@ from harnessed import Agent
 from harnessed.core.errors import ToolNameConflict
 from harnessed.core.messages import ToolCall, ToolResult
 from harnessed.core.model import ToolDefinition
+from harnessed.core.tools.availability import ToolAvailability
 from harnessed.core.tools.context import ToolContext
 from harnessed.core.tools.registry import ToolRegistry, ToolSpec
 from harnessed.kernel import Scope
@@ -44,6 +45,20 @@ async def test_external_registration_owns_definition_execution_and_planning():
         assert (await registry.execute(call, _expected=plan.binding)).is_error
         assert len(received) == 1
         await replacement()
+
+
+async def test_external_tool_explanation_reports_missing_call_context():
+    async def handler(arguments: Mapping[str, object], context: ToolContext) -> ToolResult:
+        return ToolResult("unused")
+
+    async with Scope() as scope:
+        registry = ToolRegistry(scope)
+        definition = ToolDefinition("remote", "", {"type": "object"})
+        registry.register_external(definition, handler, owner=scope)
+        explanation = registry.explain("remote", scope=scope)
+        assert explanation.availability is ToolAvailability.MISSING_SERVICES
+        assert explanation.missing_services == (ToolContext,)
+        assert explanation.definition is definition and registry.definitions == ()
 
 
 @pytest.mark.parametrize(

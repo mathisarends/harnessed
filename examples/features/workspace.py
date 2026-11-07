@@ -4,21 +4,19 @@ from pydantic import Field
 
 from harnessed import Plugin, PluginConfig, ToolContext, tool
 from harnessed.hooks import ReviewToolResult
-from harnessed.kernel import Inject, hook
+from harnessed.kernel import Inject, hook, needs
 from harnessed.plugins.filesystem import FileSystemBackend
 from harnessed.services import DynamicContext
 
 
 class WorkspaceTools(Plugin):
-    needs = (FileSystemBackend,)
+    filesystem = needs(FileSystemBackend)
 
     @tool(name="count_lines", timeout=5)
-    async def count_lines(
-        self, path: str, fs: Inject[FileSystemBackend], call: Inject[ToolContext]
-    ) -> int:
+    async def count_lines(self, path: str, call: Inject[ToolContext]) -> int:
         """Count the lines in a workspace file."""
         await call.progress(f"Reading {path}")
-        return len((await fs.read(Path(path))).splitlines())
+        return len((await self.filesystem.read(Path(path))).splitlines())
 
 
 workspace_tools = WorkspaceTools()

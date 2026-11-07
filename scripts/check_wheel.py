@@ -12,7 +12,7 @@ from importlib.metadata import distribution
 from pathlib import Path
 import re
 
-from harnessed.kernel import Scope, Key, dependency
+from harnessed.kernel import Scope, Key, needs
 assert 'pydantic' not in sys.modules
 from harnessed import (
     Agent, CompositionDescription, PluginPack, SessionState, OutputContract, Plugin, PluginConfig,
@@ -63,7 +63,7 @@ class Calculator(Plugin[CalculatorConfig]):
 backend_key = Key[str]('wheel.backend')
 
 class Consumer(Plugin):
-    backend = dependency(backend_key)
+    backend = needs(backend_key)
 
 class Answer(BaseModel):
     value: int

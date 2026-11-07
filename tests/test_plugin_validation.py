@@ -4,7 +4,7 @@ import pytest
 
 from harnessed import Agent, Plugin, PluginValidation, Session, SessionLog, tool
 from harnessed.errors import ConfigError, PluginDependencyError, PluginDependencyWarning
-from harnessed.kernel import Key, Scope, dependency
+from harnessed.kernel import Key, Scope, needs, observes
 from harnessed.plugins import Service
 from harnessed.services import SessionContext
 from harnessed.testing import ScriptedModel
@@ -15,7 +15,7 @@ class RequiredService:
 
 
 class RequiredFeature(Plugin):
-    service = dependency(RequiredService)
+    service = needs(RequiredService)
 
     @tool
     async def capability(self) -> str:
@@ -47,10 +47,10 @@ async def test_validation_reports_every_missing_service_and_transitively_waiting
     other = Key[str]("other")
 
     class Provider(Plugin, provides=True, needs=(other, RequiredService)):
-        service = dependency(RequiredService)
+        service = needs(RequiredService)
 
     class Consumer(Plugin, needs=(Provider,)):
-        provider = dependency(Provider)
+        provider = needs(Provider)
 
     agent = Agent(model=ScriptedModel([]), plugins=[Consumer(), Provider()])
     with pytest.raises(PluginDependencyError) as failure:
@@ -66,8 +66,8 @@ async def test_session_services_and_providers_activated_by_them_settle_before_va
     mounted = []
 
     class SessionProvider(Plugin, needs=(SessionContext, SessionLog)):
-        session = dependency(SessionContext)
-        log = dependency(SessionLog)
+        session = needs(SessionContext)
+        log = needs(SessionLog)
 
         async def setup(self, scope: Scope) -> None:
             assert self.session.id == self.log.id
@@ -88,7 +88,7 @@ async def test_optional_injections_do_not_block_session_start():
     mounted = []
 
     class OptionalFeature(Plugin):
-        service = dependency(RequiredService, optional=True)
+        service = observes(RequiredService)
 
         async def setup(self) -> None:
             mounted.append(self.service)
@@ -128,7 +128,7 @@ async def test_validation_failure_closes_runtime_plugins_and_session_lease():
     mounted, closed = [], []
 
     class Observer(Plugin, needs=(SessionContext,)):
-        session = dependency(SessionContext)
+        session = needs(SessionContext)
 
         async def setup(self, scope: Scope) -> None:
             mounted.append(self.session)

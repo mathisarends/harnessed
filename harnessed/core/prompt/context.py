@@ -9,7 +9,7 @@ from harnessed.core.hooks import PreStep, StepDecision
 from harnessed.core.messages import UserMessage
 from harnessed.core.plugin import Plugin
 from harnessed.core.session.session import SessionLog
-from harnessed.kernel import Disposer, Inject, Next, RegistrationState, Scope, hook
+from harnessed.kernel import Disposer, Inject, Next, RegistrationState, Scope, hook, needs
 
 
 @dataclass(frozen=True, eq=False)
@@ -87,8 +87,10 @@ class DynamicContext:
         await self.set(name, None)
 
 
-class ContextValue(Plugin, needs=(DynamicContext,)):
+class ContextValue(Plugin):
     """Refresh one named fact before each step, appending only actual changes."""
+
+    context = needs(DynamicContext)
 
     def __init__(
         self,
@@ -117,6 +119,6 @@ class ContextValue(Plugin, needs=(DynamicContext,)):
         await context.set(self.key, value)
         return await next_()
 
-    async def teardown(self, context: Inject[DynamicContext]) -> None:
-        if not context.log.persistence_failed:
-            await context.remove(self.key)
+    async def teardown(self) -> None:
+        if not self.context.log.persistence_failed:
+            await self.context.remove(self.key)

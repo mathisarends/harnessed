@@ -15,7 +15,7 @@ from harnessed import (
     tool,
 )
 from harnessed.core.messages import AssistantMessage, ToolMessage, UserMessage
-from harnessed.core.model import ModelRequest, ModelResponse
+from harnessed.core.model import ModelRequest, ModelResponse, ToolDefinition
 from harnessed.core.result import RunResult
 from harnessed.core.runtime.session import Session
 from harnessed.errors import PluginDependencyError
@@ -45,13 +45,13 @@ from harnessed.kernel import (
     PluginDependencyIssue,
     PluginSpec,
     Scope,
-    dependency,
     hook,
+    needs,
     plugin,
 )
 from harnessed.models import ToolArgumentsMode, ToolCallDelta, ToolCallStart
 from harnessed.plugins import AgentLoop, Spill
-from harnessed.services import SessionTools
+from harnessed.services import SessionTools, ToolAvailability, ToolExplanation
 
 
 @plugin
@@ -62,8 +62,8 @@ async def configured(scope: Scope, root: str, *, enabled: bool = True) -> AsyncG
 assert_type(configured("workspace", enabled=False), PluginSpec)
 
 
-class EventObserver(Plugin, needs=(SessionLog,)):
-    log = dependency(SessionLog)
+class EventObserver(Plugin):
+    log = needs(SessionLog)
 
     @hook(AssistantMessageEvent)
     async def on_assistant(self, event: AssistantMessageEvent) -> None:
@@ -200,7 +200,7 @@ async def functional_scope(scope: Scope) -> None:
 async def tool_scope(scope: Scope) -> None:
     class Echo(Plugin):
         @tool(readonly=True)
-        async def echo(self, value: str, *, call: ToolContext) -> str:
+        async def echo(self, value: str, *, call: Inject[ToolContext]) -> str:
             assert_type(call.cancelled, bool)
             return value
 
@@ -230,6 +230,13 @@ def dependency_diagnostics(scope: Scope, error: PluginDependencyError) -> None:
     assert_type(scope.plugin_diagnostics(), tuple[PluginDependencyIssue, ...])
     assert_type(error.issues, tuple[PluginDependencyIssue, ...])
     assert_type(error.issues[0].plugin, PluginSpec)
+
+
+def tool_diagnostics(tools: SessionTools) -> None:
+    explanation = tools.explain("lookup")
+    assert_type(explanation, ToolExplanation)
+    assert_type(explanation.availability, ToolAvailability)
+    assert_type(explanation.definition, ToolDefinition | None)
 
 
 async def state_consumer(agent: AppAgent) -> None:

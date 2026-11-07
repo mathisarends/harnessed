@@ -4,7 +4,7 @@ from typing import Annotated, Protocol
 import pytest
 from pydantic import Field
 
-from harnessed import Agent, Inject, Plugin, ToolCall
+from harnessed import Agent, Plugin, ToolCall
 from harnessed.core.messages import ToolResult
 from harnessed.core.model import ModelChunk
 from harnessed.core.plugin import Bundle
@@ -12,8 +12,9 @@ from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.tools.context import ToolContext
 from harnessed.core.tools.decorator import tool
 from harnessed.core.tools.registry import ToolRegistry
-from harnessed.kernel import InjectMarker, PluginStatus, Scope
+from harnessed.kernel import Inject, InjectMarker, PluginStatus, Scope
 from harnessed.testing import ScriptedModel
+from harnessed.testing import call as scripted_call
 
 
 class Backend(Protocol):
@@ -277,12 +278,12 @@ async def test_functional_context_tools_follow_explicit_needs_and_temporal_resta
         assert not registry.definitions
 
 
-async def test_keyword_only_tool_context_is_implicit_and_never_exposed_in_the_schema():
+async def test_injected_tool_context_is_never_exposed_in_the_schema():
     seen = []
 
     class Tools(Plugin):
         @tool(readonly=True)
-        async def inspect(self, value: int, *, call: ToolContext) -> int:
+        async def inspect(self, value: int, *, call: Inject[ToolContext]) -> int:
             seen.append(call)
             return value
 
@@ -298,5 +299,23 @@ def test_unmarked_positional_tool_context_requires_the_explicit_marker():
     async def bad(call: ToolContext) -> str:
         return "bad"
 
-    with pytest.raises(TypeError, match="keyword-only"):
+    with pytest.raises(TypeError, match=r"Inject\[ToolContext\]"):
         ToolRegistry(Scope()).register(bad)
+
+
+def test_unmarked_keyword_only_tool_context_requires_the_explicit_marker():
+    async def bad(*, call: Annotated[ToolContext, "Current invocation"]) -> str:
+        return "bad"
+
+    with pytest.raises(TypeError, match=r"'call'.*Inject\[ToolContext\]"):
+        ToolRegistry(Scope()).register(bad)
+
+
+def test_scripted_tool_references_require_the_same_context_marker():
+    class Invalid(Plugin):
+        @tool
+        def work(self, *, context: ToolContext) -> str:
+            return "unused"
+
+    with pytest.raises(TypeError, match=r"'context'.*Inject\[ToolContext\]"):
+        scripted_call(Invalid.work)

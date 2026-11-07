@@ -1,12 +1,23 @@
 import inspect
 from collections.abc import Callable
+from dataclasses import dataclass
 from types import MethodType
+from typing import Any
 
-from harnessed.kernel import Scope, binding_plan
+from harnessed.kernel import Scope, ServiceKey, binding_plan
 
 from .context import ToolContext
 
 type ToolEnabled = bool | Callable[..., bool]
+
+
+@dataclass(frozen=True)
+class BoundToolEnabled:
+    check: Callable[[Scope], bool]
+    required_services: tuple[ServiceKey[Any], ...] = ()
+
+    def __call__(self, scope: Scope) -> bool:
+        return self.check(scope)
 
 
 def validate_enabled(enabled: ToolEnabled) -> None:
@@ -24,11 +35,11 @@ def validate_enabled(enabled: ToolEnabled) -> None:
 
 def bind_enabled(
     enabled: ToolEnabled, callback: Callable[..., object], owner: Scope
-) -> Callable[[Scope], bool]:
+) -> BoundToolEnabled:
     """Bind a condition to the tool's mount, resolving its services for each check."""
     validate_enabled(enabled)
     if isinstance(enabled, bool):
-        return lambda scope: enabled
+        return BoundToolEnabled(lambda scope: enabled)
 
     predicate = enabled
     parameters = tuple(inspect.signature(predicate).parameters.values())
@@ -65,4 +76,13 @@ def bind_enabled(
             raise TypeError("Tool enabled predicates must return a bool")
         return result
 
-    return check
+    return BoundToolEnabled(
+        check,
+        tuple(
+            dict.fromkeys(
+                dependency.key
+                for dependency in plan.dependencies.values()
+                if not dependency.optional
+            )
+        ),
+    )

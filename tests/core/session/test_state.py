@@ -9,7 +9,6 @@ import pytest
 
 from harnessed import (
     Agent,
-    Inject,
     Observation,
     Plugin,
     SessionState,
@@ -20,7 +19,7 @@ from harnessed.core.messages import ImageReference, UserMessage
 from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.session.session import SessionLog
 from harnessed.events import TurnEndedEvent, TurnResultEvent, TurnStartedEvent
-from harnessed.kernel import Scope
+from harnessed.kernel import Scope, needs
 from harnessed.plugins import Compaction, LatestObservationOnly, Spill, every_turns
 from harnessed.plugins.spill import SpillStore
 from harnessed.services import SessionContext
@@ -195,8 +194,10 @@ async def test_reused_agent_retains_no_completed_runtime():
     refs: list[weakref.ReferenceType[SessionContext]] = []
 
     class Watch(Plugin, needs=(SessionContext,)):
-        async def setup(self, scope, session: Inject[SessionContext]) -> None:
-            refs.append(weakref.ref(session))
+        session = needs(SessionContext)
+
+        async def setup(self, scope) -> None:
+            refs.append(weakref.ref(self.session))
 
     agent = Agent(model=ScriptedModel(["done"] * 8), plugins=[Watch()])
     for _ in range(8):

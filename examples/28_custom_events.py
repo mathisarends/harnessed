@@ -9,6 +9,7 @@ from pydantic import Field, TypeAdapter
 
 from harnessed import Agent, Plugin, ToolContext, tool
 from harnessed.events import DurableEvent, StreamEvent, TextDeltaEvent
+from harnessed.kernel import Inject
 from harnessed.testing import ScriptedModel, call
 
 
@@ -26,7 +27,7 @@ class Indexer(Plugin):
     events = (ProjectIndexed,)
 
     @tool(readonly=True)
-    async def index(self, *, ctx: ToolContext) -> str:
+    async def index(self, *, ctx: Inject[ToolContext]) -> str:
         """Build a project index and retain its completion record."""
         await ctx.emit(ProjectIndexed(files=42))
         return "Indexed 42 files."

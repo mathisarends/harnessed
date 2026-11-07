@@ -17,6 +17,7 @@ from harnessed.events import (
     UserMessageEvent,
 )
 from harnessed.integrations.json import JsonSessionStore
+from harnessed.kernel import Inject
 from harnessed.models import UserMessage
 from harnessed.sessions import CheckpointExtension, SessionCheckpoint, StoredSession
 from harnessed.testing import ScriptedModel, call
@@ -115,7 +116,7 @@ async def test_custom_event_restoration_uses_the_agent_catalog_not_the_store(tmp
         events = (IndexedEvent,)
 
         @tool(readonly=True)
-        async def index(self, *, ctx: ToolContext) -> str:
+        async def index(self, *, ctx: Inject[ToolContext]) -> str:
             await ctx.emit(IndexedEvent(42))
             entered.set()
             await release.wait()

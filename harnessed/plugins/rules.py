@@ -20,7 +20,7 @@ from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.runtime.inbox import SessionInbox
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import TokenCounter, count_content
-from harnessed.kernel import Inject, Next, PluginState, hook
+from harnessed.kernel import Inject, Next, PluginState, hook, needs
 
 
 class RuleEventKind(StrEnum):
@@ -134,7 +134,16 @@ def when(
     return Rule(tools, command_contains, exit_code, repeated, result_tokens_over, predicate)
 
 
-class Rules(Plugin, needs=(SessionLog, DynamicContext, TokenCounter, SessionInbox)):
+class Rules(
+    Plugin,
+    needs=(
+        SessionLog,
+        TokenCounter,
+        SessionInbox,
+    ),
+):
+    context = needs(DynamicContext)
+
     events = (RuleTriggeredEvent,)
     _counts = PluginState[Counter[tuple[int, str]]](Counter)
     _last_counts = PluginState[dict[int, int]](dict)
@@ -215,7 +224,7 @@ class Rules(Plugin, needs=(SessionLog, DynamicContext, TokenCounter, SessionInbo
                     await inbox.steer(user(text))
         return replace(result, rule_matches=tuple(matches))
 
-    async def teardown(self, context: Inject[DynamicContext]) -> None:
+    async def teardown(self) -> None:
         for index, rule in enumerate(self.rules):
             if any(kind is RuleAction.CONTEXT for kind, _ in rule.actions):
-                await context.remove(f"rule:{self.name}:{index}")
+                await self.context.remove(f"rule:{self.name}:{index}")

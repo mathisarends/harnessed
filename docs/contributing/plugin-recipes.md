@@ -29,9 +29,9 @@ replacement. Direct recipe tool calls fail without activating anything.
 
 ## Dependency declaration
 
-`dependency(Service)` is a read-only typed descriptor. It binds before setup and
+`needs(Service)` is a read-only typed descriptor. It binds before setup and
 adds a continuous requirement without needing a second `needs` declaration.
-`dependency(key, optional=True)` captures the visible service or `None` and
+`observes(key)` captures the visible service or `None` and
 observes changes without blocking startup. Appearance, disappearance or provider
 replacement ends the activation and rebuilds its instance and state.
 
@@ -41,6 +41,13 @@ call-scoped `Inject` remains independent. Extra instance `needs=` replaces extra
 class requirements, while dependency fields and registration requirements always
 remain. `PluginSpec` normalizes duplicate hard `needs` and nonblocking `observes`;
 composition descriptions, diagnostics and activation consume that description.
+
+Higher-level `Plugin` lifecycle methods reject `Inject` parameters at composition;
+their services belong in fields. Kernel `PluginBase` and function plugins retain
+lifecycle injection. Tool and hook `Inject[T]` remains call-scoped and never adds
+lifetime requirements. Tool contexts require the explicit `Inject[ToolContext]`
+marker, including keyword-only parameters. Tool availability explanations include
+both callback and predicate requirements without inspecting dormant plugins.
 
 ## Instruction declaration and placement
 

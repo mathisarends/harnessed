@@ -22,7 +22,7 @@ from harnessed.core.session.files import FileOffset, ReadLimit, SessionFiles
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import TokenCounter
 from harnessed.core.tools import ToolError, tool
-from harnessed.kernel import Inject, Priority, Scope, hook
+from harnessed.kernel import Inject, Priority, Scope, hook, needs
 
 logger = logging.getLogger(__name__)
 
@@ -135,8 +135,11 @@ _SPILL_INSTRUCTIONS = Instructions(
 )
 
 
-class Spill(Plugin[SpillConfig], slot="spill", needs=(SessionLog, SessionFiles, TokenCounter)):
+class Spill(Plugin[SpillConfig], slot="spill", needs=(TokenCounter,)):
     """Spill large text, preserve images, and expire oldest files within a hard quota."""
+
+    session = needs(SessionLog)
+    files = needs(SessionFiles)
 
     def __init__(
         self,
@@ -158,10 +161,8 @@ class Spill(Plugin[SpillConfig], slot="spill", needs=(SessionLog, SessionFiles, 
     def instructions(self) -> SystemPrompt:
         return SystemPrompt(_SPILL_INSTRUCTIONS)
 
-    async def setup(
-        self, scope: Scope, session: Inject[SessionLog], files: Inject[SessionFiles]
-    ) -> None:
-        self.store = _SessionSpills(files, session, self.config)
+    async def setup(self, scope: Scope) -> None:
+        self.store = _SessionSpills(self.files, self.session, self.config)
         await self.store.restore()
         scope.provide(SpillStore, self.store)
 

@@ -15,13 +15,14 @@ from harnessed.events import (
     ToolProgressEvent,
     TurnResultEvent,
 )
+from harnessed.kernel import Inject
 from harnessed.models import ModelChunk, ToolCallDelta, ToolCallStart
 from harnessed.testing import ScriptedModel
 
 
 class Notes(Plugin):
     @tool
-    async def publish(self, text: str, *, call: ToolContext) -> str:
+    async def publish(self, text: str, *, call: Inject[ToolContext]) -> str:
         """Publish a note; this offline example only simulates the effect."""
         await call.progress("Preparing note")
         return f"Published: {text}"

@@ -5,7 +5,7 @@ import pytest
 from pydantic import Field, ValidationError
 
 from harnessed import Agent, ApprovalAnswer, Plugin, PluginConfig, PluginState, tool
-from harnessed.kernel import Emit, PluginFailed, Priority, Scope, hook
+from harnessed.kernel import Emit, Inject, PluginFailed, Priority, Scope, as_plugin_spec, hook
 from harnessed.plugins import Approvals
 from harnessed.testing import ScriptedModel, call
 
@@ -30,6 +30,27 @@ async def test_plugin_mount_does_not_deepcopy_external_clients_or_locks():
     assert seen[0][0] is seen[1][0] is client
     assert seen[0][1] is not seen[1][1]
     assert not hasattr(recipe, "state")
+
+
+def test_setup_injection_is_rejected_before_activation_including_inherited_methods():
+    class Invalid(Plugin):
+        async def setup(self, value: Inject[str]) -> None:
+            raise AssertionError("Setup must not run")
+
+    class Inherited(Invalid):
+        pass
+
+    with pytest.raises(TypeError, match=r"Inherited.setup.*needs\(T\) or observes\(T\)"):
+        as_plugin_spec(Inherited())
+
+
+def test_optional_teardown_injection_requires_an_observed_field():
+    class Invalid(Plugin):
+        async def teardown(self, value: Inject[str | None]) -> None:
+            raise AssertionError("Teardown must not run")
+
+    with pytest.raises(TypeError, match=r"Invalid.teardown.*observes\(T\)"):
+        as_plugin_spec(Invalid())
 
 
 def test_plugin_config_schema_validates_external_options():

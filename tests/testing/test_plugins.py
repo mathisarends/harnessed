@@ -10,7 +10,7 @@ from harnessed import (
     tool,
 )
 from harnessed.core.tools import ToolRegistry
-from harnessed.kernel import PluginState, Scope, dependency
+from harnessed.kernel import PluginState, Scope, needs
 from harnessed.plugins import Service
 from harnessed.testing import mount_plugin
 
@@ -20,7 +20,7 @@ class FeatureConfig(PluginConfig):
 
 
 class Feature(Plugin[FeatureConfig]):
-    backend = dependency(str)
+    backend = needs(str)
     values = PluginState(list[str])
 
     def instructions(self) -> SystemPrompt:
@@ -107,7 +107,7 @@ async def test_prepared_call_keeps_original_activation_after_dependency_replacem
     executed = []
 
     class Reader(Plugin):
-        backend = dependency(str)
+        backend = needs(str)
 
         @tool(readonly=True)
         async def read(self) -> str:

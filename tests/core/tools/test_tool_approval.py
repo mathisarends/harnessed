@@ -2,6 +2,7 @@ from harnessed import Agent, Plugin, PolicyDecision, ToolCall, ToolContext, even
 from harnessed.core.events.approvals import ApprovalRequestedEvent
 from harnessed.core.messages import ApprovalAnswer
 from harnessed.core.model import ModelChunk
+from harnessed.kernel import Inject
 from harnessed.plugins import Approvals
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit
@@ -13,7 +14,7 @@ class Cleanup(Plugin, provides=True):
         self.deleted: list[str] = []
 
     @tool
-    async def cleanup(self, *, call: ToolContext) -> str:
+    async def cleanup(self, *, call: Inject[ToolContext]) -> str:
         if not await call.approve("Delete 3 generated files?"):
             return "kept the files"
         self.deleted.append(call.call.id)

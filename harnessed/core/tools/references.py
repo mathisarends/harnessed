@@ -2,10 +2,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from harnessed.kernel import Dependency, PluginBase, binding_plan
+from harnessed.kernel import PluginBase, binding_plan
 
 from .arguments import ToolArguments
-from .context import ToolContext
 
 
 @dataclass(frozen=True)
@@ -59,16 +58,12 @@ def call_arguments(reference: ToolReference, arguments: dict) -> dict:
     if parameters and parameters[0].name in ("self", "cls"):
         parameters.pop(0)
     signature = plan.signature.replace(parameters=parameters)
-    injected = dict(plan.dependencies)
-    injected.update(
-        {name: Dependency(ToolContext) for name, hint in plan.hints.items() if hint is ToolContext}
-    )
     plan = replace(plan, signature=signature)
     spec = getattr(reference.declaration, "_harnessed_tool", None)
     if spec is None:
         raise TypeError("Tool references must point to a @tool method")
     form = ToolArguments.from_signature(
-        reference.name, plan.signature, plan.hints, injected, params=spec.params
+        reference.name, plan.signature, plan.hints, plan.dependencies, params=spec.params
     )
     parsed = form.parse(arguments)
     # A scripted response carries wire arguments, not the Python parameter object.

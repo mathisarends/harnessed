@@ -2,10 +2,10 @@ import asyncio
 
 import pytest
 
-from harnessed import Agent, Inject, Instructions, Plugin, SectionDelivery, SystemPrompt, tool
+from harnessed import Agent, Instructions, Plugin, SectionDelivery, SystemPrompt, tool
 from harnessed.core.events.messages import ContextValueChangedEvent
 from harnessed.core.prompt.context import DynamicContext
-from harnessed.kernel import PluginStatus, Scope
+from harnessed.kernel import PluginStatus, Scope, needs
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit
 
@@ -218,8 +218,10 @@ async def test_owned_context_visibility_uses_registration_state_during_teardown(
     observed = []
 
     class InspectTeardown(Feature):
-        async def teardown(self, context: Inject[DynamicContext]) -> None:
-            observed.append(dict(context.values))
+        context = needs(DynamicContext)
+
+        async def teardown(self) -> None:
+            observed.append(dict(self.context.values))
 
     async with Agent(model=ScriptedModel([])).session() as session:
         handle = await session.mount(InspectTeardown(), section_delivery=SectionDelivery.CONTEXT)

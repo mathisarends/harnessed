@@ -16,7 +16,7 @@ from harnessed import (
     tool,
 )
 from harnessed.events import DurableEvent
-from harnessed.kernel import PluginState, dependency, hook
+from harnessed.kernel import Inject, PluginState, hook, needs, observes
 from harnessed.plugins import Service
 from harnessed.testing import ScriptedModel, call, mount_plugin
 
@@ -52,8 +52,8 @@ FILE_EVENTS = (DocumentReadEvent,)
 
 class FileTools(Plugin[FileToolsConfig]):
     events = FILE_EVENTS
-    documents = dependency(Documents)
-    workspace_name = dependency(str, optional=True)
+    documents = needs(Documents)
+    workspace_name = observes(str)
     reads = PluginState(list[str])
 
     def instructions(self) -> SystemPrompt:
@@ -67,7 +67,7 @@ class FileTools(Plugin[FileToolsConfig]):
         )
 
     @tool(readonly=True)
-    async def read_document(self, name: str, *, ctx: ToolContext) -> str:
+    async def read_document(self, name: str, *, ctx: Inject[ToolContext]) -> str:
         self.reads.append(name)
         text = (await self.documents.read(name))[: self.config.max_read_chars]
         await ctx.emit(DocumentReadEvent(name=name, characters=len(text)))

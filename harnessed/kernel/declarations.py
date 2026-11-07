@@ -153,7 +153,9 @@ class PluginBase:
                 or not isinstance(annotation, str)
                 and _dependency(annotation) is not None
             ):
-                raise TypeError("Class-level Inject fields were removed; use dependency(key)")
+                raise TypeError(
+                    "Class-level Inject fields were removed; use needs(key) or observes(key)"
+                )
         constructor = cls.__dict__.get("__init__")
         if constructor is not None:
 
