@@ -3,13 +3,24 @@ import asyncio
 import pytest
 from pydantic import BaseModel, field_validator
 
-from harnessed import Agent, Plugin, SessionStatus, StopReason, tool
+from harnessed import Agent, Plugin, RunHandle, RunStream, SessionStatus, StopReason, tool
 from harnessed.core.messages import UserMessage
 from harnessed.events import ControlState, InboxAddedEvent, SessionControlChangedEvent
 from harnessed.hooks import PreStep, StepDecision
 from harnessed.models import ModelChunk
 from harnessed.testing import CallbackModel, ScriptedModel, call
 from tests._audit import Audit
+
+
+async def test_submitted_handle_has_no_live_iteration_or_observation_to_close() -> None:
+    async with Agent(model=ScriptedModel(["done"])).session() as session:
+        handle = await session.submit("work")
+        assert isinstance(handle, RunHandle) and not isinstance(handle, RunStream)
+        with pytest.raises(TypeError, match="not an async iterable"):
+            aiter(handle)
+        with pytest.raises(AttributeError, match="aclose"):
+            await handle.aclose()
+        assert (await asyncio.wait_for(handle.result(), timeout=3)).text == "done"
 
 
 async def test_submit_acknowledges_queue_order_and_results_can_be_awaited_repeatedly():

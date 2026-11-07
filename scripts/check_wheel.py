@@ -16,7 +16,7 @@ from harnessed.kernel import Scope, Key, dependency
 assert 'pydantic' not in sys.modules
 from harnessed import (
     Agent, CompositionDescription, PluginPack, SessionState, OutputContract, Plugin, PluginConfig,
-    RunHandle, StopReason, ToolPresentation,
+    RunHandle, RunStream, StopReason, ToolPresentation,
     PromptFormat, SectionDelivery,
     SystemPrompt, Instructions, tool,
 )
@@ -159,7 +159,7 @@ async def main():
     assert isinstance(typed.require_output(), Answer) and typed.require_output().value == 42
     async with Agent(model=ScriptedModel([call('final_answer', value=43)])).session() as session:
         async with session.stream('Answer', output=Answer) as run:
-            assert isinstance(run, RunHandle)
+            assert isinstance(run, RunStream) and isinstance(run, RunHandle)
             notifications = [event async for event in run]
             result = await run.result()
             assert isinstance(notifications[-1], TurnResultEvent)
@@ -167,6 +167,7 @@ async def main():
             assert result.require_output().value == 43
     async with Agent(model=ScriptedModel([reply('queued result')])).session() as session:
         handle = await session.submit('Submit')
+        assert isinstance(handle, RunHandle) and not isinstance(handle, RunStream)
         assert (await handle.result()).text == 'queued result'
         assert handle.done()
     async with Agent(model=ScriptedModel([])).session() as session:

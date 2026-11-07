@@ -163,11 +163,38 @@ async def structured_consumer(agent: AppAgent, session: Session) -> None:
     await session.run("Triage", output="wrong type")  # ty: ignore[no-matching-overload]
 
 
+async def submitted_handles_do_not_stream(session: Session) -> None:
+    handle = await session.submit("Work")
+    assert_type(handle, RunHandle[None])
+    assert_type(handle.id, str)
+    assert_type(handle.done(), bool)
+    assert_type(await handle.result(), RunResult[None])
+    async for _ in handle:  # ty: ignore[not-iterable]
+        pass
+    await handle.aclose()  # ty: ignore[unresolved-attribute]
+
+
+async def unstructured_stream(session: Session) -> None:
+    async with session.stream("Work") as stream:
+        assert_type(stream, RunStream[None])
+        assert_type(stream.id, str)
+        assert_type(stream.done(), bool)
+        assert_type(await stream.result(), RunResult[None])
+        assert_type(await stream.cancel(), None)
+        assert_type(await stream.aclose(), None)
+        async for event in stream:
+            assert_type(event, StreamItem[None])
+
+
 async def typed_stream(session: Session) -> None:
+    async def wait_for_output(handle: RunHandle[Triage]) -> RunResult[Triage]:
+        return await handle.result()
+
     assert_type(session.tools, SessionTools)
     assert_type(session.tools.names, frozenset[str])
     async with session.stream("Triage", output=OutputContract("triage.v1", Triage)) as run_stream:
         assert_type(run_stream, RunStream[Triage])
+        assert_type(await wait_for_output(run_stream), RunResult[Triage])
         assert_type(await run_stream.result(), RunResult[Triage])
         async for event in run_stream:
             assert_type(event, StreamItem[Triage])
@@ -191,6 +218,10 @@ async def typed_stream(session: Session) -> None:
                 assert_type(event.retry_kind, RetryKind)
             elif isinstance(event, ModelAttemptFinishedEvent):
                 assert_type(event.outcome, ModelAttemptOutcome)
+
+    async with session.stream("Triage", output=Triage) as stream:
+        assert_type(stream, RunStream[Triage])
+        assert_type(await stream.result(), RunResult[Triage])
 
 
 async def functional_scope(scope: Scope) -> None:
