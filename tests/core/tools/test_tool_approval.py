@@ -11,6 +11,7 @@ from harnessed.kernel import Inject
 from harnessed.plugins import AgentLoop, Approvals
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit
+from tests._clock import AdvancingClock
 
 
 class Cleanup(Plugin, provides=True):
@@ -106,32 +107,43 @@ async def test_approval_waits_do_not_consume_tool_execution_time(transport):
         assert len(ApprovalState(audit.events).records) == 2
 
 
-async def test_approval_resumes_the_remaining_execution_budget_without_resetting_it():
+async def test_approval_resumes_the_remaining_execution_budget_without_resetting_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     effects = []
+    loop = asyncio.get_running_loop()
+    clock = AdvancingClock(loop)
 
     class Work(Plugin):
-        @tool(timeout_seconds=0.1)
+        @tool(timeout_seconds=10)
         async def work(self, *, context: Inject[ToolContext]) -> str:
-            await asyncio.sleep(0.07)
+            await clock.advance(4)
             await context.approve("permission")
-            await asyncio.sleep(0.07)
+            await clock.advance(7)
             effects.append("work")
             return "done"
 
     async def respond(request):
-        await asyncio.sleep(0.15)
+        await clock.advance(20)
         return ApprovalAnswer.ALLOW
 
-    async with Agent(
-        model=ScriptedModel([[ModelChunk(tool_call=ToolCall("work"))], "done"]),
-        plugins=[Work(), Approvals(default=PolicyDecision.ALLOW, approver=respond)],
-    ).session() as session:
-        audit = Audit(session)
-        async with asyncio.timeout(3):
-            result = await session.run("work")
-        assert effects == []
-        assert result.tool_calls[0][1].status is ToolStatus.TIMEOUT
-        assert ApprovalState(audit.events).records[-1].decision is ApprovalAnswer.ALLOW
+    with monkeypatch.context() as patch:
+        patch.setattr(  # smelt: ignore[SMT426] -- Forward offsets retain real-time progress.
+            loop, "time", clock.time
+        )
+        async with Agent(
+            model=ScriptedModel([[ModelChunk(tool_call=ToolCall("work"))], "done"]),
+            plugins=[Work(), Approvals(default=PolicyDecision.ALLOW, approver=respond)],
+        ).session() as session:
+            audit = Audit(session)
+            # The clock advances 31 seconds; real time still bounds unexpected waits.
+            async with asyncio.timeout(40):
+                result = await session.run("work")
+            assert effects == []
+            assert result.tool_calls[0][1].status is ToolStatus.TIMEOUT
+            assert [record.decision for record in ApprovalState(audit.events).records] == [
+                ApprovalAnswer.ALLOW
+            ]
 
 
 async def test_run_cancellation_still_interrupts_a_suspended_tool_budget():
