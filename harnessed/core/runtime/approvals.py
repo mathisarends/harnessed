@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from harnessed.core.approvals import (
     Approval,
+    ApprovalsConfig,
     Approver,
     validate_approval_timeout,
 )
@@ -21,8 +22,8 @@ from harnessed.core.hooks import RequestApproval
 from harnessed.core.messages import ApprovalAnswer, ToolCall
 from harnessed.core.runtime.context import SessionContext
 from harnessed.core.runtime.control import SessionControl
-from harnessed.core.runtime.options import AgentOptions
 from harnessed.core.session.session import SessionLog
+from harnessed.core.tools.execution import suspend_tool_execution
 from harnessed.core.tracing import span
 from harnessed.kernel import Scope
 
@@ -93,13 +94,11 @@ class SessionApprovals:
         scope: Scope,
         log: SessionLog,
         control: SessionControl,
-        options: AgentOptions,
         live: LiveApprovals,
     ) -> None:
         self.scope = scope
         self.log = log
         self.control = control
-        self.options = options
         self._live = live
 
     @property
@@ -154,7 +153,15 @@ class SessionApprovals:
         approver: Approver | None = None,
         timeout: float | None = None,
     ) -> ApprovalAnswer:
+        """Ask for approval using a response timeout in seconds.
+
+        ``None`` inherits ``Approvals(timeout=...)``. A finite positive override
+        replaces that default for this question, even when it is longer.
+        Missing responders and expired questions raise ``ApprovalUnavailable``.
+        """
         self.control.check_open()
+        timeout = self.scope[ApprovalsConfig].timeout if timeout is None else timeout
+        validate_approval_timeout(timeout)
         grant = self.log.approval_grant(call.name, scope=scope)
         request = ApprovalRequestedEvent(
             uuid4().hex, call, reason, scope, grant.request_id if grant else None
@@ -194,7 +201,7 @@ class SessionApprovals:
         request: ApprovalRequestedEvent,
         approver: Approver | None,
         *,
-        timeout: float | None = None,
+        timeout: float,
     ) -> ApprovalAnswer:
         with span(
             self.scope,
@@ -212,25 +219,24 @@ class SessionApprovals:
         request: ApprovalRequestedEvent,
         approver: Approver | None,
         *,
-        timeout: float | None = None,
+        timeout: float,
     ) -> ApprovalAnswer:
-        timeout = self.options.approval_timeout if timeout is None else timeout
-        validate_approval_timeout(timeout)
         try:
-            async with asyncio.timeout(timeout):
-                selected = (
-                    self.scope[ChildSessionRequest].approver
-                    if ChildSessionRequest in self.scope
-                    else approver
-                    if approver is not None
-                    else (self.scope[Approver] if Approver in self.scope else None)
-                )
-                if selected is not None:
-                    decision = await selected.ask(request)
-                else:
-                    decision = await self.scope.dispatch(
-                        RequestApproval(request, self.scope[SessionContext])
+            with suspend_tool_execution():
+                async with asyncio.timeout(timeout):
+                    selected = (
+                        self.scope[ChildSessionRequest].approver
+                        if ChildSessionRequest in self.scope
+                        else approver
+                        if approver is not None
+                        else (self.scope[Approver] if Approver in self.scope else None)
                     )
+                    if selected is not None:
+                        decision = await selected.ask(request)
+                    else:
+                        decision = await self.scope.dispatch(
+                            RequestApproval(request, self.scope[SessionContext])
+                        )
             if decision is None:
                 raise ApprovalUnavailable("No approval responder answered the request")
             if not isinstance(decision, ApprovalAnswer):

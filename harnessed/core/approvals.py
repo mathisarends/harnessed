@@ -208,8 +208,15 @@ class ApprovalsConfig(PluginConfig):
     timeout: Annotated[float, Field(gt=0)] = 300.0
 
 
+_DEFAULTS = ApprovalsConfig()
+
+
 class Approvals(Plugin[ApprovalsConfig], slot="approvals", needs=(ToolRegistry,)):
-    """Compose application rules, captured tool policy and a fallback decision."""
+    """Compose tool policy and the default response timeout for every approval.
+
+    ``timeout`` is a finite positive number of seconds. Individual approval
+    requests may replace it with their own response timeout.
+    """
 
     def __init__(
         self,
@@ -220,7 +227,7 @@ class Approvals(Plugin[ApprovalsConfig], slot="approvals", needs=(ToolRegistry,)
         ask: Iterable[ToolSelector] = (),
         deny: Iterable[ToolSelector] = (),
         policy: Callable[[ToolCall], PolicyDecision | None] | None = None,
-        timeout: float = 300.0,
+        timeout: float = _DEFAULTS.timeout,
     ) -> None:
         super().__init__(config=ApprovalsConfig(timeout=timeout))
         self.approver: Approver | None = (
@@ -241,6 +248,7 @@ class Approvals(Plugin[ApprovalsConfig], slot="approvals", needs=(ToolRegistry,)
         self.policy = policy
 
     async def setup(self, scope: Scope, tools: Inject[ToolRegistry]) -> None:
+        scope.provide(ApprovalsConfig, self.config)
         self.allow = tuple(tools.reference(item, owner=scope) for item in self.allow)
         self.ask = tuple(tools.reference(item, owner=scope) for item in self.ask)
         self.deny = tuple(tools.reference(item, owner=scope) for item in self.deny)
@@ -274,7 +282,6 @@ class Approvals(Plugin[ApprovalsConfig], slot="approvals", needs=(ToolRegistry,)
                 event.call,
                 "Tool may have side effects",
                 approver=self.approver,
-                timeout=self.config.timeout,
             )
             decision = (
                 PolicyDecision.DENY if answer is ApprovalAnswer.DENY else PolicyDecision.ALLOW

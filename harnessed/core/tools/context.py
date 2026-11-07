@@ -42,6 +42,9 @@ class ToolContext:
         Uses the session's approval flow: a durable request, an existing ``ALWAYS``
         grant for this tool and scope, the configured approver or a stream
         responder. Raises ``ApprovalUnavailable`` when nobody can answer.
+        ``timeout=None`` inherits ``Approvals(timeout=...)``; a finite positive
+        value replaces that response timeout for this question. Approval waits
+        do not consume the tool's execution timeout.
         """
         answer = await self.approvals.request(self.call, reason, scope=scope, timeout=timeout)
         return answer in (ApprovalAnswer.ALLOW, ApprovalAnswer.ALWAYS)

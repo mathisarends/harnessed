@@ -117,6 +117,14 @@ accepts tool references or names. Tools declare `@tool(confirm=True)` or
 `policy=`. `ToolApprovalGuard` provides an independent gate that survives policy
 slot replacement. See [approval composition](../guides/approvals.md).
 
+`Approvals(timeout=300)` owns the default response timeout for every approval
+request in the session, including guards, `ToolContext.approve()` and direct
+`session.approvals.request()` calls. A request's `timeout=` replaces this default
+with a shorter or longer finite positive number of seconds; omission and `None`
+inherit it. Approval waits do not consume the asking task's tool execution budget.
+Missing responders and expired questions raise `ApprovalUnavailable`; in a tool
+call this becomes an unavailable result. `AgentLoop` has no approval timeout.
+
 ## Tool presentation
 
 `@tool(presentation=ToolPresentation(...))` attaches
@@ -412,7 +420,7 @@ corrupt stored records raise `SessionFormatError`, and `on_max_tokens=FAIL` rais
 See [session boundaries and restart behavior](../guides/sessions.md).
 
 Configure loop options on `AgentLoop(...)` in `plugins=`: step limits,
-parallel tool limits, timeouts and context-window overrides belong to the agent
+parallel tool limits, tool execution timeouts and context-window overrides belong to the agent
 configuration. `session(id)` opens that configured runtime; it has no per-session
 loop overrides. A single run may narrow the step limit with `max_steps=` and cap
 the turn's billed input plus output tokens with `token_budget=`; both are stored

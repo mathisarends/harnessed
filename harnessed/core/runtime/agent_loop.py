@@ -21,7 +21,7 @@ _DEFAULTS = AgentLoopConfig()
 
 
 class AgentLoop(Plugin[AgentLoopConfig], slot="loop"):
-    """Configure the ReAct loop: step, tool, approval and output limits."""
+    """Configure the ReAct loop: step, tool execution and output limits."""
 
     def __init__(
         self,
@@ -29,7 +29,6 @@ class AgentLoop(Plugin[AgentLoopConfig], slot="loop"):
         max_steps: int = _DEFAULTS.max_steps,
         tool_timeout: float = _DEFAULTS.tool_timeout,
         max_parallel_tools: int = _DEFAULTS.max_parallel_tools,
-        approval_timeout: float = _DEFAULTS.approval_timeout,
         context_window: int | None = _DEFAULTS.context_window,
         on_max_tokens: TokenLimitBehavior = _DEFAULTS.on_max_tokens,
         output_retries: int = _DEFAULTS.output_retries,
@@ -41,7 +40,6 @@ class AgentLoop(Plugin[AgentLoopConfig], slot="loop"):
                 max_steps=max_steps,
                 tool_timeout=tool_timeout,
                 max_parallel_tools=max_parallel_tools,
-                approval_timeout=approval_timeout,
                 context_window=context_window,
                 on_max_tokens=on_max_tokens,
                 output_retries=output_retries,
