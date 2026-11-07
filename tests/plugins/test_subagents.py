@@ -23,6 +23,7 @@ from harnessed.errors import SessionWriteConflict
 from harnessed.events import (
     ApprovalNeededEvent,
     ApprovalRequestedEvent,
+    ApprovalStatus,
     SubagentApprovalRequestedEvent,
     SubagentFinishedEvent,
     SubagentStartedEvent,
@@ -35,6 +36,7 @@ from harnessed.models import UserMessage
 from harnessed.plugins import AgentLoop, Approvals, Subagents
 from harnessed.sessions import SessionCommit, StoredSession
 from harnessed.testing import CallbackModel, ScriptedModel
+from tests._audit import Audit, AuditProjection
 from tests._checkpoints import checkpoint
 
 
@@ -169,6 +171,49 @@ async def test_parent_stream_exposes_child_lifecycle_and_routes_approvals():
     assert any(isinstance(event, SubagentStartedEvent) for event in events)
     assert any(isinstance(event, SubagentFinishedEvent) for event in events)
     assert any(isinstance(event, SubagentApprovalRequestedEvent) for event in events)
+
+
+@pytest.mark.parametrize(
+    "child_timeout,parent_timeout,status",
+    [(0.03, 1.0, ApprovalStatus.INTERRUPTED), (1.0, 0.03, ApprovalStatus.UNAVAILABLE)],
+)
+async def test_forwarded_approvals_obey_both_child_and_parent_response_deadlines(
+    child_timeout, parent_timeout, status
+):
+    effects = []
+    stopped = asyncio.Event()
+
+    class Write(Plugin):
+        @tool
+        async def write(self) -> str:
+            effects.append("written")
+            return "written"
+
+    async def respond(request):
+        try:
+            await asyncio.Event().wait()
+        finally:
+            stopped.set()
+
+    child = Agent(
+        model=ScriptedModel([[ModelChunk(tool_call=ToolCall("write"))], "done"]),
+        plugins=[Write(), Approvals(timeout=child_timeout)],
+    )
+    parent = Agent(
+        model=ScriptedModel([[ModelChunk(tool_call=delegate())], "done"]),
+        plugins=[
+            Subagents({"review": child}),
+            Approvals(default=PolicyDecision.ALLOW, approver=respond, timeout=parent_timeout),
+        ],
+    )
+    async with parent.session() as session:
+        audit = Audit(session)
+        async with asyncio.timeout(3):
+            await session.run("delegate")
+        assert effects == [] and stopped.is_set()
+        records = AuditProjection(audit.events).approvals.records
+        assert len(records) == 1 and records[0].resolution.status is status
+        assert not session.approvals.pending
 
 
 async def test_unanswered_child_approval_does_not_execute_tool():

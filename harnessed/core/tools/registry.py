@@ -10,7 +10,7 @@ from typing import Annotated, Any, overload
 from pydantic import BaseModel, ConfigDict, Field, RootModel, TypeAdapter, ValidationError
 from pydantic.fields import FieldInfo
 
-from harnessed.core.errors import ToolNameConflict
+from harnessed.core.errors import ApprovalUnavailable, ToolNameConflict
 from harnessed.core.messages import ToolCall, ToolResult, ToolStatus
 from harnessed.core.model import ToolDefinition
 from harnessed.core.tools.arguments import ToolArguments, tool_result_content
@@ -22,6 +22,7 @@ from harnessed.core.tools.enabled import (
     bind_enabled,
     validate_enabled,
 )
+from harnessed.core.tools.execution import ToolExecutionBudget
 from harnessed.core.tools.info import (
     ToolChain,
     ToolInfo,
@@ -577,7 +578,7 @@ class ToolRegistry:
             if call_context is None and needs_context:
                 call_context = scope[ToolContexts].create(call)
             with tool.owner.activate():
-                async with asyncio.timeout(
+                async with ToolExecutionBudget(
                     tool.spec.timeout if tool.spec.timeout is not None else default_timeout
                 ):
                     if isinstance(tool, _ExternalTool):
@@ -605,5 +606,7 @@ class ToolRegistry:
             raise
         except TimeoutError as exc:
             return ToolResult(format_tool_error(call, exc, error_formatter), ToolStatus.TIMEOUT)
+        except ApprovalUnavailable as exc:
+            return ToolResult.unavailable(str(exc))
         except Exception as exc:
             return ToolResult.error(format_tool_error(call, exc, error_formatter))

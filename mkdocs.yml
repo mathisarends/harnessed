@@ -61,5 +61,6 @@ nav:
       - Development and CI: contributing/development.md
       - Smelt policy and feedback: contributing/smelt.md
       - Plugin recipe design: contributing/plugin-recipes.md
+      - Approval timeout decision: contributing/approval-timeouts.md
       - Implemented boundaries: contributing/structure-target.md
       - Roadmap: contributing/roadmap.md

@@ -33,7 +33,7 @@ def test_scoped_guard_configuration_is_strict(options):
         {"max_tokens": 0},
         {"context_window": -1},
         {"max_parallel_tools": 0},
-        {"approval_timeout": float("inf")},
+        {"tool_timeout": float("inf")},
         {"on_max_tokens": "guess"},
     ],
 )
