@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING
 
 from harnessed.core.errors import ApprovalUnavailable
 from harnessed.core.events.approvals import PolicySource
@@ -27,6 +26,8 @@ from harnessed.core.messages import (
     ToolResult,
     ToolStatus,
 )
+from harnessed.core.runtime.approvals import SessionApprovals
+from harnessed.core.runtime.context import SessionContext
 from harnessed.core.runtime.options import AgentOptions
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tools import ToolChain
@@ -38,9 +39,6 @@ from harnessed.core.tools.scheduling import PreparedToolCall, ToolScheduler, Too
 from harnessed.core.tracing import span
 from harnessed.kernel import Scope
 
-if TYPE_CHECKING:
-    from harnessed.core.runtime.session import Session
-
 
 @dataclass
 class ToolBatch:
@@ -51,12 +49,18 @@ class ToolBatch:
 
 class ToolExecutor:
     def __init__(
-        self, scope: Scope, log: SessionLog, options: AgentOptions, session: Session
+        self,
+        scope: Scope,
+        log: SessionLog,
+        options: AgentOptions,
+        approvals: SessionApprovals,
+        context: SessionContext,
     ) -> None:
         self.scope = scope
         self.log = log
         self.options = options
-        self.session = session
+        self.approvals = approvals
+        self.context = context
 
     async def run(
         self,
@@ -114,7 +118,7 @@ class ToolExecutor:
         try:
             await self.log.append(ToolExecutionStartedEvent(call.id))
             returned = await self.scope.dispatch(
-                ExecuteTool(call, self.session, tool=plan.tool),
+                ExecuteTool(call, self.context, tool=plan.tool),
                 default=lambda: self.scope[ToolRegistry].execute(
                     call,
                     scope=self.scope,
@@ -212,15 +216,13 @@ class ToolExecutor:
                 return unavailable
             previous = self.log.latest_approval(call.id)
             decision = await self.scope.dispatch(
-                ToolPolicy(call, self.session, tool=plan.tool),
+                ToolPolicy(call, self.context, tool=plan.tool),
                 default=lambda: PolicyDecision.ALLOW,
             )
             if not isinstance(decision, PolicyDecision):
                 raise TypeError("ToolPolicy hooks must return PolicyDecision")
             if decision is PolicyDecision.ASK:
-                answer = await self.session.approvals.request(
-                    call, "Tool policy requested approval"
-                )
+                answer = await self.approvals.request(call, "Tool policy requested approval")
                 decision = (
                     PolicyDecision.DENY if answer is ApprovalAnswer.DENY else PolicyDecision.ALLOW
                 )
@@ -254,7 +256,7 @@ class ToolExecutor:
         try:
             result = await self.scope.dispatch(
                 ReviewToolResult(
-                    plan.call, result, self.session, output_limit=plan.output_limit, tool=plan.tool
+                    plan.call, result, self.context, output_limit=plan.output_limit, tool=plan.tool
                 ),
                 default=lambda: result,
             )

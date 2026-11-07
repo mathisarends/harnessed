@@ -67,7 +67,7 @@ async def test_closing_hook_cannot_wait_for_its_own_cleanup():
     async def resources(scope):
         async def closing(event):
             with pytest.raises(SessionStateError):
-                await event.session.aclose()
+                await session.aclose()
             observed.append(event.session.status)
 
         scope.on(SessionClosing, closing)

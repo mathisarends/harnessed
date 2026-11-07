@@ -512,11 +512,11 @@ async def test_replaced_tool_registration_cannot_run_with_stale_parallel_metadat
             return "old"
 
         @hook(ToolPolicy)
-        async def change(self, event, next_):
+        async def change(self, event, next_, registry: Inject[ToolRegistry]):
             nonlocal replaced
             if not replaced:
                 replaced = True
-                event.session.scope[ToolRegistry].register(replacement, name="work", override=True)
+                registry.register(replacement, name="work", override=True)
             return await next_()
 
     tools = ToolsPlugin(name="replacement")

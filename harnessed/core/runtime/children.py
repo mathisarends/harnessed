@@ -103,7 +103,7 @@ class ChildSessionSupervisor:
             await self._drain()
 
     async def closing(self, event: SessionClosing) -> None:
-        if event.session is self.parent:
+        if event.session.log is self.parent.log:
             await self.aclose()
 
     async def aclose(self) -> None:

@@ -1,8 +1,5 @@
-from __future__ import annotations
-
 import asyncio
 from dataclasses import replace
-from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from harnessed.core.budget import ContextBudget
@@ -34,10 +31,11 @@ from harnessed.core.events.turn import (
 )
 from harnessed.core.hooks import ConfigureRequest, PrepareRequest, PreStep, StepDecision
 from harnessed.core.limits import FinalStepPolicy
-from harnessed.core.messages import AssistantMessage, Observation, Role, SystemMessage, UserMessage
+from harnessed.core.messages import AssistantMessage, Role, SystemMessage, UserMessage
 from harnessed.core.model import GenerationSettings, Model, ModelRequest, resolve_request_settings
 from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.prompt.system_prompt import SystemPromptStore
+from harnessed.core.runtime.context import PendingObservations, SessionContext
 from harnessed.core.runtime.control import SessionControl
 from harnessed.core.runtime.executor import ToolExecutor
 from harnessed.core.runtime.options import AgentOptions
@@ -48,9 +46,6 @@ from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import TokenCounter
 from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import Scope
-
-if TYPE_CHECKING:
-    from harnessed.core.runtime.session import Session
 
 
 class StepRunner:
@@ -64,7 +59,8 @@ class StepRunner:
         outputs: OutputHandler,
         tools: ToolExecutor,
         responder: ModelResponder,
-        session: Session,
+        context: SessionContext,
+        observations: PendingObservations,
     ) -> None:
         self.scope = scope
         self.log = log
@@ -74,12 +70,9 @@ class StepRunner:
         self.outputs = outputs
         self.tools = tools
         self.responder = responder
-        self.session = session
+        self.context = context
+        self.observations = observations
         self.retries = RequestRetries(log, options)
-        self._observations: dict[str, Observation] = {}
-
-    def observe(self, observation: Observation) -> None:
-        self._observations[observation.source] = observation
 
     async def run(
         self,
@@ -96,7 +89,7 @@ class StepRunner:
         pending = inbox.for_step(step)
         incoming = tuple(item.message for item in pending)
         decision = await self.scope.dispatch(
-            PreStep(self.session, incoming, step, max_steps=max_steps, is_final_step=final),
+            PreStep(self.context, incoming, step, max_steps=max_steps, is_final_step=final),
             default=lambda incoming=incoming: StepDecision(incoming),
         )
         if not decision.accepted:
@@ -134,8 +127,7 @@ class StepRunner:
                 else ContextMessageEvent(message)
             )
             await self.log.append(event)
-        observations = tuple(self._observations.values())
-        self._observations.clear()
+        observations = self.observations.drain()
         for observation in observations:
             await self.log.append(ObservationRecordedEvent(observation, turn, step))
         model = self.scope[Model]
@@ -145,11 +137,11 @@ class StepRunner:
             settings=settings,
         )
         request = await self.scope.dispatch(
-            PrepareRequest(self.session, request),
+            PrepareRequest(self.context, request),
             default=lambda request=request: request,
         )
         request = await self.scope.dispatch(
-            ConfigureRequest(self.session, request),
+            ConfigureRequest(self.context, request),
             default=lambda request=request: request,
         )
         if final:

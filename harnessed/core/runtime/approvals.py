@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from harnessed.core.approvals import (
@@ -20,15 +19,12 @@ from harnessed.core.events.approvals import (
 )
 from harnessed.core.hooks import RequestApproval
 from harnessed.core.messages import ApprovalAnswer, ToolCall
+from harnessed.core.runtime.context import SessionContext
 from harnessed.core.runtime.control import SessionControl
 from harnessed.core.runtime.options import AgentOptions
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tracing import span
 from harnessed.kernel import Scope
-
-if TYPE_CHECKING:
-    from harnessed.core.runtime.session import Session
-
 
 logger = logging.getLogger(__name__)
 
@@ -98,14 +94,12 @@ class SessionApprovals:
         log: SessionLog,
         control: SessionControl,
         options: AgentOptions,
-        session: Session,
         live: LiveApprovals,
     ) -> None:
         self.scope = scope
         self.log = log
         self.control = control
         self.options = options
-        self.session = session
         self._live = live
 
     @property
@@ -234,7 +228,9 @@ class SessionApprovals:
                 if selected is not None:
                     decision = await selected.ask(request)
                 else:
-                    decision = await self.scope.dispatch(RequestApproval(request, self.session))
+                    decision = await self.scope.dispatch(
+                        RequestApproval(request, self.scope[SessionContext])
+                    )
             if decision is None:
                 raise ApprovalUnavailable("No approval responder answered the request")
             if not isinstance(decision, ApprovalAnswer):

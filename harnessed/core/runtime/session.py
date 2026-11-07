@@ -13,7 +13,6 @@ from harnessed.core.errors import SessionClosed, SessionStateError
 from harnessed.core.events.base import DurableEvent, TransientEvent
 from harnessed.core.events.compaction import CompactionAppliedEvent
 from harnessed.core.events.inbox import InboxAddedEvent, InboxMode, InboxRemovedEvent
-from harnessed.core.events.messages import ContextMessageEvent
 from harnessed.core.events.publishing import SessionPublished
 from harnessed.core.events.session import SessionControlChangedEvent
 from harnessed.core.events.stream import StreamItem, coalesce_deltas
@@ -26,7 +25,6 @@ from harnessed.core.hooks import (
 from harnessed.core.messages import (
     Message,
     Observation,
-    UserMessage,
 )
 from harnessed.core.model import (
     GenerationSettings,
@@ -44,6 +42,7 @@ from harnessed.core.prompt.system_prompt import SystemPromptStore
 from harnessed.core.prompt.values import SectionDelivery
 from harnessed.core.result import RunResult, RunResults
 from harnessed.core.runtime.approvals import LiveApprovals, SessionApprovals
+from harnessed.core.runtime.context import PendingObservations, SessionContext
 from harnessed.core.runtime.control import SessionControl, SessionStatus, StopAtBoundary
 from harnessed.core.runtime.executor import ToolExecutor
 from harnessed.core.runtime.handles import RunHandle, SubmittedRun
@@ -89,10 +88,15 @@ class Session:
         self.control = SessionControl(session, self._drive, lambda: _driving.get() is self)
         self._live_approvals = LiveApprovals()
         self.approvals = SessionApprovals(
-            scope, session, self.control, options, self, self._live_approvals
+            scope, session, self.control, options, self._live_approvals
         )
         self._inbox_writer = InboxWriter(session, self.control)
         self.inbox = SessionInbox(session, self.control, self._inbox_writer)
+        observations = PendingObservations()
+        self._context = SessionContext(
+            session, self.control, self.inbox, self.approvals, self._tools_view, observations
+        )
+        scope.provide(SessionContext, self._context)
         scope.provide(SessionControl, self.control)
         scope.provide(SessionInbox, self.inbox)
         scope.provide(ToolContexts, BoundToolContexts(session, self.inbox, self.approvals))
@@ -111,11 +115,12 @@ class Session:
             self.control,
             self._compaction,
             OutputHandler(scope, session, options, self._output_values),
-            ToolExecutor(scope, session, options, self),
+            ToolExecutor(scope, session, options, self.approvals, self._context),
             ModelResponder(scope, session),
-            self,
+            self._context,
+            observations,
         )
-        self._runner = TurnRunner(scope, session, options, self.control, self._steps, self)
+        self._runner = TurnRunner(scope, session, options, self.control, self._steps, self._context)
         session.set_persistence_error_handler(self._persistence_failed)
         scope.on(SessionAppended, self._session_event)
         scope.on(SessionPublished, self._stream_event)
@@ -173,8 +178,7 @@ class Session:
         return self.log.snapshot()
 
     async def emit(self, event: DurableEvent | TransientEvent) -> None:
-        self.control.check_open()
-        await self.log.emit(event)
+        await self._context.emit(event)
 
     async def flush(self) -> None:
         """Wait for the latest checkpoint; no I/O occurs without a configured store."""
@@ -267,11 +271,7 @@ class Session:
         Await this method before starting work that must see the contribution.
         A configured session store commits the contribution before this returns.
         """
-        self.control.check_open()
-        if not isinstance(content, str):
-            raise TypeError("Context content must be a string")
-        await self.log.append(ContextMessageEvent(UserMessage(content)))
-        await self.log.flush()
+        await self._context.add_context(content)
 
     def observe(self, observation: Observation) -> None:
         """Buffer a text/image snapshot per source for the next step.
@@ -280,8 +280,7 @@ class Session:
         Recorded snapshots remain unchanged until compaction or an explicit
         observation retention policy removes them from model history.
         """
-        self.control.check_open()
-        self._steps.observe(observation)
+        self._context.observe(observation)
 
     async def pause(self) -> None:
         """Wait until the current model call and all its tools are committed."""
@@ -549,7 +548,7 @@ class Session:
         limits = TurnLimits(max_steps, token_budget)
         compiled = self.scope[OutputTypes].register(output) if output is not None else None
         schema = compiled.definition if compiled is not None else None
-        async with StreamApprovals(self, self._live_approvals) as approvals:
+        async with StreamApprovals(self.scope, self.log, self._live_approvals) as approvals:
             queue: EventBuffer[DurableEvent | TransientEvent | None] = EventBuffer(
                 buffer_size, merge=coalesce_deltas
             )
@@ -596,7 +595,7 @@ class Session:
         finally:
             try:
                 if self.control.closing:
-                    await self.scope.dispatch(SessionClosing(self))
+                    await self.scope.dispatch(SessionClosing(self._context))
             finally:
                 try:
                     await self.log.close_persistence()

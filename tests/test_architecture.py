@@ -32,6 +32,22 @@ def test_event_vocabulary_does_not_depend_on_runtime():
     assert violations == []
 
 
+def test_runtime_components_and_hooks_do_not_reference_the_application_session():
+    # Only the composition points that open or wrap a session may name it.
+    owners = {"session.py", "opener.py", "agent_loop.py"}
+    paths = (
+        *(path for path in (PACKAGE / "core" / "runtime").glob("*.py") if path.name not in owners),
+        PACKAGE / "core" / "hooks.py",
+    )
+    violations = [
+        path.name
+        for path in paths
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.ImportFrom) and node.module == "harnessed.core.runtime.session"
+    ]
+    assert violations == []
+
+
 def test_imports_follow_layer_direction_and_public_boundaries():
     violations = []
     ranks = LAYERS

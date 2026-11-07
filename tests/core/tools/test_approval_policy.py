@@ -5,6 +5,7 @@ from harnessed.core.tools.registry import ToolRegistry
 from harnessed.events import PolicySource, ToolPolicyAppliedEvent
 from harnessed.hooks import ToolPolicy
 from harnessed.plugins import Approvals
+from harnessed.services import SessionContext
 from harnessed.testing import ScriptedModel, call
 
 
@@ -163,7 +164,7 @@ async def test_approval_uses_the_prepared_tool_flags_after_replacement():
         registry.register(replacement, name="work", override=True, readonly=True)
         assert plan.tool is not None and plan.tool.confirm
         decision = await session.scope.dispatch(
-            ToolPolicy(plan.call, session, tool=plan.tool),
+            ToolPolicy(plan.call, session.scope[SessionContext], tool=plan.tool),
             default=lambda: PolicyDecision.ALLOW,
         )
     assert decision is PolicyDecision.ALLOW

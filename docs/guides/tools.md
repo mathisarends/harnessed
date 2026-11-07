@@ -375,6 +375,16 @@ Async callbacks return those values after awaiting. Additional parameters use
 `Inject[T]`. Class-based plugin methods follow the same signatures after `self`.
 `Next[R]` is a zero-argument async continuation and may be called once.
 
+Runtime hook events (`PreStep`, `PrepareRequest`, `ConfigureRequest`,
+`ToolPolicy`, `ExecuteTool`, `ReviewToolResult`, `RequestApproval`,
+`TurnStopping` and `SessionClosing`) carry `event.session: SessionContext`, not
+the application `Session`. The context exposes `id`, `status`, `log`, `messages`,
+`last(Event)`, `inbox`, `approvals`, `tools`, `observe()`, `add_context()` and
+`emit()`. It cannot start turns, mount plugins or close the session from inside
+its own loop. Plugins that need the same view outside a hook declare
+`SessionContext` from `harnessed.services` as a dependency; resolve other session
+services through `Inject[T]`.
+
 Each dispatched event has its own result contract. A generic waterfall lets one
 middleware handle actions with independent result types:
 
@@ -487,7 +497,7 @@ dispatch it. A plugin should also own cleanup as a Scope effect for rollback.
 
 `harnessed.hooks.SessionClosing` lets an opt-in plugin release live resources when
 `session.aclose()` shuts down the driver, before plugin disposal. It receives the
-closing session and runs once per explicit close. Also register cleanup with
+closing session's `SessionContext` and runs once per explicit close. Also register cleanup with
 `scope.effect(...)` to cover startup rollback, unmounting and context teardown.
 
 ## Multimodal results
