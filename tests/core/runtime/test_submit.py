@@ -50,6 +50,42 @@ async def test_cancelling_a_result_waiter_leaves_the_acknowledged_run_queued():
         assert (await handle.result()).text == "done"
 
 
+@pytest.mark.parametrize("plugin_context", [False, True])
+async def test_appending_a_queued_id_is_rejected_without_consuming_the_run(
+    plugin_context: bool,
+) -> None:
+    model = ScriptedModel(["done"])
+    async with Agent(model=model).session() as session:
+        await session.pause()
+        message = UserMessage("queued work")
+        handle = await session.submit(message)
+        before = session.events
+        writer = session.plugin_context if plugin_context else session
+        with pytest.raises(ValueError, match="queued inbox"):
+            await writer.append_message(UserMessage("quiet input", id=message.id))
+        assert session.events == before
+        assert [item.id for item in session.inbox.pending] == [handle.id]
+        assert session.messages == () and model.requests == []
+        await session.resume()
+        assert (await asyncio.wait_for(handle.result(), timeout=3)).text == "done"
+        assert handle.done() and len(model.requests) == 1
+
+
+async def test_rejected_append_of_the_same_message_keeps_queued_cancellation_available() -> None:
+    model = ScriptedModel([])
+    async with Agent(model=model).session() as session:
+        await session.pause()
+        message = UserMessage("queued work")
+        handle = await session.submit(message)
+        with pytest.raises(ValueError, match="queued inbox"):
+            await session.append_message(message)
+        await asyncio.wait_for(handle.cancel(), timeout=3)
+        result = await asyncio.wait_for(handle.result(), timeout=3)
+        assert result.stop_reason is StopReason.DISCARDED
+        assert handle.done() and session.inbox.pending == ()
+        assert session.messages == () and model.requests == []
+
+
 async def test_cancelling_one_queued_run_preserves_the_pause_and_other_inputs():
     model = ScriptedModel(["second"])
     async with Agent(model=model).session() as session:

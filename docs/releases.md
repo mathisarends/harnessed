@@ -6,7 +6,55 @@ still evolving before 1.0.
 Detailed breaking changes and upgrade instructions are recorded in the repository
 [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md).
 
-## Unreleased
+## 0.13.0 (2026-11-07)
+
+This minor release makes plugin service contracts explicit, separates run
+completion from live observation, and uses ordinary messages for model input.
+It includes breaking API and persistence changes from 0.12.0. Conversation
+snapshots are format **2**, execution checkpoints and JSON-store envelopes are
+format **3**, and standalone audit envelopes are version **5**. Older formats
+are rejected without automatic migration; back up application-owned data and
+start new snapshots, stores and audit logs.
+
+The complete [upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0120)
+covers the changes below, public renames and event tags.
+
+### Message input and request hooks
+
+Replace `await session.add_context(text)` with
+`await session.append_message(UserMessage(text))`, importing `UserMessage` from
+`harnessed.models`. This adds durable conversation input without starting work.
+Use a fresh message for additive input: an ID still queued in the inbox raises
+`ValueError` before changing history, assets, the queue or the stored revision.
+This fixes a lost-input bug that left the queued run's handle unresolved and
+uncancellable.
+
+Remove `context=` from agent/session run, submit and stream calls. Put task
+background in the input text; contribute request-only facts in `PrepareRequest`
+hooks returning `request.append_message(...)`. `ConfigureRequest` is folded into
+that hook. `ContextValue`, `DynamicContext` and `Plugin.context_description` are
+removed; plugins now own their current facts. Replace `observe(Observation(...))`
+with `observe(UserMessage(...), source=..., refs=...)` for text/image snapshots.
+
+See [messages and changing context](guides/context.md).
+
+### Run handles, streams and temporary plugins
+
+Open live observation with `async with session.stream(...) as run`. Its
+`RunStream[T]` extends `RunHandle[T]` with event iteration and `aclose()`.
+`submit()` returns a plain handle exposing `id`, `done()`, `result()` and
+`cancel()`. Results are independent of event consumption. Context exit closes
+observation and its approval responder; `cancel()` explicitly targets only that
+queued or active run, preserving other inputs.
+
+Use `async with session.use(plugin, ...)` for a temporary capability and
+`await session.mount(plugin, ...)` for a manually managed handle. Plugin
+instruction blocks are now collected by default, after `instructions=` in
+resolved plugin order. Remove redundant `prompt=SystemPrompt.from_plugins()`;
+keep strategies that add content or choose a format. An explicit `SystemPrompt`
+constructor omits plugin blocks, and `print(agent.prompt)` lists those omissions.
+
+See [streaming](guides/streaming.md) and [plugin instructions](guides/context.md#plugin-instructions-are-collected-by-default).
 
 ### Breaking change: plugin service contracts and explicit tool injection
 
@@ -38,14 +86,54 @@ by session startup validation. The tool mapping still exposes only visible tools
 See [plugin service bindings](guides/plugins.md#dependencies-and-provided-services)
 and [tool explanations](guides/tools.md#explain-unavailable-tools).
 
+Runtime hooks and injected plugin services receive the restricted `SessionContext`
+from `harnessed.services`; the application `Session` is no longer injectable.
+Applications access the same view through `session.plugin_context`. Steer from
+plugins through `context.inbox.steer(...)`. Rename kernel `Context`/`ContextClosed`
+to `Scope`/`ScopeClosed`, and `session.ctx` to `session.scope`.
+
+### Approval configuration and execution budgets
+
+Configure response timeouts with `Approvals(timeout=...)`; remove
+`AgentLoop(approval_timeout=...)`. Guards, in-tool questions, SDK requests and
+forwarded child approvals inherit this default. A positive per-question timeout
+replaces it in either direction; omission and `None` inherit it. Approval waits
+preserve the asking task's remaining tool execution budget. Missing or expired
+responders produce `ApprovalUnavailable`; in-tool questions return
+`ToolStatus.UNAVAILABLE`.
+
+Rename approval `trust=`/`require=` to `allow=`/`ask=`, use explicit
+`default=PolicyDecision.ALLOW`/`ASK` instead of the removed all-tools factories,
+and replace `ApprovalGate` with `ToolApprovalGuard`. Application selectors precede
+callable policies and tool flags. `@tool(confirm=True)` requests confirmation
+unless an application selector overrides it; it cannot also be readonly.
+
+See [approvals](guides/approvals.md).
+
+### Public names, events and structured results
+
+Use the public `harnessed.events` facade for event classes. Durable and transient
+built-ins share `DurableEvent` and `TransientEvent` with custom events. Streams
+use `StreamItem` and end with `TurnResultEvent`; the durable terminal record is
+`TurnEndedEvent`. Update dotted tags, enum members and renamed event classes
+using the changelog. Rule events now belong to `harnessed.plugins.rules`; audit
+readers must register `Rules.events`.
+
+Put display/JSON integration metadata in `ToolPresentation`, keeping Python
+application metadata separate. Rename the `Agent.run(prompt=...)` keyword to
+`content=`. `result.require_output()` returns the validated value for completed
+turns and raises `OutputUnavailable` for incomplete outcomes.
+
+See the [event reference](reference/events.md) and [SDK reference](reference/sdk.md).
+
 ### Breaking change: plugin packs
 
 Rename `Kit` to `PluginPack`, `KitPromptPolicy` to `PluginPackPromptPolicy`
 and `ResolvedKit` to `ResolvedPluginPack` in imports and type references.
 Composition descriptions now expose `PluginDescription.pack_path` instead of
 `kit_path`, including nested replacement and exclusion descriptions. The old
-names have no compatibility aliases. Composition behavior and storage formats
-are unchanged.
+names have no compatibility aliases. The rename preserves composition behavior;
+the message and event changes above independently require new storage formats.
 
 See the [upgrade instructions](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0120)
 and [plugin pack guide](guides/plugins.md#publish-library-defaults-with-pluginpack).
@@ -57,11 +145,11 @@ Run `uv run python -m examples.36_plugin_packs` for the renamed offline example.
   notes identify these changes and any required upgrade steps.
 - Patch releases within a minor line are intended for compatible fixes. Pin the
   exact package version for reproducible deployments and persisted workflows.
-- Conversation snapshots use an explicit state format, version **1** since 0.8.0.
-  Unsupported versions fail explicitly. Earlier releases used JSONL session
-  archives: version 1 in 0.1.0, version 2 in 0.2.0 through 0.6.0 and version 3
-  in 0.7.0. These archives are not conversation snapshots and are not automatically
-  migrated. The standalone audit-event envelope remains version **3**.
+- Current conversation snapshots use state format **2**. Execution checkpoints
+  and JSON-store envelopes use format **3**; standalone audit-event envelopes
+  use version **5**. Unsupported versions fail explicitly without automatic
+  migration. Historical release entries below describe the versions used by
+  those releases. Former JSONL session archives are not conversation snapshots.
 - Back up application-owned state and older archives before upgrading.
   Application-defined events and versioned output contracts have their own
   validation requirements; see

@@ -220,6 +220,7 @@ from typing import Literal
 
 from harnessed import Plugin, ToolContext, tool
 from harnessed.events import DurableEvent
+from harnessed.kernel import Inject
 
 
 class ProjectEventKind(StrEnum):
@@ -236,7 +237,7 @@ class Indexer(Plugin):
     events = (ProjectIndexed,)
 
     @tool(readonly=True)
-    async def index(self, *, ctx: ToolContext) -> str:
+    async def index(self, *, ctx: Inject[ToolContext]) -> str:
         await ctx.emit(ProjectIndexed(files=42))
         return "Indexed."
 ```

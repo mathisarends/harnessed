@@ -63,6 +63,7 @@ from harnessed.core.messages import (
     ToolMessage,
     ToolResult,
     ToolStatus,
+    UserMessage,
 )
 from harnessed.core.model import ModelRequest, ModelUsage, sum_usage
 from harnessed.core.session.checkpoint import (
@@ -606,6 +607,16 @@ class SessionLog:
             self.registry.validate(event)
             if self._persistence is not None and not self._restoring:
                 self._persistence.check()
+            # Additive input must not claim an acknowledged run's queued message.
+            # Check under the admission lock, before retaining images or recording state.
+            if (
+                isinstance(event, MessageAppendedEvent)
+                and isinstance(event.message, UserMessage)
+                and event.message.id in self._pending
+            ):
+                raise ValueError(
+                    f"Cannot append a user message with a queued inbox id: {event.message.id}"
+                )
             event = await self._images.retain_event(event)
             if expected_turn is not None:
                 turn = self.open_turn
