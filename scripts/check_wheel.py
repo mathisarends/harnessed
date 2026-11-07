@@ -16,6 +16,7 @@ from harnessed.kernel import Scope, Key, dependency
 assert 'pydantic' not in sys.modules
 from harnessed import (
     Agent, CompositionDescription, PluginPack, SessionState, OutputContract, Plugin, PluginConfig,
+    RunHandle, StopReason, ToolPresentation,
     PluginOrder,
     PromptFormat, SectionDelivery,
     SystemPrompt, Instructions, tool,
@@ -57,7 +58,7 @@ class CalculatorConfig(PluginConfig):
     offset: int = 0
 
 class Calculator(Plugin[CalculatorConfig]):
-    @tool(readonly=True)
+    @tool(readonly=True, presentation=ToolPresentation(title='Add numbers', tags=('calculator',)))
     async def add(self, a: int, b: int) -> int:
         return a + b + self.config.offset
 
@@ -120,32 +121,29 @@ async def main():
         except ConfigError as error:
             assert 'Guidance' in str(error) and 'from_plugins' in str(error)
         else:
-            raise AssertionError('Plugin instructions require explicit collection order')
+            raise AssertionError('Plugin instructions require explicit collection')
     simple = Agent(instructions='Role.',
-                   prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+                   prompt=SystemPrompt.from_plugins(),
                    plugins=[guidance])
     assert await simple.prompt.render() == 'Role.\n\nPlugin guidance.'
     ordered = Agent(plugins=[guidance], prompt=SystemPrompt.from_plugins(
         'Prefix.', order=PluginOrder.AS_LISTED))
     assert await ordered.prompt.render() == 'Prefix.\n\nPlugin guidance.'
-    try:
-        SystemPrompt.from_plugins()
-    except TypeError:
-        pass
-    else:
-        raise AssertionError('Plugin order must be explicit')
+    assert SystemPrompt.from_plugins().plugin_order is PluginOrder.AS_LISTED
     mounted_model = ScriptedModel([reply('Ready'), reply('Unmounted')])
     async with Agent(model=mounted_model,
                      instructions='Fixed.').session() as session:
-        handle = await session.use(guidance, section_delivery=SectionDelivery.CONTEXT)
-        await session.run('Mounted')
-        assert any('Plugin guidance.' in message.text
-                   for message in mounted_model.requests[-1].messages)
-        await handle.aclose()
+        async with session.use(guidance, section_delivery=SectionDelivery.CONTEXT) as mount:
+            assert mount.instance is not None
+            await session.run('Mounted')
+            assert any('Plugin guidance.' in message.text
+                       for message in mounted_model.requests[-1].messages)
         await session.run('Unmounted')
         assert all('Plugin guidance.' not in message.text
                    for message in mounted_model.requests[-1].messages)
         assert await session.prompt.render() == 'Fixed.'
+        mount = await session.mount(guidance, section_delivery=SectionDelivery.CONTEXT)
+        await mount.aclose()
     agent = Agent(model=ScriptedModel([call(Calculator.add, a=19, b=23), reply('42')]),
                   plugins=[Calculator(config=CalculatorConfig())], prompt=SystemPrompt(
                       Instructions(title='Role', text='Fixed instructions.'),
@@ -157,15 +155,24 @@ async def main():
         assert await session.prompt.render() == '## Role\n\nFixed instructions.'
     typed = await Agent(model=ScriptedModel([call('final_answer', value=42)])).run(
         'Answer', output=OutputContract('answer.v1', Answer))
-    assert isinstance(typed.output, Answer) and typed.output.value == 42
+    assert isinstance(typed.require_output(), Answer) and typed.require_output().value == 42
     async with Agent(model=ScriptedModel([call('final_answer', value=43)])).session() as session:
-        notifications = [event async for event in session.stream('Answer', output=Answer)]
-        assert isinstance(notifications[-1], TurnResultEvent)
-        assert notifications[-1].result.output.value == 43
+        async with session.stream('Answer', output=Answer) as run:
+            assert isinstance(run, RunHandle)
+            notifications = [event async for event in run]
+            result = await run.result()
+            assert isinstance(notifications[-1], TurnResultEvent)
+            assert notifications[-1].result is result
+            assert result.require_output().value == 43
     async with Agent(model=ScriptedModel([reply('queued result')])).session() as session:
         handle = await session.submit('Submit')
         assert (await handle.result()).text == 'queued result'
         assert handle.done()
+    async with Agent(model=ScriptedModel([])).session() as session:
+        await session.pause()
+        handle = await session.submit('Cancel queued work')
+        await handle.cancel()
+        assert (await handle.result()).stop_reason is StopReason.DISCARDED
     assert TextDeltaEvent('message', 'hello').type == 'text.delta'
     inline = Skill(name='notes', description='Write notes.', instructions='Keep notes concise.')
     skills = Skills(inline)
