@@ -367,7 +367,7 @@ after completion it raises `SessionStateError` instead of starting a new turn.
 | --- | --- |
 | run(content, output=None, attachments=(), settings=None, max_steps=None, token_budget=None) | Queue and await this turn's RunResult[T]; content is text or a UserMessage, as on Agent.run() |
 | submit(content, output=None, ...) | Acknowledge queued input and return RunHandle[T] |
-| stream(content, output=None, ...) | Async context manager yielding RunHandle[T]; iterate it for UI and custom events, ending with TurnResultEvent |
+| stream(content, output=None, ...) | Async context manager yielding RunStream[T]; iterate it for UI and custom events, ending with TurnResultEvent |
 | steer(content, attachments=()) | Send a next-step correction and return its InboxItem |
 | observe(message: UserMessage, source=..., refs=()) | Buffer the latest text/image snapshot per source for the next step; recorded snapshots stay unchanged until compaction or an explicit retention policy |
 | append_message(message: UserMessage) | Append a user message for subsequent model requests without starting a turn or invoking the model; commit before returning when a store is configured |
@@ -437,6 +437,31 @@ when the run requested structured output. See [reserved summaries](../guides/ses
 mutating it or adding to conversation history. Transform requests through
 `PrepareRequest`; `ConfigureRequest` is removed. There is no `context=` run option,
 `ContextValue` helper, or public `DynamicContext` service.
+
+## RunHandle and RunStream
+
+Import both from `harnessed`. `await session.submit(...)` returns a
+`RunHandle[T]` for one queued, executing or completed run. The session owns its
+execution; the handle provides its identity, result and targeted cancellation.
+`async with session.stream(...) as run` yields a `RunStream[T]`, a specialized
+`RunHandle[T]` with live event observation installed before input admission.
+
+| Member | Behavior |
+| --- | --- |
+| id | Identity of this run's submitted input |
+| done() | Whether this run has completed, independently of observation |
+| result() | Await the same `RunResult[T]` repeatedly; cancelling a waiter leaves execution intact |
+| cancel() | Discard this queued run or abort its active turn, preserving other queued runs; completed runs are unaffected |
+| async iteration (`RunStream` only) | Consume `StreamItem[T]` values once; the final event on normal exhaustion is `TurnResultEvent[T]` |
+| aclose() (`RunStream` only) | Close event observation without cancelling the run |
+
+`RunHandle` has no async iteration or `aclose()` method. A `RunStream` can be
+passed anywhere a `RunHandle` is accepted. One consumer owns its event iterator;
+an exhausted or closed iterator does not replay events. Leaving the stream
+context closes observation and its approval responder, while `result()` and
+`cancel()` remain available. Closing the session fails unfinished runs with
+`SessionClosed`. See [streaming](../guides/streaming.md) for delivery and error
+semantics.
 
 ## RunResult and values
 

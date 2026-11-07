@@ -4,6 +4,12 @@
 
 ### Breaking changes
 
+- `session.stream()` now yields `RunStream[T]`, a specialized `RunHandle[T]`
+  with live event iteration and `aclose()`. Plain handles from `submit()` expose
+  only `id`, `done()`, `result()` and `cancel()`; remove attempts to iterate or
+  close their nonexistent observation. Import `RunStream` from `harnessed` for
+  streaming-specific annotations. Result, cancellation and stream context
+  lifetime rules are unchanged.
 - Configure all approval response timeouts with `Approvals(timeout=...)`; remove
   `AgentLoop(approval_timeout=...)`. Guards, in-tool questions, SDK requests and
   forwarded approvals now inherit this same default. Per-question `timeout=`
@@ -53,7 +59,7 @@
   lists the omitted plugins. `PluginOrder` and the `order=` argument are removed,
   and `SystemPrompt.plugin_order` becomes the boolean `collects_plugins`.
 - Open turn streams with `async with session.stream(...) as run`. The context
-  yields `RunHandle[T]`: iterate it for typed events, await `run.result()` for
+  yields `RunStream[T]`: iterate it for typed events, await `run.result()` for
   the same terminal result independently of observation, or `await run.cancel()`
   to cancel only that queued or active run. Context exit closes observation and
   its approval responder without aborting execution. Other queued inputs survive

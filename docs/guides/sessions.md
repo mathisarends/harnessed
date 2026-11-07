@@ -400,16 +400,21 @@ print((await second.result()).text)
 ```
 
 `submit()` acknowledges admission to the in-memory inbox and returns a
-`RunHandle[T]`. Runs execute in queue order. Cancelling a result waiter does not
-cancel the queued or executing run. Repeated waits return the same result and
-validated output. Closing fails unfinished live handles with `SessionClosed`.
+`RunHandle[T]`: a reference to one queued, executing or completed run, rather
+than to the whole session. It exposes `id`, `done()`, `result()` and `cancel()`;
+it has no event iteration or `aclose()`. Use `run()` when you only need to await
+the result immediately. Runs execute in queue order. Cancelling a result waiter
+does not cancel the queued or executing run. Repeated waits return the same
+result and validated output. Closing the session fails unfinished live handles
+with `SessionClosed`.
 
 `await handle.cancel()` explicitly targets this run. A queued run is discarded;
 an active turn is aborted and its cleanup is drained. Other queued runs remain
 and continue automatically after an active cancellation. Repeated cancellation
 of a completed run is harmless. Cancelling the cancellation waiter does not
-withdraw its accepted operation. A handle opened with `session.stream()` also
-iterates live events inside its context; see [streaming](streaming.md).
+withdraw its accepted operation. `session.stream()` opens a `RunStream[T]`,
+which extends `RunHandle[T]` with live event iteration and observation cleanup
+inside its context; see [streaming](streaming.md).
 
 `steer(text)` adds input to the next step of an active turn, or starts a new turn
 while idle. `append_message(UserMessage(content))` appends quiet background for subsequent model
