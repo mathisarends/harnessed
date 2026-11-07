@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Iterable, Mapping
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Iterable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from contextvars import ContextVar
 from typing import Any, Unpack, overload
@@ -28,10 +28,7 @@ from harnessed.core.hooks import (
     SessionAppended,
     SessionClosing,
 )
-from harnessed.core.messages import (
-    Message,
-    Observation,
-)
+from harnessed.core.messages import Message, UserMessage
 from harnessed.core.model import (
     GenerationSettings,
     Model,
@@ -42,7 +39,6 @@ from harnessed.core.model import (
 )
 from harnessed.core.outputs import OutputContract, OutputTypes, OutputValues
 from harnessed.core.plugin import plugin_contribution, plugin_events
-from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.prompt.delivery import runtime_sections
 from harnessed.core.prompt.system_prompt import SystemPromptStore
 from harnessed.core.prompt.values import SectionDelivery
@@ -283,29 +279,29 @@ class Session:
         self.control.start()
 
     async def steer(
-        self, content: str | Message, *, attachments: Iterable[Attachment] = ()
+        self, content: str | UserMessage, *, attachments: Iterable[Attachment] = ()
     ) -> InboxItem:
         """Add input to the running turn's next step, or start a turn while idle."""
         return await self.inbox.steer(content, attachments=attachments)
 
-    async def add_context(self, content: str) -> None:
-        """Append text for subsequent model requests without starting a turn.
+    async def append_message(self, message: UserMessage) -> None:
+        """Append a user message to history without starting a turn.
 
-        Each call adds a user-role context message, including repeated text.
+        Each call appends to conversation history, including repeated messages.
         It follows ordinary history retention and may be summarized by compaction.
         Await this method before starting work that must see the contribution.
         A configured session store commits the contribution before this returns.
         """
-        await self._context.add_context(content)
+        await self._context.append_message(message)
 
-    def observe(self, observation: Observation) -> None:
+    def observe(self, message: UserMessage, *, source: str, refs: Iterable[str] = ()) -> None:
         """Buffer a text/image snapshot per source for the next step.
 
         A newer pending snapshot replaces the same source before recording.
         Recorded snapshots remain unchanged until compaction or an explicit
         observation retention policy removes them from model history.
         """
-        self._context.observe(observation)
+        self._context.observe(message, source=source, refs=refs)
 
     async def pause(self) -> None:
         """Wait until the current model call and all its tools are committed."""
@@ -324,7 +320,7 @@ class Session:
         async with self.control.maintenance():
             model = self.scope[Model]
             request = ModelRequest(
-                (*self.log.messages, *self.scope[DynamicContext].owned_messages),
+                self.log.messages,
                 self.scope[ToolRegistry].visible_definitions(self.scope),
             )
             request = resolve_request_settings(request, model.settings)
@@ -419,7 +415,7 @@ class Session:
     @overload
     async def run[T](
         self,
-        content: str | Message,
+        content: str | UserMessage,
         *,
         output: type[T] | OutputContract[T],
         **options: Unpack[RunOptions],
@@ -427,15 +423,14 @@ class Session:
 
     @overload
     async def run(
-        self, content: str | Message, *, output: None = None, **options: Unpack[RunOptions]
+        self, content: str | UserMessage, *, output: None = None, **options: Unpack[RunOptions]
     ) -> RunResult[None]: ...
 
     async def run(
         self,
-        content: str | Message,
+        content: str | UserMessage,
         *,
         attachments: Iterable[Attachment] = (),
-        context: Mapping[str, Any] | None = None,
         settings: GenerationSettings | None = None,
         max_steps: int | None = None,
         token_budget: int | None = None,
@@ -444,7 +439,6 @@ class Session:
         handle = await self.submit(
             content,
             attachments=attachments,
-            context=context,
             settings=settings,
             max_steps=max_steps,
             token_budget=token_budget,
@@ -455,7 +449,7 @@ class Session:
     @overload
     async def submit[T](
         self,
-        content: str | Message,
+        content: str | UserMessage,
         *,
         output: type[T] | OutputContract[T],
         **options: Unpack[RunOptions],
@@ -463,15 +457,14 @@ class Session:
 
     @overload
     async def submit(
-        self, content: str | Message, *, output: None = None, **options: Unpack[RunOptions]
+        self, content: str | UserMessage, *, output: None = None, **options: Unpack[RunOptions]
     ) -> RunHandle[None]: ...
 
     async def submit(
         self,
-        content: str | Message,
+        content: str | UserMessage,
         *,
         attachments: Iterable[Attachment] = (),
-        context: Mapping[str, Any] | None = None,
         settings: GenerationSettings | None = None,
         max_steps: int | None = None,
         token_budget: int | None = None,
@@ -485,7 +478,6 @@ class Session:
         return await self._enqueue(
             content,
             attachments=attachments,
-            context=context,
             settings=settings,
             limits=limits,
             schema=schema,
@@ -493,10 +485,9 @@ class Session:
 
     async def _enqueue(
         self,
-        content: str | Message,
+        content: str | UserMessage,
         *,
         attachments: Iterable[Attachment] = (),
-        context: Mapping[str, Any] | None = None,
         settings: GenerationSettings | None = None,
         limits: TurnLimits,
         schema: OutputSchema | None,
@@ -519,7 +510,6 @@ class Session:
                 content,
                 InboxMode.FOLLOWUP,
                 attachments=attachments,
-                context=context,
                 settings=settings,
                 output_schema=schema,
                 limits=limits,
@@ -553,7 +543,7 @@ class Session:
     @overload
     def stream[T](
         self,
-        content: str | Message,
+        content: str | UserMessage,
         *,
         output: type[T] | OutputContract[T],
         buffer_size: int = 256,
@@ -563,7 +553,7 @@ class Session:
     @overload
     def stream(
         self,
-        content: str | Message,
+        content: str | UserMessage,
         *,
         output: None = None,
         buffer_size: int = 256,
@@ -573,10 +563,9 @@ class Session:
     @asynccontextmanager
     async def stream(
         self,
-        content: str | Message,
+        content: str | UserMessage,
         *,
         attachments: Iterable[Attachment] = (),
-        context: Mapping[str, Any] | None = None,
         settings: GenerationSettings | None = None,
         max_steps: int | None = None,
         token_budget: int | None = None,
@@ -608,7 +597,6 @@ class Session:
                 handle = await self._enqueue(
                     content,
                     attachments=attachments,
-                    context=context,
                     settings=settings,
                     limits=limits,
                     schema=schema,

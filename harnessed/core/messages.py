@@ -308,6 +308,11 @@ class SystemMessage(_PlainMessage, _NoCallID):
 
 @dataclass(frozen=True)
 class UserMessage(_PlainMessage, _NoCallID):
+    """Model input containing text or images, including application-supplied facts.
+
+    The user role does not imply that a human authored the content.
+    """
+
     __hash__ = None
     content: str | tuple[ContentPart, ...] = ""
     id: str = field(default_factory=lambda: uuid4().hex, kw_only=True)
@@ -396,28 +401,6 @@ def user(text: str) -> UserMessage:
 
 def system(text: str) -> SystemMessage:
     return SystemMessage(text)
-
-
-@dataclass(frozen=True)
-class Observation:
-    """An immutable state snapshot retained until compaction or an explicit policy.
-
-    Text and images share one message and lifecycle. Refs identify the observed
-    state for applications; they are not interpreted as attachment locations.
-    """
-
-    source: str
-    content: str | tuple[ContentPart, ...]
-    refs: tuple[str, ...] = ()
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.source, str) or not self.source:
-            raise ValueError("Observations require a source")
-        object.__setattr__(self, "content", _content(self.content))
-        refs = tuple(self.refs)
-        if any(not isinstance(ref, str) for ref in refs):
-            raise TypeError("Observation refs must be strings")
-        object.__setattr__(self, "refs", refs)
 
 
 def result_content(value: Any) -> str:

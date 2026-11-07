@@ -7,7 +7,7 @@ from harnessed.core.errors import ConfigError
 from harnessed.core.events.turn import TurnStartedEvent
 from harnessed.core.outputs import OutputTypes
 from harnessed.core.plugin import Service
-from harnessed.core.prompt.context import DynamicContext
+from harnessed.core.prompt.plugin_instructions import PluginInstructions
 from harnessed.core.runtime.agent_loop import AgentFactory
 from harnessed.core.runtime.child_reports import ChildReports
 from harnessed.core.runtime.context import SessionContext
@@ -83,7 +83,7 @@ async def open_session(
             [
                 Service(SessionLog, log),
                 Service(SessionContext, runtime.plugin_context),
-                Service(DynamicContext, DynamicContext(log)),
+                Service(PluginInstructions, PluginInstructions(log)),
             ]
         )
     except BaseException:

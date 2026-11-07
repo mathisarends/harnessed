@@ -30,6 +30,7 @@ from harnessed.events import (
     ToolProgressEvent,
 )
 from harnessed.integrations.json import JsonSessionStore
+from harnessed.models import UserMessage
 from harnessed.plugins import AgentLoop, Approvals, Subagents
 from harnessed.sessions import SessionCommit, StoredSession
 from harnessed.testing import CallbackModel, ScriptedModel
@@ -93,7 +94,7 @@ async def test_isolated_sessions_progress_receipts_and_usage():
     )
     parent = coordinator(child)
     async with parent.session() as session:
-        await session.add_context("Private additive parent context")
+        await session.append_message(UserMessage("Private additive parent context"))
         result = await session.run("Secret parent prompt")
         parent_id = session.id
         snapshot = session.children[0]

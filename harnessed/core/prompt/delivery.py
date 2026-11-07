@@ -6,9 +6,11 @@ from typing import Any
 from uuid import uuid4
 
 from harnessed.core.errors import ConfigError
-from harnessed.kernel import PluginLike, PluginSpec, Scope, as_plugin_spec
+from harnessed.core.hooks import PrepareRequest
+from harnessed.core.messages import UserMessage
+from harnessed.core.model import ModelRequest
+from harnessed.kernel import Next, PluginLike, PluginSpec, Scope, as_plugin_spec
 
-from .context import DynamicContext
 from .values import (
     PromptComposition,
     PromptContribution,
@@ -30,7 +32,6 @@ def runtime_sections(
             "Select section_delivery=SectionDelivery.CONTEXT or SectionDelivery.IGNORE, "
             "or compose the plugin when constructing Agent."
         )
-    key = f"runtime.sections.{spec.name}.{uuid4().hex}"
 
     @wraps(spec.factory)
     async def mount(scope: Scope, *args: Any, **kwargs: Any) -> AsyncGenerator[object, None]:
@@ -41,11 +42,16 @@ def runtime_sections(
             )
             text = await composition.render(scope)
             if text:
-                scope[DynamicContext].register(key, text, owner=scope)
+                message = UserMessage(text, id=f"mount-context:{uuid4().hex}")
+
+                async def enrich(event: PrepareRequest, next_: Next[ModelRequest]) -> ModelRequest:
+                    request = await next_()
+                    return request.append_message(message)
+
+                scope.on(PrepareRequest, enrich)
             yield instance
 
     return replace(
         spec,
         factory=mount,
-        needs=tuple(dict.fromkeys((*spec.needs, DynamicContext))),
     )

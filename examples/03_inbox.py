@@ -3,7 +3,7 @@
 import asyncio
 
 from harnessed import Agent, PolicyDecision, Role
-from harnessed.models import ModelChunk
+from harnessed.models import ModelChunk, UserMessage
 from harnessed.plugins import Approvals
 from harnessed.testing import CallbackModel
 
@@ -26,12 +26,12 @@ async def main():
     model = PausingModel()
     agent = Agent(model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)])
     async with agent.session() as session:
-        await session.add_context("This project uses Python 3.12+.")
+        await session.append_message(UserMessage("This project uses Python 3.12+."))
         print(f"After a quiet context update: {session.status}, {len(model.requests)} requests")
         first = await session.submit("Analyze the project.")
         await model.started.wait()
         await session.steer("Focus on the tests.")
-        await session.add_context("Unit tests already exist.")
+        await session.append_message(UserMessage("Unit tests already exist."))
         second = await session.submit("Write a summary afterward.")
         model.proceed.set()
         results = (await first.result(), await second.result())

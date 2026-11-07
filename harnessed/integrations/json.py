@@ -135,7 +135,7 @@ class _Record:
     conversation_id: str
     checkpoint: SessionCheckpoint
     revision: int = Field(ge=1)
-    version: int = Field(default=2, ge=2, le=2)
+    version: int = Field(default=3, ge=3, le=3)
 
 
 _RECORD = TypeAdapter(_Record)

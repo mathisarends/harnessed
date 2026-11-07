@@ -47,7 +47,7 @@ async def test_every_log_prefix_reconstructs_the_same_history_and_requests():
         model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), features]
     ).session() as agent:
         agent_audit = Audit(agent)
-        await agent.run("Add", context={"ticket": "one"})
+        await agent.run("Add. Ticket: one")
         log = agent_audit.events
         restored = roundtrip(log)
         for offset in range(len(log) + 1):

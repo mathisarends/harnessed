@@ -8,7 +8,7 @@ from pydantic.dataclasses import dataclass
 
 from harnessed.core.assets import AssetRef, AssetValue
 from harnessed.core.errors import SessionFormatError
-from harnessed.core.events.messages import ContextLifetime
+from harnessed.core.events.messages import MessageLifetime
 from harnessed.core.events.observations import IncludedObservation
 from harnessed.core.events.subagents import SubagentLinkedEvent
 from harnessed.core.messages import (
@@ -38,9 +38,8 @@ class HistoryEntry:
     position: Annotated[int, Field(ge=0)]
     message: Message
     turn_id: str | None = None
-    lifetime: ContextLifetime = ContextLifetime.SESSION
+    lifetime: MessageLifetime = MessageLifetime.SESSION
     observation: IncludedObservation | None = None
-    context_name: str | None = None
     resources: tuple[SpillRef, ...] = ()
 
 
@@ -70,10 +69,10 @@ class SessionState:
 
     __hash__ = None
 
-    version: Literal[1] = 1
+    version: Literal[2] = 2
     history: tuple[HistoryEntry, ...] = ()
-    context: Annotated[Mapping[str, str], PlainSerializer(dict, when_used="json")] = field(
-        default_factory=dict
+    plugin_instructions: Annotated[Mapping[str, str], PlainSerializer(dict, when_used="json")] = (
+        field(default_factory=dict)
     )
     turns: tuple[HistoryTurn, ...] = ()
     turns_since_compaction: Annotated[int, Field(ge=0)] = 0
@@ -88,7 +87,7 @@ class SessionState:
     def __post_init__(self) -> None:
         if type(self.version) is not int:
             raise ValueError("State versions must be integers")
-        object.__setattr__(self, "context", freeze(self.context))
+        object.__setattr__(self, "plugin_instructions", freeze(self.plugin_instructions))
         if len({child.id for child in self.children}) != len(self.children) or len(
             {child.call_id for child in self.children}
         ) != len(self.children):
@@ -98,8 +97,8 @@ class SessionState:
         positions = [entry.position for entry in self.history]
         if len(set(positions)) != len(positions):
             raise ValueError("History positions must be unique")
-        if any(entry.lifetime != ContextLifetime.SESSION for entry in self.history):
-            raise ValueError("A snapshot cannot contain turn-scoped context")
+        if any(entry.lifetime != MessageLifetime.SESSION for entry in self.history):
+            raise ValueError("A snapshot cannot contain turn-scoped messages")
         if len({turn.id for turn in self.turns}) != len(self.turns):
             raise ValueError("Retained turn identities must be unique")
         if not set(self.preserved_turns) <= {turn.id for turn in self.turns}:

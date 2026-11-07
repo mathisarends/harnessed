@@ -8,12 +8,12 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 
 import harnessed.core.session.store as persistence_store
 from harnessed import Agent, Plugin
-from harnessed.core.prompt.context import DynamicContext
+from harnessed.core.prompt.plugin_instructions import PluginInstructions
 from harnessed.errors import SessionWriteConflict
 from harnessed.events import (
     CompactionAppliedEvent,
-    ContextMessageEvent,
     DurableEvent,
+    MessageAppendedEvent,
     ReasoningDeltaEvent,
     TextDeltaEvent,
     ToolArgumentsDeltaEvent,
@@ -158,16 +158,16 @@ async def test_coalescing_retains_ordered_changes_and_empty_flush_does_not_write
     monkeypatch.setattr(persistence_store, "_CHECKPOINT_INTERVAL", 60.0)
     store = RecordingStore()
     async with Agent(model=ScriptedModel([]), store=store).session(id="batch") as session:
-        await session.scope[DynamicContext].set("seed", "ready")
+        await session.scope[PluginInstructions].set("seed", "ready")
         before = len(store.commits)
-        await session.emit(ContextMessageEvent(UserMessage("first")))
-        await session.emit(ContextMessageEvent(UserMessage("second")))
+        await session.emit(MessageAppendedEvent(UserMessage("first")))
+        await session.emit(MessageAppendedEvent(UserMessage("second")))
         assert len(store.commits) == before
         await session.flush()
         commit = store.commits[-1]
         assert len(store.commits) == before + 1
         assert [change.sequence for change in commit.changes] == [1, 2]
-        assert all(isinstance(change.event, ContextMessageEvent) for change in commit.changes)
+        assert all(isinstance(change.event, MessageAppendedEvent) for change in commit.changes)
         assert [entry.message.text for entry in commit.checkpoint.state.history][-2:] == [
             "first",
             "second",
@@ -197,7 +197,7 @@ async def test_idle_custom_events_are_available_as_changes_without_a_store_catal
 
 @pytest.mark.parametrize("sequences", [(0, 0), (1, 0), (0, 2)])
 def test_commit_rejects_duplicate_reversed_or_gapped_changes(sequences):
-    event = ContextMessageEvent(UserMessage("fact"))
+    event = MessageAppendedEvent(UserMessage("fact"))
     with pytest.raises(ValidationError, match="contiguous"):
         SessionCommit(
             replace(checkpoint(), offset=3),
@@ -209,7 +209,7 @@ def test_commit_validates_its_checkpoint_boundary_and_nested_backend_schema():
     class BackendEnvelope(BaseModel):
         commit: SessionCommit
 
-    event = ContextMessageEvent(UserMessage("fact"))
+    event = MessageAppendedEvent(UserMessage("fact"))
     with pytest.raises(ValidationError, match="next sequence"):
         SessionCommit(checkpoint(), (SessionChange(0, event),))
     value = SessionCommit(replace(checkpoint(), offset=1), (SessionChange(0, event),))

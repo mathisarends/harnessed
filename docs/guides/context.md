@@ -1,8 +1,9 @@
 # System prompts and changing context
 
-Use system instructions for persistent rules, `session.add_context(...)` for
-additional background, `ContextValue` plugins for changing named facts, steering
-for course corrections, and tools for knowledge retrieved on demand.
+Use `instructions=` for fixed rules, ordinary user messages for tasks, and
+`PrepareRequest` hooks for information needed by the next model request. Append
+a message to the session only when it belongs in conversation history.
+`observe()` records time-bound text/image snapshots with their source and refs.
 
 ## Declare one instruction block per plugin
 
@@ -152,8 +153,9 @@ session-dependent content sources run once per opened session.
 previews. Files and factories show paths or descriptions. Inside a session,
 `await session.prompt.render()` returns the actual fixed text. The system prompt
 is an immutable session snapshot, including while a plugin waits for dependencies
-or is suspended. `session.messages` exposes retained conversation input;
-`session.snapshot().context` contains current durable plugin-owned named facts.
+or is suspended. `session.messages` exposes retained conversation input.
+Request-only contributions are visible in recorded model requests, not in that
+conversation view.
 
 ## Runtime section delivery
 
@@ -185,132 +187,126 @@ alone does not guarantee provider prompt-cache reuse.
 
 Keep guidance about one tool's parameters, return values and normal use in that
 tool's description. Use sections for rules spanning multiple tools, workflows or
-the whole agent. Use `ContextValue` for changing runtime facts.
+the whole agent. Use `PrepareRequest` for changing runtime facts.
 
 
-## Add context without running the agent
+## Tasks are user messages
+
+`run()`, `submit()` and `stream()` accept text or a `UserMessage`. Text is the
+normal form; it becomes a user message. Include task background in that input:
 
 ```python
+result = await agent.run("Review the login fix.\n\nTicket: Login currently returns HTTP 500.")
+```
+
+There is no `context=` keyword or automatic dictionary-to-prompt formatting.
+Explicit `UserMessage` values support text/image parts and preserve their identity.
+Files and images can also be supplied through `attachments=` as before.
+
+## Enrich one model request
+
+```python
+from harnessed import Plugin
+from harnessed.hooks import Next, PrepareRequest
+from harnessed.kernel import hook
+from harnessed.models import ModelRequest, UserMessage
+
+
+class ProjectKnowledge(Plugin):
+    @hook(PrepareRequest)
+    async def enrich(self, event: PrepareRequest, next_: Next[ModelRequest]) -> ModelRequest:
+        request = await next_()
+        return request.append_message(UserMessage("Project knowledge: Run tests with pytest."))
+```
+
+`ModelRequest.append_message(message)` returns a new request. It retains the
+original request and all its other fields, including tools, settings and the
+output contract. It adds no labels or markup. The new message belongs to this
+request; it does not enter session history or a conversation snapshot.
+
+`await next_()` runs downstream hooks and returns their result. Appending after
+that call composes contributions as the chain returns, from the inner hook to
+the outer hook. Use the kernel's explicit priority rules when ordering matters.
+`PrepareRequest` is the single request transformation hook; `ConfigureRequest`
+has been removed. The SDK applies output constraints, compaction and token checks
+after preparation and records the final request before calling the model.
+
+Use `event.session` to inspect the restricted plugin view. Services still belong
+in dependency injection, rather than model input. A plugin can keep its own
+runtime state when computing a contribution. Removing or suspending the plugin
+also removes its request hook, so future requests stop receiving its contribution.
+`ContextValue`, the public `DynamicContext` service and `context_description`
+have been removed; no named context registry or implicit XML rendering is needed.
+
+## Append a message without running the agent
+
+```python
+from harnessed.models import UserMessage
+
 async with agent.session() as session:
-    await session.add_context("Include source URLs.")
-    await session.add_context("The project uses Python 3.12+.")
-    result = await session.run("Review the project.")
+    await session.append_message(UserMessage("The deployment failed at 14:20."))
+    result = await session.run("Investigate the failure.")
 ```
 
-`add_context(content: str) -> None` appends a user-role text contribution to
-conversation history. It does not start a turn, wake an idle session or invoke
-the model. Await it before starting work that must see the contribution. During
-active work, requests assembled after the write see it; an already assembled or
-in-flight request is unchanged. A `PreStep` hook can await `add_context` to include
-background in that step's request.
+`await session.append_message(message: UserMessage)` is a durable, additive
+history write. It does not start work or wake an idle session. Every call adds a
+message, including identical content. A configured store commits the message
+before the method returns. Await the write before work that must see it.
+The same method is available on the restricted `SessionContext` in hooks.
 
-Every call appends, including identical text. There are no names, replacement or
-removal operations. Contributions remain available across turns and through
-`SessionState` or stored-session restoration, subject to ordinary history
-compaction. Older contributions may be summarized rather than retained verbatim.
-They do not change the fixed system prompt. Inspect retained contributions through
-`session.messages` or `session.snapshot().history`. A configured session store
-commits the contribution before the method returns; without a store it remains
-in memory. Calls after closure raise `SessionClosed`.
-
-The former `session.context.set(name, value)` and `session.context.remove(name)`
-API has been removed. Replace a quiet contribution with `add_context(value)`;
-this changes keyed updates into additive history. Put fixed rules in
-`Agent(instructions=...)`, or use a `ContextValue` plugin for changing named facts.
-
-## Facts and automatic context
-
-```python
-from harnessed.plugins import ContextValue
-
-# Supply this plugin when constructing the agent:
-current_branch = ContextValue("branch", lambda: read_current_branch())
-```
-
-A ContextValue refreshes before each step and appends only actual changes.
-Disposal removes the value it owns. For a one-task contribution, use
-`await session.run("Review", context={"ticket": ticket_text})`; attachments can
-travel with that run using `File(...)` or `Image(...)`.
+Subsequent requests see the message until ordinary history compaction replaces
+or removes it. It survives state export and stored-session reopening. It does
+not change the system prompt or an already assembled request. The old
+`add_context()` name is removed without an alias.
 
 ## Steering, observations and retrieval
 
-`await session.steer("Focus on authentication first.")` goes into the current
-turn before its next step. While idle, it starts a new turn without waiting for
-its result. Concurrent `run(...)` calls queue separate turns.
+`await session.steer("Focus on authentication first.")` adds input to the next
+step of an active turn, or starts a turn while idle. It is an instruction to do
+work, rather than a quiet history write. Concurrent runs queue separate turns.
 
-An `Observation` is an immutable state snapshot supplied by the application. A
-plugin can capture it automatically in `PreStep`, before every model invocation;
-the model does not need to call an observation tool. The existing
-`session.observe()` method buffers the latest pending snapshot per source and the
-runtime records it with the current turn and step.
+For automatically captured browser/workspace state, a `PreStep` hook supplies an
+ordinary `UserMessage` through `event.session.observe()`:
 
 ```python
-from harnessed import Observation
-from harnessed.models import ImagePart, TextPart
+from harnessed.models import ImagePart, TextPart, UserMessage
 
-# Inside a PreStep hook, after capturing the browser state:
+# Inside a PreStep hook, after capturing the browser:
 event.session.observe(
-    Observation(
-        source="browser",
-        content=(TextPart(browser_text), ImagePart(screenshot_url)),
-        refs=(snapshot_id,),
-    )
+    UserMessage((TextPart(browser_text), ImagePart(screenshot_url))),
+    source="browser",
+    refs=(snapshot_id,),
 )
 ```
 
-`content` accepts a string or a tuple of text, `ImagePart` and `ImageReference`
-parts, including an
-image-only tuple. Text and images are projected together as one `UserMessage`.
-The user role is the model's input role; it does not mean a human authored the
-snapshot. `refs` identify application state and are not attachment locations.
+`observe(message: UserMessage, *, source: str, refs: Iterable[str] = ())` buffers
+the latest pending snapshot for each source. Text, image-only content and mixed
+content use the same message type. Source and refs stay outside the message;
+they are SDK provenance, not provider fields, attachment locations or generated
+prompt markup. The separate `Observation` input container has been removed.
 
-Inline image data is stored as an `ImageReference` before recording; see
-[image assets](sessions.md#image-assets-and-memory). Recorded snapshots then keep
-the same content, identity and history position after
-their step ends. They are not automatically replaced by summaries. Ordinary
-steps append to the existing request prefix, which allows provider caches and
-the JSONL prefix codec to reuse unchanged history. This does not guarantee a
-particular provider cache hit rate.
+The next step records the message with its source, refs, turn and step. Its
+message ID is preserved. Inline images are stored as asset references before
+recording. Once recorded, text and images stay together in their history position;
+later observations do not rewrite them. Unrecorded observations are not exported.
+See [image assets](sessions.md#image-assets-and-memory).
 
-Compaction removes old snapshots with their steps, including their images, in
-the request that applies the summary. `Compaction(keep_steps=5, ...)` retains five
-completed steps in the active turn plus the current step; this is retention at
-compaction boundaries, not a window that removes a snapshot after every step.
-To explicitly replace older state instead, install `LatestObservationOnly()`
-from `harnessed.plugins`. It retains one unchanged snapshot per source and can
-change the request prefix whenever a replacement arrives. Original snapshots
-remain available in the durable log under either policy.
+Ordinary compaction removes old snapshots with their steps. Installing
+`LatestObservationOnly()` explicitly retains only the newest recorded snapshot
+per source. This can change the request prefix; retaining prior observations
+lets later steps reuse an unchanged prefix. Neither policy guarantees provider
+cache hits. Durable audit records retain the original observations.
 
-Large knowledge bases fit tool retrieval: injected services perform the search,
-and the model requests the tool when needed. Retrieval avoids paying for unused
-knowledge on every step.
+After request hooks and compaction, `ObservationsIncludedEvent` identifies the
+complete observations included in a `ModelRequestedEvent` with the same
+`request_id`. Each receipt contains `source`, `refs`, `turn_id`, `step` and
+`message_id`. Use it to acknowledge hints or correlate coordinate actions with
+the screenshot delivered in that request.
 
-Attach application identifiers with `Observation(..., refs=("hint-1", "hint-2"))`.
-These refs are durable metadata, separate from the rendered text. After all
-request hooks and compaction, `ObservationsIncludedEvent` follows
-`ModelRequestedEvent` with the same `request_id`. Each `IncludedObservation`
-contains `source`, `refs`, `turn_id`, `step` and `message_id`.
+Removing or changing a message, including dropping one of its images, removes
+its original receipt. Matching text alone is not proof of inclusion. A receipt
+records the final assembled request, not provider acceptance or model perception.
 
-Use this event to acknowledge included hints or select the screenshot used by
-coordinate tools. Match the relevant source and refs, and use the explicit turn,
-step and message identity instead of parsing message IDs. An empty inclusion
-tuple means no observation message survived in that request. Transformations
-must retain the message's identity and complete content to retain its provenance:
-removing an image, redacting text or dropping a snapshot removes its receipt, as
-does compaction. Text matching an application ID elsewhere in the prompt never
-counts as inclusion. A receipt describes the final submitted request, not proof
-that a provider accepted it or that the model perceived a particular detail.
-
-| Information | Mechanism |
-| --- | --- |
-| Role, rules, permanent guidance | SystemPrompt / Instructions |
-| Changing project facts | Named context / ContextValue |
-| Additive conversation input without starting a turn | await session.add_context(...) |
-| Task metadata and attachments | run(context=..., attachments=...) |
-| Course correction | steer(...) |
-| Current browser or workspace state | Observation |
-| Large optional knowledge | A retrieval tool |
-| Advice about one tool result | result.with_note(...) |
-
-For long conversations, [compaction](compaction.md) keeps selected turns verbatim
-and replaces older working context with its current summary and retained messages.
+Large optional knowledge bases fit retrieval tools: injected services perform
+the search when the model requests it, instead of adding all knowledge to every
+request. Advice about one tool result can use `result.with_note(...)`.

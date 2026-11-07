@@ -16,11 +16,9 @@ from harnessed import (
     ToolCall,
     tool,
 )
-from harnessed.events import ContextMessageEvent
-from harnessed.hooks import PreStep
+from harnessed.hooks import PrepareRequest
 from harnessed.kernel import Inject, Scope, hook, plugin
-from harnessed.models import ModelChunk
-from harnessed.plugins import ContextValue
+from harnessed.models import ModelChunk, UserMessage
 from harnessed.testing import ScriptedModel
 
 
@@ -40,13 +38,21 @@ async def memory_backend(scope: Scope):
 
 
 class RelevantMemories(Plugin, needs=(Memory,)):
-    @hook(PreStep)
-    async def recall(self, event: PreStep, next_, memory: Inject[Memory]):
-        if event.is_turn_start:
-            hits = await memory.search(event.latest_user_text, k=3)
-            if hits:
-                await event.session.add_context("\n".join(hits))
-        return await next_()
+    @hook(PrepareRequest)
+    async def recall(self, event: PrepareRequest, next_, memory: Inject[Memory]):
+        request = await next_()
+        query = next(
+            (
+                message.text
+                for message in reversed(request.messages)
+                if isinstance(message, UserMessage)
+            ),
+            "project",
+        )
+        hits = await memory.search(query, k=3)
+        for hit in hits:
+            request = request.append_message(UserMessage(hit))
+        return request
 
 
 class MemoryTools(Plugin):
@@ -75,7 +81,7 @@ async def main():
             [
                 [ModelChunk(tool_call=ToolCall("recall", {"query": "authentication"}))],
                 "Reviewed with task context, attachments and memory.",
-                "A new task starts without the previous ticket context.",
+                "A new task retains the earlier user input as conversation history.",
             ]
         )
         harness = Agent(
@@ -85,7 +91,6 @@ async def main():
                 Instructions.from_file(path=root / "AGENTS.md"),
             ),
             plugins=[
-                ContextValue("ci", "Authentication tests are available."),
                 memory_backend(),
                 RelevantMemories(),
                 memory_tools,
@@ -93,9 +98,8 @@ async def main():
         )
         async with harness.session() as agent:
             result = await agent.run(
-                "Review this PR.",
+                "Review this PR.\n\nTicket: Fix the authentication regression.",
                 attachments=[File(root / "PR.diff"), Image(root / "screenshot.png")],
-                context={"ticket": "Fix the authentication regression."},
             )
             print(result.text)
             for message in model.requests[0].messages:
@@ -105,12 +109,12 @@ async def main():
 
             await agent.run("Now discuss a different task.")
             print(
-                "Ticket in next turn:",
-                any("Task context" in m.text for m in model.requests[-1].messages),
+                "Ticket input in next turn:",
+                any("Ticket:" in m.text for m in model.requests[-1].messages),
             )
             print(
-                "Task context in durable log:",
-                any(isinstance(e, ContextMessageEvent) for e in agent.events),
+                "Request-only memory in retained messages:",
+                any("Python 3.12" in m.text for m in agent.messages),
             )
 
 

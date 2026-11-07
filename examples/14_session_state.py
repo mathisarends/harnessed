@@ -3,13 +3,14 @@
 import asyncio
 
 from harnessed import Agent, SessionState
+from harnessed.models import UserMessage
 from harnessed.testing import ScriptedModel
 
 
 async def main() -> None:
     agent = Agent(model=ScriptedModel(["Remembered.", "Continued.", "Alternative."]))
     async with agent.session() as session:
-        await session.add_context("The project is Harnessed.")
+        await session.append_message(UserMessage("The project is Harnessed."))
         result = await session.run("Remember the project.")
         state = session.snapshot()
         assert state == result.state

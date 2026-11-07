@@ -348,7 +348,7 @@ context, removing it on normal exit, an exception or cancellation. Use
 manually, then `await handle.aclose()` to remove it. Plugins declaring
 system sections are rejected before setup by default. Explicitly select
 `section_delivery=SectionDelivery.CONTEXT` for mount-owned guidance or
-`SectionDelivery.IGNORE` to skip section evaluation. Runtime facts use `ContextValue`;
+`SectionDelivery.IGNORE` to skip section evaluation. Runtime facts use `PrepareRequest` hooks;
 closing its handle removes its value and temporal restarts refresh it.
 See [system prompt composition](context.md) for explicit ordering and rendering.
 
@@ -510,5 +510,5 @@ plugins = [
 ```
 
 Plugin mount state, including Rules repetition counters, starts fresh in each live
-session. Persist conversation facts through named context and export SessionState;
+session. Append conversation facts as user messages and export SessionState;
 arbitrary Python plugin objects are not serialized.

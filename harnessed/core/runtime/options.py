@@ -1,6 +1,6 @@
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Annotated, Any, Self, TypedDict
+from typing import Annotated, Self, TypedDict
 
 from pydantic import Field
 
@@ -16,7 +16,6 @@ class RunOptions(TypedDict, total=False):
     """Per-turn inputs shared by Agent.run and Session.run/stream."""
 
     attachments: Iterable[Attachment]
-    context: Mapping[str, Any] | None
     settings: GenerationSettings | None
     max_steps: int | None
     token_budget: int | None

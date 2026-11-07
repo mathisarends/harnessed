@@ -8,13 +8,11 @@ from harnessed.core.budget import ContextBudget
 from harnessed.core.errors import PluginConflict
 from harnessed.core.events.model import ModelRequestedEvent
 from harnessed.core.model import ModelChunk, ModelInfo, ModelUsage
-from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.runtime.services import RuntimeServices
 from harnessed.core.tokens import ApproximateTokenCounter, CalibratedTokenCounter, TokenCounter
 from harnessed.plugins import (
     AgentLoop,
     Approvals,
-    ContextValue,
     NoopTracer,
     PromptRenderer,
     Service,
@@ -62,18 +60,6 @@ async def test_unknown_model_window_and_async_token_counting_do_not_assume_128k(
     async with app.session() as session:
         await session.run("Go")
     assert len(counts) == 1
-
-
-async def test_context_plugin_is_inspectable_reversible_and_does_not_wake_idle_sessions():
-    model = ScriptedModel([])
-    app = Agent(model=model, plugins=[ContextValue("date", lambda: "today")])
-    assert "date: <evaluated per step>" in str(app.prompt)
-    async with app.session() as session:
-        mounted = await session.mount(ContextValue("temporary", "value"))
-        await session.scope[DynamicContext].set("temporary", "value")
-        assert session.scope[DynamicContext].values == {"temporary": "value"}
-        await mounted.aclose()
-        assert session.scope[DynamicContext].values == {} and not model.requests
 
 
 async def test_replacing_the_loop_slot_keeps_shared_tools_and_prompt():

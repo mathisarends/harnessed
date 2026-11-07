@@ -78,7 +78,7 @@ async def main():
     try:
         await JsonSessionStore(root=sys.argv[1]).save_session(
             "shared", SessionCommit(SessionCheckpoint(
-                state=SessionState(context={"marker": sys.argv[2]}), offset=0,
+                state=SessionState(plugin_instructions={"marker": sys.argv[2]}), offset=0,
                 control=SessionControlChangedEvent(ControlState.ACTIVE),
             )), expected_revision=1
         )
@@ -121,7 +121,7 @@ asyncio.run(main())
     assert sorted(output.decode().strip() for output, _ in outputs) == ["conflict", "saved"]
     stored = await store.load_session("shared")
     assert stored is not None and stored.revision == 2
-    assert stored.checkpoint.state.context["marker"] in {"first", "second"}
+    assert stored.checkpoint.state.plugin_instructions["marker"] in {"first", "second"}
 
 
 async def test_process_kill_recovers_tool_intent_without_repeating_the_action(tmp_path):
