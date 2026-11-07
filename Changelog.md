@@ -4,6 +4,12 @@
 
 ### Breaking changes
 
+- Runtime hook events carry `event.session: SessionContext` instead of the
+  application `Session`. The context keeps `id`, `status`, `log`, `inbox`,
+  `approvals`, `tools`, `observe()`, `add_context()` and `emit()`; `run()`,
+  `use()`, `aclose()` and `scope` are no longer reachable from a hook. Resolve
+  services with `Inject[T]`, or declare `SessionContext` from `harnessed.services`
+  as a plugin dependency. Compare sessions in hooks by `event.session.log`.
 - Import `Scope` and `ScopeClosed` from `harnessed.kernel` in place of `Context`
   and `ContextClosed`. The root SDK no longer exports the container type.
   Replace `session.ctx` with `session.scope` and use `scope: Scope` for kernel

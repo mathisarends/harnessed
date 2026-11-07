@@ -51,7 +51,7 @@ async def test_compaction_window_uses_captured_model(context_window: int | None)
     async def swap(
         event: ConfigureRequest, next_: Callable[[], Awaitable[ModelRequest]]
     ) -> ModelRequest:
-        event.session.scope.provide(Model, replacement)
+        session.scope.provide(Model, replacement)
         return await next_()
 
     async with Agent(
@@ -74,7 +74,7 @@ async def test_default_summary_uses_captured_model_after_a_request_hook() -> Non
     async def swap(
         event: ConfigureRequest, next_: Callable[[], Awaitable[ModelRequest]]
     ) -> ModelRequest:
-        event.session.scope.provide(Model, replacement)
+        session.scope.provide(Model, replacement)
         return await next_()
 
     async with Agent(
@@ -121,7 +121,7 @@ async def test_context_recovery_summary_uses_captured_model() -> None:
     async def swap(
         event: ConfigureRequest, next_: Callable[[], Awaitable[ModelRequest]]
     ) -> ModelRequest:
-        event.session.scope.provide(Model, replacement)
+        session.scope.provide(Model, replacement)
         return await next_()
 
     async with Agent(

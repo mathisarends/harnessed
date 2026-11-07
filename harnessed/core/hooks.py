@@ -21,7 +21,7 @@ from harnessed.kernel import Bail, Emit, Waterfall
 from harnessed.kernel import Next as Next
 
 if TYPE_CHECKING:
-    from harnessed.core.runtime.session import Session
+    from harnessed.core.runtime.context import SessionContext
     from harnessed.core.session.session import SessionLog
 
 
@@ -38,7 +38,7 @@ class StepDecision:
 
 @dataclass(frozen=True)
 class PreStep(Waterfall[StepDecision]):
-    session: Session
+    session: SessionContext
     messages: tuple[Message, ...]
     step: int
     max_steps: int = field(kw_only=True)
@@ -69,14 +69,14 @@ class PreStep(Waterfall[StepDecision]):
 @dataclass(frozen=True)
 class ExecuteTool(Waterfall[ToolResult]):
     call: ToolCall
-    session: Session
+    session: SessionContext
     tool: ToolInfo | None = field(default=None, kw_only=True)
 
 
 @dataclass(frozen=True)
 class ToolPolicy(Waterfall[PolicyDecision]):
     call: ToolCall
-    session: Session
+    session: SessionContext
     tool: ToolInfo | None = field(default=None, kw_only=True)
 
 
@@ -84,32 +84,32 @@ class ToolPolicy(Waterfall[PolicyDecision]):
 class ReviewToolResult(Waterfall[ToolResult]):
     call: ToolCall
     result: ToolResult
-    session: Session
+    session: SessionContext
     output_limit: OutputLimitSetting = field(default=OutputLimit.INHERIT, kw_only=True)
     tool: ToolInfo | None = field(default=None, kw_only=True)
 
 
 @dataclass(frozen=True)
 class PrepareRequest(Waterfall[ModelRequest]):
-    session: Session
+    session: SessionContext
     request: ModelRequest
 
 
 @dataclass(frozen=True)
 class ConfigureRequest(Waterfall[ModelRequest]):
-    session: Session
+    session: SessionContext
     request: ModelRequest
 
 
 @dataclass(frozen=True)
 class TurnStopping(Bail[bool]):
-    session: Session
+    session: SessionContext
 
 
 @dataclass(frozen=True)
 class RequestApproval(Bail[ApprovalAnswer]):
     request: ApprovalRequestedEvent
-    session: Session
+    session: SessionContext
 
     @property
     def call(self) -> ToolCall:
@@ -144,4 +144,4 @@ class SessionClosing(Emit):
     through Scope effects for startup rollback and context teardown.
     """
 
-    session: Session
+    session: SessionContext

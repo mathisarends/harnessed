@@ -1,7 +1,4 @@
-from __future__ import annotations
-
 from dataclasses import replace
-from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from harnessed.core.errors import OutputTokenLimit
@@ -18,6 +15,7 @@ from harnessed.core.events.turn import (
 from harnessed.core.hooks import TurnStopping
 from harnessed.core.limits import FinalStepPolicy
 from harnessed.core.model import GenerationSettings, StopReason, TokenLimitBehavior, sum_usage
+from harnessed.core.runtime.context import SessionContext
 from harnessed.core.runtime.control import SessionControl
 from harnessed.core.runtime.options import AgentOptions
 from harnessed.core.runtime.stepper import StepRunner
@@ -25,9 +23,6 @@ from harnessed.core.session.session import SessionLog
 from harnessed.core.session.turns import Step
 from harnessed.core.tracing import span
 from harnessed.kernel import Scope
-
-if TYPE_CHECKING:
-    from harnessed.core.runtime.session import Session
 
 
 class TurnRunner:
@@ -38,14 +33,14 @@ class TurnRunner:
         options: AgentOptions,
         control: SessionControl,
         steps: StepRunner,
-        session: Session,
+        context: SessionContext,
     ) -> None:
         self.scope = scope
         self.log = log
         self.options = options
         self.control = control
         self.steps = steps
-        self.session = session
+        self.context = context
 
     async def run(self) -> bool:
         previous = self.log.open_turn
@@ -140,5 +135,5 @@ class TurnRunner:
             or self.log.has_step_wakeup
         ):
             return True
-        continuation = await self.scope.dispatch(TurnStopping(self.session))
+        continuation = await self.scope.dispatch(TurnStopping(self.context))
         return bool(continuation or self.log.has_step_wakeup)

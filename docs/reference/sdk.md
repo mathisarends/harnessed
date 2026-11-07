@@ -97,8 +97,10 @@ itself yields names. Missing, disabled or inactive tools raise `KeyError` on
 lookup. Existing views reflect activation, removal and replacement, using the
 same visibility rules as model requests. Register tools through plugins.
 
-Plugin authors import `DynamicContext`, `SystemPromptStore` and `ToolRegistry`
-from `harnessed.services`. `SessionTools` is also exported there for annotations.
+Plugin authors import `DynamicContext`, `SessionContext`, `SystemPromptStore`
+and `ToolRegistry` from `harnessed.services`. `SessionContext` is the in-loop
+session view carried by runtime hook events as `event.session`; it reads state,
+adds context, emits events and requests approvals, but cannot run, mount or close. `SessionTools` is also exported there for annotations.
 These explicit service exports keep plugin code off deep internal import paths;
 the root SDK remains lazy and does not re-export the service catalog.
 
