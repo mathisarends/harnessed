@@ -23,6 +23,7 @@ from harnessed.events import DurableEvent
 from harnessed.kernel import Scope
 from harnessed.models import Model
 from harnessed.plugins import AgentLoop, Filesystem, PromptRenderer, Service, Shell
+from harnessed.services import SessionContext
 from harnessed.testing import ScriptedModel, call
 
 
@@ -72,14 +73,14 @@ async def test_session_installs_waiting_plugins_and_disposes_the_driver_once(mon
 
     monkeypatch.setattr(Session, "aclose", close)
 
-    @plugin(needs=[Session])
+    @plugin(needs=[SessionContext])
     async def observer(scope: Scope):
-        starts.append(scope[Session])
+        starts.append(scope[SessionContext])
         yield
 
     app = Agent(model=ScriptedModel(["ready"]), plugins=[observer()])
     async with app.session() as session:
-        assert starts == [session]
+        assert [context.log for context in starts] == [session.log]
         assert (await session.run("hello")).text == "ready"
     assert closes == [session]
 
@@ -88,9 +89,9 @@ async def test_session_service_remains_available_during_dependent_teardown():
     seen = []
 
     class Dependent(Plugin):
-        needs = (Session,)
+        needs = (SessionContext,)
 
-        async def teardown(self, session: Inject[Session]):
+        async def teardown(self, session: Inject[SessionContext]):
             seen.append(session.id)
 
     async with Agent(model=ScriptedModel([]), plugins=[Dependent()]).session() as session:

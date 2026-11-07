@@ -6,27 +6,26 @@ from harnessed import (
     Agent,
     Observation,
     Plugin,
-    Session,
     SystemPrompt,
     tool,
 )
 from harnessed.events import CompactionAppliedEvent, SpillCreatedEvent
 from harnessed.hooks import PreStep
-from harnessed.kernel import Inject, hook
+from harnessed.kernel import hook
 from harnessed.models import ModelChunk
 from harnessed.plugins import AgentLoop, Compaction, LatestObservationOnly, Spill, at_ratio
 from harnessed.testing import ScriptedModel, call
 
 
-class WorkspaceState(Plugin, needs=(Session,)):
+class WorkspaceState(Plugin):
     def __init__(self):
         super().__init__()
         self.frame = 0
 
     @hook(PreStep)
-    async def observe(self, event, next_, session: Inject[Session]):
+    async def observe(self, event: PreStep, next_):
         self.frame += 1
-        session.observe(
+        event.session.observe(
             Observation(
                 "workspace",
                 f"FULL current workspace frame {self.frame}",

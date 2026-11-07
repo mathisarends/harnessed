@@ -2,10 +2,10 @@
 
 import asyncio
 
-from harnessed import Agent, Plugin, PolicyDecision, Session, ToolCall, ToolResult, ToolStatus, tool
+from harnessed import Agent, Plugin, PolicyDecision, ToolCall, ToolResult, ToolStatus, tool
 from harnessed.events import InboxAddedEvent, InboxMode, ToolCallFinishedEvent
 from harnessed.hooks import ReviewToolResult
-from harnessed.kernel import Inject, hook
+from harnessed.kernel import hook
 from harnessed.models import ModelChunk, user
 from harnessed.plugins import Approvals
 from harnessed.plugins.rules import Rules, when
@@ -16,13 +16,13 @@ def is_pytest(call: ToolCall) -> bool:
     return "pytest" in call.command
 
 
-class TestDiscipline(Plugin, needs=(Session,)):
+class TestDiscipline(Plugin):
     def __init__(self):
         super().__init__()
         self.failures = 0
 
     @hook(ReviewToolResult)
-    async def after_tests(self, event, next_, session: Inject[Session]):
+    async def after_tests(self, event: ReviewToolResult, next_):
         result = await next_()
         if not is_pytest(event.call):
             return result
@@ -33,9 +33,11 @@ class TestDiscipline(Plugin, needs=(Session,)):
         if self.failures == 1:
             return result.with_note("Read the first failure before editing anything.")
         if self.failures == 3:
-            await session.add_context("Tests failed three times. Reconsider your approach.")
+            await event.session.add_context("Tests failed three times. Reconsider your approach.")
         if self.failures >= 5:
-            await session.steer(user("Stop editing. Summarize what you tried and what is wrong."))
+            await event.session.inbox.steer(
+                user("Stop editing. Summarize what you tried and what is wrong.")
+            )
         return result
 
 

@@ -13,7 +13,6 @@ from harnessed import (
     Instructions,
     Plugin,
     PluginOrder,
-    Session,
     SystemPrompt,
     ToolCall,
     tool,
@@ -41,13 +40,13 @@ async def memory_backend(scope: Scope):
     yield
 
 
-class RelevantMemories(Plugin, needs=(Memory, Session)):
+class RelevantMemories(Plugin, needs=(Memory,)):
     @hook(PreStep)
-    async def recall(self, event, next_, memory: Inject[Memory], agent: Inject[Session]):
+    async def recall(self, event: PreStep, next_, memory: Inject[Memory]):
         if event.is_turn_start:
             hits = await memory.search(event.latest_user_text, k=3)
             if hits:
-                await agent.add_context("\n".join(hits))
+                await event.session.add_context("\n".join(hits))
         return await next_()
 
 

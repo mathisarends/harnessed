@@ -15,6 +15,7 @@ from harnessed.core.model import ModelChunk, ModelInfo, StopReason
 from harnessed.core.tools.registry import ToolRegistry
 from harnessed.kernel import hook
 from harnessed.plugins import AgentLoop, Approvals, Service
+from harnessed.services import SessionContext
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit
 
@@ -125,7 +126,7 @@ async def test_denied_policy_never_enters_execution_or_review_regardless_of_orde
 async def test_approval_always_is_session_local_and_review_can_steer_nudges():
     asked, stages = ([], [])
 
-    class FeaturesPlugin(Plugin, needs=(Session,)):
+    class FeaturesPlugin(Plugin):
         @tool
         async def work(self) -> str:
             stages.append("tool")
@@ -137,9 +138,9 @@ async def test_approval_always_is_session_local_and_review_can_steer_nudges():
             return await next_()
 
         @hook(ReviewToolResult)
-        async def review(self, event, next_, agent: Inject[Session]):
+        async def review(self, event, next_):
             stages.append("review")
-            await agent.steer("consider this")
+            await event.session.inbox.steer("consider this")
             return (await next_()).with_note("Reviewed")
 
     features = FeaturesPlugin(name="reviews")
@@ -172,19 +173,19 @@ async def test_approval_always_is_session_local_and_review_can_steer_nudges():
 
 async def test_class_plugin_state_is_fresh_for_every_session_and_methods_support_di():
 
-    class Counter(Plugin, needs=(Session,)):
+    class Counter(Plugin, needs=(SessionContext,)):
         def __init__(self):
             super().__init__()
             self.count = 0
 
         @tool
-        async def count_calls(self, agent: Inject[Session]) -> int:
+        async def count_calls(self, agent: Inject[SessionContext]) -> int:
             self.count += 1
             assert agent.status == "running"
             return self.count
 
         @hook(ReviewToolResult)
-        async def review(self, event, next_, agent: Inject[Session]):
+        async def review(self, event, next_, agent: Inject[SessionContext]):
             assert isinstance(agent.id, str) and agent.id
             return await next_()
 
@@ -210,11 +211,11 @@ async def test_class_plugin_state_is_fresh_for_every_session_and_methods_support
     assert template.count == 0
 
 
-async def test_function_plugin_can_inject_current_agent_with_explicit_needs():
+async def test_function_plugin_can_inject_session_context_with_explicit_needs():
     observed = []
 
-    @plugin(needs=(Session, ToolRegistry))
-    async def observer(scope, agent: Inject[Session], registry: Inject[ToolRegistry]):
+    @plugin(needs=(SessionContext, ToolRegistry))
+    async def observer(scope, agent: Inject[SessionContext], registry: Inject[ToolRegistry]):
         observed.append((agent.id, registry))
         yield
         assert agent.status == "closed"
@@ -443,3 +444,9 @@ async def test_canceling_when_idle_waiter_does_not_cancel_the_agent():
         model.release.set()
         await agent.control.join()
         assert agent.log.messages[-1].content == "response 1"
+
+
+async def test_plugins_resolve_the_session_context_but_never_the_application_session():
+    async with Application(model=ScriptedModel([])).session() as session:
+        assert Session not in session.scope
+        assert session.scope[SessionContext].log is session.log

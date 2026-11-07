@@ -6,6 +6,7 @@ from harnessed import Agent, Plugin, PluginValidation, Session, SessionLog, tool
 from harnessed.errors import ConfigError, PluginDependencyError, PluginDependencyWarning
 from harnessed.kernel import Key, Scope, dependency
 from harnessed.plugins import Service
+from harnessed.services import SessionContext
 from harnessed.testing import ScriptedModel
 
 
@@ -64,8 +65,8 @@ async def test_validation_reports_every_missing_service_and_transitively_waiting
 async def test_session_services_and_providers_activated_by_them_settle_before_validation():
     mounted = []
 
-    class SessionProvider(Plugin, needs=(Session, SessionLog)):
-        session = dependency(Session)
+    class SessionProvider(Plugin, needs=(SessionContext, SessionLog)):
+        session = dependency(SessionContext)
         log = dependency(SessionLog)
 
         async def setup(self, scope: Scope) -> None:
@@ -126,8 +127,8 @@ async def test_warn_mode_reports_structured_issues_and_allows_later_service_acti
 async def test_validation_failure_closes_runtime_plugins_and_session_lease():
     mounted, closed = [], []
 
-    class Observer(Plugin, needs=(Session,)):
-        session = dependency(Session)
+    class Observer(Plugin, needs=(SessionContext,)):
+        session = dependency(SessionContext)
 
         async def setup(self, scope: Scope) -> None:
             mounted.append(self.session)

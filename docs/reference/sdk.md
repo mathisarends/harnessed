@@ -100,7 +100,9 @@ same visibility rules as model requests. Register tools through plugins.
 Plugin authors import `DynamicContext`, `SessionContext`, `SystemPromptStore`
 and `ToolRegistry` from `harnessed.services`. `SessionContext` is the in-loop
 session view carried by runtime hook events as `event.session`; it reads state,
-adds context, emits events and requests approvals, but cannot run, mount or close. `SessionTools` is also exported there for annotations.
+adds context, emits events and requests approvals, but cannot run, mount or close.
+It is the only session service in a plugin scope; the application `Session` is
+not injectable, and applications obtain the same view from `session.plugin_context`. `SessionTools` is also exported there for annotations.
 These explicit service exports keep plugin code off deep internal import paths;
 the root SDK remains lazy and does not re-export the service catalog.
 
@@ -378,6 +380,7 @@ after completion it raises `SessionStateError` instead of starting a new turn.
 | approvals.request(call, reason) / answer(id, decision) / revoke(id) | Ask, answer, or revoke live-session grants; `pending` / `grants` / `grant_for()` read them |
 | id / prompt | Session ID / effective system prompt |
 | tools | Read-only `SessionTools` mapping of currently visible tool names to definitions; `.names` returns a frozenset |
+| plugin_context | The restricted `SessionContext` view that plugins and hooks receive |
 | scope | Advanced: resolve services in this session's scope (`session.scope[ToolRegistry]`); import container types from `harnessed.kernel` |
 | control | Advanced: the SessionControl service for plugins and external UIs |
 | log | Advanced: live SessionLog state owner, current-turn buffer and event catalog |

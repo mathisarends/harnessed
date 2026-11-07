@@ -11,7 +11,6 @@ from harnessed import (
     Observation,
     Plugin,
     PolicyDecision,
-    Session,
     SessionState,
     ToolCall,
     tool,
@@ -160,12 +159,12 @@ async def test_added_context_roundtrips_through_an_explicit_snapshot():
 async def test_push_context_from_pre_step_is_in_the_current_request():
     seen = []
 
-    class Recall(Plugin, needs=(Session,)):
+    class Recall(Plugin):
         @hook(PreStep)
-        async def recall(self, event, next_, agent: Inject[Session]):
+        async def recall(self, event, next_):
             seen.append((event.is_turn_start, event.latest_user_text))
             if event.is_turn_start:
-                await agent.add_context("Relevant memory: prefers Python")
+                await event.session.add_context("Relevant memory: prefers Python")
             return await next_()
 
     model = ScriptedModel(["done"])
@@ -210,11 +209,11 @@ async def test_explicit_class_needs_and_injected_dynamic_project_context(tmp_pat
 async def test_observations_remain_unchanged_in_later_steps():
     states = iter(["before", "after"])
 
-    class BrowserObserver(Plugin, needs=(Session,)):
+    class BrowserObserver(Plugin):
         @hook(PreStep)
-        async def observe(self, event, next_, agent: Inject[Session]):
+        async def observe(self, event, next_):
             state = next(states)
-            agent.observe(Observation("browser", f"FULL {state} refs"))
+            event.session.observe(Observation("browser", f"FULL {state} refs"))
             return await next_()
 
     class ToolsPlugin(Plugin):

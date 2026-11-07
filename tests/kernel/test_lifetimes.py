@@ -10,7 +10,7 @@ from harnessed import Plugin, PolicyDecision, Session, ToolCall, hook, plugin, t
 from harnessed.core.prompt.system_prompt import SystemPromptStore
 from harnessed.core.runtime.services import RuntimeServices
 from harnessed.core.tools.registry import ToolRegistry
-from harnessed.kernel import Emit, Inject, PluginStatus, Scope, ScopeClosed
+from harnessed.kernel import Emit, PluginStatus, Scope, ScopeClosed
 from harnessed.plugins import Approvals
 from harnessed.testing import ScriptedModel
 
@@ -272,9 +272,12 @@ async def test_teardown_errors_remove_all_effects_and_allow_fresh_activation():
 
 async def test_agent_registration_facade_uses_the_active_plugin_owner():
     seen = []
+    sessions: list[Session] = []
 
-    class Feature(Plugin, needs=(Session,)):
-        async def setup(self, scope, agent: Inject[Session]):
+    class Feature(Plugin):
+        async def setup(self, scope):
+            # Plugins cannot inject the application Session; the application holds it.
+            agent = sessions[0]
             agent.add_hook(Ping, lambda event: seen.append("explicit"))
 
             @agent.on(Ping)
@@ -288,6 +291,7 @@ async def test_agent_registration_facade_uses_the_active_plugin_owner():
     async with Application(
         model=ScriptedModel([]), plugins=[Approvals(default=PolicyDecision.ALLOW)]
     ).session() as agent:
+        sessions.append(agent)
         handle = await agent.scope.plugin(Feature())
         assert [definition.name for definition in agent.scope[ToolRegistry].definitions] == ["read"]
         await agent.scope.dispatch(Ping())

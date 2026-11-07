@@ -42,13 +42,57 @@ from harnessed.core.tools import ToolError
 from harnessed.core.tools.output_limit import ToolOutputLimit
 
 if TYPE_CHECKING:
+    from harnessed.core.events.subagents import SubagentLinkedEvent
+    from harnessed.core.session.children import ChildSession
+    from harnessed.kernel import Scope
+
+    from .context import SessionContext
+    from .control import SessionControl
     from .session import Session
 
 logger = logging.getLogger(__name__)
 
 
+class ChildParent:
+    """The parent-session operations that child supervision needs.
+
+    Plugins never receive the application Session. This view records child
+    events, routes approvals, steers notifications into the parent inbox and
+    fails the parent after an owned child driver breaks; it cannot run turns,
+    mount plugins or close the parent.
+    """
+
+    def __init__(self, session: SessionContext, control: SessionControl, scope: Scope) -> None:
+        self.log = session.log
+        self.approvals = session.approvals
+        self.control = control
+        self._inbox = session.inbox
+        self._scope = scope
+
+    @property
+    def id(self) -> str:
+        return self.log.id
+
+    @property
+    def children(self) -> tuple[ChildSession, ...]:
+        return self.log.children
+
+    @property
+    def link(self) -> SubagentLinkedEvent | None:
+        """The parent's own delegation link when it is itself a child session."""
+        return self.log.parent
+
+    @property
+    def preview_limit(self) -> int:
+        """Notification preview size, following the currently selected output limit."""
+        return min(4096, self._scope[ToolOutputLimit].max_chars // 2)
+
+    async def steer(self, content: str) -> None:
+        await self._inbox.steer(content)
+
+
 class ParentApprover:
-    def __init__(self, parent: Session, child_id: str, agent: str) -> None:
+    def __init__(self, parent: ChildParent, child_id: str, agent: str) -> None:
         self.parent = parent
         self.child_id = child_id
         self.agent = agent
@@ -83,7 +127,7 @@ class ChildExecution:
 
     def __init__(
         self,
-        parent: Session,
+        parent: ChildParent,
         factory: ChildSessionFactory,
         started: SubagentStartedEvent,
         limits: ChildLimits,
@@ -389,7 +433,7 @@ class ChildExecution:
         # Notifications carry a preview; fetching the full result remains a reviewed tool call.
         payload = dict(payload)
         text = payload.get("text")
-        preview_limit = min(4096, self.parent.scope[ToolOutputLimit].max_chars // 2)
+        preview_limit = self.parent.preview_limit
         if isinstance(text, str) and len(text) > preview_limit:
             payload["text"] = text[:preview_limit]
             payload["truncated"] = True
