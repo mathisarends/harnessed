@@ -4,7 +4,7 @@ import json
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import Plugin, StopReason, ToolCall, tool
+from harnessed import Plugin, PolicyDecision, StopReason, ToolCall, tool
 from harnessed.core.errors import OutputTokenLimit
 from harnessed.core.events.completion import TurnResultEvent
 from harnessed.core.events.inbox import InboxAddedEvent, InboxMode
@@ -36,7 +36,9 @@ class TwoTurns(CallbackModel):
 
 async def test_concurrent_runs_return_their_own_text_usage_and_turn_without_waiting_for_idle():
     model = TwoTurns()
-    async with Application(model=model, plugins=[Approvals.allow_all()]).session() as session:
+    async with Application(
+        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+    ).session() as session:
         queued = asyncio.Event()
 
         @session.on(InboxAddedEvent)
@@ -66,10 +68,13 @@ async def test_concurrent_runs_return_their_own_text_usage_and_turn_without_wait
 
 async def test_stream_ends_with_its_turn_and_does_not_emit_the_following_turn():
     model = TwoTurns()
-    async with Application(model=model, plugins=[Approvals.allow_all()]).session() as session:
+    async with Application(
+        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+    ).session() as session:
 
         async def collect():
-            return [event async for event in session.stream("first")]
+            async with session.stream("first") as run_stream:
+                return [event async for event in run_stream]
 
         streaming = asyncio.create_task(collect())
         await model.started[0].wait()

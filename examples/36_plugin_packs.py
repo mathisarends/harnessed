@@ -5,7 +5,6 @@ import asyncio
 from harnessed import (
     Agent,
     Plugin,
-    PluginOrder,
     PluginPack,
     SystemPrompt,
     tool,
@@ -37,7 +36,7 @@ def library_pack() -> PluginPack:
     return PluginPack(
         "library",
         [TextTools(), DebugTools(), AgentLoop(max_steps=12)],
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+        prompt=SystemPrompt.from_plugins(),
     )
 
 

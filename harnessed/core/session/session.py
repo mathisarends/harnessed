@@ -7,7 +7,7 @@ from typing import cast
 from harnessed.core.approvals import Approval, ApprovalState, approval_transition
 from harnessed.core.assets import AssetStore, _MemoryAssets
 from harnessed.core.buffering import EventBuffer
-from harnessed.core.errors import SessionFormatError, SessionStateError
+from harnessed.core.errors import RunUnavailable, SessionFormatError, SessionStateError
 from harnessed.core.events.approvals import ApprovalResolvedEvent, ApprovalStatus
 from harnessed.core.events.base import DurableEvent, TransientEvent
 from harnessed.core.events.compaction import CompactionAppliedEvent
@@ -537,7 +537,14 @@ class SessionLog:
         *,
         on_committed: Callable[[], None] | None = None,
         during_run: str | None = None,
+        expected_turn: str | None = None,
+        expected_input: InboxAddedEvent | None = None,
     ) -> None:
+        """Admit an event and commit it before notifying observers.
+
+        Expected turn/input conditions are checked under the admission lock;
+        a stale target raises RunUnavailable without recording the event.
+        """
         self.registry.validate(event)
         cancelled = False
         terminal = self._persistence is not None or isinstance(
@@ -552,7 +559,14 @@ class SessionLog:
             # An invocation/review already finished. Drain its checkpoint even if
             # abort arrives while another append owns the log lock. Observers stay
             # outside this shield so an unresponsive hook cannot block cancellation.
-            checkpoint = asyncio.create_task(self._append(event, during_run=during_run))
+            checkpoint = asyncio.create_task(
+                self._append(
+                    event,
+                    during_run=during_run,
+                    expected_turn=expected_turn,
+                    expected_input=expected_input,
+                )
+            )
             while not checkpoint.done():
                 try:
                     await asyncio.shield(checkpoint)
@@ -560,7 +574,12 @@ class SessionLog:
                     cancelled = True
             seq, event = checkpoint.result()
         else:
-            seq, event = await self._append(event, during_run=during_run)
+            seq, event = await self._append(
+                event,
+                during_run=during_run,
+                expected_turn=expected_turn,
+                expected_input=expected_input,
+            )
         if cancelled and terminal:
             raise asyncio.CancelledError
         if on_committed is not None:
@@ -580,12 +599,21 @@ class SessionLog:
         event: DurableEvent,
         *,
         during_run: str | None = None,
+        expected_turn: str | None = None,
+        expected_input: InboxAddedEvent | None = None,
     ) -> tuple[int, DurableEvent]:
         async with self._lock:
             self.registry.validate(event)
             if self._persistence is not None and not self._restoring:
                 self._persistence.check()
             event = await self._images.retain_event(event)
+            if expected_turn is not None:
+                turn = self.open_turn
+                if turn is None or turn.id != expected_turn:
+                    raise RunUnavailable("The target turn has already finished")
+            if expected_input is not None:
+                if self._pending.get(expected_input.message.id) != expected_input:
+                    raise RunUnavailable("The target input is no longer queued")
             if during_run is not None:
                 if not isinstance(event, InboxAddedEvent) or event.mode is not InboxMode.STEER:
                     raise ValueError("A run precondition requires steering input")

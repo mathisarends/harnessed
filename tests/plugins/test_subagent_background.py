@@ -7,6 +7,7 @@ from harnessed import (
     Agent,
     Plugin,
     PluginOrder,
+    PolicyDecision,
     SessionState,
     SystemPrompt,
     ToolCall,
@@ -287,10 +288,10 @@ async def test_background_children_are_drained_even_when_parent_is_idle(action):
 
     parent = Agent(
         model=CallbackModel(parent_response),
-        plugins=[Approvals.allow_all()],
+        plugins=[Approvals(default=PolicyDecision.ALLOW)],
     )
     async with parent.session() as session:
-        mount = await session.use(
+        mount = await session.mount(
             Subagents({"review": Agent(model=CallbackModel(child_response))}),
             section_delivery="context",
         )

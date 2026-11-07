@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Protocol
 
-from harnessed import Agent, Observation, Plugin, Session, ToolCall, tool
+from harnessed import Agent, Observation, Plugin, PolicyDecision, Session, ToolCall, tool
 from harnessed.hooks import Next, PreStep, StepDecision
 from harnessed.kernel import Inject, Scope, hook, plugin
 from harnessed.models import ImagePart, ModelChunk, TextPart
@@ -103,7 +103,7 @@ async def main():
     agent = Agent(
         model=model,
         plugins=[
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
             browser_backend(),
             BrowserObserver(),
             browser_tools,

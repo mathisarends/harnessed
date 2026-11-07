@@ -1,5 +1,4 @@
 import asyncio
-from contextlib import aclosing
 
 from pydantic import BaseModel
 
@@ -54,7 +53,7 @@ async def main():
     )
     agent = Agent(model=model, plugins=[Notes()])
     async with agent.session() as session:
-        async with aclosing(session.stream("Publish the review note.", output=Report)) as stream:
+        async with session.stream("Publish the review note.", output=Report) as stream:
             async for event in stream:
                 match event:
                     case TextDeltaEvent(text=text):

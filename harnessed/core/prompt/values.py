@@ -113,7 +113,7 @@ class SystemPrompt:
     """An ordered document of actual content; nested documents inherit its format.
 
     Plugin collection is an explicit whole-document strategy selected with
-    from_plugins(order=PluginOrder.AS_LISTED), never an implicit rest slot.
+    from_plugins(), never an implicit rest slot.
     """
 
     sections: tuple[PromptPart, ...]
@@ -140,14 +140,14 @@ class SystemPrompt:
     def from_plugins(
         cls,
         *sections: PromptPart | None,
-        order: PluginOrder,
+        order: PluginOrder = PluginOrder.AS_LISTED,
         format: PromptFormat = PromptFormat.PLAIN,
     ) -> Self:
         """Append selected plugin blocks in resolved list order after fixed content.
 
         Nested packs expand at their list position. Removals contribute nothing;
         slot replacements retain the inherited position. Setup order is unrelated.
-        The explicit order argument is required even when only AS_LISTED exists.
+        The default is resolved plugin-list order, independently of setup order.
         """
         document = cls(*sections, format=format)
         object.__setattr__(document, "plugin_order", PluginOrder(order))
@@ -205,8 +205,7 @@ class PromptComposition:
         if providers and document.plugin_order is None:
             raise ConfigError(
                 "Plugin instructions require "
-                "SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED): "
-                + ", ".join(item.name for item in providers)
+                "SystemPrompt.from_plugins(): " + ", ".join(item.name for item in providers)
             )
         entries: list[PromptEntry] = []
 

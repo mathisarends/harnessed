@@ -4,7 +4,7 @@ from dataclasses import FrozenInstanceError
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import Plugin, ToolCall, tool
+from harnessed import Plugin, PolicyDecision, ToolCall, tool
 from harnessed.core.events.messages import UserMessageEvent
 from harnessed.core.events.model import ModelRequestedEvent
 from harnessed.core.events.tools import ToolCallFinishedEvent, ToolCallRequestedEvent
@@ -41,7 +41,7 @@ async def test_turns_group_model_requests_and_tools_while_followups_wait_for_the
         [[ModelChunk(tool_call=ToolCall("wait"))], "corrected answer", "followup answer"]
     )
     async with Application(
-        model=model, plugins=[Approvals.allow_all(), features]
+        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), features]
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.submit("first task")
@@ -79,7 +79,9 @@ async def test_turns_group_model_requests_and_tools_while_followups_wait_for_the
 
 async def test_rejected_pre_step_is_a_closed_turn_without_a_model_step():
     model = ScriptedModel([])
-    async with Application(model=model, plugins=[Approvals.allow_all()]).session() as agent:
+    async with Application(
+        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+    ).session() as agent:
         agent_audit = Audit(agent)
 
         @agent.on(PreStep)
@@ -106,7 +108,7 @@ async def test_cancel_closes_the_open_step_and_turn_in_the_log():
             yield ModelChunk(text="never")
 
     async with Application(
-        model=WaitingModel(), plugins=[Approvals.allow_all()]
+        model=WaitingModel(), plugins=[Approvals(default=PolicyDecision.ALLOW)]
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.submit("task")

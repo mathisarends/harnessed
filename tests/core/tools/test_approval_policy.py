@@ -135,8 +135,8 @@ async def test_approval_precedence(
 
 
 def test_convenience_policies_and_conflicting_tool_flags():
-    assert Approvals.allow_all().default is PolicyDecision.ALLOW
-    assert Approvals.ask_all().default is PolicyDecision.ASK
+    assert Approvals(default=PolicyDecision.ALLOW).default is PolicyDecision.ALLOW
+    assert Approvals(default=PolicyDecision.ASK).default is PolicyDecision.ASK
     with pytest.raises(TypeError, match="cannot be combined"):
         tool(readonly=True, confirm=True)(lambda: "unused")
 
@@ -156,7 +156,9 @@ async def test_approval_uses_the_prepared_tool_flags_after_replacement():
         model=ScriptedModel([]),
         plugins=[
             Work(),
-            Approvals.allow_all(approver=lambda request: asked.append(request) or True),
+            Approvals(
+                default=PolicyDecision.ALLOW, approver=lambda request: asked.append(request) or True
+            ),
         ],
     ).session() as session:
         registry = session.scope[ToolRegistry]

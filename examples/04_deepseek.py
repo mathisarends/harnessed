@@ -28,18 +28,19 @@ async def main():
         plugins=[filesystem, AgentLoop(max_steps=8)],
     )
     async with agent.session() as session:
-        async for event in session.stream("Read pyproject.toml and explain the package."):
-            match event:
-                case TextDeltaEvent(text=text):
-                    print(text, end="", flush=True)
-                case ToolCallRequestedEvent(call=call):
-                    print(f"\n-> {call.name}")
-                case ApprovalNeededEvent(request_id=request_id, call=call):
-                    answer = await asyncio.to_thread(input, f"Allow {call.name}? [y/N] ")
-                    await session.approvals.answer(
-                        request_id,
-                        ApprovalAnswer.ALLOW if answer.lower() == "y" else ApprovalAnswer.DENY,
-                    )
+        async with session.stream("Read pyproject.toml and explain the package.") as run_stream:
+            async for event in run_stream:
+                match event:
+                    case TextDeltaEvent(text=text):
+                        print(text, end="", flush=True)
+                    case ToolCallRequestedEvent(call=call):
+                        print(f"\n-> {call.name}")
+                    case ApprovalNeededEvent(request_id=request_id, call=call):
+                        answer = await asyncio.to_thread(input, f"Allow {call.name}? [y/N] ")
+                        await session.approvals.answer(
+                            request_id,
+                            ApprovalAnswer.ALLOW if answer.lower() == "y" else ApprovalAnswer.DENY,
+                        )
         print()
 
 

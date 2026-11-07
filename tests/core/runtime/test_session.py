@@ -36,10 +36,11 @@ async def test_streaming_tool_loop_and_exact_recorded_requests():
         ],
         info=ModelInfo("test-model", context_window=128_000),
     )
-    harness = Application(model=model, plugins=[Approvals.allow_all(), features])
+    harness = Application(model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), features])
     async with harness.session() as agent:
         agent_audit = Audit(agent)
-        events = [event async for event in agent.stream("Add 1 and 2")]
+        async with agent.stream("Add 1 and 2") as run_stream:
+            events = [event async for event in run_stream]
         assert (
             "".join(e.text for e in events if isinstance(e, TextDeltaEvent)) == "The result is 3."
         )
@@ -68,7 +69,9 @@ class PausingModel(CallbackModel):
 
 async def test_steering_enters_next_step_while_another_run_gets_its_own_turn():
     model = PausingModel()
-    async with Application(model=model, plugins=[Approvals.allow_all()]).session() as agent:
+    async with Application(
+        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+    ).session() as agent:
         agent_audit = Audit(agent)
         await agent.submit("first")
         await model.started.wait()
@@ -107,7 +110,7 @@ async def test_denied_policy_never_enters_execution_or_review_regardless_of_orde
     harness = Application(
         model=model,
         plugins=[
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
             features,
             ToolApprovalGuard(risky={"remove"}, ask=lambda call: False),
         ],
@@ -151,7 +154,7 @@ async def test_approval_always_is_session_local_and_review_can_steer_nudges():
     harness = Application(
         model=model,
         plugins=[
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
             features,
             Service(Approver, CallbackApprover(approve)),
             ToolApprovalGuard(risky={"work"}),
@@ -194,7 +197,7 @@ async def test_class_plugin_state_is_fresh_for_every_session_and_methods_support
             "two",
         ]
     )
-    harness = Application(model=model, plugins=[Approvals.allow_all(), template])
+    harness = Application(model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), template])
     for _ in range(2):
         async with harness.session() as agent:
             result = await agent.run("count")
@@ -217,7 +220,7 @@ async def test_function_plugin_can_inject_current_agent_with_explicit_needs():
         assert agent.status == "closed"
 
     harness = Application(
-        model=ScriptedModel(["done"]), plugins=[Approvals.allow_all(), observer()]
+        model=ScriptedModel(["done"]), plugins=[Approvals(default=PolicyDecision.ALLOW), observer()]
     )
     async with harness.session() as agent:
         assert observed == [(agent.id, agent.scope[ToolRegistry])]
@@ -247,10 +250,10 @@ async def test_explicit_and_live_registration():
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("echo", {"text": "hello"}))], "done"])
     harness = Application(
         model=model,
-        plugins=[Approvals.allow_all(), Echo(), Alias()],
+        plugins=[Approvals(default=PolicyDecision.ALLOW), Echo(), Alias()],
     )
     async with harness.session() as agent:
-        handle = await agent.use(Live())
+        handle = await agent.mount(Live())
         seen = []
         agent.add_hook(ToolCallFinishedEvent, lambda event: seen.append(event.result.content))
         await agent.run("echo")
@@ -262,7 +265,7 @@ async def test_explicit_and_live_registration():
 
 async def test_pre_step_rejection_consumes_input_permanently():
     model = ScriptedModel(["second"])
-    harness = Application(model=model, plugins=[Approvals.allow_all()])
+    harness = Application(model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)])
     async with harness.session() as agent:
         agent_audit = Audit(agent)
         reject = True
@@ -284,7 +287,9 @@ async def test_pre_step_rejection_consumes_input_permanently():
 
 async def test_cancel_before_driver_starts_and_reuse_agent():
     model = ScriptedModel(["after cancel"])
-    async with Application(model=model, plugins=[Approvals.allow_all()]).session() as agent:
+    async with Application(
+        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+    ).session() as agent:
         await agent.submit("discard")
         await agent.abort()
         assert agent.status == "idle" and (not agent.inbox.pending)
@@ -304,7 +309,7 @@ async def test_cancel_stream_preserves_visible_prefix_and_closes_turn():
             await asyncio.Event().wait()
 
     async with Application(
-        model=PartialModel(), plugins=[Approvals.allow_all()]
+        model=PartialModel(), plugins=[Approvals(default=PolicyDecision.ALLOW)]
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.submit("go")
@@ -331,7 +336,9 @@ async def test_cancel_tool_answers_outstanding_call_and_sets_signal():
     bundle = BundlePlugin(name="blocking")
 
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("wait"))]])
-    async with Application(model=model, plugins=[Approvals.allow_all(), bundle]).session() as agent:
+    async with Application(
+        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), bundle]
+    ).session() as agent:
         agent_audit = Audit(agent)
         await agent.submit("go")
         await asyncio.wait_for(started.wait(), timeout=5)
@@ -353,7 +360,7 @@ async def test_same_harness_rejects_two_live_writers_and_max_steps_bounds_the_lo
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("again"))]] * 2)
     harness = Application(
         model=model,
-        plugins=[AgentLoop(max_steps=2), Approvals.allow_all(), bundle],
+        plugins=[AgentLoop(max_steps=2), Approvals(default=PolicyDecision.ALLOW), bundle],
     )
     async with harness.session() as agent:
         agent_audit = Audit(agent)
@@ -378,7 +385,7 @@ async def test_observer_failure_closes_model_iterator_before_run_returns():
                 closed.set()
 
     async with Application(
-        model=ResourceModel(), plugins=[Approvals.allow_all()]
+        model=ResourceModel(), plugins=[Approvals(default=PolicyDecision.ALLOW)]
     ).session() as agent:
 
         @agent.on(TextDeltaEvent)
@@ -413,7 +420,7 @@ async def test_policy_ask_routes_to_approver_seam():
     harness = Application(
         model=model,
         plugins=[
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
             features,
             Service(Approver, CallbackApprover(approve)),
         ],
@@ -425,7 +432,9 @@ async def test_policy_ask_routes_to_approver_seam():
 
 async def test_canceling_when_idle_waiter_does_not_cancel_the_agent():
     model = PausingModel()
-    async with Application(model=model, plugins=[Approvals.allow_all()]).session() as agent:
+    async with Application(
+        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+    ).session() as agent:
         await agent.submit("go")
         await model.started.wait()
         with pytest.raises(TimeoutError):

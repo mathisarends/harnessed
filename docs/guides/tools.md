@@ -20,7 +20,7 @@ class Lookups(Plugin):
         return await db.lookup(key)
 
 
-# plugins=[Lookups()] initially, or await session.use(Lookups()) at runtime.
+# plugins=[Lookups()] initially, or await session.mount(Lookups()) at runtime.
 ```
 
 `description="..."` is sent to the model without replacing the Python docstring,
@@ -54,16 +54,18 @@ the MCP extra. Existing `name`, `description`, `enabled` and `timeout` options k
 their normal execution behavior.
 
 ```python
-from harnessed import Plugin, ToolAnnotations, ToolIcon, tool
+from harnessed import Plugin, ToolAnnotations, ToolIcon, ToolPresentation, tool
 
 
 class Documents(Plugin):
     @tool(
-        title="Search documents",
-        tags={"documents", "search"},
-        icons=(ToolIcon("https://example.com/search.svg", mime_type="image/svg+xml"),),
-        annotations=ToolAnnotations(idempotent_hint=True, open_world_hint=False),
-        meta={"ui": {"category": "workspace"}},
+        presentation=ToolPresentation(
+            title="Search documents",
+            tags={"documents", "search"},
+            icons=(ToolIcon("https://example.com/search.svg", mime_type="image/svg+xml"),),
+            annotations=ToolAnnotations(idempotent_hint=True, open_world_hint=False),
+            meta={"ui": {"category": "workspace"}},
+        ),
         readonly=True,
     )
     async def search(self, query: str) -> str:
@@ -71,7 +73,7 @@ class Documents(Plugin):
         return f"Matches for {query}"
 ```
 
-| Option | Meaning |
+| ToolPresentation field | Meaning |
 | --- | --- |
 | `title: str \| None` | An optional human-readable display title. |
 | `tags: Iterable[str]` | Nonempty labels for application grouping and filtering. |
@@ -88,7 +90,7 @@ the same presentation from their remote catalog, including FastMCP tags.
 
 Annotations describe behavior; they never grant permissions. Only `readonly=True`
 and the application's approval policy control local authorization. Use `metadata=`
-for typed Python application values, and `meta=` for JSON integration data.
+for typed Python application values, and `presentation.meta` for JSON integration data.
 Synchronous tools continue to run in worker threads; async tools run on the event loop.
 
 ## Pydantic parameter objects

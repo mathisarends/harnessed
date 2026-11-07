@@ -55,6 +55,10 @@ class SessionClosed(SessionStateError):
     """An operation requires an open live session."""
 
 
+class RunUnavailable(SessionStateError):
+    """A targeted run has already advanced beyond the requested operation."""
+
+
 class SessionFormatError(HarnessedError, ValueError):
     """A stored session record does not match the current log format."""
 

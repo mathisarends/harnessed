@@ -82,6 +82,18 @@ class RunResult[T]:
             raise OutputUnavailable("This turn ended without a validated structured answer")
         return self._output
 
+    def require_output(self) -> T:
+        """Return the output only after successful completion, or explain its absence.
+
+        Unstructured completed runs return None. Use text and stop_reason to
+        inspect partial answers without asserting successful completion.
+        """
+        if not self.completed or isinstance(self._output, _NoOutput):
+            raise OutputUnavailable(
+                f"Turn ended with {self.stop_reason.value}; a completed output is unavailable"
+            )
+        return self._output
+
     @property
     def tool_calls(self) -> tuple[tuple[ToolCall, ToolResult], ...]:
         control_calls = {

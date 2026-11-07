@@ -3,7 +3,7 @@ from itertools import permutations
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import Plugin, hook
+from harnessed import Plugin, PolicyDecision, hook
 from harnessed.core.plugin import Bundle
 from harnessed.kernel import Bundle as KernelBundle
 from harnessed.kernel import Emit, Scope, Waterfall
@@ -107,7 +107,7 @@ async def test_priority_flows_through_all_sdk_declaration_and_imperative_hook_ap
     harness = Application(
         model=ScriptedModel([]),
         plugins=[
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
             KernelFeature(),
             Feature(),
             bundle,

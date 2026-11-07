@@ -28,11 +28,13 @@ AgentLoop(final_step=FinalStepPolicy.SUMMARIZE)
 
 class Tools(Plugin):
     @tool(
-        title="Switch workspace",
-        tags={"workspace"},
-        icons=(ToolIcon("https://example.com/icon.png", theme="light"),),
-        annotations=ToolAnnotations(idempotent_hint=True),
-        meta={"category": "workspace"},
+        presentation=ToolPresentation(
+            title="Switch workspace",
+            tags={"workspace"},
+            icons=(ToolIcon("https://example.com/icon.png", theme="light"),),
+            annotations=ToolAnnotations(idempotent_hint=True),
+            meta={"category": "workspace"},
+        ),
         metadata=(AuditTag("workspace"),),
         chain=ToolChain.STOP_AFTER,
     )

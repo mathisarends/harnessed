@@ -45,12 +45,13 @@ async def test_a_tool_asks_the_configured_approver_mid_call():
 async def test_a_stream_consumer_answers_a_tool_approval():
     tools = Cleanup()
     model = ScriptedModel(_calls(1))
-    plugins = [tools, Approvals.allow_all()]
+    plugins = [tools, Approvals(default=PolicyDecision.ALLOW)]
     async with Agent(model=model, plugins=plugins).session() as session:
-        async for event in session.stream("clean up"):
-            if isinstance(event, events.ApprovalNeededEvent):
-                assert event.reason == "Delete 3 generated files?"
-                await session.approvals.answer(event.request_id, ApprovalAnswer.ALLOW)
+        async with session.stream("clean up") as run_stream:
+            async for event in run_stream:
+                if isinstance(event, events.ApprovalNeededEvent):
+                    assert event.reason == "Delete 3 generated files?"
+                    await session.approvals.answer(event.request_id, ApprovalAnswer.ALLOW)
         assert tools.deleted == []
         active = session.scope[Cleanup]
         assert active.deleted == ["c0"]

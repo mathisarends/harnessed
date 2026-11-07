@@ -19,11 +19,28 @@ class Feature(Plugin):
         return "Inspected."
 
 
+@pytest.mark.parametrize("fail", [False, True])
+async def test_use_owns_tools_and_guidance_through_normal_and_exceptional_exit(fail):
+    async with Agent(model=ScriptedModel(["during", "after"])).session() as session:
+        try:
+            async with session.use(Feature(), section_delivery=SectionDelivery.CONTEXT) as mount:
+                assert mount.instance is not None
+                assert "inspect" in session.tools
+                await session.run("during")
+                if fail:
+                    raise ValueError("leave the mount")
+        except ValueError as error:
+            assert fail and str(error) == "leave the mount"
+        assert "inspect" not in session.tools
+        await session.run("after")
+        assert all("Runtime guidance." not in message.text for message in session.messages)
+
+
 async def test_context_delivery_is_mount_owned_and_leaves_system_text_fixed():
     model = ScriptedModel(["one", "two"])
     async with Agent(model=model, instructions="Fixed.").session() as session:
         session_audit = Audit(session)
-        handle = await session.use(Feature(), section_delivery=SectionDelivery.CONTEXT)
+        handle = await session.mount(Feature(), section_delivery=SectionDelivery.CONTEXT)
         assert list(session.scope[DynamicContext].values.values()) == ["Runtime guidance."]
         assert not any(isinstance(e, ContextValueChangedEvent) for e in session_audit.events)
         await session.run("Use the capability")
@@ -53,7 +70,7 @@ async def test_context_delivery_suspends_and_restarts_with_the_plugin():
 
     model = ScriptedModel(["one", "two", "three"])
     async with Agent(model=model).session() as session:
-        handle = await session.use(Temporal(), section_delivery=SectionDelivery.CONTEXT)
+        handle = await session.mount(Temporal(), section_delivery=SectionDelivery.CONTEXT)
         assert handle.status is PluginStatus.WAITING
         assert calls == [] and session.scope[DynamicContext].values == {}
         remove = session.scope.provide(Backend, Backend())
@@ -86,7 +103,7 @@ async def test_ignore_does_not_execute_providers_or_factories_or_read_files(tmp_
             )
 
     async with Agent(model=ScriptedModel(["done"])).session() as session:
-        handle = await session.use(Ignored(), section_delivery=SectionDelivery.IGNORE)
+        handle = await session.mount(Ignored(), section_delivery=SectionDelivery.IGNORE)
         assert handle.status is PluginStatus.ACTIVE
         assert session.scope[DynamicContext].values == {}
         await session.run("Tools still mounted")
@@ -136,7 +153,7 @@ async def test_delivery_failures_roll_back_tools_context_and_owned_effects(failu
             else ValueError
         )
         with pytest.raises(error):
-            await session.use(Broken(), section_delivery=SectionDelivery.CONTEXT)
+            await session.mount(Broken(), section_delivery=SectionDelivery.CONTEXT)
         assert session.scope[DynamicContext].values == {}
         assert "setup cleaned" in effects
         if failure != "setup":
@@ -162,7 +179,7 @@ async def test_factory_runs_once_per_mount_activation_and_cleanup_belongs_to_mou
             return SystemPrompt(Instructions.from_factory(factory=factory))
 
     async with Agent(model=ScriptedModel(["one", "two"])).session() as session:
-        handle = await session.use(Factory(), section_delivery=SectionDelivery.CONTEXT)
+        handle = await session.mount(Factory(), section_delivery=SectionDelivery.CONTEXT)
         await session.run("First")
         await session.run("Second")
         assert len(calls) == 1 and cleaned == []
@@ -176,8 +193,8 @@ async def test_duplicate_plugin_names_have_independent_mount_context():
             return SystemPrompt("Runtime guidance.")
 
     async with Agent(model=ScriptedModel([])).session() as session:
-        one = await session.use(Guidance(), section_delivery=SectionDelivery.CONTEXT)
-        two = await session.use(Guidance(), section_delivery=SectionDelivery.CONTEXT)
+        one = await session.mount(Guidance(), section_delivery=SectionDelivery.CONTEXT)
+        two = await session.mount(Guidance(), section_delivery=SectionDelivery.CONTEXT)
         assert len(session.scope[DynamicContext].values) == 2
         await one.aclose()
         assert list(session.scope[DynamicContext].values.values()) == ["Runtime guidance."]
@@ -189,7 +206,7 @@ async def test_runtime_guidance_is_not_restored_as_a_durable_fact():
     model = ScriptedModel(["one", "two"])
     agent = Agent(model=model)
     async with agent.session() as session:
-        await session.use(Feature(), section_delivery=SectionDelivery.CONTEXT)
+        await session.mount(Feature(), section_delivery=SectionDelivery.CONTEXT)
         await session.run("Mounted")
     async with agent.session() as restored:
         assert restored.scope[DynamicContext].values == {}
@@ -205,6 +222,6 @@ async def test_owned_context_visibility_uses_registration_state_during_teardown(
             observed.append(dict(context.values))
 
     async with Agent(model=ScriptedModel([])).session() as session:
-        handle = await session.use(InspectTeardown(), section_delivery=SectionDelivery.CONTEXT)
+        handle = await session.mount(InspectTeardown(), section_delivery=SectionDelivery.CONTEXT)
         await handle.aclose()
         assert observed == [{}]

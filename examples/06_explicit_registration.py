@@ -42,7 +42,7 @@ async def main():
     agent = Agent(model=model, plugins=[Echo(prefix="Echo: ")])
     async with agent.session() as session:
         print((await session.run("Echo Hello.")).text)
-        handle = await session.use(TemporaryEcho())
+        handle = await session.mount(TemporaryEcho())
         assert "temporary_echo" in session.tools.names
         await handle.aclose()
         assert "temporary_echo" not in session.tools.names

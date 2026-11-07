@@ -43,10 +43,11 @@ async def test_previews_arrive_before_stream_completion_and_do_not_execute_argum
         notifications = []
 
         async def consume():
-            async for event in session.stream("add"):
-                notifications.append(event)
-                if isinstance(event, events.ToolArgumentsDeltaEvent):
-                    seen.set()
+            async with session.stream("add") as run_stream:
+                async for event in run_stream:
+                    notifications.append(event)
+                    if isinstance(event, events.ToolArgumentsDeltaEvent):
+                        seen.set()
 
         task = asyncio.create_task(consume())
         try:
@@ -102,10 +103,11 @@ async def test_abort_discards_argument_preview_and_closes_the_provider_without_e
 
         async def consume():
             notifications = []
-            async for event in session.stream("add"):
-                notifications.append(event)
-                if isinstance(event, events.ToolArgumentsDeltaEvent):
-                    seen.set()
+            async with session.stream("add") as run_stream:
+                async for event in run_stream:
+                    notifications.append(event)
+                    if isinstance(event, events.ToolArgumentsDeltaEvent):
+                        seen.set()
             return notifications
 
         task = asyncio.create_task(consume())
@@ -157,17 +159,17 @@ async def test_large_argument_previews_coalesce_for_a_slow_consumer_instead_of_o
     ]
     model = ScriptedModel([first, "done"])
     async with Agent(model=model, plugins=[Add(effects)]).session() as session:
-        stream = session.stream("add", buffer_size=32)
-        try:
-            notifications = []
-            async for event in stream:
-                notifications.append(event)
-                if isinstance(event, events.ToolArgumentsDeltaEvent):
-                    break
-            await session.wait_until_idle()  # read nothing while the model streams
-            notifications += [event async for event in stream]
-        finally:
-            await stream.aclose()
+        async with session.stream("add", buffer_size=32) as stream:
+            try:
+                notifications = []
+                async for event in stream:
+                    notifications.append(event)
+                    if isinstance(event, events.ToolArgumentsDeltaEvent):
+                        break
+                await session.wait_until_idle()  # read nothing while the model streams
+                notifications += [event async for event in stream]
+            finally:
+                await stream.aclose()
     deltas = [e for e in notifications if isinstance(e, events.ToolArgumentsDeltaEvent)]
     assert len(deltas) < len(fragments)
     assert "".join(e.delta.arguments for e in deltas) == "".join(fragments)

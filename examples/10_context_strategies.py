@@ -6,7 +6,6 @@ from harnessed import (
     Agent,
     Observation,
     Plugin,
-    PluginOrder,
     Session,
     SystemPrompt,
     tool,
@@ -53,7 +52,7 @@ async def main():
     )
     spill = Spill(threshold_tokens=100, preview_tokens=8)
     agent = Agent(
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+        prompt=SystemPrompt.from_plugins(),
         model=model,
         plugins=[
             AgentLoop(context_window=2000),

@@ -313,7 +313,7 @@ async def test_loaded_instructions_survive_compaction_and_restart_from_the_log(t
 async def test_runtime_mount_rejects_system_catalog_before_installing_tools():
     async with Agent(model=ScriptedModel([]), instructions="Fixed rules.").session() as session:
         with pytest.raises(ConfigError, match="system sections"):
-            await session.use(
+            await session.mount(
                 Skills(Skill(name="notes", description="Write notes.", instructions="Be concise."))
             )
         assert session.scope[ToolRegistry].definitions == ()

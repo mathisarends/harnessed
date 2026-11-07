@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from harnessed import Agent, Plugin, PluginOrder, Role, SystemPrompt, ToolCall, tool
+from harnessed import Agent, Plugin, PolicyDecision, Role, SystemPrompt, ToolCall, tool
 from harnessed.events import ToolCallFinishedEvent
 from harnessed.kernel import Inject
 from harnessed.models import ModelChunk
@@ -38,7 +38,7 @@ async def independent_calls():
     model = ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "Lookups finished."])
     async with Agent(
         model=model,
-        plugins=[AgentLoop(max_parallel_tools=3), Approvals.allow_all(), tools],
+        plugins=[AgentLoop(max_parallel_tools=3), Approvals(default=PolicyDecision.ALLOW), tools],
     ).session() as session:
         result = await session.run("Look up records 0, 1 and 2.")
         returned = [event for event in result.events if isinstance(event, ToolCallFinishedEvent)]
@@ -80,9 +80,9 @@ async def writes_with_resource_keys(root: Path):
     async with Agent(
         model=model,
         plugins=[
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
             filesystem,
-            PromptRenderer(SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)),
+            PromptRenderer(SystemPrompt.from_plugins()),
             tools,
         ],
     ).session() as session:

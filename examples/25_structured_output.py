@@ -36,8 +36,9 @@ async def main():
     agent = Agent(model=model, plugins=[AgentLoop(output_retries=1)])
     async with agent.session() as session:
         result = await session.run("Triage the stale-login bug.", output=Triage)
-        print(result.output.severity, result.output.owner)
-        print(result.output.summary)
+        report = result.require_output()
+        print(report.severity, report.owner)
+        print(report.summary)
         print("Model requests:", len(model.requests))
         print("Application tool calls:", len(result.tool_calls))
 

@@ -40,7 +40,7 @@ async def test_session_tools_reflect_visibility_enabled_state_and_replacement():
             with pytest.raises(KeyError, match="work"):
                 view["work"]
             switch = Switch()
-            service = await session.use(Service(Switch, switch))
+            service = await session.mount(Service(Switch, switch))
             definition = view["work"]
             assert view.names == frozenset({"work"}) and len(view) == 1
             assert list(view) == ["work"] and list(view.values()) == [definition]
@@ -49,7 +49,7 @@ async def test_session_tools_reflect_visibility_enabled_state_and_replacement():
             assert model.requests[0].tools == tuple(view.values())
             with pytest.raises(TypeError):
                 view["work"] = definition
-            replacement = await session.use(Replacement())
+            replacement = await session.mount(Replacement())
             assert view["work"].description == "Replacement work"
             await replacement.aclose()
             assert view["work"] == definition

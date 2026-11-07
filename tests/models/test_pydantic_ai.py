@@ -148,10 +148,11 @@ async def test_native_tool_argument_previews_arrive_while_the_provider_is_still_
         notifications = []
 
         async def consume():
-            async for event in session.stream("add"):
-                notifications.append(event)
-                if isinstance(event, events.ToolArgumentsDeltaEvent):
-                    seen.set()
+            async with session.stream("add") as run_stream:
+                async for event in run_stream:
+                    notifications.append(event)
+                    if isinstance(event, events.ToolArgumentsDeltaEvent):
+                        seen.set()
 
         task = asyncio.create_task(consume())
         try:
@@ -845,8 +846,9 @@ async def test_real_sdk_retries_are_counted_only_when_public_http_hooks_report_t
             async with Agent(model=PydanticAIModel(model)).session() as session:
 
                 async def consume():
-                    async for event in session.stream("work"):
-                        notifications.append(event)
+                    async with session.stream("work") as run_stream:
+                        async for event in run_stream:
+                            notifications.append(event)
 
                 if exhausted:
                     with pytest.raises(RateLimited):

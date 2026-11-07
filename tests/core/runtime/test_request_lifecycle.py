@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from harnessed import Agent, Plugin, ToolCall, ToolStatus, tool
+from harnessed import Agent, Plugin, PolicyDecision, ToolCall, ToolStatus, tool
 from harnessed.core.errors import ContextLengthExceeded
 from harnessed.core.model import ModelChunk, ModelRequest, ModelUsage
 from harnessed.events import (
@@ -126,7 +126,9 @@ async def test_tool_timeout_and_cancel_always_write_one_execution_receipt(cancel
             return "done"
 
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("wait"))], "done"])
-    async with Agent(model=model, plugins=[Tools(), Approvals.allow_all()]).session() as session:
+    async with Agent(
+        model=model, plugins=[Tools(), Approvals(default=PolicyDecision.ALLOW)]
+    ).session() as session:
         session_audit = Audit(session)
         if cancel:
             await session.submit("start")

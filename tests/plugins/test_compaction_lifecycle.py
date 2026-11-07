@@ -58,7 +58,8 @@ async def test_compaction_lifecycle_is_live_and_correlates_with_the_committed_pr
         assert not session.scope[Recorder].events
         await session.run("x" * 4000)
         if automatic:
-            stream = [event async for event in session.stream("current")]
+            async with session.stream("current") as run_stream:
+                stream = [event async for event in run_stream]
         else:
             await session.compact()
             stream = session.scope[Recorder].events

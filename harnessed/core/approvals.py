@@ -232,27 +232,13 @@ class Approvals(Plugin[ApprovalsConfig], slot="approvals", needs=(ToolRegistry,)
             raise TypeError("default must be a PolicyDecision")
         if any(isinstance(items, str) for items in (allow, ask, deny)):
             raise TypeError(
-                "Tool rules must be collections; use Approvals.allow_all() for an allowing fallback"
+                "Tool rules must be collections; use default=PolicyDecision.ALLOW for the fallback"
             )
         self.default = default
         self.allow = tuple(tool_selector(item) for item in allow)
         self.ask = tuple(tool_selector(item) for item in ask)
         self.deny = tuple(tool_selector(item) for item in deny)
         self.policy = policy
-
-    @classmethod
-    def allow_all(
-        cls, *, approver: Approver | ApprovalCallback | None = None, timeout: float = 300.0
-    ) -> Self:
-        """Use ALLOW as the fallback, preserving explicit tool policy and guards."""
-        return cls(default=PolicyDecision.ALLOW, approver=approver, timeout=timeout)
-
-    @classmethod
-    def ask_all(
-        cls, *, approver: Approver | ApprovalCallback | None = None, timeout: float = 300.0
-    ) -> Self:
-        """Use ASK as the fallback, preserving explicit tool policy and guards."""
-        return cls(default=PolicyDecision.ASK, approver=approver, timeout=timeout)
 
     async def setup(self, scope: Scope, tools: Inject[ToolRegistry]) -> None:
         self.allow = tuple(tools.reference(item, owner=scope) for item in self.allow)

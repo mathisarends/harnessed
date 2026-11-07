@@ -11,6 +11,7 @@ from harnessed import (
     Observation,
     Plugin,
     PluginOrder,
+    PolicyDecision,
     Session,
     SystemPrompt,
     ToolCall,
@@ -53,7 +54,7 @@ async def test_large_results_spill_to_session_files_and_keep_structured_metadata
     app = Application(
         prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
-        plugins=[Approvals.allow_all(), tools, spill],
+        plugins=[Approvals(default=PolicyDecision.ALLOW), tools, spill],
     )
     async with app.session() as agent:
         agent_audit = Audit(agent)
@@ -140,7 +141,7 @@ async def test_threshold_compaction_commits_once_and_replays_and_forks(tmp_path)
         model=model,
         plugins=[
             AgentLoop(context_window=400),
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
             tools,
             Compaction(
                 trigger=at_ratio(0.5),
@@ -207,7 +208,7 @@ async def test_failed_or_cancelled_compactor_does_not_commit_partial_compaction(
         model=model,
         plugins=[
             AgentLoop(context_window=500),
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
             Compaction(trigger=at_ratio(0.5), summarizer=BlockingCompactor(), keep_turns=0),
         ],
     )
@@ -232,7 +233,7 @@ async def test_compactor_error_is_reported_and_history_is_intact():
         model=model,
         plugins=[
             AgentLoop(context_window=500),
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
             Compaction(trigger=at_ratio(0.5), summarizer=Broken(), keep_turns=0),
         ],
     )
@@ -251,7 +252,7 @@ async def test_keep_turns_retains_recent_work_and_later_compaction_merges_old_su
         model=model,
         plugins=[
             AgentLoop(context_window=600),
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
             Compaction(
                 trigger=every_turns(1),
                 summarizer=ExtractiveSummarizer(),
@@ -284,7 +285,7 @@ async def test_compaction_does_not_commit_a_summary_that_expands_the_request():
         model=model,
         plugins=[
             AgentLoop(context_window=100),
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
             Compaction(
                 trigger=at_ratio(0.5), summarizer=Verbose(), keep_turns=0, summary_tokens=2000
             ),
@@ -314,7 +315,7 @@ async def test_latest_observation_policy_keeps_one_unchanged_snapshot_and_unwind
     async with Application(
         model=model,
         plugins=[
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
             Observer(),
             LatestObservationOnly(),
         ],
@@ -332,7 +333,9 @@ async def test_latest_observation_policy_keeps_one_unchanged_snapshot_and_unwind
 async def test_cache_usage_is_preserved_as_provider_reported_usage():
     usage = ModelUsage(100, 10, 80, 20)
     model = ScriptedModel([[ModelChunk(text="one", usage=usage)]])
-    async with Application(model=model, plugins=[Approvals.allow_all()]).session() as agent:
+    async with Application(
+        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+    ).session() as agent:
         await agent.run("one")
         event = agent.log.last(ModelUsageRecordedEvent)
         assert event.usage.cache_hit_rate == 0.8

@@ -147,11 +147,14 @@ async def structured_consumer(agent: AppAgent, session: Session) -> None:
     result = await session.run("Triage", output=Triage)
     assert_type(result, RunResult[Triage])
     assert_type(result.output.severity, int)
+    assert_type(result.require_output(), Triage)
     assert_type(await agent.run("Triage", output=Triage), RunResult[Triage])
+    assert_type(await agent.run(UserMessage("Triage"), output=Triage), RunResult[Triage])
     handle = await session.submit("Triage", output=Triage)
     assert_type(handle, RunHandle[Triage])
     assert_type(await handle.result(), RunResult[Triage])
     assert_type((await handle.result()).output.severity, int)
+    assert_type(await handle.cancel(), None)
     contract = OutputContract("triage.v1", Triage)
     assert_type(await session.run("Triage", output=contract), RunResult[Triage])
     assert_type(await session.submit("Triage", output=contract), RunHandle[Triage])
@@ -162,28 +165,31 @@ async def structured_consumer(agent: AppAgent, session: Session) -> None:
 async def typed_stream(session: Session) -> None:
     assert_type(session.tools, SessionTools)
     assert_type(session.tools.names, frozenset[str])
-    async for event in session.stream("Triage", output=OutputContract("triage.v1", Triage)):
-        assert_type(event, StreamItem[Triage])
-        if isinstance(event, TurnResultEvent):
-            assert_type(event, TurnResultEvent[Triage])
-            assert_type(event.result, RunResult[Triage])
-            assert_type(event.result.output.severity, int)
-        elif isinstance(event, ToolCallGenerationStartedEvent):
-            assert_type(event.call, ToolCallStart)
-        elif isinstance(event, ToolExecutionStartedEvent):
-            assert_type(event.call_id, str)
-        elif isinstance(event, ToolArgumentsDeltaEvent):
-            assert_type(event.delta, ToolCallDelta)
-            assert_type(event.delta.mode, ToolArgumentsMode)
-        elif isinstance(event, CompactionFinishedEvent):
-            assert_type(event.compaction_id, str)
-            assert_type(event.outcome, CompactionOutcome)
-        elif isinstance(event, ModelAttemptStartedEvent):
-            assert_type(event.attempt, int | None)
-            assert_type(event.retry_count, int | None)
-            assert_type(event.retry_kind, RetryKind)
-        elif isinstance(event, ModelAttemptFinishedEvent):
-            assert_type(event.outcome, ModelAttemptOutcome)
+    async with session.stream("Triage", output=OutputContract("triage.v1", Triage)) as run_stream:
+        assert_type(run_stream, RunHandle[Triage])
+        assert_type(await run_stream.result(), RunResult[Triage])
+        async for event in run_stream:
+            assert_type(event, StreamItem[Triage])
+            if isinstance(event, TurnResultEvent):
+                assert_type(event, TurnResultEvent[Triage])
+                assert_type(event.result, RunResult[Triage])
+                assert_type(event.result.output.severity, int)
+            elif isinstance(event, ToolCallGenerationStartedEvent):
+                assert_type(event.call, ToolCallStart)
+            elif isinstance(event, ToolExecutionStartedEvent):
+                assert_type(event.call_id, str)
+            elif isinstance(event, ToolArgumentsDeltaEvent):
+                assert_type(event.delta, ToolCallDelta)
+                assert_type(event.delta.mode, ToolArgumentsMode)
+            elif isinstance(event, CompactionFinishedEvent):
+                assert_type(event.compaction_id, str)
+                assert_type(event.outcome, CompactionOutcome)
+            elif isinstance(event, ModelAttemptStartedEvent):
+                assert_type(event.attempt, int | None)
+                assert_type(event.retry_count, int | None)
+                assert_type(event.retry_kind, RetryKind)
+            elif isinstance(event, ModelAttemptFinishedEvent):
+                assert_type(event.outcome, ModelAttemptOutcome)
 
 
 async def functional_scope(scope: Scope) -> None:

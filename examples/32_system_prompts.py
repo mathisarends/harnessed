@@ -75,7 +75,7 @@ async def main() -> None:
 
     model = ScriptedModel(["Ready.", "Unmounted."])
     async with Agent(model=model, instructions="Fixed role.").session() as session:
-        handle = await session.use(interaction, section_delivery=SectionDelivery.CONTEXT)
+        handle = await session.mount(interaction, section_delivery=SectionDelivery.CONTEXT)
         print((await session.run("Use current refs.")).text)
         assert any("Use element refs" in message.text for message in model.requests[-1].messages)
         await handle.aclose()

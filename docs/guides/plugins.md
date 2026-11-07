@@ -1,5 +1,11 @@
 # Plugin composition and lifecycle
 
+`MyPlugin(...)` constructs a reusable recipe. Each mount creates a fresh active
+instance: constructors describe configuration, `setup()` acquires resources, and
+`PluginState` owns mutable per-activation data. Direct tool calls require an active
+instance; use `mount_plugin()` in plugin tests. Post-construction recipe attribute
+assignments are not replayed into activations.
+
 An Agent is a resolved plugin list. `model=` supplies `Service(Model, model)`;
 `prompt=` configures the `PromptRenderer` plugin; `instructions=` prepends caller text. The default runtime plugins are
 `AgentLoop`, `ToolOutputLimit`, `Approvals` and `NoopTracer`.
@@ -341,7 +347,10 @@ execution and do not belong in plugin `needs`. Named `Key[T]` values distinguish
 two implementations of the same contract. A narrow Protocol is the service
 contract; third-party implementations need no Harnessed base class.
 
-`await session.use(plugin)` mounts a capability at runtime. Plugins declaring
+`async with session.use(plugin) as handle` mounts a capability for a bounded
+context, removing it on normal exit, an exception or cancellation. Use
+`handle = await session.mount(plugin)` when the application manages its lifetime
+manually, then `await handle.aclose()` to remove it. Plugins declaring
 system sections are rejected before setup by default. Explicitly select
 `section_delivery=SectionDelivery.CONTEXT` for mount-owned guidance or
 `SectionDelivery.IGNORE` to skip section evaluation. Runtime facts use `ContextValue`;
