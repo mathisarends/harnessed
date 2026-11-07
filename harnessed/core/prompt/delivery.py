@@ -10,7 +10,6 @@ from harnessed.kernel import PluginLike, PluginSpec, Scope, as_plugin_spec
 
 from .context import DynamicContext
 from .values import (
-    PluginOrder,
     PromptComposition,
     PromptContribution,
     SectionDelivery,
@@ -37,7 +36,7 @@ def runtime_sections(
     async def mount(scope: Scope, *args: Any, **kwargs: Any) -> AsyncGenerator[object, None]:
         async with asynccontextmanager(spec.factory)(scope, *args, **kwargs) as instance:
             composition = PromptComposition(
-                SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+                SystemPrompt.from_plugins(),
                 contributions=(contribution,),
             )
             text = await composition.render(scope)

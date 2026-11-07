@@ -8,7 +8,6 @@ from harnessed import (
     Instructions,
     Plugin,
     PluginConfig,
-    PluginOrder,
     PluginPack,
     PromptFormat,
     SectionDelivery,
@@ -61,7 +60,7 @@ async def main() -> None:
         browser = PluginPack(
             "browser",
             [Observe(config=ObserveConfig()), interaction, BrowserTrust()],
-            prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED, format=format),
+            prompt=SystemPrompt.from_plugins(format=format),
         )
         agent = Agent(
             model=ScriptedModel(["Ready."]),

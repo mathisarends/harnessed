@@ -6,7 +6,6 @@ from harnessed import (
     Agent,
     Plugin,
     SessionState,
-    SystemPrompt,
     ToolResult,
     ToolStatus,
     tool,
@@ -28,7 +27,6 @@ async def main():
     model = ScriptedModel([call("test_log"), "The full output is stored."])
     spill = Spill(threshold_tokens=100, preview_tokens=16, max_files=8, max_bytes=1_000_000)
     agent = Agent(
-        prompt=SystemPrompt.from_plugins(),
         model=model,
         plugins=[Logs(), spill],
     )
@@ -43,7 +41,6 @@ async def main():
     # Import the compact conversation and its referenced resources.
     spill_2 = Spill(threshold_tokens=100)
     resumed = Agent(
-        prompt=SystemPrompt.from_plugins(),
         model=ScriptedModel([call("read_spill", path=path, offset=1, limit=24), "Read the range."]),
         plugins=[spill_2],
     )

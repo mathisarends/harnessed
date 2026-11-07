@@ -22,7 +22,6 @@ from harnessed.core.outputs import OutputContract as OutputContract
 from harnessed.core.plugin import Plugin as Plugin
 from harnessed.core.plugin import PluginConfig as PluginConfig
 from harnessed.core.prompt.values import Instructions as Instructions
-from harnessed.core.prompt.values import PluginOrder as PluginOrder
 from harnessed.core.prompt.values import PromptFormat as PromptFormat
 from harnessed.core.prompt.values import SectionDelivery as SectionDelivery
 from harnessed.core.prompt.values import SystemPrompt as SystemPrompt
@@ -70,7 +69,6 @@ __all__ = [
     "RunHandle",
     "RunResult",
     "PromptFormat",
-    "PluginOrder",
     "SectionDelivery",
     "SystemPrompt",
     "Instructions",

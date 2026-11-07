@@ -10,7 +10,6 @@ from harnessed import (
     Instructions,
     Plugin,
     PluginConflict,
-    PluginOrder,
     SystemPrompt,
     ToolCall,
     tool,
@@ -52,7 +51,6 @@ async def test_application_facade_composes_plugins_and_fixed_ordered_guidance(tm
         prompt=SystemPrompt.from_plugins(
             Instructions(text="Be concise."),
             Instructions.from_file(path=path),
-            order=PluginOrder.AS_LISTED,
         ),
         plugins=[calculator],
     )
@@ -78,16 +76,14 @@ async def test_facade_parameters_are_equivalent_to_public_plugins():
     calculator = Calculator()
     await Agent(
         model=one,
-        prompt=SystemPrompt.from_plugins(Instructions(text="Rules."), order=PluginOrder.AS_LISTED),
+        prompt=SystemPrompt.from_plugins(Instructions(text="Rules.")),
         plugins=[calculator],
     ).run("Go")
     calculator_4 = Calculator()
     await Agent(
         plugins=[
             Service(Model, two),
-            PromptRenderer(
-                SystemPrompt.from_plugins(Instructions(text="Rules."), order=PluginOrder.AS_LISTED)
-            ),
+            PromptRenderer(SystemPrompt.from_plugins(Instructions(text="Rules."))),
             calculator_4,
         ]
     ).run("Go")
@@ -113,7 +109,6 @@ async def test_plugin_instruction_block_can_be_overridden_or_omitted():
         app = Agent(
             model=ScriptedModel([]),
             plugins=[recipe],
-            prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         )
         async with app.session() as session:
             assert await session.prompt.render() == expected

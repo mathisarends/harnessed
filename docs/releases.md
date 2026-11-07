@@ -294,7 +294,7 @@ default; `PluginInstructions()` and `Unplaced.APPEND` opt into remaining content
 Compose prompts as `SystemPrompt("Help with documents.", workspace.instructions,
 "Answer concisely.")`. Content is positional; `format`, `exclude` and `unplaced`
 remain keyword-only options. See the
-[prompt composition guide](guides/context.md#select-plugin-order-explicitly).
+[prompt composition guide](guides/context.md#plugin-instructions-are-collected-by-default).
 
 ### Library composition
 

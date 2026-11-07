@@ -88,7 +88,6 @@ async def trace(scope: Scope):
 async def main():
     notes = NotesTools(NotesConfig())
     harness = Agent(
-        prompt=SystemPrompt.from_plugins(),
         model=ScriptedModel(
             [
                 [ModelChunk(tool_call=ToolCall("save_note", {"text": "Try Harnessed"}))],

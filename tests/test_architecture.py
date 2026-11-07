@@ -215,7 +215,7 @@ def test_application_facade_stays_small_and_has_no_transitional_names():
         "RunResult",
         "ToolContext",
     } <= set(harnessed.__all__)
-    assert {"PluginOrder", "SectionDelivery"} <= set(harnessed.__all__)
+    assert "SectionDelivery" in harnessed.__all__ and "PluginOrder" not in harnessed.__all__
     assert not {
         "ApprovalRequest",
         "Harness",

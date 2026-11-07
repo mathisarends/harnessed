@@ -12,7 +12,6 @@ from harnessed import (
     Image,
     Instructions,
     Plugin,
-    PluginOrder,
     SystemPrompt,
     ToolCall,
     tool,
@@ -84,7 +83,6 @@ async def main():
             prompt=SystemPrompt.from_plugins(
                 Instructions(text="You are a code reviewer."),
                 Instructions.from_file(path=root / "AGENTS.md"),
-                order=PluginOrder.AS_LISTED,
             ),
             plugins=[
                 ContextValue("ci", "Authentication tests are available."),

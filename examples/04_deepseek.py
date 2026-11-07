@@ -8,7 +8,6 @@ from harnessed import (
     Agent,
     ApprovalAnswer,
     Instructions,
-    PluginOrder,
     SystemPrompt,
 )
 from harnessed.events import ApprovalNeededEvent, TextDeltaEvent, ToolCallRequestedEvent
@@ -23,7 +22,6 @@ async def main():
         prompt=SystemPrompt.from_plugins(
             Instructions(text="Help the user understand this Python project. Answer in English."),
             Instructions.from_file(path=workspace / "AGENTS.md", missing_ok=True),
-            order=PluginOrder.AS_LISTED,
         ),
         plugins=[filesystem, AgentLoop(max_steps=8)],
     )

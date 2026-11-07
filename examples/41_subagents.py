@@ -1,6 +1,6 @@
 import asyncio
 
-from harnessed import Agent, SystemPrompt, ToolCall
+from harnessed import Agent, ToolCall
 from harnessed.models import ModelChunk
 from harnessed.plugins import Approvals, Subagents
 from harnessed.testing import ScriptedModel
@@ -12,7 +12,6 @@ async def main() -> None:
         instructions="Review the supplied task and explain your findings.",
     )
     coordinator = Agent(
-        prompt=SystemPrompt.from_plugins(),
         model=ScriptedModel(
             [
                 [

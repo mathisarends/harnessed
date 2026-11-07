@@ -1,7 +1,7 @@
 import asyncio
 import json
 
-from harnessed import Agent, Plugin, SystemPrompt, ToolCall, tool
+from harnessed import Agent, Plugin, ToolCall, tool
 from harnessed.events import SubagentUpdatedEvent
 from harnessed.models import ModelChunk, ModelRequest
 from harnessed.plugins import Approvals, Subagents
@@ -72,7 +72,6 @@ async def main() -> None:
     reviewer = Agent(model=CallbackModel(child_model), plugins=[ReviewTools()])
     coordinator = Agent(
         model=CallbackModel(coordinator_model),
-        prompt=SystemPrompt.from_plugins(),
         plugins=[Subagents({"review": reviewer}), Approvals(allow=[Subagents.spawn])],
     )
 

@@ -5,7 +5,6 @@ import pytest
 from harnessed import (
     Agent,
     Instructions,
-    PluginOrder,
     PolicyDecision,
     SystemPrompt,
 )
@@ -20,7 +19,6 @@ async def test_scripted_replies_and_fake_shell_keep_process_results_and_argument
     shell = FakeShell({"pytest": "1 passed"})
     model = ScriptedModel([call("run_command", argv=["pytest"]), reply("done")])
     result = await Agent(
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
         plugins=[shell, Approvals(default=PolicyDecision.ALLOW)],
     ).run("Test")
@@ -38,7 +36,6 @@ async def test_virtual_and_local_filesystems_share_ranges_newlines_and_edit_sema
 ):
     inmemoryfs = InMemoryFS()
     async with Agent(
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([]),
         plugins=[inmemoryfs],
     ).session() as session:
@@ -63,14 +60,14 @@ async def test_pytest_fixture_replaces_feature_slots_without_duplicate_configura
     filesystem = Filesystem(tmp_path)
     shell = Shell(tmp_path)
     configured = Agent(
-        prompt=SystemPrompt.from_plugins(Instructions(text="Fixed."), order=PluginOrder.AS_LISTED),
+        prompt=SystemPrompt.from_plugins(Instructions(text="Fixed.")),
         plugins=[filesystem, shell],
     )
     virtual_files = InMemoryFS({"note.txt": "virtual"})
     virtual_shell = FakeShell()
     async with harnessed_session(
         configured,
-        prompt=SystemPrompt.from_plugins(Instructions(text="Fixed."), order=PluginOrder.AS_LISTED),
+        prompt=SystemPrompt.from_plugins(Instructions(text="Fixed.")),
         script=[call("read_file", path="note.txt"), reply("done")],
         plugins=[virtual_files, virtual_shell],
     ) as session:

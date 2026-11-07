@@ -12,8 +12,6 @@ from pydantic import ValidationError
 from harnessed import (
     Agent,
     ApprovalAnswer,
-    PluginOrder,
-    SystemPrompt,
     ToolCall,
 )
 from harnessed.core.tools.registry import ToolRegistry
@@ -137,7 +135,6 @@ class MemoryBackend:
 
 def app(sandbox):
     return Agent(
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([]),
         plugins=[
             sandbox,

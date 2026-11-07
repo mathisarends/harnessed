@@ -9,7 +9,6 @@ from harnessed import (
     Inject,
     Instructions,
     Plugin,
-    PluginOrder,
     PluginPack,
     PluginPackPromptPolicy,
     ResolvedPluginPack,
@@ -49,9 +48,7 @@ async def test_explicit_project_composition_adds_only_the_requested_tools(tmp_pa
     commands = [Shell(tmp_path)] if shell else []
     app = Agent(
         model=model,
-        prompt=SystemPrompt.from_plugins(
-            Instructions.from_file(path=tmp_path / "AGENTS.md"), order=PluginOrder.AS_LISTED
-        ),
+        prompt=SystemPrompt.from_plugins(Instructions.from_file(path=tmp_path / "AGENTS.md")),
         plugins=[filesystem, *commands],
     )
     async with app.session() as session:
@@ -143,7 +140,6 @@ async def test_only_survivors_contribute_prompts_events_tools_and_lifetimes(remo
     agent = Agent(
         model=model,
         plugins=[pack, Replacement()],
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
     assert started == []
     for _ in range(2):
@@ -168,7 +164,6 @@ def test_replaced_recipe_providers_are_never_evaluated():
 
     agent = Agent(
         plugins=[PluginPack("library", [Feature()]), Replacement()],
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
     assert [entry.section.text for entry in agent.prompt.entries] == ["Replacement."]
 
@@ -224,7 +219,6 @@ async def test_explicit_rest_group_follows_the_resolved_slot_positions():
 
     agent = Agent(
         plugins=[Feature(), LoopGuidance()],
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
     assert await agent.prompt.render() == "Loop guidance.\n\nFeature guidance."
 
@@ -247,7 +241,7 @@ async def test_resolve_keeps_selected_tools_and_instructions_without_mounting(om
             return "feature result"
 
     feature = Feature()
-    prompt = SystemPrompt.from_plugins("PluginPack strategy.", order=PluginOrder.AS_LISTED)
+    prompt = SystemPrompt.from_plugins("PluginPack strategy.")
     pack = PluginPack("library", [feature], prompt=prompt)
     resolved = pack.resolve(prompt=PluginPackPromptPolicy.OMIT) if omit else pack.resolve()
     assert isinstance(resolved, ResolvedPluginPack)
@@ -260,11 +254,7 @@ async def test_resolve_keeps_selected_tools_and_instructions_without_mounting(om
     agent = Agent(
         model=model,
         plugins=resolved.plugins,
-        prompt=(
-            SystemPrompt.from_plugins("Application strategy.", order=PluginOrder.AS_LISTED)
-            if omit
-            else None
-        ),
+        prompt=(SystemPrompt.from_plugins("Application strategy.") if omit else None),
     )
     result = await agent.run("inspect")
     assert result.tool_calls[0][1].text == "feature result"

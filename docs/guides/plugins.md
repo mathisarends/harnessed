@@ -17,13 +17,12 @@ replace a single service with `Service(TokenCounter, counter)`.
 ## Replace a default
 
 ```python
-from harnessed import Agent, PluginOrder, SystemPrompt
+from harnessed import Agent
 from harnessed.plugins import AgentLoop, Filesystem, ToolOutputLimit
 from harnessed.testing import ScriptedModel
 
 filesystem = Filesystem(root=".")
 agent = Agent(
-    prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     model=ScriptedModel(["done"]),
     plugins=[
         AgentLoop(max_steps=50, max_parallel_tools=4),
@@ -49,7 +48,7 @@ configuration.
 ```python
 from pathlib import Path
 
-from harnessed import Agent, PluginPack, PluginOrder, SystemPrompt
+from harnessed import Agent, PluginPack
 from harnessed.plugins import AgentLoop, Compaction, Filesystem, Shell
 from harnessed.testing import ScriptedModel
 
@@ -63,7 +62,6 @@ def project_pack(root: str | Path = ".") -> PluginPack:
             AgentLoop(max_steps=30),
             Compaction(keep_steps=4),
         ],
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
 
 
@@ -96,13 +94,10 @@ that boundary supplies a direct recipe to decide it. Messages identify the slot
 and competing pack paths.
 
 ```python
-from harnessed import PluginOrder
-
 research = PluginPack("research", [project_pack(), Compaction(keep_steps=6)])
 agent = Agent(
     model=model,
     plugins=[research, Compaction(keep_steps=10)],
-    prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
 )
 ```
 
@@ -200,12 +195,12 @@ of waiting plugins and missing services.
 
 Composition completes before prompt contributions and event declarations are
 collected. Excluded and replaced recipes contribute no guidance, context metadata,
-events, hooks or tools. `SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)`
-explicitly collects complete instruction blocks in that final order. A pack may
-publish this strategy with `prompt=`. Caller `instructions=` are prepended;
+events, hooks or tools. The agent collects complete instruction blocks in that
+final order. A pack may publish a `SystemPrompt.from_plugins(...)` strategy with
+`prompt=`, for example to choose a format. Caller `instructions=` are prepended;
 explicit agent `prompt=` overrides pack defaults. A selected instruction override
 without a collection strategy raises `ConfigError` before providers run.
-See [ordered plugin instructions](context.md#select-plugin-order-explicitly).
+See [ordered plugin instructions](context.md#plugin-instructions-are-collected-by-default).
 
 Plugin packs are accepted by `Agent(plugins=...)` and other packs, not by kernel
 `Scope.plugin()` / `install()` or live `session.use()`. Runtime dependency

@@ -49,9 +49,9 @@ Plugins return one complete content document through
 configuration helpers return actual content. Methods are pure and synchronous.
 `Instructions` holds literal text or session-owned file/factory sources.
 
-Applications and packs explicitly select collection with
-`SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED, format=...)`. The order
-argument is required. Resolve pack nesting, removals and slot replacements before
+Agents collect plugin blocks by default; applications and packs keep collection
+with `SystemPrompt.from_plugins(format=...)` and opt out with a constructor-built
+`SystemPrompt`. Resolve pack nesting, removals and slot replacements before
 calling selected providers once at the agent boundary. Preserve whole plugin
 blocks in resolved list order, independently of setup order. `None` parts and
 plugin-list entries are normalized away.

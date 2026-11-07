@@ -6,7 +6,6 @@ from tempfile import TemporaryDirectory
 from harnessed import (
     Agent,
     ApprovalAnswer,
-    SystemPrompt,
 )
 from harnessed.integrations.bubblewrap import BubblewrapSandbox
 from harnessed.integrations.docker import DockerSandbox
@@ -26,7 +25,6 @@ async def exercise(sandbox: Sandbox, directory: Path) -> None:
         ]
     )
     agent = Agent(
-        prompt=SystemPrompt.from_plugins(),
         model=model,
         plugins=[
             sandbox,

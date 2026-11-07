@@ -30,10 +30,9 @@ For a named call-scoped service use `Annotated[T, InjectMarker(key)]`.
 
 Provide plugin guidance through synchronous `instructions() -> SystemPrompt`.
 Use only recipe configuration in that method; files and async session factories
-belong in returned `Instructions` values. Collect complete blocks explicitly
-with `SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)`, supplied through
-the agent's or pack's `prompt=`. Caller `Agent(instructions="...")` text is
-prepended. See the [context guide](docs/guides/context.md).
+belong in returned `Instructions` values. Agents collect complete blocks in
+plugin-list order by default; an explicit `prompt=SystemPrompt(...)` leaves them
+out. Caller `Agent(instructions="...")` text is prepended. See the [context guide](docs/guides/context.md).
 
 Hook priorities run in ascending order: `Priority.GUARD`, `Priority.DEFAULT`,
 then `Priority.OBSERVE`. Equal priorities keep registration order. Use explicit

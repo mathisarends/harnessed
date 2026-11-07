@@ -17,11 +17,9 @@ assert 'pydantic' not in sys.modules
 from harnessed import (
     Agent, CompositionDescription, PluginPack, SessionState, OutputContract, Plugin, PluginConfig,
     RunHandle, StopReason, ToolPresentation,
-    PluginOrder,
     PromptFormat, SectionDelivery,
     SystemPrompt, Instructions, tool,
 )
-from harnessed.errors import ConfigError
 from harnessed.events import TextDeltaEvent, TurnResultEvent
 from harnessed.plugins import Service, Skill, Skills
 from harnessed.integrations.json import JsonSessionStore
@@ -77,8 +75,7 @@ class Guidance(Plugin, slot='wheel.guidance'):
 async def main():
     defaults = PluginPack('library', [Guidance()])
     selected = Guidance()
-    configured = Agent(plugins=[defaults, selected],
-                       prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED))
+    configured = Agent(plugins=[defaults, selected])
     description = configured.describe()
     assert isinstance(description, CompositionDescription)
     assert configured.plugins[-1] is selected
@@ -115,21 +112,13 @@ async def main():
             assert (await session.run('Continue.')).text == 'restored'
 
     guidance = Guidance()
-    for unplaced in (None, 'Role.'):
-        try:
-            Agent(instructions=unplaced, plugins=[guidance])
-        except ConfigError as error:
-            assert 'Guidance' in str(error) and 'from_plugins' in str(error)
-        else:
-            raise AssertionError('Plugin instructions require explicit collection')
-    simple = Agent(instructions='Role.',
-                   prompt=SystemPrompt.from_plugins(),
-                   plugins=[guidance])
+    simple = Agent(instructions='Role.', plugins=[guidance])
     assert await simple.prompt.render() == 'Role.\n\nPlugin guidance.'
-    ordered = Agent(plugins=[guidance], prompt=SystemPrompt.from_plugins(
-        'Prefix.', order=PluginOrder.AS_LISTED))
+    ordered = Agent(plugins=[guidance], prompt=SystemPrompt.from_plugins('Prefix.'))
     assert await ordered.prompt.render() == 'Prefix.\n\nPlugin guidance.'
-    assert SystemPrompt.from_plugins().plugin_order is PluginOrder.AS_LISTED
+    explicit = Agent(plugins=[guidance], prompt=SystemPrompt('Only this.'))
+    assert await explicit.prompt.render() == 'Only this.'
+    assert 'Guidance' in str(explicit.prompt)
     mounted_model = ScriptedModel([reply('Ready'), reply('Unmounted')])
     async with Agent(model=mounted_model,
                      instructions='Fixed.').session() as session:
@@ -177,8 +166,7 @@ async def main():
     inline = Skill(name='notes', description='Write notes.', instructions='Keep notes concise.')
     skills = Skills(inline)
     async with Agent(model=ScriptedModel([call('load_skill', name='notes'), reply('Loaded')]),
-                     plugins=[skills], prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)
-                     ).session() as session:
+                     plugins=[skills]).session() as session:
         result = await session.run('Load notes')
         assert 'Keep notes concise.' in result.tool_calls[0][1].text
     assert not any(name.startswith('pydantic_ai') for name in sys.modules)
