@@ -11,6 +11,16 @@ spans to Phoenix, Langfuse and other OTLP collectors.
 The following additions remain outside the current release scope. They are
 candidates for discussion, not committed APIs or release dates.
 
+## Hook and library tracing
+
+The repository-root `change.md` proposes automatic, opt-in spans for hook
+handlers, a public `harnessed.tracing` facade, and an ambient session tracer for
+library functions and lifecycle hooks. A neutral Kernel instrumentation boundary
+preserves the standalone Kernel's dependency rules. Optional duration filtering
+belongs to the OTel export pipeline and preserves parents of visible children.
+The proposal includes the developer-facing API, trace interpretation, trade-offs,
+and implementation acceptance criteria; these additions are not implemented yet.
+
 ## Conversation state follow-ups
 
 Applications own persistence through `SessionState` or an explicit `SessionStore`;
