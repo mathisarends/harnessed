@@ -47,7 +47,7 @@ from harnessed.core.runtime.approvals import LiveApprovals, SessionApprovals
 from harnessed.core.runtime.context import PendingObservations, SessionContext
 from harnessed.core.runtime.control import SessionControl, SessionStatus, StopAtBoundary
 from harnessed.core.runtime.executor import ToolExecutor
-from harnessed.core.runtime.handles import RunEvents, RunHandle, SubmittedRun
+from harnessed.core.runtime.handles import RunEvents, RunHandle, RunStream, SubmittedRun
 from harnessed.core.runtime.inbox import InboxItem, InboxWriter, SessionInbox
 from harnessed.core.runtime.options import AgentOptions, RunOptions
 from harnessed.core.runtime.output import OutputHandler
@@ -481,6 +481,32 @@ class Session:
             schema=schema,
         )
 
+    @overload
+    async def _enqueue(
+        self,
+        content: str | UserMessage,
+        *,
+        attachments: Iterable[Attachment] = (),
+        settings: GenerationSettings | None = None,
+        limits: TurnLimits,
+        schema: OutputSchema | None,
+        on_prepared: Callable[[InboxAddedEvent], None] | None = None,
+        events: RunEvents[Any],
+    ) -> RunStream[Any]: ...
+
+    @overload
+    async def _enqueue(
+        self,
+        content: str | UserMessage,
+        *,
+        attachments: Iterable[Attachment] = (),
+        settings: GenerationSettings | None = None,
+        limits: TurnLimits,
+        schema: OutputSchema | None,
+        on_prepared: Callable[[InboxAddedEvent], None] | None = None,
+        events: None = None,
+    ) -> RunHandle[Any]: ...
+
     async def _enqueue(
         self,
         content: str | UserMessage,
@@ -546,7 +572,7 @@ class Session:
         output: type[T] | OutputContract[T],
         buffer_size: int = 256,
         **options: Unpack[RunOptions],
-    ) -> AbstractAsyncContextManager[RunHandle[T]]: ...
+    ) -> AbstractAsyncContextManager[RunStream[T]]: ...
 
     @overload
     def stream(
@@ -556,7 +582,7 @@ class Session:
         output: None = None,
         buffer_size: int = 256,
         **options: Unpack[RunOptions],
-    ) -> AbstractAsyncContextManager[RunHandle[None]]: ...
+    ) -> AbstractAsyncContextManager[RunStream[None]]: ...
 
     @asynccontextmanager
     async def stream(
@@ -569,10 +595,10 @@ class Session:
         token_budget: int | None = None,
         output: type[Any] | OutputContract[Any] | None = None,
         buffer_size: int = 256,
-    ) -> AsyncGenerator[RunHandle[Any]]:
+    ) -> AsyncGenerator[RunStream[Any]]:
         """Queue one turn and own its live event observation for this context.
 
-        Iterate the handle for UI and declared application events, or await its
+        Iterate the RunStream for UI and declared application events, or await its
         result independently. Context exit removes its approval responder and
         observation without aborting work; handle.cancel() targets only this run.
         """

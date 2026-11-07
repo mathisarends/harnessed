@@ -10,6 +10,9 @@ from harnessed import (
     ApprovalAnswer,
     Plugin,
     PolicyDecision,
+    RunHandle,
+    RunStream,
+    SessionStatus,
     StopReason,
     StreamOverflow,
     ToolCall,
@@ -107,6 +110,41 @@ async def test_stream_result_is_available_without_consuming_events_and_survives_
         assert (await session.run("after")).text == "after"
 
 
+async def test_run_stream_is_a_run_handle_with_one_event_iteration() -> None:
+    async with Agent(model=ScriptedModel(["done"])).session() as session:
+        async with session.stream("work") as stream:
+            assert isinstance(stream, RunStream) and isinstance(stream, RunHandle)
+            assert aiter(stream) is stream
+            async with asyncio.timeout(3):
+                received = [event async for event in stream]
+            result = await stream.result()
+            assert result.text == "done" and stream.done()
+            assert isinstance(received[-1], TurnResultEvent)
+            assert received[-1].result is result
+            assert [event async for event in stream] == []
+        assert await stream.result() is result
+
+
+async def test_cancelling_a_queued_stream_preserves_the_pause_and_other_runs() -> None:
+    model = ScriptedModel(["second"])
+    async with Agent(model=model).session() as session:
+        await session.pause()
+        async with session.stream("first") as stream:
+            second = await session.submit("second")
+            await asyncio.wait_for(stream.cancel(), timeout=3)
+            async with asyncio.timeout(3):
+                received = [event async for event in stream]
+            result = await stream.result()
+            assert result.stop_reason is StopReason.DISCARDED
+            assert isinstance(received[-1], TurnResultEvent)
+            assert received[-1].result is result
+            assert session.status is SessionStatus.PAUSED
+            assert [item.id for item in session.inbox.pending] == [second.id]
+            assert not second.done() and not model.requests
+        await session.resume()
+        assert (await asyncio.wait_for(second.result(), timeout=3)).text == "second"
+
+
 async def test_stream_handle_cancels_its_own_turn_and_keeps_the_next_run():
     started = asyncio.Event()
 
@@ -129,7 +167,10 @@ async def test_stream_handle_cancels_its_own_turn_and_keeps_the_next_run():
         assert (await asyncio.wait_for(next_run.result(), timeout=3)).text == "second"
 
 
-async def test_closing_the_ui_stream_does_not_cancel_the_model_request() -> None:
+@pytest.mark.parametrize("close_explicitly", [False, True])
+async def test_closing_the_ui_stream_does_not_cancel_the_model_request(
+    close_explicitly: bool,
+) -> None:
     release = asyncio.Event()
 
     async def respond(request: ModelRequest) -> AsyncIterator[ModelChunk]:
@@ -145,6 +186,14 @@ async def test_closing_the_ui_stream_does_not_cancel_the_model_request() -> None
                         break
                 else:
                     pytest.fail("The stream ended without text")
+                if close_explicitly:
+                    await stream.aclose()
+                    with pytest.raises(StopAsyncIteration):
+                        await anext(stream)
+                    assert not stream.done()
+            assert not stream.done()
+            with pytest.raises(StopAsyncIteration):
+                await anext(stream)
             requested = session.last(ModelRequestedEvent)
             assert requested is not None
             assert not session.log.request_finished(requested.request_id)
@@ -152,6 +201,9 @@ async def test_closing_the_ui_stream_does_not_cancel_the_model_request() -> None
             release.set()
 
         await asyncio.wait_for(session.wait_until_idle(), 3)
+        result = await asyncio.wait_for(stream.result(), timeout=3)
+        assert result.text == "partial reply" and stream.done()
+        assert await stream.result() is result
         response = session.last(AssistantMessageEvent)
         assert response is not None
         assert response.request_id == requested.request_id

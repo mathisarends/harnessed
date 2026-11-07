@@ -1,8 +1,8 @@
 # Streaming a turn
 
-`async with session.stream(...) as run` queues one turn and opens a `RunHandle[T]`.
-Iterate the handle for typed UI and application events; await `run.result()` for
-the assembled result independently of event consumption:
+`async with session.stream(...) as run` queues one turn and opens a `RunStream[T]`.
+Iterate it for typed UI and application events; await `run.result()` for the
+assembled result independently of event consumption:
 
 ```python
 from harnessed import Session, events
@@ -13,8 +13,8 @@ async def show(session: Session) -> None:
         async for event in run:
             if isinstance(event, events.TextDeltaEvent):
                 print(event.text, end="", flush=True)
-        result = await run.result()
-        print("\nFinished:", result.stop_reason)
+    result = await run.result()
+    print("\nFinished:", result.stop_reason)
 ```
 
 Unmatched cases are ignored; `case _: pass` is optional. Informational events do
@@ -25,7 +25,7 @@ not require exhaustive handling. If the turn can ask for approval, also
 | --- | --- |
 | Await the assembled result | `await session.run(...)` |
 | Consume one turn's UI and application events | `async with session.stream(...) as run`, then `async for event in run` |
-| Queue without a UI responder | `run = await session.submit(...)` |
+| Queue and receive a `RunHandle[T]` without live observation | `run = await session.submit(...)` |
 | Cancel one queued or active run | `await run.cancel()` |
 | Observe the session's audit events across turns | `session.subscribe()` |
 
@@ -38,8 +38,19 @@ are included. Exiting closes observation and the approval responder; the run kee
 executing and its handle can still return the result afterward. `run.cancel()`
 discards only its queued input or aborts only its active turn, preserving other
 queued runs. A completed handle is unaffected. Cancelling a result or cancellation
-waiter does not cancel the session-owned operation. Handles from `submit()` expose
-the same result and cancellation operations; live iteration requires `stream()`.
+waiter does not cancel the session-owned operation.
+
+`RunHandle[T]` identifies one submitted run, whether queued, executing or complete.
+It exposes `id`, `done()`, `result()` and `cancel()`. It has no live iteration or
+`aclose()` method. `RunStream[T]` extends `RunHandle[T]` with live iteration and
+`aclose()`, so code that accepts a run handle also accepts a run stream. Import
+either type from `harnessed` when annotating consumer functions.
+
+A run stream has one event iterator for one consumer. Consuming it again after
+exhaustion produces no replay. `await run.aclose()` closes event observation;
+leaving the context also removes its approval responder. Neither operation
+cancels execution. `done()` always describes the run's completion, even after
+observation closes. Repeated `result()` waits return the same result.
 
 `events.SessionStatusChangedEvent` reports the control state. Turn completion does not
 imply an idle session: another queued turn may have started. Compaction, spill and

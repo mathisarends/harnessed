@@ -12,8 +12,9 @@ async def main() -> None:
             async for event in run:
                 if isinstance(event, events.TextDeltaEvent):
                     print(event.text, end="", flush=True)
-            result = await run.result()
-            print("\nFinished:", result.stop_reason)
+        # The result remains available after live observation closes.
+        result = await run.result()
+        print("\nFinished:", result.stop_reason)
 
 
 if __name__ == "__main__":

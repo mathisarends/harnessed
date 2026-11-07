@@ -27,6 +27,7 @@ from harnessed.core.prompt.values import SystemPrompt as SystemPrompt
 from harnessed.core.result import RunResult as RunResult
 from harnessed.core.runtime.control import SessionStatus as SessionStatus
 from harnessed.core.runtime.handles import RunHandle as RunHandle
+from harnessed.core.runtime.handles import RunStream as RunStream
 from harnessed.core.runtime.session import Session as Session
 from harnessed.core.session.session import SessionLog as SessionLog
 from harnessed.core.session.state import SessionState as SessionState
@@ -66,6 +67,7 @@ __all__ = [
     "ResolvedPluginPack",
     "RunHandle",
     "RunResult",
+    "RunStream",
     "PromptFormat",
     "SectionDelivery",
     "SystemPrompt",
