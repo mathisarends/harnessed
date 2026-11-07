@@ -6,13 +6,14 @@ from harnessed.kernel import (
     PluginStatus,
     Scope,
     as_plugin_spec,
-    dependency,
+    needs,
+    observes,
 )
 
 
 class Feature(PluginBase, provides=True):
-    backend = dependency(str)
-    optional = dependency(int, optional=True)
+    backend = needs(str)
+    optional = observes(int)
 
     async def setup(self, scope: Scope) -> None:
         assert scope[Feature] is self
@@ -20,7 +21,7 @@ class Feature(PluginBase, provides=True):
 
 
 class Consumer(PluginBase, provides=True):
-    feature = dependency(Feature)
+    feature = needs(Feature)
 
 
 async def test_class_injection_precedes_setup_and_is_isolated_between_mounts():
@@ -87,7 +88,7 @@ async def test_inherited_provides_uses_declaring_class_and_named_keys():
 
 async def test_field_requirement_is_validated_before_mount():
     class Deferred(PluginBase):
-        backend = dependency(str)
+        backend = needs(str)
 
     recipe = Deferred()
     with pytest.raises(RuntimeError, match="mounted plugin"):
@@ -99,7 +100,7 @@ async def test_field_requirement_is_validated_before_mount():
 
 async def test_private_dependency_has_the_same_recipe_guard_and_mount_binding():
     class Private(PluginBase, provides=True):
-        _backend = dependency(str)
+        _backend = needs(str)
 
     recipe = Private()
     with pytest.raises(RuntimeError, match="mounted plugin"):

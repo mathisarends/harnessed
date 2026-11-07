@@ -4,7 +4,7 @@ import logging
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from functools import partial
-from types import MappingProxyType, MethodType
+from types import MethodType
 from typing import Annotated, Any, overload
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, TypeAdapter, ValidationError
@@ -14,8 +14,14 @@ from harnessed.core.errors import ApprovalUnavailable, ToolNameConflict
 from harnessed.core.messages import ToolCall, ToolResult, ToolStatus
 from harnessed.core.model import ToolDefinition
 from harnessed.core.tools.arguments import ToolArguments, tool_result_content
+from harnessed.core.tools.availability import ToolAvailability, ToolExplanation
 from harnessed.core.tools.context import ToolContext, ToolContexts
-from harnessed.core.tools.enabled import ToolEnabled, bind_enabled, validate_enabled
+from harnessed.core.tools.enabled import (
+    BoundToolEnabled,
+    ToolEnabled,
+    bind_enabled,
+    validate_enabled,
+)
 from harnessed.core.tools.execution import ToolExecutionBudget
 from harnessed.core.tools.info import (
     ToolChain,
@@ -33,10 +39,10 @@ from harnessed.core.tools.scheduling import (
 )
 from harnessed.kernel import (
     BindingPlan,
-    Dependency,
     Disposer,
     RegistrationState,
     Scope,
+    ServiceKey,
     binding_plan,
     run_sync,
 )
@@ -145,7 +151,7 @@ class _RegisteredTool:
     owner: Scope
     registration: RegistrationState
     spec: ToolSpec
-    enabled: Callable[[Scope], bool]
+    enabled: BoundToolEnabled
 
 
 @dataclass(eq=False)
@@ -348,14 +354,6 @@ class ToolRegistry:
         timeout = _TIMEOUT.validate_python(timeout)
         spec = replace(spec, timeout=timeout)
         plan = binding_plan(callback)
-        implicit = {}
-        for parameter, annotation in plan.hints.items():
-            if annotation is ToolContext and parameter != "return":
-                if plan.signature.parameters[parameter].kind is not inspect.Parameter.KEYWORD_ONLY:
-                    raise TypeError("Unmarked ToolContext parameters must be keyword-only")
-                implicit[parameter] = Dependency(ToolContext)
-        if implicit:
-            plan = replace(plan, dependencies=MappingProxyType({**plan.dependencies, **implicit}))
         tool_name = name or getattr(callback, "__name__", type(callback).__name__)
         existing = self._tools.get(tool_name, ())
         if existing and not override:
@@ -445,19 +443,46 @@ class ToolRegistry:
         tool = self._visible(self._tools.get(name, []))
         return tool is not None and tool.spec.readonly
 
+    def explain(self, name: str, *, scope: Scope) -> ToolExplanation:
+        """Inspect the current binding, including registrations hidden from the model."""
+        tool = self._visible(self._tools.get(name, []))
+        if tool is None:
+            return ToolExplanation(name, ToolAvailability.NOT_REGISTERED)
+        missing = self._missing_services(tool, scope)
+        if missing:
+            return ToolExplanation(
+                name, ToolAvailability.MISSING_SERVICES, tool.definition, missing
+            )
+        availability = (
+            ToolAvailability.AVAILABLE if tool.enabled(scope) else ToolAvailability.DISABLED
+        )
+        return ToolExplanation(name, availability, tool.definition)
+
     @property
     def definitions(self) -> tuple[ToolDefinition, ...]:
         return self.visible_definitions(self._ctx)
 
     def _available(self, tool: _Tool, scope: Scope) -> bool:
+        return not self._missing_services(tool, scope)
+
+    def _missing_services(self, tool: _Tool, scope: Scope) -> tuple[ServiceKey[Any], ...]:
+        required = list(tool.enabled.required_services)
+        missing: list[ServiceKey[Any]] = []
         if isinstance(tool, _ExternalTool):
-            return ToolContexts in scope
-        return all(
-            dependency.optional
-            or dependency.key in scope
-            or (dependency.key is ToolContext and ToolContexts in scope)
-            for dependency in tool.plan.dependencies.values()
+            if ToolContexts not in scope:
+                missing.append(ToolContext)
+        else:
+            required.extend(
+                dependency.key
+                for dependency in tool.plan.dependencies.values()
+                if not dependency.optional
+            )
+        missing.extend(
+            key
+            for key in dict.fromkeys(required)
+            if key not in scope and not (key is ToolContext and ToolContexts in scope)
         )
+        return tuple(dict.fromkeys(missing))
 
     def visible_definitions(self, scope: Scope) -> tuple[ToolDefinition, ...]:
         return tuple(

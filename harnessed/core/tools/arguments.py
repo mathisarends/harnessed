@@ -13,6 +13,8 @@ from pydantic.json_schema import JsonSchemaValue
 from harnessed.core.messages import result_content, to_dict
 from harnessed.kernel import Dependency
 
+from .context import ToolContext
+
 _CONFIG = ConfigDict(
     strict=True,
     extra="forbid",
@@ -42,6 +44,19 @@ class ToolArguments:
     ) -> Self:
         if params is not None and parameter_fields is not None:
             raise ValueError("params cannot be combined with parameter_fields; use model fields")
+        for parameter in signature.parameters.values():
+            annotation = hints.get(parameter.name, parameter.annotation)
+            while isinstance(annotation, TypeAliasType) or get_origin(annotation) is Annotated:
+                annotation = (
+                    annotation.__value__
+                    if isinstance(annotation, TypeAliasType)
+                    else get_args(annotation)[0]
+                )
+            if annotation is ToolContext and parameter.name not in injected:
+                raise TypeError(
+                    f"Tool parameter {parameter.name!r} must use Inject[ToolContext] "
+                    "to mark framework-provided arguments"
+                )
         parameter_fields = parameter_fields or {}
         unknown = parameter_fields.keys() - (signature.parameters.keys() - injected.keys())
         if unknown:

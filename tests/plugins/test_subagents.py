@@ -31,6 +31,7 @@ from harnessed.events import (
     ToolProgressEvent,
 )
 from harnessed.integrations.json import JsonSessionStore
+from harnessed.kernel import Inject
 from harnessed.models import UserMessage
 from harnessed.plugins import AgentLoop, Approvals, Subagents
 from harnessed.sessions import SessionCommit, StoredSession
@@ -78,7 +79,7 @@ def coordinator(child, calls=None, **limits):
 
 class Progress(Plugin):
     @tool(readonly=True)
-    async def inspect(self, *, context: ToolContext) -> str:
+    async def inspect(self, *, context: Inject[ToolContext]) -> str:
         await context.progress("Inspecting")
         return "Inspected"
 

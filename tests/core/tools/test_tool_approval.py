@@ -7,6 +7,7 @@ from harnessed.core.approvals import ApprovalState
 from harnessed.core.events.approvals import ApprovalRequestedEvent, ApprovalStatus
 from harnessed.core.messages import ApprovalAnswer, ToolStatus
 from harnessed.core.model import ModelChunk
+from harnessed.kernel import Inject
 from harnessed.plugins import AgentLoop, Approvals
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit
@@ -18,7 +19,7 @@ class Cleanup(Plugin, provides=True):
         self.deleted: list[str] = []
 
     @tool
-    async def cleanup(self, *, call: ToolContext) -> str:
+    async def cleanup(self, *, call: Inject[ToolContext]) -> str:
         if not await call.approve("Delete 3 generated files?"):
             return "kept the files"
         self.deleted.append(call.call.id)
@@ -68,7 +69,7 @@ async def test_approval_waits_do_not_consume_tool_execution_time(transport):
 
     class Work(Plugin):
         @tool
-        async def work(self, *, context: ToolContext) -> str:
+        async def work(self, *, context: Inject[ToolContext]) -> str:
             if await context.approve("first") and await context.approve("second"):
                 effects.append("work")
             return "done"
@@ -110,7 +111,7 @@ async def test_approval_resumes_the_remaining_execution_budget_without_resetting
 
     class Work(Plugin):
         @tool(timeout=0.1)
-        async def work(self, *, context: ToolContext) -> str:
+        async def work(self, *, context: Inject[ToolContext]) -> str:
             await asyncio.sleep(0.07)
             await context.approve("permission")
             await asyncio.sleep(0.07)
@@ -139,7 +140,7 @@ async def test_run_cancellation_still_interrupts_a_suspended_tool_budget():
 
     class Work(Plugin):
         @tool
-        async def work(self, *, context: ToolContext) -> str:
+        async def work(self, *, context: Inject[ToolContext]) -> str:
             await context.approve("permission")
             pytest.fail("Cancelled approval allowed execution")
 
@@ -170,7 +171,7 @@ async def test_run_cancellation_still_interrupts_a_suspended_tool_budget():
 async def test_a_parallel_approval_wait_does_not_suspend_other_tools():
     class Work(Plugin):
         @tool(parallel=True)
-        async def approved(self, *, context: ToolContext) -> str:
+        async def approved(self, *, context: Inject[ToolContext]) -> str:
             await context.approve("permission")
             return "approved"
 
@@ -210,7 +211,7 @@ async def test_a_parallel_approval_wait_does_not_suspend_other_tools():
 async def test_nested_approval_waits_preserve_the_suspended_execution_budget():
     class Work(Plugin):
         @tool(timeout=0.04)
-        async def work(self, *, context: ToolContext) -> str:
+        async def work(self, *, context: Inject[ToolContext]) -> str:
             assert await context.approve("outer")
             return "approved"
 
@@ -239,7 +240,7 @@ async def test_background_approval_cannot_suspend_its_parent_tasks_execution():
 
     class Work(Plugin):
         @tool(timeout=0.04)
-        async def work(self, *, context: ToolContext) -> str:
+        async def work(self, *, context: Inject[ToolContext]) -> str:
             question = asyncio.create_task(context.approve("permission"))
             try:
                 await asyncio.sleep(1)

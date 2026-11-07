@@ -18,7 +18,7 @@ from harnessed.core.hooks import RequestApproval, ToolPolicy
 from harnessed.core.messages import PolicyDecision, ToolStatus
 from harnessed.core.model import ModelChunk
 from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.kernel import PluginStatus, hook
+from harnessed.kernel import Inject, PluginStatus, hook
 from harnessed.plugins import AgentLoop, Approvals, Service
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit, AuditProjection
@@ -380,7 +380,7 @@ async def test_all_approval_sources_use_the_configured_response_timeout(source):
 
     class Work(Plugin):
         @tool
-        async def work(self, *, context: ToolContext) -> str:
+        async def work(self, *, context: Inject[ToolContext]) -> str:
             if source == "tool":
                 await context.approve("permission")
             executed.append("work")

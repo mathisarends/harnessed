@@ -105,7 +105,7 @@ await context.approve("Deploy to production?")
 await context.approve("Deploy to production?", timeout=30)
 ```
 
-`context` is the framework-supplied `ToolContext` parameter of a tool method;
+`context` is the framework-supplied `Inject[ToolContext]` parameter of a tool method;
 `approve()` is a helper on that context, not a separate model-facing tool or hook.
 See the [complete tool example](tools.md#ask-for-approval-inside-a-tool).
 

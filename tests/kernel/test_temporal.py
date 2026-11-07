@@ -3,13 +3,13 @@ from dataclasses import dataclass
 
 import pytest
 
-from harnessed import Inject, Plugin, ToolCall, plugin
+from harnessed import Plugin, ToolCall, plugin
 from harnessed.core.plugin import Bundle
 from harnessed.core.prompt.system_prompt import SystemPromptStore
 from harnessed.core.runtime.services import RuntimeServices
 from harnessed.core.tools.decorator import tool
 from harnessed.core.tools.registry import ToolRegistry
-from harnessed.kernel import Emit, MissingService, PluginStatus, Scope
+from harnessed.kernel import Emit, MissingService, PluginStatus, Scope, needs
 
 
 @dataclass
@@ -21,8 +21,10 @@ async def test_class_keyword_dependencies_suspend_and_restart_the_plugin():
     seen = []
 
     class Feature(Plugin, needs=(Backend,)):
-        async def setup(self, backend: Inject[Backend]) -> None:
-            seen.append(backend.name)
+        backend = needs(Backend)
+
+        async def setup(self) -> None:
+            seen.append(self.backend.name)
 
     async with Scope() as scope:
         handle = await scope.plugin(Feature())
@@ -184,10 +186,12 @@ async def test_scope_isolation_and_permanent_disposal_of_waiting_plugin():
 
 async def test_class_and_bundle_explicit_needs_remove_tools_and_prompt_sections():
     class FeaturePlugin(Plugin, needs=(Backend, SystemPromptStore)):
-        async def setup(self, scope, prompt: Inject[SystemPromptStore]):
+        prompt = needs(SystemPromptStore)
+
+        async def setup(self, scope):
             self.name = scope[Backend].name
             self.calls = 0
-            prompt.fixed(self.name)
+            self.prompt.fixed(self.name)
 
         @tool
         async def read(self) -> str:

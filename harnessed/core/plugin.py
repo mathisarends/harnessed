@@ -17,10 +17,12 @@ from harnessed.kernel import (
     HookEntry,
     Key,
     PluginLike,
+    PluginSpec,
     Registration,
     Scope,
     ServiceKey,
     as_plugin_spec,
+    binding_plan,
     hook,
 )
 from harnessed.kernel import PluginBase as KernelPlugin
@@ -43,10 +45,9 @@ class PluginConfig(BaseModel):
 class Plugin[ConfigT: BaseModel](KernelPlugin):
     """A configured recipe reconstructed for each activation.
 
-    Declare lifetime service bindings with dependency() and mutable runtime data
+    Declare lifetime service bindings with needs()/observes() and mutable runtime data
     with PluginState. Constructors describe capabilities; setup acquires resources
-    and registers cleanup on its Scope. Plugin instruction collection requires
-    an explicit prompt strategy.
+    and registers cleanup on its Scope. Agent composition collects instructions.
     """
 
     config: ConfigT
@@ -185,6 +186,15 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         if selected is None:
             raise TypeError("Plugin bases declare incompatible configuration models")
         return selected
+
+    def _as_plugin_spec(self) -> PluginSpec:
+        for name, callback in (("setup", self.setup), ("teardown", self.teardown)):
+            if binding_plan(callback).dependencies:
+                raise TypeError(
+                    f"{type(self).__name__}.{name}() cannot use Inject parameters; "
+                    "declare plugin service fields with needs(T) or observes(T)"
+                )
+        return super()._as_plugin_spec()
 
 
 def plugin_events(value: PluginLike) -> tuple[type[DurableEvent | TransientEvent], ...]:

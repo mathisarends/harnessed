@@ -10,6 +10,7 @@ from pydantic.errors import PydanticInvalidForJsonSchema
 from harnessed import Agent, Plugin, ToolContext, events, tool
 from harnessed.core.errors import SessionFormatError
 from harnessed.core.result import RunResult
+from harnessed.kernel import Inject
 from harnessed.testing import ScriptedModel, call
 from tests._audit import Audit
 
@@ -34,7 +35,7 @@ class Indexer(Plugin):
     events = (ProjectIndexed, IndexProgress)
 
     @tool(readonly=True)
-    async def index(self, *, ctx: ToolContext) -> str:
+    async def index(self, *, ctx: Inject[ToolContext]) -> str:
         await ctx.emit(IndexProgress("Indexing"))
         await ctx.emit(ProjectIndexed(42))
         return "indexed"

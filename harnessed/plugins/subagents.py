@@ -22,7 +22,7 @@ from harnessed.core.runtime.context import SessionContext
 from harnessed.core.runtime.control import SessionControl
 from harnessed.core.session.children import ChildSession as ChildSession
 from harnessed.core.tools import ToolContext, tool
-from harnessed.kernel import Inject, Scope
+from harnessed.kernel import Inject, Scope, needs
 
 
 class SubagentsConfig(PluginConfig):
@@ -37,8 +37,11 @@ class SubagentsConfig(PluginConfig):
 _DEFAULTS = SubagentsConfig()
 
 
-class Subagents(Plugin[SubagentsConfig], needs=(SessionContext, SessionControl)):
+class Subagents(Plugin[SubagentsConfig]):
     """Delegate explicit tasks to configured agents in isolated child sessions."""
+
+    session = needs(SessionContext)
+    control = needs(SessionControl)
 
     def __init__(
         self,
@@ -78,9 +81,7 @@ class Subagents(Plugin[SubagentsConfig], needs=(SessionContext, SessionControl))
             f"Available agents: {', '.join(self.agents)}."
         )
 
-    async def setup(
-        self, scope: Scope, session: Inject[SessionContext], control: Inject[SessionControl]
-    ) -> None:
+    async def setup(self, scope: Scope) -> None:
         limits = ChildLimits(
             self.config.max_parallel,
             self.config.max_calls,
@@ -90,19 +91,19 @@ class Subagents(Plugin[SubagentsConfig], needs=(SessionContext, SessionControl))
             self.config.token_budget,
         )
         self._supervisor = ChildSessionSupervisor(
-            ChildParent(session, control, scope), self.agents, limits
+            ChildParent(self.session, self.control, scope), self.agents, limits
         )
         scope.effect(self._supervisor.aclose)
         scope.on(SessionAborting, self._supervisor.aborting)
         scope.on(SessionClosing, self._supervisor.closing)
 
     @tool(timeout=3600.0, parallel=True)
-    async def delegate(self, agent: str, task: str, *, context: ToolContext) -> ToolResult:
+    async def delegate(self, agent: str, task: str, *, context: Inject[ToolContext]) -> ToolResult:
         """Run a specialist and return its child ID, answer, status and usage."""
         return await self._supervisor.delegate(agent, task, context)
 
     @tool(parallel=True)
-    async def spawn(self, agent: str, task: str, *, context: ToolContext) -> ToolResult:
+    async def spawn(self, agent: str, task: str, *, context: Inject[ToolContext]) -> ToolResult:
         """Start a specialist and return its child_id without waiting for its task."""
         return await self._supervisor.spawn(agent, task, context)
 

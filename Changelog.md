@@ -10,6 +10,29 @@
   close their nonexistent observation. Import `RunStream` from `harnessed` for
   streaming-specific annotations. Result, cancellation and stream context
   lifetime rules are unchanged.
+- Plugin service fields now use `needs(Service)` for required activation-bound
+  bindings and `observes(Service)` for nonblocking `Service | None` bindings,
+  imported from `harnessed.kernel`. Replace `dependency(T)` with `needs(T)` and
+  `dependency(T, optional=True)` with `observes(T)`; the old factory is removed
+  without aliases. Both bind before setup, remain stable through cleanup, and
+  create fresh activations and `PluginState` when their provider binding changes.
+  Observing does not react to mutations inside the same service instance.
+- Higher-level `Plugin.setup()` and `teardown()` reject `Inject` parameters during
+  composition. Declare their services as `needs(T)` or `observes(T)` fields and
+  access them through `self`; a plain `scope: Scope` remains supported for owned
+  resources. Standalone kernel `PluginBase` and function plugins retain lifecycle
+  injection. Tool and hook `Inject[T]` stays call-scoped and adds no plugin needs.
+- Tool parameters must explicitly use `Inject[ToolContext]`. Unmarked positional
+  and keyword-only `ToolContext` parameters fail registration with a migration
+  hint. The marker excludes framework parameters from model schemas, including
+  scripted tool references and parameter-object tools.
+- `session.tools.explain(name)` inspects the current tool registration even when
+  unavailable to the model. The frozen `ToolExplanation` and `ToolAvailability`
+  types from `harnessed.services` distinguish missing tool/predicate services,
+  disabled predicates, available tools and absent registrations. Tools belonging
+  to waiting plugins are not registered. The existing visible-tool mapping and
+  call-scoped injection semantics are unchanged.
+
 - Configure all approval response timeouts with `Approvals(timeout=...)`; remove
   `AgentLoop(approval_timeout=...)`. Guards, in-tool questions, SDK requests and
   forwarded approvals now inherit this same default. Per-question `timeout=`

@@ -22,7 +22,7 @@ from harnessed.core.messages import PolicyDecision, ToolStatus
 from harnessed.core.model import ModelChunk
 from harnessed.core.prompt.plugin_instructions import PluginInstructions
 from harnessed.core.session.session import SessionLog
-from harnessed.kernel import Inject
+from harnessed.kernel import needs
 from harnessed.models import Model
 from harnessed.plugins import Approvals, PromptRenderer, Service
 from harnessed.testing import ScriptedModel
@@ -207,9 +207,11 @@ async def test_public_session_type_and_forks_open_as_independent_conversations()
 
 
 async def test_raw_subscription_includes_dependent_teardown_before_it_finishes():
-    class Temporary(Plugin, needs=(PluginInstructions,)):
-        async def teardown(self, state: Inject[PluginInstructions]) -> None:
-            await state.remove("temporary")
+    class Temporary(Plugin):
+        state = needs(PluginInstructions)
+
+        async def teardown(self) -> None:
+            await self.state.remove("temporary")
 
     app = Agent(model=ScriptedModel(["done"]), plugins=[Temporary()])
     seen = []

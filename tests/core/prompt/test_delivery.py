@@ -2,10 +2,10 @@ import asyncio
 
 import pytest
 
-from harnessed import Agent, Inject, Instructions, Plugin, SectionDelivery, SystemPrompt, tool
+from harnessed import Agent, Instructions, Plugin, SectionDelivery, SystemPrompt, tool
 from harnessed.core.events.messages import PluginInstructionsChangedEvent
 from harnessed.hooks import PrepareRequest
-from harnessed.kernel import PluginStatus, Scope
+from harnessed.kernel import PluginStatus, Scope, needs
 from harnessed.models import ModelRequest
 from harnessed.services import SessionContext
 from harnessed.testing import ScriptedModel
@@ -221,9 +221,13 @@ async def test_owned_request_hook_is_inactive_during_its_plugin_teardown():
     observed = []
 
     class InspectTeardown(Feature):
-        async def teardown(self, scope: Scope, context: Inject[SessionContext]) -> None:
+        context = needs(SessionContext)
+
+        async def teardown(self, scope: Scope) -> None:
             request = ModelRequest(())
-            result = await scope.dispatch(PrepareRequest(context, request), default=lambda: request)
+            result = await scope.dispatch(
+                PrepareRequest(self.context, request), default=lambda: request
+            )
             observed.append(result.messages)
 
     async with Agent(model=ScriptedModel([])).session() as session:

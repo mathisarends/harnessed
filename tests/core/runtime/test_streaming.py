@@ -43,6 +43,7 @@ from harnessed.events import (
     ToolProgressEvent,
     TurnResultEvent,
 )
+from harnessed.kernel import Inject
 from harnessed.plugins import Approvals
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit
@@ -54,7 +55,7 @@ class Work(Plugin):
         self.effects = effects
 
     @tool
-    async def publish(self, *, call: ToolContext) -> str:
+    async def publish(self, *, call: Inject[ToolContext]) -> str:
         await call.progress("Publishing")
         self.effects.append("published")
         return "done"

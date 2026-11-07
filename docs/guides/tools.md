@@ -7,17 +7,17 @@ Python tools use this declaration path, including tools mounted at runtime:
 
 ```python
 from harnessed import Plugin, tool
-from harnessed.kernel import Inject
+from harnessed.kernel import needs
 from my_application import Database
 
 
 class Lookups(Plugin):
-    needs = (Database,)
+    database = needs(Database)
 
     @tool(readonly=True, description="Find one record by its exact key.")
-    async def lookup(self, key: str, *, db: Inject[Database]) -> str:
-        """Resolve the injected backend and return its serialized record."""
-        return await db.lookup(key)
+    async def lookup(self, key: str) -> str:
+        """Read through the plugin's required database service."""
+        return await self.database.lookup(key)
 
 
 # plugins=[Lookups()] initially, or await session.mount(Lookups()) at runtime.
@@ -127,7 +127,7 @@ Other validation settings, including validation of field defaults, follow the mo
 The method must declare exactly one non-injected parameter, annotated with the
 same model class; its Python name is arbitrary and it may be keyword-only. Put
 defaults on the model's fields rather than on that method parameter. Injected
-services and a keyword-only `ToolContext` remain separate and hidden from the
+services and `Inject[ToolContext]` remain separate and hidden from the
 schema. `params` requires a `BaseModel` subclass and does not accept `RootModel`.
 It cannot be combined with `parameter_fields`; declare field metadata on the
 parameter model instead.
@@ -196,20 +196,45 @@ See the [offline conditional tools example](https://github.com/mathisarends/harn
 
 ```python
 from harnessed import Plugin, ToolContext, tool
+from harnessed.kernel import Inject
 
 
 class Worker(Plugin):
     @tool
-    def process(self, path: str, *, call: ToolContext) -> str:
+    def process(self, path: str, *, call: Inject[ToolContext]) -> str:
         if call.cancelled:
             return "Stopped before processing."
         return process_file(path, cancellation=call.signal)
 ```
 
-A keyword-only `ToolContext` is supplied automatically; `Inject[ToolContext]`
-is also supported. Its signal, progress, call and live conversation state belong
+`Inject[ToolContext]` is required to mark the context as framework-provided;
+unmarked `ToolContext` parameters fail tool registration. Its signal, progress,
+call and live conversation state belong
 to this call. It does not expose the model driver. Normal service arguments use
-`Inject[T]`; an unmarked application parameter always belongs to the model.
+`Inject[T]` for deliberately call-scoped resolution; an unmarked application
+parameter always belongs to the model. Plugin-owned service bindings normally use
+`needs(T)` or `observes(T)` fields instead.
+
+### Explain unavailable tools
+
+`session.tools` remains a mapping of definitions currently visible to the model.
+`session.tools.explain("lookup")` also inspects a registered tool hidden from that
+mapping. It returns a frozen `ToolExplanation` with `name`, `availability`,
+`definition` and `missing_services`. Import `ToolExplanation` and `ToolAvailability`
+from `harnessed.services`.
+
+`ToolAvailability` distinguishes `AVAILABLE`, `MISSING_SERVICES`, `DISABLED` and
+`NOT_REGISTERED`. Missing required tool and enabled-predicate services are reported
+by their original class or named key, without evaluating the predicate until all
+are present. Optional injections do not block availability. Session-provided
+`Inject[ToolContext]` is available without a plugin lifetime requirement.
+
+Explanations inspect the current overriding registration and never fall back to an
+older enabled tool. A waiting plugin has not registered its tools, so its tool
+names report `NOT_REGISTERED`; use startup dependency errors for that composition.
+Snapshots retain their values as providers change. Predicate exceptions propagate
+as during request construction, and an available tool still needs normal policy
+and approval checks to execute.
 
 ## Ask for approval inside a tool
 
@@ -222,18 +247,19 @@ can answer.
 
 ```python
 from harnessed import Plugin, ToolContext, tool
+from harnessed.kernel import Inject
 
 
 class WorkspaceTools(Plugin):
     @tool
-    async def cleanup(self, *, context: ToolContext) -> str:
+    async def cleanup(self, *, context: Inject[ToolContext]) -> str:
         if not await context.approve("Delete 3 generated files?"):
             return "Kept the files."
         # Perform the approved deletion here.
         return "Deletion approved."
 ```
 
-The framework supplies `context` by its `ToolContext` annotation; it is not a
+The framework supplies `context` by its `Inject[ToolContext]` annotation; it is not a
 model argument. `cleanup` is the tool, and `context.approve()` is a helper that
 uses the session's approval flow. If the tool owns its confirmation in this way,
 allow the outer tool call with `Approvals(allow=[WorkspaceTools.cleanup])` to avoid

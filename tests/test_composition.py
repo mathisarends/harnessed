@@ -6,7 +6,6 @@ import pytest
 
 from harnessed import (
     Agent,
-    Inject,
     Instructions,
     Plugin,
     PluginPack,
@@ -19,7 +18,7 @@ from harnessed import (
 )
 from harnessed.errors import PluginConflict
 from harnessed.events import DurableEvent
-from harnessed.kernel import Scope
+from harnessed.kernel import Scope, needs
 from harnessed.models import Model
 from harnessed.plugins import AgentLoop, Filesystem, PromptRenderer, Service, Shell
 from harnessed.services import SessionContext
@@ -86,10 +85,12 @@ async def test_session_service_remains_available_during_dependent_teardown():
     seen = []
 
     class Dependent(Plugin):
+        session = needs(SessionContext)
+
         needs = (SessionContext,)
 
-        async def teardown(self, session: Inject[SessionContext]):
-            seen.append(session.id)
+        async def teardown(self):
+            seen.append(self.session.id)
 
     async with Agent(model=ScriptedModel([]), plugins=[Dependent()]).session() as session:
         pass
