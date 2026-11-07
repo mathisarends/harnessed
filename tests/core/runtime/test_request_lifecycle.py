@@ -119,7 +119,7 @@ async def test_tool_timeout_and_cancel_always_write_one_execution_receipt(cancel
     entered = asyncio.Event()
 
     class Tools(Plugin):
-        @tool(timeout=None if cancel else 0.01)
+        @tool(timeout_seconds=None if cancel else 0.01)
         async def wait(self) -> str:
             entered.set()
             await asyncio.Event().wait()

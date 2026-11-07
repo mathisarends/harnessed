@@ -71,7 +71,7 @@ class ShellTools[ConfigT: ShellToolsConfig](Plugin[ConfigT], needs=(ShellBackend
     def _command_fields(self) -> Mapping[str, FieldInfo]:
         return {"timeout": Field(le=self.config.max_timeout)}
 
-    @tool(timeout=600, parameter_fields=_command_fields)
+    @tool(timeout_seconds=600, parameter_fields=_command_fields)
     async def run_command(
         self,
         argv: Annotated[list[str], Field(min_length=1)],
@@ -194,7 +194,7 @@ class BackgroundShell(
     def _command_fields(self) -> Mapping[str, FieldInfo]:
         return {"timeout": Field(le=self.config.max_timeout)}
 
-    @tool(timeout=600, parameter_fields=_command_fields)
+    @tool(timeout_seconds=600, parameter_fields=_command_fields)
     async def start_command(
         self,
         argv: Annotated[list[str], Field(min_length=1)],
@@ -216,7 +216,7 @@ class BackgroundShell(
             raise ToolError("This ShellBackend does not support background commands")
         return await self._commands.start(shell, argv, cwd=self.cwd, timeout=limit, inbox=inbox)
 
-    @tool(readonly=True, parallel=True, timeout=35)
+    @tool(readonly=True, parallel=True, timeout_seconds=35)
     async def read_command(
         self, command_id: str, wait: Annotated[float, Field(ge=0, le=30)] = 0.0
     ) -> CommandResult:
@@ -249,7 +249,7 @@ class BackgroundShell(
         await command.process.write(text, eof=eof)
         return command.result()
 
-    @tool(timeout=600)
+    @tool(timeout_seconds=600)
     async def terminate_command(self, command_id: str) -> CommandResult:
         """Kill a background command and its descendants, draining cleanup before returning.
 

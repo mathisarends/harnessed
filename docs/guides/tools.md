@@ -50,7 +50,7 @@ execution pipeline as Python tools; it has no MCP or JSON Schema dependency.
 ## Tool display and integration metadata
 
 The native decorator accepts display options inspired by FastMCP without requiring
-the MCP extra. Existing `name`, `description`, `enabled` and `timeout` options keep
+the MCP extra. The `name`, `description`, `enabled` and `timeout_seconds` options keep
 their normal execution behavior.
 
 ```python
@@ -290,6 +290,37 @@ metadata; review hooks and Spill still receive the complete execution result.
 Execution and reviewed-result checkpoints drain their write and flush on cancellation,
 even if another append holds the log lock. Event observers run after that checkpoint
 and remain cancellable.
+
+`@tool(timeout_seconds=120)` gives a tool an execution deadline in seconds. A finite,
+positive value overrides `AgentLoop(tool_timeout=...)`; omission or `None` inherits
+that default. `timeout_seconds` replaces the former `timeout` keyword on `@tool`,
+`ToolRegistry.tool()`, `ToolRegistry.register()` and `ToolSpec`.
+
+For an instance-dependent deadline, pass a synchronous resolver receiving the mounted
+plugin. It runs once per activation, after `setup`; the registration captures its
+validated result. Removing and reactivating the plugin evaluates it again. Return
+`None` to inherit the loop default. Resolvers apply to Python methods on mounted
+plugins; schema-defined external tools use a numeric timeout.
+
+```python
+import asyncio
+
+from harnessed import Plugin, tool
+
+
+class LongRunningWork(Plugin):
+    def __init__(self, *, wait_seconds: float = 900) -> None:
+        super().__init__()
+        self.wait_seconds = wait_seconds
+
+    def _tool_timeout(self) -> float:
+        return self.wait_seconds + 60
+
+    @tool(timeout_seconds=_tool_timeout)
+    async def wait_for_result(self) -> str:
+        await asyncio.sleep(self.wait_seconds)
+        return "Wait completed"
+```
 
 Async tools receive task cancellation on abort or timeout. Put resource cleanup
 in `finally`. Synchronous tools run in a worker thread: Python cannot forcibly

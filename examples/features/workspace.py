@@ -12,7 +12,7 @@ from harnessed.plugins.filesystem import FileSystemBackend
 class WorkspaceTools(Plugin):
     filesystem = needs(FileSystemBackend)
 
-    @tool(name="count_lines", timeout=5)
+    @tool(name="count_lines", timeout_seconds=5)
     async def count_lines(self, path: str, call: Inject[ToolContext]) -> int:
         """Count the lines in a workspace file."""
         await call.progress(f"Reading {path}")

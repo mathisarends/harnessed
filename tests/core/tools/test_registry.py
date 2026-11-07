@@ -194,7 +194,7 @@ async def test_async_tool_timeout_cancels_its_body():
         registry = ToolRegistry(scope)
         canceled = asyncio.Event()
 
-        @registry.tool(timeout=0.01)
+        @registry.tool(timeout_seconds=0.01)
         async def slow() -> str:
             try:
                 await asyncio.Event().wait()

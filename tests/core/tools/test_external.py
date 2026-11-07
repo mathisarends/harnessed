@@ -65,7 +65,7 @@ async def test_external_tool_explanation_reports_missing_call_context():
     "spec",
     [
         ToolSpec(name="wrong"),
-        ToolSpec(timeout=0),
+        ToolSpec(timeout_seconds=0),
         ToolSpec(parallel="invalid"),
         ToolSpec(parameter_fields=lambda owner: {}),
     ],
