@@ -3,7 +3,7 @@
 import asyncio
 from pathlib import Path
 
-from harnessed import Agent, PluginValidation, ToolCall
+from harnessed import Agent, PluginValidation, PolicyDecision, ToolCall
 from harnessed.kernel import Scope, plugin
 from harnessed.models import ModelChunk
 from harnessed.plugins import Approvals
@@ -38,7 +38,7 @@ async def main():
     # This example deliberately opens before adding the shell backend at runtime.
     agent = Agent(
         model=model,
-        plugins=[Approvals.allow_all(), ShellTools()],
+        plugins=[Approvals(default=PolicyDecision.ALLOW), ShellTools()],
         plugin_validation=PluginValidation.WARN,
     )
     outputs = []
@@ -46,7 +46,7 @@ async def main():
         tools = session.tools
         assert tools.names == frozenset()
         print("Before a backend: no shell tools")
-        first = await session.use(shell_backend("local"))
+        first = await session.mount(shell_backend("local"))
         assert list(tools) == ["run_command"]
         first_result = await session.run("Say hello using the shell.")
         print(first_result.text)
@@ -54,7 +54,7 @@ async def main():
         await first.aclose()
         assert tools.names == frozenset()
         print("Backend removed: no shell tools")
-        await session.use(shell_backend("remote"))
+        await session.mount(shell_backend("remote"))
         assert list(tools) == ["run_command"]
         second_result = await session.run("Run another command.")
         print(second_result.text)

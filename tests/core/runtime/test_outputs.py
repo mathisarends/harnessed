@@ -32,6 +32,23 @@ class Triage(BaseModel):
     owner: str
 
 
+async def test_require_output_returns_the_original_validated_value():
+    result = await Agent(
+        model=ScriptedModel(
+            [[ModelChunk(tool_call=ToolCall("final_answer", {"severity": 2, "owner": "sdk"}))]]
+        )
+    ).run("Triage", output=Triage)
+    assert result.require_output() is result.output
+    assert result.require_output() == Triage(severity=2, owner="sdk")
+
+
+async def test_require_output_reports_the_reason_for_an_incomplete_turn():
+    result = await Agent(model=ScriptedModel(["partial"])).run("Triage", output=Triage, max_steps=1)
+    assert result.stop_reason is StopReason.MAX_STEPS
+    with pytest.raises(OutputUnavailable, match="max_steps"):
+        result.require_output()
+
+
 def answer(**arguments):
     return [ModelChunk(tool_call=ToolCall("final_answer", arguments))]
 

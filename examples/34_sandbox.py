@@ -6,7 +6,6 @@ from tempfile import TemporaryDirectory
 from harnessed import (
     Agent,
     ApprovalAnswer,
-    PluginOrder,
     SystemPrompt,
 )
 from harnessed.integrations.bubblewrap import BubblewrapSandbox
@@ -27,7 +26,7 @@ async def exercise(sandbox: Sandbox, directory: Path) -> None:
         ]
     )
     agent = Agent(
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+        prompt=SystemPrompt.from_plugins(),
         model=model,
         plugins=[
             sandbox,

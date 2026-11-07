@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncGenerator, AsyncIterator, Callable, Iterable, Mapping
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Iterable, Mapping
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from contextvars import ContextVar
 from typing import Any, Unpack, overload
 
@@ -9,10 +10,15 @@ from harnessed.core.assets import AssetStore
 from harnessed.core.attachments import Attachment
 from harnessed.core.buffering import EventBuffer
 from harnessed.core.compaction import CompactionManager
-from harnessed.core.errors import SessionClosed, SessionStateError
+from harnessed.core.errors import RunUnavailable, SessionClosed, SessionStateError
 from harnessed.core.events.base import DurableEvent, TransientEvent
 from harnessed.core.events.compaction import CompactionAppliedEvent
-from harnessed.core.events.inbox import InboxAddedEvent, InboxMode, InboxRemovedEvent
+from harnessed.core.events.inbox import (
+    InboxAddedEvent,
+    InboxMode,
+    InboxRemovalReason,
+    InboxRemovedEvent,
+)
 from harnessed.core.events.publishing import SessionPublished
 from harnessed.core.events.session import SessionControlChangedEvent
 from harnessed.core.events.stream import StreamItem, coalesce_deltas
@@ -45,7 +51,7 @@ from harnessed.core.runtime.approvals import LiveApprovals, SessionApprovals
 from harnessed.core.runtime.context import PendingObservations, SessionContext
 from harnessed.core.runtime.control import SessionControl, SessionStatus, StopAtBoundary
 from harnessed.core.runtime.executor import ToolExecutor
-from harnessed.core.runtime.handles import RunHandle, SubmittedRun
+from harnessed.core.runtime.handles import RunEvents, RunHandle, SubmittedRun
 from harnessed.core.runtime.inbox import InboxItem, InboxWriter, SessionInbox
 from harnessed.core.runtime.options import AgentOptions, RunOptions
 from harnessed.core.runtime.output import OutputHandler
@@ -192,7 +198,18 @@ class Session:
         async for event in self.log.subscribe(transient=transient, buffer_size=buffer_size):
             yield event
 
+    @asynccontextmanager
     async def use(
+        self, plugin: PluginLike, *, section_delivery: SectionDelivery = SectionDelivery.ERROR
+    ) -> AsyncGenerator[PluginHandle]:
+        """Mount a capability for this context and remove it on every exit path."""
+        handle = await self.mount(plugin, section_delivery=section_delivery)
+        try:
+            yield handle
+        finally:
+            await handle.aclose()
+
+    async def mount(
         self, plugin: PluginLike, *, section_delivery: SectionDelivery = SectionDelivery.ERROR
     ) -> PluginHandle:
         """Mount a capability, with explicit delivery of any declared system sections.
@@ -476,13 +493,14 @@ class Session:
         limits: TurnLimits,
         schema: OutputSchema | None,
         on_prepared: Callable[[InboxAddedEvent], None] | None = None,
+        events: RunEvents[Any] | None = None,
     ) -> RunHandle[Any]:
         self._output_values.hold(schema)
         submitted = None
 
         def prepared(item: InboxAddedEvent) -> None:
             nonlocal submitted
-            submitted = SubmittedRun(item, schema)
+            submitted = SubmittedRun(item, schema, self._cancel_submission, events)
             self._submissions[submitted.handle] = submitted
             self._queued_submissions[item.message.id] = submitted
             if on_prepared is not None:
@@ -507,6 +525,23 @@ class Session:
             raise SessionStateError("The inbox accepted input without preparing its run")
         return submitted.handle
 
+    async def _cancel_submission(self, handle: RunHandle[Any]) -> None:
+        submitted = self._submissions.get(handle)
+        if submitted is None:
+            return
+        if submitted.turn_id is None:
+            try:
+                await self.log.append(
+                    InboxRemovedEvent(handle.id, InboxRemovalReason.DISCARDED),
+                    expected_input=submitted.input,
+                )
+                return
+            except RunUnavailable:
+                # The driver may have claimed the input while removal waited.
+                pass
+        if submitted.turn_id is not None and not handle.done():
+            await self.control.cancel_turn(submitted.turn_id)
+
     @overload
     def stream[T](
         self,
@@ -515,7 +550,7 @@ class Session:
         output: type[T] | OutputContract[T],
         buffer_size: int = 256,
         **options: Unpack[RunOptions],
-    ) -> AsyncGenerator[StreamItem[T], None]: ...
+    ) -> AbstractAsyncContextManager[RunHandle[T]]: ...
 
     @overload
     def stream(
@@ -525,8 +560,9 @@ class Session:
         output: None = None,
         buffer_size: int = 256,
         **options: Unpack[RunOptions],
-    ) -> AsyncGenerator[StreamItem[None], None]: ...
+    ) -> AbstractAsyncContextManager[RunHandle[None]]: ...
 
+    @asynccontextmanager
     async def stream(
         self,
         content: str | Message,
@@ -538,20 +574,27 @@ class Session:
         token_budget: int | None = None,
         output: type[Any] | OutputContract[Any] | None = None,
         buffer_size: int = 256,
-    ) -> AsyncGenerator[StreamItem[Any], None]:
-        """Queue one turn and yield its UI and declared application events.
+    ) -> AsyncGenerator[RunHandle[Any]]:
+        """Queue one turn and own its live event observation for this context.
 
-        Normal exhaustion ends with TurnResultEvent. Runtime failures raise
-        without that notification. Closing the iterator removes its approval
-        responder but does not abort the turn; use abort() to cancel its work.
+        Iterate the handle for UI and declared application events, or await its
+        result independently. Context exit removes its approval responder and
+        observation without aborting work; handle.cancel() targets only this run.
         """
+        self.control.check_open()
+        queue: EventBuffer[DurableEvent | TransientEvent | None] = EventBuffer(
+            buffer_size, merge=coalesce_deltas
+        )
         limits = TurnLimits(max_steps, token_budget)
         compiled = self.scope[OutputTypes].register(output) if output is not None else None
         schema = compiled.definition if compiled is not None else None
+
+        def events(
+            input_id: str, completion: Callable[[], Awaitable[RunResult[Any]]]
+        ) -> AsyncGenerator[StreamItem[Any], None]:
+            return project_stream_events(self._stream_turn(queue, input_id), completion=completion)
+
         async with StreamApprovals(self.scope, self.log, self._live_approvals) as approvals:
-            queue: EventBuffer[DurableEvent | TransientEvent | None] = EventBuffer(
-                buffer_size, merge=coalesce_deltas
-            )
             self._subscribers.add(queue)
             try:
                 handle = await self._enqueue(
@@ -562,14 +605,12 @@ class Session:
                     limits=limits,
                     schema=schema,
                     on_prepared=approvals.prepared,
+                    events=events,
                 )
-                raw = self._stream_turn(queue, handle.id)
-                projected = project_stream_events(raw, completion=handle.result)
                 try:
-                    async for event in projected:
-                        yield event
+                    yield handle
                 finally:
-                    await projected.aclose()
+                    await handle.aclose()
             finally:
                 self._subscribers.discard(queue)
 

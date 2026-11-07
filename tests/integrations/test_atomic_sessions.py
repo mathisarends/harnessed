@@ -48,8 +48,11 @@ async def test_reply_and_checkpoint_roll_back_without_reporting_success(mode):
                 if mode == "run":
                     await session.run(UserMessage("Hello", id="customer-message"))
                 else:
-                    async for _event in session.stream(UserMessage("Hello", id="customer-message")):
-                        pass
+                    async with session.stream(
+                        UserMessage("Hello", id="customer-message")
+                    ) as run_stream:
+                        async for _event in run_stream:
+                            pass
         messages = await repository.messages("failed")
         assert [(message.speaker, message.text) for message in messages] == [
             (Speaker.CUSTOMER, "Hello")

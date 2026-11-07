@@ -61,7 +61,7 @@ Mounting it on an already open session is also explicit:
 ```python
 from harnessed import SectionDelivery
 
-handle = await session.use(BackgroundShell(workspace), section_delivery=SectionDelivery.CONTEXT)
+handle = await session.mount(BackgroundShell(workspace), section_delivery=SectionDelivery.CONTEXT)
 # Later: terminate all jobs owned by this mount and remove its tools.
 await handle.aclose()
 ```

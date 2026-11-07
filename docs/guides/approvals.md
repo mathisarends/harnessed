@@ -48,8 +48,11 @@ Rules are evaluated in this order:
 | Explicit `policy(call)` result | Its PolicyDecision |
 | Remaining tools | `default`, initially PolicyDecision.ASK |
 
-`Approvals.allow_all()` and `Approvals.ask_all()` choose the fallback. Both accept
-`approver=` and `timeout=`. Tool flags and explicit rules still take precedence.
+`Approvals(default=PolicyDecision.ALLOW)` or `Approvals(default=PolicyDecision.ASK)`
+choose the fallback; both accept `approver=` and `timeout=`. The default controls
+otherwise unmatched tools. Tool flags and explicit rules still take precedence:
+`default=ASK` permits a tool marked `readonly=True` without asking. To ask for a
+specific read-only tool too, include its reference in `ask=[...]`.
 A tool author uses `@tool(confirm=True)` for actions that need confirmation;
 combining `readonly=True` and `confirm=True` raises `TypeError` at decoration.
 Application selectors have the final say, and the resulting `ToolPolicyAppliedEvent`

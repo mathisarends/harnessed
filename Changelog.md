@@ -4,6 +4,26 @@
 
 ### Breaking changes
 
+- Open turn streams with `async with session.stream(...) as run`. The context
+  yields `RunHandle[T]`: iterate it for typed events, await `run.result()` for
+  the same terminal result independently of observation, or `await run.cancel()`
+  to cancel only that queued or active run. Context exit closes observation and
+  its approval responder without aborting execution. Other queued inputs survive
+  targeted cancellation; cancellation waiters do not own cleanup.
+- Use `async with session.use(plugin, ...)` for a temporary capability, or
+  `handle = await session.mount(plugin, ...)` for a manually managed lifetime.
+- Configure display and JSON integration metadata with
+  `@tool(presentation=ToolPresentation(...))`, including `title`, `tags`, `icons`,
+  `annotations` and `meta`. Native registry registration uses the same argument.
+  Typed Python application `metadata=` stays separate.
+- `Agent.run(content, ...)` now accepts `str | Message` consistently with session
+  operations. Replace an explicit `prompt=` keyword with `content=`.
+- `SystemPrompt.from_plugins()` defaults to resolved plugin-list order; its
+  `order=` argument is optional. Plugin instruction collection remains explicit.
+- `result.require_output()` returns the original validated value only for a
+  completed turn; incomplete turns raise `OutputUnavailable` with their stop
+  reason. Existing `result.output` remains available for validated-value inspection.
+
 - Runtime hook events carry `event.session: SessionContext` instead of the
   application `Session`. The context keeps `id`, `status`, `log`, `inbox`,
   `approvals`, `tools`, `observe()`, `add_context()` and `emit()`; `run()`,
@@ -20,13 +40,15 @@
 | --- | --- |
 | `Approvals(trust=[...])` | `Approvals(allow=[...])` |
 | `Approvals(require=[...])` | `Approvals(ask=[...])` |
-| `Approvals(default=PolicyDecision.ALLOW)` | `Approvals.allow_all()` |
+| `Approvals.allow_all()` / `Approvals.ask_all()` | `Approvals(default=PolicyDecision.ALLOW)` / `Approvals(default=PolicyDecision.ASK)` |
 | `ApprovalGate(...)` | `ToolApprovalGuard(...)` |
 
 - Configure `Approvals` with `allow=` and `ask=` instead of `trust=` and
   `require=`. Precedence is `deny`, `ask`, `allow`, `confirm`, `readonly`,
   `policy`, then `default`; explicit application rules now precede the callable
-  policy. Use `Approvals.allow_all()` or `ask_all()` for fallback defaults.
+  policy. Select fallback defaults with `Approvals(default=PolicyDecision.ALLOW)`
+  or `Approvals(default=PolicyDecision.ASK)`; the misleading `allow_all()` and
+  `ask_all()` factories have been removed. Tool flags still precede the fallback.
   `@tool(confirm=True)` requests approval unless application selectors override
   it; combining it with `readonly=True` raises `TypeError`.
 - Replace `ApprovalGate` with `ToolApprovalGuard` from `harnessed.plugins`.

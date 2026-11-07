@@ -188,7 +188,8 @@ async def test_queued_stream_results_have_their_own_turn_boundary_state():
         ]
         assert session.snapshot() == two.state
     async with Agent(model=ScriptedModel(["streamed"])).session(state=one.state) as session:
-        events = [event async for event in session.stream("Next.")]
+        async with session.stream("Next.") as run_stream:
+            events = [event async for event in run_stream]
         assert isinstance(events[-1], TurnResultEvent)
         assert events[-1].result.state.history[-1].message.text == "streamed"
 

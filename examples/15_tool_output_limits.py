@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 from harnessed import (
     Agent,
     Plugin,
-    PluginOrder,
+    PolicyDecision,
     Role,
     SystemPrompt,
     ToolResult,
@@ -58,10 +58,10 @@ async def main():
             ]
         )
         agent = Agent(
-            prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+            prompt=SystemPrompt.from_plugins(),
             model=model,
             plugins=[
-                Approvals.allow_all(),
+                Approvals(default=PolicyDecision.ALLOW),
                 budget,
                 Service(FileSystemBackend, LocalFileSystem(directory)),
                 FilesystemTools(),

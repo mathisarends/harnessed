@@ -402,6 +402,13 @@ print((await second.result()).text)
 cancel the queued or executing run. Repeated waits return the same result and
 validated output. Closing fails unfinished live handles with `SessionClosed`.
 
+`await handle.cancel()` explicitly targets this run. A queued run is discarded;
+an active turn is aborted and its cleanup is drained. Other queued runs remain
+and continue automatically after an active cancellation. Repeated cancellation
+of a completed run is harmless. Cancelling the cancellation waiter does not
+withdraw its accepted operation. A handle opened with `session.stream()` also
+iterates live events inside its context; see [streaming](streaming.md).
+
 `steer(text)` adds input to the next step of an active turn, or starts a new turn
 while idle. `add_context(content)` appends quiet background for subsequent model
 requests without starting work. `observe(observation)` buffers the latest pending snapshot per source until

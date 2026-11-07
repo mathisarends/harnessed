@@ -7,6 +7,7 @@ import pytest
 from harnessed import (
     Agent,
     PluginOrder,
+    PolicyDecision,
     SystemPrompt,
     ToolCall,
 )
@@ -200,7 +201,7 @@ async def test_completion_arrives_in_next_step_while_agent_keeps_working(tmp_pat
         plugins=[
             Shell(tmp_path),
             BackgroundShell(tmp_path),
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
         ],
     )
     async with app.session() as session:
@@ -299,7 +300,7 @@ async def test_background_process_tree_cleanup_and_retry(tmp_path, end):
     async with app.session() as session:
         await session.pause()
         if end == "unmount":
-            handle = await session.use(BackgroundShell(tmp_path), section_delivery="ignore")
+            handle = await session.mount(BackgroundShell(tmp_path), section_delivery="ignore")
         command_id = await start(session, parent)
         heartbeat = tmp_path / "heartbeat"
         await eventually(lambda: heartbeat.exists() and heartbeat.stat().st_size > 0)

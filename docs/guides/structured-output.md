@@ -1,8 +1,8 @@
 # Structured answers
 
 Pass a Pydantic model to `run(output=...)` when the application needs a typed answer.
-Both `Agent.run()` and `Session.run()` return `RunResult[T]`; its `output` property
-has type `T`.
+Both `Agent.run()` and `Session.run()` return `RunResult[T]`.
+Call `result.require_output()` to require a completed, validated answer of type `T`.
 
 ```python
 from typing import Literal
@@ -21,7 +21,7 @@ agent = Agent(model="openai:gpt-4.1-mini")
 
 async def triage(report: str) -> Triage:
     result = await agent.run(report, output=Triage)
-    return result.output
+    return result.require_output()
 ```
 
 The PydanticAI adapter selects the provider's native JSON-schema channel when its
@@ -39,8 +39,10 @@ invalid fields without echoing their submitted values.
 Scalar and list outputs use an object envelope (`{"output": ...}`) on the wire.
 An unstructured run has `result.output is None`. Stopping, aborting, discarding or
 reaching a limit can leave a structured run without a validated answer; reading
-its `output` then raises `OutputUnavailable`. Check `result.completed` (or
-`stop_reason` for the cause) first when the caller permits incomplete work.
+its `output` then raises `OutputUnavailable`. `require_output()` also rejects any
+incomplete turn, naming its `stop_reason` in the exception. Inspect `result.text`
+and `stop_reason` when the caller permits partial work. Completed unstructured
+runs return None from both output accessors.
 
 ## Output contracts and conversation state
 

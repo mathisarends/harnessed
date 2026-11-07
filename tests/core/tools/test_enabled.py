@@ -10,6 +10,7 @@ from harnessed import (
     ApprovalAnswer,
     Plugin,
     PluginState,
+    PolicyDecision,
     ToolCall,
     ToolContext,
     tool,
@@ -73,7 +74,7 @@ async def test_condition_refreshes_between_model_requests_and_keeps_its_schema()
         plugins=[
             PointerTools(),
             Service(PointerState, state),
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
         ],
     ).session() as session:
         await session.run("click")
@@ -126,7 +127,7 @@ async def test_condition_is_rechecked_after_an_earlier_tool_and_resource_wait(pa
             Tools(),
             Service(PointerState, state),
             AgentLoop(max_parallel_tools=2),
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
         ],
     ).session() as session:
         session_audit = Audit(session)

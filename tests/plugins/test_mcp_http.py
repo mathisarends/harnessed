@@ -247,7 +247,7 @@ async def test_http_shutdown_does_not_wait_forever_for_delete(serve_http, monkey
 
     async with serve_http(app) as url:
         async with Agent(model=ScriptedModel(["unused"])).session() as session:
-            handle = await session.use(MCP.http("web", url=url))
+            handle = await session.mount(MCP.http("web", url=url))
             closing = asyncio.create_task(handle.aclose())
             try:
                 await asyncio.wait_for(deleting.wait(), 2)
@@ -280,7 +280,7 @@ async def test_http_protocol_failure_disables_tools_without_retry(serve_http):
 
     async with serve_http(app) as url:
         async with Agent(model=ScriptedModel(["unused"])).session() as session:
-            await session.use(MCP.http("web", url=url, readonly_tools=["echo"]))
+            await session.mount(MCP.http("web", url=url, readonly_tools=["echo"]))
             registry = session.scope[ToolRegistry]
             fail = True
             result = await registry.execute(ToolCall("web__echo", {"query": "once"}))
@@ -328,7 +328,7 @@ async def test_malformed_http_response_fails_without_waiting_for_call_timeout(se
 
     async with serve_http(app) as url:
         async with Agent(model=ScriptedModel(["unused"])).session() as session:
-            await session.use(MCP.http("web", url=url, call_timeout=1))
+            await session.mount(MCP.http("web", url=url, call_timeout=1))
             fail = True
             registry = session.scope[ToolRegistry]
             async with asyncio.timeout(0.5):
@@ -483,7 +483,7 @@ async def test_http_timeout_abort_and_unmount_wake_shared_connection_waiters(ser
 
     async with serve_http(server.streamable_http_app()) as url:
         async with Agent(model=ScriptedModel(["unused"])).session() as session:
-            mount = await session.use(
+            mount = await session.mount(
                 MCP.http(
                     "web", url=url, parallel=True, call_timeout=0.5 if action == "timeout" else 10
                 )

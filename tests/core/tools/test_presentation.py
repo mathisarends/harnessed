@@ -30,7 +30,13 @@ async def test_decorator_captures_immutable_presentation_without_changing_model_
 
     class Tools(Plugin):
         @tool(
-            title="Inspect workspace", tags=tags, icons=(icon,), annotations=annotations, meta=meta
+            presentation=ToolPresentation(
+                title="Inspect workspace",
+                tags=tags,
+                icons=(icon,),
+                annotations=annotations,
+                meta=meta,
+            )
         )
         async def inspect(self, path: str) -> str:
             """Read the requested path."""
@@ -81,9 +87,13 @@ async def test_registration_routes_preserve_captured_presentation_after_replacem
     async with Agent(model=ScriptedModel(["unused"])).session() as session:
         registry = session.scope[ToolRegistry]
         if route == "register":
-            registry.register(work, title="Original", tags={route}, confirm=True)
+            registry.register(
+                work, presentation=ToolPresentation(title="Original", tags={route}), confirm=True
+            )
         elif route == "decorator":
-            registry.tool(title="Original", tags={route}, confirm=True)(work)
+            registry.tool(
+                presentation=ToolPresentation(title="Original", tags={route}), confirm=True
+            )(work)
         else:
             registry.register_external(
                 ToolDefinition("work", "", {}),
@@ -94,7 +104,7 @@ async def test_registration_routes_preserve_captured_presentation_after_replacem
                 ),
             )
         plan = registry.plan(ToolCall("work"))
-        registry.register(work, override=True, title="Replacement")
+        registry.register(work, override=True, presentation=ToolPresentation(title="Replacement"))
         assert plan.tool.presentation.title == "Original"
         assert plan.tool.presentation.tags == frozenset({route})
         assert plan.tool.confirm is True
@@ -117,7 +127,7 @@ async def test_registration_routes_preserve_captured_presentation_after_replacem
 )
 def test_invalid_presentation_is_rejected_at_declaration(options):
     with pytest.raises((TypeError, ValueError)):
-        tool(**options)(lambda: "unused")
+        tool(presentation=ToolPresentation(**options))(lambda: "unused")
 
 
 def test_annotation_and_icon_values_validate_their_contracts():

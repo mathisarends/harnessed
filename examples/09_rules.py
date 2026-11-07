@@ -2,7 +2,7 @@
 
 import asyncio
 
-from harnessed import Agent, Plugin, Session, ToolCall, ToolResult, ToolStatus, tool
+from harnessed import Agent, Plugin, PolicyDecision, Session, ToolCall, ToolResult, ToolStatus, tool
 from harnessed.events import InboxAddedEvent, InboxMode, ToolCallFinishedEvent
 from harnessed.hooks import ReviewToolResult
 from harnessed.kernel import Inject, hook
@@ -63,7 +63,7 @@ async def demo(name, policy):
             "I will summarize the attempts before editing again.",
         ]
     )
-    agent = Agent(model=model, plugins=[Approvals.allow_all(), commands, policy])
+    agent = Agent(model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), commands, policy])
     print(f"\n{name}")
     async with agent.session() as session:
         steering = []
@@ -74,9 +74,10 @@ async def demo(name, policy):
                 steering.append(event)
                 print(f"{event.mode}: {event.message.text}")
 
-        async for event in session.stream("Run the tests and investigate failures."):
-            if isinstance(event, ToolCallFinishedEvent):
-                print(f"exit_code={event.result.exit_code}: {event.result.content}")
+        async with session.stream("Run the tests and investigate failures.") as run_stream:
+            async for event in run_stream:
+                if isinstance(event, ToolCallFinishedEvent):
+                    print(f"exit_code={event.result.exit_code}: {event.result.content}")
         assert any("three times" in message.text for message in session.messages)
         assert any(
             isinstance(event, InboxAddedEvent) and event.mode == InboxMode.STEER

@@ -1,13 +1,12 @@
 import inspect
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from functools import wraps
 from typing import Any, overload
 
 from pydantic import BaseModel
 
-from harnessed.core.messages import JSONMapping
 from harnessed.core.tools.enabled import ToolEnabled
-from harnessed.core.tools.info import ToolAnnotations, ToolChain, ToolIcon, ToolPresentation
+from harnessed.core.tools.info import ToolChain, ToolPresentation
 from harnessed.core.tools.policy import OutputLimit, OutputLimitSetting
 from harnessed.core.tools.registry import ParameterFields, ToolSpec
 from harnessed.core.tools.scheduling import ResourceSpec, resource_spec
@@ -23,11 +22,7 @@ def tool[F: Callable[..., Any]](
     *,
     name: str | None = None,
     description: str | None = None,
-    title: str | None = None,
-    tags: Iterable[str] = (),
-    icons: Iterable[ToolIcon] = (),
-    annotations: ToolAnnotations | None = None,
-    meta: JSONMapping | None = None,
+    presentation: ToolPresentation | None = None,
     enabled: ToolEnabled = True,
     timeout: float | None = None,
     parallel: bool = False,
@@ -49,11 +44,7 @@ def tool(
     *,
     name: str | None = None,
     description: str | None = None,
-    title: str | None = None,
-    tags: Iterable[str] = (),
-    icons: Iterable[ToolIcon] = (),
-    annotations: ToolAnnotations | None = None,
-    meta: JSONMapping | None = None,
+    presentation: ToolPresentation | None = None,
     enabled: ToolEnabled = True,
     timeout: float | None = None,
     parallel: bool = False,
@@ -75,9 +66,7 @@ def tool(
         spec = ToolSpec(
             name=name,
             description=description,
-            presentation=ToolPresentation(
-                title=title, tags=tags, icons=icons, annotations=annotations, meta=meta
-            ),
+            presentation=presentation if presentation is not None else ToolPresentation(),
             enabled=enabled,
             timeout=timeout,
             parallel=parallel,

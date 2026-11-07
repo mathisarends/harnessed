@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from harnessed import PolicyDecision
+
 pytest.importorskip("fastmcp")
 pytest.importorskip("jsonschema")
 
@@ -141,7 +143,7 @@ async def run_tool(transport, arguments=None, **options):
         model=model,
         plugins=[
             MCP("docs", transport=transport, **options),
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
         ],
     )
     result = await agent.run("search")
@@ -184,14 +186,16 @@ async def test_filters_readonly_and_runtime_unmount():
     )
     agent = Agent(model=ScriptedModel(["done"]))
     async with agent.session() as session:
-        handle = await session.use(MCP("docs", transport=transport, include_tools=["search"]))
+        handle = await session.mount(MCP("docs", transport=transport, include_tools=["search"]))
         registry = session.scope[ToolRegistry]
         assert [tool.name for tool in registry.definitions] == ["docs__search"]
         assert not registry.is_readonly("docs__search")
         plan = registry.plan(ToolCall("docs__search", {"query": "old"}))
         await handle.aclose()
         assert registry.definitions == ()
-        replacement = await session.use(MCP("docs", transport=transport, readonly_tools=["search"]))
+        replacement = await session.mount(
+            MCP("docs", transport=transport, readonly_tools=["search"])
+        )
         assert registry.is_readonly("docs__search")
         result = await registry.execute(plan.call, _expected=plan.binding)
         assert result.is_error and transport.calls == []
@@ -217,7 +221,7 @@ async def test_policy_denial_happens_before_remote_execution():
         model=model,
         plugins=[
             MCP("docs", transport=transport),
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
             ToolApprovalGuard(risky=["docs__search"], ask=lambda request: False),
         ],
     )
@@ -260,7 +264,7 @@ async def test_call_timeout_and_abort_propagate_cancellation():
     call = ToolCall("docs__search", {"query": "x"})
     agent = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=call)]]),
-        plugins=[MCP("docs", transport=transport), Approvals.allow_all()],
+        plugins=[MCP("docs", transport=transport), Approvals(default=PolicyDecision.ALLOW)],
     )
     async with agent.session() as session:
         handle = await session.submit("search")
@@ -318,7 +322,7 @@ async def test_structured_and_image_content_and_output_limits():
         plugins=[
             MCP("docs", transport=transport),
             ToolOutputLimit(max_chars=256),
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
         ],
     )
     result = await agent.run("x")
@@ -343,7 +347,7 @@ async def test_reopening_session_does_not_replay_remote_calls(tmp_path):
     model = ScriptedModel([[ModelChunk(tool_call=call)], "done", "next"])
     agent = Agent(
         model=model,
-        plugins=[MCP("docs", transport=transport), Approvals.allow_all()],
+        plugins=[MCP("docs", transport=transport), Approvals(default=PolicyDecision.ALLOW)],
     )
     async with agent.session() as session:
         await session.run("search")
@@ -370,7 +374,7 @@ if __name__ == "__main__":
         model=ScriptedModel([[ModelChunk(tool_call=call)], "done"]),
         plugins=[
             MCP.stdio("local", command=sys.executable, args=[str(server)], startup_timeout=15),
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
         ],
     )
     result = await agent.run("echo")
@@ -400,7 +404,7 @@ if __name__ == "__main__":
     )
     argument = 'literal "quote"; $(not-a-command) & > file'
     async with Agent(model=ScriptedModel(["unused"])).session() as session:
-        await session.use(
+        await session.mount(
             MCP.stdio(
                 "local",
                 command=sys.executable,
@@ -438,7 +442,7 @@ if __name__ == "__main__":
         encoding="utf-8",
     )
     async with Agent(model=ScriptedModel(["unused"])).session() as session:
-        await session.use(
+        await session.mount(
             MCP.stdio(
                 "local", command=sys.executable, args=[str(server), failure], startup_timeout=15
             )
@@ -456,7 +460,7 @@ async def test_business_error_does_not_close_the_connection():
         result=CallToolResult(content=[TextContent(type="text", text="not found")], isError=True)
     )
     async with Agent(model=ScriptedModel(["unused"])).session() as session:
-        await session.use(MCP("docs", transport=transport))
+        await session.mount(MCP("docs", transport=transport))
         registry = session.scope[ToolRegistry]
         first = await registry.execute(ToolCall("docs__search", {"query": "missing"}))
         assert first.status is ToolStatus.ERROR and registry.definitions
@@ -470,7 +474,7 @@ async def test_business_error_does_not_close_the_connection():
 async def test_idle_disconnect_hides_tools_on_the_next_call():
     transport = MemoryTransport()
     async with Agent(model=ScriptedModel(["unused"])).session() as session:
-        await session.use(MCP("docs", transport=transport))
+        await session.mount(MCP("docs", transport=transport))
         await transport.server_output.aclose()
         await asyncio.wait_for(transport.server_stopped.wait(), 2)
         registry = session.scope[ToolRegistry]

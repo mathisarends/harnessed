@@ -109,7 +109,7 @@ changed tools, remove and mount a new recipe:
 
 ```python
 async with agent.session() as session:
-    handle = await session.use(project)
+    handle = await session.mount(project)
     result = await session.run("Inspect the project.")
     await handle.aclose()
 ```

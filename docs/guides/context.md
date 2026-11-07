@@ -32,7 +32,8 @@ services or live activation state. A class docstring remains Python documentatio
 
 ## Select plugin order explicitly
 
-The application opts into collection with a required order argument:
+The application opts into collection with `SystemPrompt.from_plugins()`.
+Its optional `order` argument defaults to `PluginOrder.AS_LISTED`:
 
 ```python
 from harnessed import Agent, PluginOrder, PromptFormat, SystemPrompt
@@ -56,7 +57,7 @@ selection; sessions reuse that content.
 
 A selected plugin overriding `instructions()` requires this explicit strategy.
 Omitting it raises `ConfigError` before providers are called, even when an
-override would return empty content. There is no default ordering argument.
+override would return empty content. Omitting `order` uses configured plugin-list order.
 Plain plugins inheriting the empty base method require no prompt configuration.
 
 `Agent(instructions="...")` prepends application-owned text. `prompt=` accepts a
@@ -154,7 +155,7 @@ delivery explicitly when mounting such a capability:
 ```python
 from harnessed import SectionDelivery
 
-handle = await session.use(interaction, section_delivery=SectionDelivery.CONTEXT)
+handle = await session.mount(interaction, section_delivery=SectionDelivery.CONTEXT)
 await handle.aclose()
 ```
 

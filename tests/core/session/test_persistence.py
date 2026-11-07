@@ -184,8 +184,9 @@ async def test_storage_failure_reaches_the_run_caller_without_returning_success(
             if mode == "run":
                 await session.run("Work")
             else:
-                async for _event in session.stream("Work"):
-                    pass
+                async with session.stream("Work") as run_stream:
+                    async for _event in run_stream:
+                        pass
 
 
 @pytest.mark.parametrize("operation", ["context", "flush"])

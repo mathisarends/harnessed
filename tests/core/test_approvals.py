@@ -53,7 +53,7 @@ async def test_grants_are_cached_only_in_the_live_session_and_not_in_imported_st
             ]
         ),
         plugins=[
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
             Work(),
             ToolApprovalGuard(risky={"work"}, ask=answer),
         ],
@@ -95,7 +95,7 @@ async def test_single_call_answers_are_logged_without_becoming_persistent_grants
         harness = Application(
             model=tool_model(),
             plugins=[
-                Approvals.allow_all(),
+                Approvals(default=PolicyDecision.ALLOW),
                 tools,
                 ToolApprovalGuard(risky={"work"}, ask=answer),
             ],
@@ -132,7 +132,7 @@ async def test_gate_scopes_do_not_share_persistent_permissions(tmp_path):
         async with Application(
             model=tool_model(),
             plugins=[
-                Approvals.allow_all(),
+                Approvals(default=PolicyDecision.ALLOW),
                 tools,
                 ToolApprovalGuard(risky={"work"}, ask=answer, scope=scope),
             ],
@@ -164,7 +164,7 @@ async def test_tool_policy_ask_uses_the_same_durable_approval_path(tmp_path):
         async with Application(
             model=tool_model(),
             plugins=[
-                Approvals.allow_all(),
+                Approvals(default=PolicyDecision.ALLOW),
                 tools,
                 Service(Approver, CallbackApprover(answer)),
             ],
@@ -191,7 +191,7 @@ async def test_cancellation_closes_an_unanswered_approval_and_does_not_execute_t
     async with Application(
         model=tool_model(),
         plugins=[
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
             tools,
             ToolApprovalGuard(risky={"work"}, ask=wait),
         ],

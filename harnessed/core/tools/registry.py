@@ -11,15 +11,13 @@ from pydantic import BaseModel, ConfigDict, Field, RootModel, TypeAdapter, Valid
 from pydantic.fields import FieldInfo
 
 from harnessed.core.errors import ToolNameConflict
-from harnessed.core.messages import JSONMapping, ToolCall, ToolResult, ToolStatus
+from harnessed.core.messages import ToolCall, ToolResult, ToolStatus
 from harnessed.core.model import ToolDefinition
 from harnessed.core.tools.arguments import ToolArguments, tool_result_content
 from harnessed.core.tools.context import ToolContext, ToolContexts
 from harnessed.core.tools.enabled import ToolEnabled, bind_enabled, validate_enabled
 from harnessed.core.tools.info import (
-    ToolAnnotations,
     ToolChain,
-    ToolIcon,
     ToolInfo,
     ToolMetadata,
     ToolPresentation,
@@ -243,11 +241,7 @@ class ToolRegistry:
         *,
         name: str | None = None,
         description: str | None = None,
-        title: str | None = None,
-        tags: Iterable[str] = (),
-        icons: Iterable[ToolIcon] = (),
-        annotations: ToolAnnotations | None = None,
-        meta: JSONMapping | None = None,
+        presentation: ToolPresentation | None = None,
         enabled: ToolEnabled = True,
         timeout: float | None = None,
         parallel: bool = False,
@@ -269,11 +263,7 @@ class ToolRegistry:
         *,
         name: str | None = None,
         description: str | None = None,
-        title: str | None = None,
-        tags: Iterable[str] = (),
-        icons: Iterable[ToolIcon] = (),
-        annotations: ToolAnnotations | None = None,
-        meta: JSONMapping | None = None,
+        presentation: ToolPresentation | None = None,
         enabled: ToolEnabled = True,
         timeout: float | None = None,
         parallel: bool = False,
@@ -292,11 +282,7 @@ class ToolRegistry:
                 callback,
                 name=name,
                 description=description,
-                title=title,
-                tags=tags,
-                icons=icons,
-                annotations=annotations,
-                meta=meta,
+                presentation=presentation,
                 enabled=enabled,
                 timeout=timeout,
                 parallel=parallel,
@@ -320,11 +306,7 @@ class ToolRegistry:
         *,
         name: str | None = None,
         description: str | None = None,
-        title: str | None = None,
-        tags: Iterable[str] = (),
-        icons: Iterable[ToolIcon] = (),
-        annotations: ToolAnnotations | None = None,
-        meta: JSONMapping | None = None,
+        presentation: ToolPresentation | None = None,
         enabled: ToolEnabled = True,
         timeout: float | None = None,
         parallel: bool = False,
@@ -343,9 +325,7 @@ class ToolRegistry:
         spec = spec or ToolSpec(
             name=name,
             description=description,
-            presentation=ToolPresentation(
-                title=title, tags=tags, icons=icons, annotations=annotations, meta=meta
-            ),
+            presentation=presentation if presentation is not None else ToolPresentation(),
             enabled=enabled,
             timeout=timeout,
             parallel=parallel,

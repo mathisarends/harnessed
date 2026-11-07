@@ -14,6 +14,7 @@ from threading import Thread, get_ident
 import pytest
 from pydantic import JsonValue, SecretStr
 
+from harnessed import PolicyDecision
 from harnessed.models import ProviderState
 
 pytest.importorskip("opentelemetry.sdk")
@@ -558,7 +559,7 @@ async def test_parallel_tools_are_siblings_and_inherit_context(telemetry):
         model=ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "done"]),
         plugins=[
             Work(),
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
             OpenTelemetryTracer(tracer_provider=provider),
         ],
     ).run("go")
@@ -598,7 +599,7 @@ async def test_tool_result_errors_mark_the_span_without_raising(
         model=ScriptedModel([[ModelChunk(tool_call=ToolCall("work"))], "recovered"]),
         plugins=[
             Work(),
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
             OpenTelemetryTracer(tracer_provider=provider),
         ],
     ).run("go")

@@ -62,9 +62,8 @@ async def test_explicit_collection_renders_complete_blocks(format, expected):
         assert await session.prompt.render() == expected
 
 
-def test_plugin_order_is_required_and_validated():
-    with pytest.raises(TypeError, match="order"):
-        SystemPrompt.from_plugins()
+def test_plugin_order_defaults_to_configured_order_and_is_validated():
+    assert SystemPrompt.from_plugins().plugin_order is PluginOrder.AS_LISTED
     with pytest.raises(ValueError):
         SystemPrompt.from_plugins(order="setup")
 

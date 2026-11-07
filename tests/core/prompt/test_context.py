@@ -10,6 +10,7 @@ from harnessed import (
     Inject,
     Observation,
     Plugin,
+    PolicyDecision,
     Session,
     SessionState,
     ToolCall,
@@ -41,7 +42,9 @@ async def test_task_context_lasts_one_turn_and_precedes_task_prompt():
     tools = ToolsPlugin(name="continue")
 
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("step"))], "first", "second"])
-    async with Application(model=model, plugins=[Approvals.allow_all(), tools]).session() as agent:
+    async with Application(
+        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), tools]
+    ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("review", context={"ticket": "Fix login", "details": {"issue": 42}})
         for request in model.requests[:2]:
@@ -60,7 +63,9 @@ async def test_file_and_image_attachments_are_snapshotted_in_log_and_wire_payloa
     image = tmp_path / "screenshot.png"
     image.write_bytes(b"image-test-bytes")
     model = ScriptedModel(["reviewed"])
-    async with Application(model=model, plugins=[Approvals.allow_all()]).session() as agent:
+    async with Application(
+        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+    ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("Review", attachments=[File(diff), Image(image)])
         request = model.requests[0]
@@ -92,7 +97,9 @@ async def test_steering_carries_attachments_like_a_run(tmp_path):
 
 async def test_added_context_is_additive_quiet_and_retained_across_turns():
     model = ScriptedModel(["first", "second"])
-    async with Application(model=model, plugins=[Approvals.allow_all()]).session() as agent:
+    async with Application(
+        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+    ).session() as agent:
         await agent.add_context("External change")
         await agent.add_context("External change")
         await agent.control.join()
@@ -163,7 +170,7 @@ async def test_push_context_from_pre_step_is_in_the_current_request():
 
     model = ScriptedModel(["done"])
     async with Application(
-        model=model, plugins=[Approvals.allow_all(), Recall()]
+        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), Recall()]
     ).session() as agent:
         await agent.run("my task")
         assert seen == [(True, "my task")]
@@ -188,7 +195,7 @@ async def test_explicit_class_needs_and_injected_dynamic_project_context(tmp_pat
     async with Application(
         model=model,
         plugins=[
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
             Service(FileSystemBackend, LocalFileSystem(tmp_path)),
             Project(),
         ],
@@ -219,7 +226,7 @@ async def test_observations_remain_unchanged_in_later_steps():
 
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("click", {"ref": "button-1"}))], "done"])
     async with Application(
-        model=model, plugins=[Approvals.allow_all(), tools, BrowserObserver()]
+        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), tools, BrowserObserver()]
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("Open settings")

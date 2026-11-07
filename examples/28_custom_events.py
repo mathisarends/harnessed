@@ -44,13 +44,14 @@ async def main():
     )
     audit: list[ProjectIndexed] = []  # Application-owned audit storage.
     async with agent.session() as session:
-        async for event in session.stream("Index this project."):
-            match event:
-                case ProjectIndexed(files=count):
-                    audit.append(event)
-                    print("Indexed:", count)
-                case TextDeltaEvent(text=text):
-                    print(text)
+        async with session.stream("Index this project.") as run_stream:
+            async for event in run_stream:
+                match event:
+                    case ProjectIndexed(files=count):
+                        audit.append(event)
+                        print("Indexed:", count)
+                    case TextDeltaEvent(text=text):
+                        print(text)
     payload = adapter.dump_json(audit[0])
     decoded = adapter.validate_json(payload)
     assert isinstance(decoded, ProjectIndexed)

@@ -69,7 +69,7 @@ async def test_context_plugin_is_inspectable_reversible_and_does_not_wake_idle_s
     app = Agent(model=model, plugins=[ContextValue("date", lambda: "today")])
     assert "date: <evaluated per step>" in str(app.prompt)
     async with app.session() as session:
-        mounted = await session.use(ContextValue("temporary", "value"))
+        mounted = await session.mount(ContextValue("temporary", "value"))
         await session.scope[DynamicContext].set("temporary", "value")
         assert session.scope[DynamicContext].values == {"temporary": "value"}
         await mounted.aclose()

@@ -6,7 +6,6 @@ from examples.features.workspace import FailureNudge, WorkspaceTools
 from harnessed import (
     Agent,
     ApprovalAnswer,
-    PluginOrder,
     PolicyDecision,
     SystemPrompt,
 )
@@ -30,7 +29,7 @@ async def main():
     )
     filesystem = Filesystem(root=".")
     agent = Agent(
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+        prompt=SystemPrompt.from_plugins(),
         model=model,
         plugins=[
             filesystem,
@@ -44,12 +43,13 @@ async def main():
         ],
     )
     async with agent.session() as session:
-        async for event in session.stream("Count the lines in the example file."):
-            match event:
-                case ToolProgressEvent(text=text):
-                    print(f"Progress: {text}")
-                case ToolCallFinishedEvent(result=result):
-                    print(f"Result ({result.status}): {result.content}")
+        async with session.stream("Count the lines in the example file.") as run_stream:
+            async for event in run_stream:
+                match event:
+                    case ToolProgressEvent(text=text):
+                        print(f"Progress: {text}")
+                    case ToolCallFinishedEvent(result=result):
+                        print(f"Result ({result.status}): {result.content}")
         schema = next(
             tool.parameters for tool in model.requests[0].tools if tool.name == "count_lines"
         )

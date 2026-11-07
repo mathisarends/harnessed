@@ -11,16 +11,17 @@ from harnessed.events import (
     TextDeltaEvent,
 )
 
-async for event in session.stream("Inspect the project."):
-    match event:
-        case TextDeltaEvent(text=text):
-            print(text, end="", flush=True)
-        case ReasoningDeltaEvent(text=text):
-            show_reasoning(text)
-        case CompactionAppliedEvent(summary=summary):
-            show_summary(summary)
-        case SpillCreatedEvent(ref=ref):
-            show_artifact(ref.path)
+async with session.stream("Inspect the project.") as run:
+    async for event in run:
+        match event:
+            case TextDeltaEvent(text=text):
+                print(text, end="", flush=True)
+            case ReasoningDeltaEvent(text=text):
+                show_reasoning(text)
+            case CompactionAppliedEvent(summary=summary):
+                show_summary(summary)
+            case SpillCreatedEvent(ref=ref):
+                show_artifact(ref.path)
 ```
 
 Tags are stable namespaced strings, including `text.delta`, `reasoning.delta`,
@@ -50,18 +51,19 @@ from harnessed.events import (
     ToolCallFinishedEvent,
 )
 
-async for event in session.stream("Publish the report"):
-    match event:
-        case ToolCallRequestedEvent(call=call):
-            ui.tool_pending(call.id, call.name)
-        case ApprovalNeededEvent(call=call, reason=reason):
-            ui.tool_awaiting_approval(call.id, reason)
-        case ToolExecutionStartedEvent(call_id=call_id):
-            ui.tool_running(call_id)
-        case ToolProgressEvent(call_id=call_id, text=text):
-            ui.tool_progress(call_id, text)
-        case ToolCallFinishedEvent(call=call, result=result):
-            ui.tool_done(call.id, result)
+async with session.stream("Publish the report") as run:
+    async for event in run:
+        match event:
+            case ToolCallRequestedEvent(call=call):
+                ui.tool_pending(call.id, call.name)
+            case ApprovalNeededEvent(call=call, reason=reason):
+                ui.tool_awaiting_approval(call.id, reason)
+            case ToolExecutionStartedEvent(call_id=call_id):
+                ui.tool_running(call_id)
+            case ToolProgressEvent(call_id=call_id, text=text):
+                ui.tool_progress(call_id, text)
+            case ToolCallFinishedEvent(call=call, result=result):
+                ui.tool_done(call.id, result)
 ```
 
 The approval UI answers through `session.approvals`; execution starts only after

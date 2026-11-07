@@ -106,8 +106,9 @@ the root SDK remains lazy and does not re-export the service catalog.
 
 ## Approval policy
 
-`Approvals.allow_all()` and `Approvals.ask_all()` select the fallback decision;
-both accept `approver=` and `timeout=`. `Approvals(allow=..., ask=..., deny=...)`
+`Approvals(default=PolicyDecision.ALLOW)` and `Approvals(default=PolicyDecision.ASK)`
+select the fallback decision; both accept `approver=` and `timeout=`. Tool flags
+still take precedence over that fallback. `Approvals(allow=..., ask=..., deny=...)`
 accepts tool references or names. Tools declare `@tool(confirm=True)` or
 `@tool(readonly=True)`; these flags are mutually exclusive and are captured in
 `ToolInfo` when scheduling. Explicit application rules precede tool flags and
@@ -116,7 +117,7 @@ slot replacement. See [approval composition](../guides/approvals.md).
 
 ## Tool presentation
 
-`@tool(title=None, tags=(), icons=(), annotations=None, meta=None, ...)` attaches
+`@tool(presentation=ToolPresentation(...))` attaches
 immutable display and JSON integration metadata to native tools. Import
 `ToolAnnotations`, `ToolIcon` and `ToolPresentation` from `harnessed`. Policy,
 execution and review hooks expose the captured `ToolInfo.presentation`; display
@@ -207,7 +208,7 @@ plugin_validation=PluginValidation.ERROR, store=None)` resolves reusable configu
 | agent.prompt | Inspectable PromptComposition with final order, origins and format |
 | store | Optional application-owned SessionStore; None keeps sessions ephemeral |
 | agent.session(*, state=None, id=None, restore_outputs=()) | Open a Session from explicit state or a stored conversation; id requires a store |
-| agent.run(prompt, state=None, **options) | Run one turn and return its terminal result and state |
+| agent.run(content, state=None, **options) | Run one turn from text or a Message and return its terminal result and state |
 | agent.child_session(request) | Factory boundary for a fresh parent-owned child; application code normally uses Subagents |
 | SessionState.from_json(payload) / state.to_json() | Validate or encode the canonical conversation snapshot in memory |
 
@@ -307,7 +308,7 @@ away. The outermost format controls all nested content. PLAIN joins text with bl
 lines, MARKDOWN adds optional level-two headings, and XML escapes section content.
 
 `SystemPrompt.from_plugins(*parts, order=PluginOrder.AS_LISTED, format=...)` opts into
-collection. **The keyword-only `order` argument has no default.** Fixed parts appear
+collection. The optional `order` defaults to `PluginOrder.AS_LISTED`. Fixed parts appear
 before complete plugin blocks in resolved plugin-list order. Nested packs expand
 at their list position; removals disappear and replacements keep inherited slot
 positions. Only final winners' providers run, once at agent construction.
@@ -329,12 +330,15 @@ Scope callbacks until each session opens. Session effects have session ownership
 `print(agent.prompt)` shows final order and origins;
 `await session.prompt.render()` returns the actual session text.
 
-`session.use(plugin, section_delivery=SectionDelivery.ERROR)` rejects overridden
+`async with session.use(plugin, section_delivery=SectionDelivery.ERROR)` rejects overridden
 instruction providers before mounting. `CONTEXT` evaluates the method and content
 sources once per activation and delivers mount-owned context, removed on suspension
 or unmount. Failures roll back the mount. `IGNORE` never calls providers, factories
 or reads files. Runtime delivery does not change the fixed system prompt.
 See the [context guide](../guides/context.md).
+
+Use `await session.mount(plugin, section_delivery=...)` for a manually managed
+handle, and close it with `await handle.aclose()`.
 
 ## Session
 
@@ -350,9 +354,9 @@ after completion it raises `SessionStateError` instead of starting a new turn.
 
 | Member | Behavior |
 | --- | --- |
-| run(prompt, output=None, attachments=(), context=None, settings=None, max_steps=None, token_budget=None) | Queue and await this turn's RunResult[T] |
-| submit(prompt, output=None, ...) | Acknowledge queued input and return RunHandle[T] |
-| stream(prompt, output=None, ...) | Typed UI and custom events, ending with TurnResultEvent |
+| run(content, output=None, attachments=(), context=None, settings=None, max_steps=None, token_budget=None) | Queue and await this turn's RunResult[T]; content is text or a Message, as on Agent.run() |
+| submit(content, output=None, ...) | Acknowledge queued input and return RunHandle[T] |
+| stream(content, output=None, ...) | Async context manager yielding RunHandle[T]; iterate it for UI and custom events, ending with TurnResultEvent |
 | steer(content, attachments=()) | Send a next-step correction and return its InboxItem |
 | observe(observation) | Buffer the latest text/image snapshot per source for the next step; recorded snapshots stay unchanged until compaction or an explicit retention policy |
 | add_context(content: str) | Append text for subsequent model requests without starting a turn or invoking the model; commit before returning when a store is configured |
@@ -361,7 +365,8 @@ after completion it raises `SessionStateError` instead of starting a new turn.
 | stop(keep_inbox=False) | Finish this step, end its turn, return to idle |
 | abort(keep_inbox=False) | Cancel now, drain cleanup, repair and end its turn |
 | wait_until_idle() | Wait for idle and an empty inbox |
-| use(plugin, section_delivery=SectionDelivery.ERROR) | Mount a reversible capability; CONTEXT owns guidance per activation, IGNORE skips sections |
+| use(plugin, section_delivery=SectionDelivery.ERROR) | Async context manager owning a temporary capability; CONTEXT owns guidance per activation, IGNORE skips sections |
+| mount(plugin, section_delivery=SectionDelivery.ERROR) | Await a manually managed PluginHandle; call handle.aclose() to remove it |
 | compact() | Summarize completed history while idle or paused; return its record or None |
 | snapshot() | Export immutable conversation state at an idle boundary |
 | flush() | Await pending checkpoint persistence; no I/O without a store |
@@ -432,6 +437,10 @@ Passing `output=T` or `output=OutputContract("answer.v1", T)` adds a validated
 `output` of type `T`; an unstructured result's
 output is None. See [structured answers](../guides/structured-output.md) for retry
 limits, incomplete turns and restoration after a process restart.
+`result.require_output()` returns that original value only after successful turn
+completion. It raises `OutputUnavailable` with the stop reason for incomplete work.
+For completed unstructured runs it returns None. The `output` property remains
+available to inspect a validated value without asserting completion.
 The [UI stream](../guides/streaming.md) carries text/reasoning deltas, tool lifecycle,
 approval requests, status and one terminal result; raw log subscriptions are separate.
 StopReason includes END, MAX_TOKENS, MAX_STEPS, TOKEN_BUDGET, STOPPED, ABORTED and DISCARDED.

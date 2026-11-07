@@ -2,7 +2,7 @@ import asyncio
 from collections.abc import AsyncGenerator, Callable, Coroutine
 from contextlib import asynccontextmanager
 
-from harnessed.core.errors import SessionClosed, SessionStateError
+from harnessed.core.errors import RunUnavailable, SessionClosed, SessionStateError
 from harnessed.core.events.session import ControlState, SessionControlChangedEvent
 from harnessed.core.events.session import SessionStatus as SessionStatus
 from harnessed.core.hooks import SessionAborting
@@ -197,6 +197,11 @@ class SessionControl:
     async def abort(self, *, keep_inbox: bool = False) -> None:
         await self._terminate(immediate=True, keep_inbox=keep_inbox)
 
+    async def cancel_turn(self, turn_id: str) -> None:
+        """Abort only this turn; a completion race cannot abort its successor."""
+        await self._terminate(immediate=True, keep_inbox=True, turn_id=turn_id)
+        self.wake()
+
     async def finish_termination(self) -> None:
         self.finishing = True
         if self.log.control.state not in (ControlState.STOPPING, ControlState.STOPPED):
@@ -250,7 +255,12 @@ class SessionControl:
         self.notify()
 
     async def _terminate(
-        self, *, immediate: bool, keep_inbox: bool, during_close: bool = False
+        self,
+        *,
+        immediate: bool,
+        keep_inbox: bool,
+        during_close: bool = False,
+        turn_id: str | None = None,
     ) -> None:
         if not during_close:
             self._check_external()
@@ -259,7 +269,11 @@ class SessionControl:
         async with self._request():
             if not during_close:
                 self.check_open()
-            if immediate:
+            if turn_id is not None:
+                turn = self.log.open_turn
+                if turn is None or turn.id != turn_id:
+                    return
+            if immediate and turn_id is None:
                 await self._abort_owned_work()
             task = self.task
             if task is not None and (task.done() or self.finishing):
@@ -273,7 +287,13 @@ class SessionControl:
             requested = ControlState.ABORTING if immediate else ControlState.STOPPING
             if state not in (requested, ControlState.ABORTING):
                 try:
-                    await self.log.append(SessionControlChangedEvent(requested, keep_inbox))
+                    await self.log.append(
+                        SessionControlChangedEvent(requested, keep_inbox), expected_turn=turn_id
+                    )
+                    if immediate and turn_id is not None:
+                        await self._abort_owned_work()
+                except RunUnavailable:
+                    return
                 finally:
                     if (
                         immediate

@@ -6,6 +6,7 @@ from harnessed import (
     Agent,
     Instructions,
     PluginOrder,
+    PolicyDecision,
     SystemPrompt,
 )
 from harnessed.plugins import Approvals, Filesystem, Shell
@@ -21,7 +22,7 @@ async def test_scripted_replies_and_fake_shell_keep_process_results_and_argument
     result = await Agent(
         prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
-        plugins=[shell, Approvals.allow_all()],
+        plugins=[shell, Approvals(default=PolicyDecision.ALLOW)],
     ).run("Test")
     _, output = assert_tool_called(result, "run_command", argv=["pytest"])
     assert output.exit_code == 0 and "1 passed" in output.content

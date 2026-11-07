@@ -142,7 +142,7 @@ async def test_dynamic_context_is_durable_changes_only_and_does_not_change_syste
 
 async def test_runtime_context_is_explicit_and_disposes_with_its_plugin():
     async with Agent(model=ScriptedModel(["done"]), instructions="Fixed.").session() as session:
-        handle = await session.use(ContextValue(key="runtime.help", value="Runtime help."))
+        handle = await session.mount(ContextValue(key="runtime.help", value="Runtime help."))
         await session.run("Refresh context")
         assert list(session.scope[DynamicContext].values.values()) == ["Runtime help."]
         assert await session.prompt.render() == "Fixed."
@@ -158,7 +158,7 @@ async def test_removed_runtime_plugins_are_collectable_while_the_session_stays_o
         references = []
         for index in range(10):
             recipe = Plugin(needs=(Missing,) if index % 2 else ())
-            handle = await session.use(recipe)
+            handle = await session.mount(recipe)
             references.extend((weakref.ref(handle), weakref.ref(recipe)))
             await handle.aclose()
         del handle, recipe
@@ -181,7 +181,7 @@ async def test_default_approvals_allow_reads_and_reject_side_effects_without_a_r
 
 def test_explicit_duplicate_slots_raise_instead_of_silently_overriding():
     with pytest.raises(PluginConflict, match="approvals"):
-        Agent(plugins=[Approvals(), Approvals.allow_all()])
+        Agent(plugins=[Approvals(), Approvals(default=PolicyDecision.ALLOW)])
 
 
 @pytest.mark.parametrize("user_answer", [False, True])
@@ -234,7 +234,7 @@ async def test_runtime_context_tracks_temporal_dependency_restarts():
         needs = (*ContextValue.needs, Backend)
 
     async with Agent(model=ScriptedModel(["one", "two"])).session() as session:
-        handle = await session.use(Runtime(key="backend", value="Use the active backend."))
+        handle = await session.mount(Runtime(key="backend", value="Use the active backend."))
         assert handle.status == PluginStatus.WAITING and session.scope[DynamicContext].values == {}
         remove = session.scope.provide(Backend, Backend())
         await session.scope.settle()

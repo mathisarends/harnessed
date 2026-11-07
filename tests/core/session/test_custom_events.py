@@ -44,7 +44,8 @@ async def test_custom_audit_events_are_separate_from_conversation_state():
     model = ScriptedModel([call(Indexer.index), "done"])
     async with Agent(model=model, plugins=[Indexer()]).session() as session:
         audit = Audit(session)
-        live = [event async for event in session.stream("Index")]
+        async with session.stream("Index") as run_stream:
+            live = [event async for event in run_stream]
         assert next(event for event in live if isinstance(event, IndexProgress)).text == "Indexing"
         assert next(event for event in live if isinstance(event, ProjectIndexed)).files == 42
         assert not any(isinstance(event, IndexProgress) for event in audit.events)
@@ -61,7 +62,7 @@ async def test_custom_audit_events_are_separate_from_conversation_state():
 async def test_runtime_declarations_remain_readable_after_plugin_disposal():
     async with Agent(model=ScriptedModel([])).session() as session:
         audit = Audit(session)
-        handle = await session.use(Indexer())
+        handle = await session.mount(Indexer())
         await session.emit(ProjectIndexed(3))
         await handle.aclose()
         await session.emit(ProjectIndexed(4))

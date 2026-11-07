@@ -1,22 +1,20 @@
 # Streaming a turn
 
-`session.stream(...)` queues one turn and yields typed events for that turn.
-Handle the events your application needs. A text consumer needs only text deltas
-and the terminal result:
+`async with session.stream(...) as run` queues one turn and opens a `RunHandle[T]`.
+Iterate the handle for typed UI and application events; await `run.result()` for
+the assembled result independently of event consumption:
 
 ```python
-from contextlib import aclosing
 from harnessed import Session, events
 
 
 async def show(session: Session) -> None:
-    async with aclosing(session.stream("Review the patch.")) as stream:
-        async for event in stream:
-            match event:
-                case events.TextDeltaEvent(text=text):
-                    print(text, end="", flush=True)
-                case events.TurnResultEvent(result=result):
-                    print("\nFinished:", result.stop_reason)
+    async with session.stream("Review the patch.") as run:
+        async for event in run:
+            if isinstance(event, events.TextDeltaEvent):
+                print(event.text, end="", flush=True)
+        result = await run.result()
+        print("\nFinished:", result.stop_reason)
 ```
 
 Unmatched cases are ignored; `case _: pass` is optional. Informational events do
@@ -26,12 +24,22 @@ not require exhaustive handling. If the turn can ask for approval, also
 | Need | API |
 | --- | --- |
 | Await the assembled result | `await session.run(...)` |
-| Consume one turn's UI and application events | `session.stream(...)` |
+| Consume one turn's UI and application events | `async with session.stream(...) as run`, then `async for event in run` |
+| Queue without a UI responder | `run = await session.submit(...)` |
+| Cancel one queued or active run | `await run.cancel()` |
 | Observe the session's audit events across turns | `session.subscribe()` |
 
 Run `uv run python -m examples.33_basic_stream` for the minimal offline consumer.
 The sections below add individual capabilities; the
 [event reference](../reference/events.md) lists the built-in events.
+
+Opening the context installs observation before input admission, so initial events
+are included. Exiting closes observation and the approval responder; the run keeps
+executing and its handle can still return the result afterward. `run.cancel()`
+discards only its queued input or aborts only its active turn, preserving other
+queued runs. A completed handle is unaffected. Cancelling a result or cancellation
+waiter does not cancel the session-owned operation. Handles from `submit()` expose
+the same result and cancellation operations; live iteration requires `stream()`.
 
 `events.SessionStatusChangedEvent` reports the control state. Turn completion does not
 imply an idle session: another queued turn may have started. Compaction, spill and
@@ -196,9 +204,9 @@ resolution. A configured approver or earlier answering hook takes precedence.
 Late answers fail with `ApprovalUnavailable`; identical acknowledged answers
 are harmless, and an already submitted decision cannot be changed.
 
-Use `aclosing` when leaving the loop early. Closing the stream removes its responder
+Leave the `async with` context when disconnecting. Exiting removes its responder
 and resolves pending questions as unavailable. It does not abort the conversation;
-use `session.abort()` for that. Cancelling an `answer()` waiter does not withdraw
+use `run.cancel()` to abort that run. Cancelling an `answer()` waiter does not withdraw
 an already submitted decision. Headless runs need a configured approver for ASK.
 
 ## Observe compaction

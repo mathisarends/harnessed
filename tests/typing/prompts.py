@@ -26,7 +26,7 @@ assert_type(PluginOrder.AS_LISTED, PluginOrder)
 layout = SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED, format=PromptFormat.MARKDOWN)
 Agent(instructions="Role.", plugins=[None, PluginPack("feature", [feature, None], prompt=layout)])
 Agent(prompt=layout)
-SystemPrompt.from_plugins()  # ty: ignore[missing-argument]
+SystemPrompt.from_plugins()
 SystemPrompt.from_plugins(order="as_listed")  # ty: ignore[invalid-argument-type]
 SystemPrompt(42)  # ty: ignore[invalid-argument-type]
 SystemPrompt(("raw text",))  # ty: ignore[invalid-argument-type]
@@ -48,4 +48,4 @@ Instructions(text=42)  # ty: ignore[invalid-argument-type]
 
 
 async def mount(session: Session) -> None:
-    await session.use(feature, section_delivery=SectionDelivery.CONTEXT)
+    await session.mount(feature, section_delivery=SectionDelivery.CONTEXT)

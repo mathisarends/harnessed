@@ -8,7 +8,6 @@ from tempfile import TemporaryDirectory
 from harnessed import (
     Agent,
     ApprovalAnswer,
-    PluginOrder,
     SystemPrompt,
     ToolCall,
 )
@@ -75,7 +74,7 @@ async def main() -> None:
     with TemporaryDirectory() as temporary:
         workspace = Path(temporary)
         agent = Agent(
-            prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+            prompt=SystemPrompt.from_plugins(),
             model=CallbackModel(respond),
             plugins=[
                 Shell(workspace),

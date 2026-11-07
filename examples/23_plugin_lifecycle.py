@@ -8,7 +8,6 @@ from harnessed import (
     Agent,
     ApprovalAnswer,
     Plugin,
-    PluginOrder,
     SystemPrompt,
     ToolCall,
     tool,
@@ -89,7 +88,7 @@ async def trace(scope: Scope):
 async def main():
     notes = NotesTools(NotesConfig())
     harness = Agent(
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+        prompt=SystemPrompt.from_plugins(),
         model=ScriptedModel(
             [
                 [ModelChunk(tool_call=ToolCall("save_note", {"text": "Try Harnessed"}))],

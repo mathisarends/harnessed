@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
 
-from harnessed import Agent, Plugin, tool
+from harnessed import Agent, Plugin, PolicyDecision, tool
 from harnessed.integrations.opentelemetry import OpenTelemetryTracer, otlp_provider
 from harnessed.models import ModelUsage
 from harnessed.plugins import Approvals
@@ -56,7 +56,7 @@ async def main() -> None:
             ),
             plugins=[
                 Calculator(),
-                Approvals.allow_all(),
+                Approvals(default=PolicyDecision.ALLOW),
                 OpenTelemetryTracer(tracer_provider=provider),
             ],
         )

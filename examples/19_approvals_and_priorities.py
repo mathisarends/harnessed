@@ -25,7 +25,7 @@ async def without_ui():
     async with Agent(
         model=model,
         plugins=[
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
             tools,
             ToolApprovalGuard(risky=[HeadlessTools.publish]),
         ],
@@ -74,7 +74,7 @@ async def listener_and_priorities():
     agent = Agent(
         model=model,
         plugins=[
-            Approvals.allow_all(),
+            Approvals(default=PolicyDecision.ALLOW),
             ApprovedTools(),
             ToolApprovalGuard(risky=[ApprovedTools.publish], priority=-100),
         ],

@@ -12,6 +12,7 @@ from harnessed.core.composition import (
 )
 from harnessed.core.errors import ConfigError
 from harnessed.core.events.registry import EventRegistry
+from harnessed.core.messages import Message
 from harnessed.core.model import Model
 from harnessed.core.outputs import OutputContract, OutputTypes
 from harnessed.core.plugin import Service, plugin_contribution, plugin_events
@@ -146,7 +147,7 @@ class Agent:
     @overload
     async def run[T](
         self,
-        prompt: str,
+        content: str | Message,
         *,
         state: SessionState | None = None,
         output: type[T] | OutputContract[T],
@@ -156,7 +157,7 @@ class Agent:
     @overload
     async def run(
         self,
-        prompt: str,
+        content: str | Message,
         *,
         state: SessionState | None = None,
         output: None = None,
@@ -165,7 +166,7 @@ class Agent:
 
     async def run(
         self,
-        prompt: str,
+        content: str | Message,
         *,
         state: SessionState | None = None,
         output: type[Any] | OutputContract[Any] | None = None,
@@ -173,4 +174,4 @@ class Agent:
     ) -> RunResult[Any]:
         """Run one task in a new session."""
         async with self.session(state=state) as session:
-            return await session.run(prompt, output=output, **options)
+            return await session.run(content, output=output, **options)

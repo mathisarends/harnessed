@@ -32,7 +32,7 @@ uv add "harnessed[openai]"
 ```python
 import asyncio
 
-from harnessed import Agent, Instructions, Plugin, PluginOrder, SystemPrompt, tool
+from harnessed import Agent, Plugin, SystemPrompt, tool
 from harnessed.events import ToolCallFinishedEvent
 from harnessed.kernel import hook
 
@@ -56,7 +56,7 @@ agent = Agent(
     model="deepseek:deepseek-chat",  # DEEPSEEK_API_KEY
     plugins=[calculator],
     instructions="You are a helpful assistant. Keep answers concise.",
-    prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+    prompt=SystemPrompt.from_plugins(),
 )
 
 
@@ -71,7 +71,7 @@ asyncio.run(main())
 One plugin colocates the tool, its model-facing instructions and its event hook.
 `@tool` derives the input schema from Python types; the method docstring describes
 the tool. `@hook` observes the selected event type across the session.
-`SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)` explicitly collects
+`SystemPrompt.from_plugins()` explicitly collects
 complete instruction blocks in resolved plugin-list order.
 
 `Agent` is reusable configuration. `agent.run()` opens a session for one turn;
@@ -94,24 +94,25 @@ from harnessed.events import (
     ToolCallFinishedEvent,
     ToolCallRequestedEvent,
     ToolProgressEvent,
-    TurnFinishedEvent,
+    TurnResultEvent,
 )
 
 
 async def conversation() -> None:
     async with agent.session() as session:
-        async for event in session.stream("What is 19 + 23?"):
-            match event:
-                case TextDeltaEvent(text=text):
-                    print(text, end="", flush=True)
-                case ToolCallRequestedEvent(call=call):
-                    print(f"\nCalling {call.name}")
-                case ToolProgressEvent(text=text):
-                    print(f"\n{text}")
-                case ToolCallFinishedEvent(call=call, result=result):
-                    print(f"\n{call.name}: {result.status}")
-                case TurnFinishedEvent(result=result):
-                    print(f"\nFinished: {result.stop_reason}")
+        async with session.stream("What is 19 + 23?") as run:
+            async for event in run:
+                match event:
+                    case TextDeltaEvent(text=text):
+                        print(text, end="", flush=True)
+                    case ToolCallRequestedEvent(call=call):
+                        print(f"\nCalling {call.name}")
+                    case ToolProgressEvent(text=text):
+                        print(f"\n{text}")
+                    case ToolCallFinishedEvent(call=call, result=result):
+                        print(f"\n{call.name}: {result.status}")
+                    case TurnResultEvent(result=result):
+                        print(f"\nFinished: {result.stop_reason}")
 
         follow_up = await session.run("Add 8 to that result.")
         print(follow_up.text)
@@ -129,10 +130,10 @@ Events are immutable typed values with stable tags such as `text.delta` and
 | Model requests and retries | `ModelRequestedEvent`, `ModelRequestFailedEvent`, `ModelRetryScheduledEvent` |
 | Scope compaction | `CompactionStartedEvent`, `CompactionAppliedEvent`, `CompactionFinishedEvent` |
 | Large tool-output artifacts | `SpillCreatedEvent`, `SpillExpiredEvent` |
-| Session status and turn result | `SessionStatusChangedEvent`, `TurnFinishedEvent` |
+| Session status and turn result | `SessionStatusChangedEvent`, `TurnResultEvent` |
 
 `ToolCallFinishedEvent` carries the final tool result, including denied or
-interrupted calls. `TurnFinishedEvent` carries the assembled run result on normal
+interrupted calls. `TurnResultEvent` carries the assembled run result on normal
 stream completion. Plugins can also hook audit events such as `StepEndedEvent`
 and `TurnEndedEvent`, or declare their own event types.
 See the [event reference](https://github.com/mathisarends/harnessed/blob/main/docs/reference/events.md) for all events and delivery surfaces,
@@ -144,7 +145,7 @@ Bundle library defaults, nest packs, and replace individual policies at the
 application boundary:
 
 ```python
-from harnessed import Agent, PluginPack, PluginOrder, SystemPrompt
+from harnessed import Agent, PluginPack, SystemPrompt
 from harnessed.plugins import AgentLoop, Compaction, Filesystem, Shell
 
 
@@ -157,7 +158,7 @@ def workspace_pack(root: str) -> PluginPack:
             AgentLoop(max_steps=30),
             Compaction(keep_steps=4),
         ],
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
+        prompt=SystemPrompt.from_plugins(),
     )
 
 
@@ -174,7 +175,7 @@ print(agent.describe())
 `without(Shell)` removes that capability from the pack. The direct `AgentLoop`
 replaces the pack's loop through its `loop` slot; custom plugins can declare slots
 with `class MyPolicy(Plugin, slot="my.policy")`. Unslotted plugins are additive.
-`SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)` follows the selected
+`SystemPrompt.from_plugins()` follows the selected
 plugins, and `agent.describe()` shows their origins, replacements and exclusions before any session starts.
 
 Tools, approvals, output limits, compaction and tracing all compose through
@@ -234,7 +235,7 @@ from harnessed import Agent, SectionDelivery
 async def temporary_tools() -> None:
     agent = Agent(model="deepseek:deepseek-chat")
     async with agent.session() as session:
-        async with await session.use(Calculator(), section_delivery=SectionDelivery.CONTEXT):
+        async with session.use(Calculator(), section_delivery=SectionDelivery.CONTEXT):
             result = await session.run("What is 19 + 23?")
             print(result.text)
 ```

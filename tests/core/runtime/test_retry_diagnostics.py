@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import pytest
 from pydantic import BaseModel, TypeAdapter
 
-from harnessed import Agent, Plugin, Session, ToolCall, tool
+from harnessed import Agent, Plugin, PolicyDecision, Session, ToolCall, tool
 from harnessed.core.errors import ContextLengthExceeded, OutputValidationError, RateLimited
 from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.events import (
@@ -71,8 +71,9 @@ class InstrumentedModel(ScriptedModel):
 
 
 async def collect(session: Session, target: list, **kwargs) -> None:
-    async for event in session.stream("work", **kwargs):
-        target.append(event)
+    async with session.stream("work", **kwargs) as run_stream:
+        async for event in run_stream:
+            target.append(event)
 
 
 @pytest.mark.parametrize("exhausted", [False, True])
@@ -127,7 +128,8 @@ async def test_cancellation_during_backoff_does_not_start_a_planned_retry():
 
 async def test_uninstrumented_models_report_unknown_provider_counts():
     async with Agent(model=ScriptedModel(["answer"])).session() as session:
-        notifications = [e async for e in session.stream("work")]
+        async with session.stream("work") as run_stream:
+            notifications = [e async for e in run_stream]
         assert not any(isinstance(e, ModelAttemptStartedEvent) for e in notifications)
         finished = [e for e in notifications if isinstance(e, ModelAttemptFinishedEvent)]
         assert len(finished) == 1 and finished[0].outcome is ModelAttemptOutcome.SUCCEEDED
@@ -160,7 +162,8 @@ async def test_diagnostics_are_metadata_and_concurrent_requests_stay_separate(ca
 
 
 async def collect_events(session, text):
-    return [e async for e in session.stream(text)]
+    async with session.stream(text) as run_stream:
+        return [e async for e in run_stream]
 
 
 @pytest.mark.parametrize("tool_call", [False, True])
@@ -246,7 +249,8 @@ async def test_context_recovery_links_new_requests_without_counting_normal_steps
     ).session() as session:
         session_audit = Audit(session)
         await session.run("x" * 4000)
-        notifications = [e async for e in session.stream("next")]
+        async with session.stream("next") as run_stream:
+            notifications = [e async for e in run_stream]
         scheduled = [e for e in notifications if isinstance(e, ModelRetryScheduledEvent)]
         assert len(scheduled) == 1 and scheduled[0].retry_kind is RetryKind.CONTEXT_RECOVERY
         starts = [e for e in notifications if isinstance(e, ModelAttemptStartedEvent)]
@@ -274,10 +278,11 @@ async def test_tool_steps_do_not_count_as_retries_and_new_groups_use_the_remaini
     ]
     async with Agent(
         model=ScriptedModel([[ModelChunk(tool_call=call)] for call in calls]),
-        plugins=[Tools(), Approvals.allow_all(), AgentLoop(output_retries=2)],
+        plugins=[Tools(), Approvals(default=PolicyDecision.ALLOW), AgentLoop(output_retries=2)],
     ).session() as session:
         session_audit = Audit(session)
-        notifications = [e async for e in session.stream("work", output=Answer)]
+        async with session.stream("work", output=Answer) as run_stream:
+            notifications = [e async for e in run_stream]
         starts = [e for e in notifications if isinstance(e, ModelAttemptStartedEvent)]
         assert [e.attempt for e in starts] == [2, 2]
         assert [e.max_retries for e in starts] == [2, 1]
