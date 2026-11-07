@@ -134,7 +134,7 @@ interrupt the wait. Forwarding a child's approval does not extend the child's
 existing response deadline; the parent's response timeout can end it earlier.
 
 Configure approval response timeouts on `Approvals`, and tool execution timeouts
-on `AgentLoop(tool_timeout=...)` or `@tool(timeout=...)`.
+on `AgentLoop(tool_timeout=...)` or `@tool(timeout_seconds=...)`.
 The [API decision and rationale](../contributing/approval-timeouts.md) explain
 these responsibilities.
 

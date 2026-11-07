@@ -40,6 +40,7 @@ from harnessed.core.tools.scheduling import (
 from harnessed.kernel import (
     BindingPlan,
     Disposer,
+    PluginBase,
     RegistrationState,
     Scope,
     ServiceKey,
@@ -63,6 +64,7 @@ class ToolError(Exception):
 
 
 type ParameterFields = Callable[[Any], Mapping[str, FieldInfo]]
+type ToolTimeout = float | None | Callable[[Any], float | None]
 
 
 @dataclass(frozen=True)
@@ -72,7 +74,7 @@ class ToolSpec:
     name: str | None = None
     description: str | None = None
     enabled: ToolEnabled = True
-    timeout: float | None = None
+    timeout_seconds: ToolTimeout = None
     parallel: bool = False
     resources: ResourceSpec = ()
     readonly: bool = False
@@ -151,6 +153,7 @@ class _RegisteredTool:
     owner: Scope
     registration: RegistrationState
     spec: ToolSpec
+    timeout_seconds: float | None
     enabled: BoundToolEnabled
 
 
@@ -250,7 +253,7 @@ class ToolRegistry:
         description: str | None = None,
         presentation: ToolPresentation | None = None,
         enabled: ToolEnabled = True,
-        timeout: float | None = None,
+        timeout_seconds: ToolTimeout = None,
         parallel: bool = False,
         resources: ResourceSpec = (),
         readonly: bool = False,
@@ -272,7 +275,7 @@ class ToolRegistry:
         description: str | None = None,
         presentation: ToolPresentation | None = None,
         enabled: ToolEnabled = True,
-        timeout: float | None = None,
+        timeout_seconds: ToolTimeout = None,
         parallel: bool = False,
         resources: ResourceSpec = (),
         readonly: bool = False,
@@ -291,7 +294,7 @@ class ToolRegistry:
                 description=description,
                 presentation=presentation,
                 enabled=enabled,
-                timeout=timeout,
+                timeout_seconds=timeout_seconds,
                 parallel=parallel,
                 resources=resources,
                 readonly=readonly,
@@ -315,7 +318,7 @@ class ToolRegistry:
         description: str | None = None,
         presentation: ToolPresentation | None = None,
         enabled: ToolEnabled = True,
-        timeout: float | None = None,
+        timeout_seconds: ToolTimeout = None,
         parallel: bool = False,
         resources: ResourceSpec = (),
         readonly: bool = False,
@@ -334,7 +337,7 @@ class ToolRegistry:
             description=description,
             presentation=presentation if presentation is not None else ToolPresentation(),
             enabled=enabled,
-            timeout=timeout,
+            timeout_seconds=timeout_seconds,
             parallel=parallel,
             resources=resources,
             readonly=readonly,
@@ -345,14 +348,13 @@ class ToolRegistry:
             metadata=metadata,
             chain=chain,
         )
-        name, timeout, parallel = spec.name, spec.timeout, spec.parallel
+        name, parallel = spec.name, spec.parallel
         resources, readonly, override = spec.resources, spec.readonly, spec.override
         owner = owner if owner is not None else Scope.current() or self._ctx
         check_enabled = bind_enabled(spec.enabled, callback, owner)
         ToolScheduling(parallel)
         resources = resource_spec(resources)
-        timeout = _TIMEOUT.validate_python(timeout)
-        spec = replace(spec, timeout=timeout)
+        timeout_seconds = _resolve_timeout_seconds(spec.timeout_seconds, callback)
         plan = binding_plan(callback)
         tool_name = name or getattr(callback, "__name__", type(callback).__name__)
         existing = self._tools.get(tool_name, ())
@@ -378,7 +380,15 @@ class ToolRegistry:
 
         def install(registration: RegistrationState):
             entry = _PythonTool(
-                definition, callback, owner, registration, spec, check_enabled, plan, arguments
+                definition,
+                callback,
+                owner,
+                registration,
+                spec,
+                timeout_seconds,
+                check_enabled,
+                plan,
+                arguments,
             )
             entries = self._tools.setdefault(definition.name, [])
             entries.append(entry)
@@ -412,11 +422,8 @@ class ToolRegistry:
             raise ValueError("External tool spec name must match its definition")
         if spec.parameter_fields is not None or spec.params is not None:
             raise ValueError("External tools use their definition's parameter schema")
-        spec = replace(
-            spec,
-            timeout=_TIMEOUT.validate_python(spec.timeout),
-            resources=resource_spec(spec.resources),
-        )
+        timeout_seconds = _TIMEOUT.validate_python(spec.timeout_seconds)
+        spec = replace(spec, resources=resource_spec(spec.resources))
         ToolScheduling(spec.parallel)
         check_enabled = bind_enabled(spec.enabled, handler, owner)
         existing = self._tools.get(definition.name, ())
@@ -425,7 +432,14 @@ class ToolRegistry:
 
         def install(registration: RegistrationState) -> Callable[[], None]:
             entry = _ExternalTool(
-                definition, handler, owner, registration, spec, check_enabled, handler
+                definition,
+                handler,
+                owner,
+                registration,
+                spec,
+                timeout_seconds,
+                check_enabled,
+                handler,
             )
             entries = self._tools.setdefault(definition.name, [])
             entries.append(entry)
@@ -579,7 +593,7 @@ class ToolRegistry:
                 call_context = scope[ToolContexts].create(call)
             with tool.owner.activate():
                 async with ToolExecutionBudget(
-                    tool.spec.timeout if tool.spec.timeout is not None else default_timeout
+                    tool.timeout_seconds if tool.timeout_seconds is not None else default_timeout
                 ):
                     if isinstance(tool, _ExternalTool):
                         if call_context is None:
@@ -610,3 +624,28 @@ class ToolRegistry:
             return ToolResult.unavailable(str(exc))
         except Exception as exc:
             return ToolResult.error(format_tool_error(call, exc, error_formatter))
+
+
+def _resolve_timeout_seconds(
+    timeout_seconds: ToolTimeout, callback: Callable[..., object]
+) -> float | None:
+    if not callable(timeout_seconds):
+        return _TIMEOUT.validate_python(timeout_seconds)
+    if (
+        not isinstance(callback, MethodType)
+        or not isinstance(callback.__self__, PluginBase)
+        or not callback.__self__.is_active
+    ):
+        raise TypeError("Tool timeout_seconds resolvers require a mounted plugin method")
+    if (
+        inspect.iscoroutinefunction(timeout_seconds)
+        or inspect.isgeneratorfunction(timeout_seconds)
+        or inspect.isasyncgenfunction(timeout_seconds)
+    ):
+        raise TypeError("Tool timeout_seconds resolvers must be synchronous")
+    resolved = timeout_seconds(callback.__self__)
+    if inspect.isawaitable(resolved):
+        if inspect.iscoroutine(resolved):
+            resolved.close()
+        raise TypeError("Tool timeout_seconds resolvers must return seconds or None")
+    return _TIMEOUT.validate_python(resolved)

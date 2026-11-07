@@ -110,7 +110,7 @@ async def test_approval_resumes_the_remaining_execution_budget_without_resetting
     effects = []
 
     class Work(Plugin):
-        @tool(timeout=0.1)
+        @tool(timeout_seconds=0.1)
         async def work(self, *, context: Inject[ToolContext]) -> str:
             await asyncio.sleep(0.07)
             await context.approve("permission")
@@ -210,7 +210,7 @@ async def test_a_parallel_approval_wait_does_not_suspend_other_tools():
 
 async def test_nested_approval_waits_preserve_the_suspended_execution_budget():
     class Work(Plugin):
-        @tool(timeout=0.04)
+        @tool(timeout_seconds=0.04)
         async def work(self, *, context: Inject[ToolContext]) -> str:
             assert await context.approve("outer")
             return "approved"
@@ -239,7 +239,7 @@ async def test_background_approval_cannot_suspend_its_parent_tasks_execution():
     stopped = asyncio.Event()
 
     class Work(Plugin):
-        @tool(timeout=0.04)
+        @tool(timeout_seconds=0.04)
         async def work(self, *, context: Inject[ToolContext]) -> str:
             question = asyncio.create_task(context.approve("permission"))
             try:

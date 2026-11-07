@@ -97,7 +97,7 @@ class Subagents(Plugin[SubagentsConfig]):
         scope.on(SessionAborting, self._supervisor.aborting)
         scope.on(SessionClosing, self._supervisor.closing)
 
-    @tool(timeout=3600.0, parallel=True)
+    @tool(timeout_seconds=3600.0, parallel=True)
     async def delegate(self, agent: str, task: str, *, context: Inject[ToolContext]) -> ToolResult:
         """Run a specialist and return its child ID, answer, status and usage."""
         return await self._supervisor.delegate(agent, task, context)
@@ -107,7 +107,7 @@ class Subagents(Plugin[SubagentsConfig]):
         """Start a specialist and return its child_id without waiting for its task."""
         return await self._supervisor.spawn(agent, task, context)
 
-    @tool(timeout=3600.0, parallel=True, readonly=True)
+    @tool(timeout_seconds=3600.0, parallel=True, readonly=True)
     async def status(self, child_id: str, timeout: float = 10.0) -> ToolResult:
         """Ask the child for a fresh report; timeout returns pending without cancelling it."""
         return await self._supervisor.status(child_id, timeout)
@@ -119,12 +119,12 @@ class Subagents(Plugin[SubagentsConfig]):
         """Deliver additional guidance at the child's next step without starting a new task."""
         return await self._supervisor.send(child_id, message)
 
-    @tool(timeout=3600.0, parallel=True, readonly=True)
+    @tool(timeout_seconds=3600.0, parallel=True, readonly=True)
     async def wait(self, child_id: str, timeout: float = 30.0) -> ToolResult:
         """Wait for a child receipt; timeout returns current state and leaves the child running."""
         return await self._supervisor.wait(child_id, timeout)
 
-    @tool(timeout=3600.0, parallel=True)
+    @tool(timeout_seconds=3600.0, parallel=True)
     async def cancel(self, child_id: str) -> ToolResult:
         """Cancel a child and wait until its driver and plugin resources are drained."""
         return await self._supervisor.cancel(child_id)

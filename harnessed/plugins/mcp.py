@@ -476,7 +476,7 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
                 remote.invoke,
                 owner=scope,
                 spec=ToolSpec(
-                    timeout=self.config.call_timeout,
+                    timeout_seconds=self.config.call_timeout,
                     parallel=self.config.parallel,
                     readonly=name in self.config.readonly_tools,
                     enabled=lambda: connection.active and check_enabled(scope),

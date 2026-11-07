@@ -54,7 +54,7 @@ def test_tool_timeouts_reject_invalid_values_at_both_configuration_boundaries(ti
         AgentLoopConfig(tool_timeout=timeout)
     registry = ToolRegistry(Scope())
     with pytest.raises(ValidationError):
-        registry.register(lambda: None, timeout=timeout)
+        registry.register(lambda: None, timeout_seconds=timeout)
 
 
 def test_neutral_model_metadata_and_request_constraints_are_schema_visible():

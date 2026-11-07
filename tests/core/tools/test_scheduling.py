@@ -447,7 +447,7 @@ async def test_sync_timeout_keeps_resource_until_the_worker_finishes():
     context, order = ([], [])
 
     class ToolsPlugin(Plugin):
-        @tool(parallel=True, resources=("file:x",), timeout=0.02)
+        @tool(parallel=True, resources=("file:x",), timeout_seconds=0.02)
         def slow(self, call: Inject[ToolContext]) -> str:
             context.append(call)
             order.append("first-enter")

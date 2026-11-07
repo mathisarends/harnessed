@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from harnessed.core.tools.enabled import ToolEnabled
 from harnessed.core.tools.info import ToolChain, ToolPresentation
 from harnessed.core.tools.policy import OutputLimit, OutputLimitSetting
-from harnessed.core.tools.registry import ParameterFields, ToolSpec
+from harnessed.core.tools.registry import ParameterFields, ToolSpec, ToolTimeout
 from harnessed.core.tools.scheduling import ResourceSpec, resource_spec
 from harnessed.kernel import PluginBase
 
@@ -24,7 +24,7 @@ def tool[F: Callable[..., Any]](
     description: str | None = None,
     presentation: ToolPresentation | None = None,
     enabled: ToolEnabled = True,
-    timeout: float | None = None,
+    timeout_seconds: ToolTimeout = None,
     parallel: bool = False,
     resources: ResourceSpec = (),
     readonly: bool = False,
@@ -46,7 +46,7 @@ def tool(
     description: str | None = None,
     presentation: ToolPresentation | None = None,
     enabled: ToolEnabled = True,
-    timeout: float | None = None,
+    timeout_seconds: ToolTimeout = None,
     parallel: bool = False,
     resources: ResourceSpec = (),
     readonly: bool = False,
@@ -68,7 +68,7 @@ def tool(
             description=description,
             presentation=presentation if presentation is not None else ToolPresentation(),
             enabled=enabled,
-            timeout=timeout,
+            timeout_seconds=timeout_seconds,
             parallel=parallel,
             resources=resources,
             readonly=readonly,
