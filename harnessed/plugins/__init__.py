@@ -4,7 +4,6 @@ from harnessed.core.compaction import ContextState as ContextState
 from harnessed.core.limits import FinalStepPolicy as FinalStepPolicy
 from harnessed.core.messages import ApprovalAnswer as ApprovalAnswer
 from harnessed.core.plugin import Service as Service
-from harnessed.core.prompt.context import ContextValue as ContextValue
 from harnessed.core.prompt.instructions import PromptRenderer as PromptRenderer
 from harnessed.core.runtime.agent_loop import AgentLoop as AgentLoop
 from harnessed.core.tools.output_limit import ToolOutputLimit as ToolOutputLimit
@@ -32,7 +31,6 @@ __all__ = [
     "BackgroundShell",
     "Compaction",
     "ContextState",
-    "ContextValue",
     "Filesystem",
     "FilesystemTools",
     "FinalStepPolicy",

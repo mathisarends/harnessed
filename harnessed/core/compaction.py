@@ -18,7 +18,7 @@ from harnessed.core.events.compaction import (
     CompactionOutcome,
     CompactionStartedEvent,
 )
-from harnessed.core.events.messages import ContextMessageEvent, UserMessageEvent
+from harnessed.core.events.messages import MessageAppendedEvent, UserMessageEvent
 from harnessed.core.events.model import ModelUsageRecordedEvent
 from harnessed.core.events.turn import StepEndedEvent, StepOutcome
 from harnessed.core.messages import Message, SystemMessage, UserMessage, to_dict
@@ -360,7 +360,7 @@ def _plan_compaction(
                     records[: max(0, through - record_offset)], start=record_offset
                 )
                 if origin(seq) == current.id
-                and isinstance(event, UserMessageEvent | ContextMessageEvent)
+                and isinstance(event, UserMessageEvent | MessageAppendedEvent)
             )
     if through <= previous_through:
         return None

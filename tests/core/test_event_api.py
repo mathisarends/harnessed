@@ -119,7 +119,7 @@ async def test_direct_public_event_imports_observe_the_canonical_runtime_events(
 
 def test_current_record_format_roundtrips_the_turn_end_payload():
     record = {
-        "version": 4,
+        "version": 5,
         "type": "turn.ended",
         "data": {"turn_id": "turn", "reason": "completed"},
     }
@@ -147,7 +147,7 @@ def test_data_notifications_roundtrip_through_a_discriminated_union():
 def test_namespaced_log_events_use_canonical_tags_only():
     event = events.TurnStartedEvent("turn")
     record = encode_event(event)
-    assert record["type"] == "turn.started" and record["version"] == 4
+    assert record["type"] == "turn.started" and record["version"] == 5
     record.update(type="TurnStartedEvent", version=4)
     with pytest.raises(ValueError):
         decode_event(record)

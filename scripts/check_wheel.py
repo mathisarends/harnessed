@@ -20,6 +20,7 @@ from harnessed import (
     PromptFormat, SectionDelivery,
     SystemPrompt, Instructions, tool,
 )
+from harnessed.models import ModelRequest, UserMessage
 from harnessed.events import TextDeltaEvent, TurnResultEvent
 from harnessed.plugins import Service, Skill, Skills
 from harnessed.integrations.json import JsonSessionStore
@@ -92,6 +93,17 @@ async def main():
     async with mount_plugin(Consumer(), services=(Service(backend_key, 'ready'),)) as active:
         assert active.backend == 'ready'
 
+    message = UserMessage('Browser snapshot', id='wheel-snapshot')
+    original_request = ModelRequest(())
+    assert original_request.append_message(message).messages == (message,)
+    assert original_request.messages == ()
+    assert not hasattr(harnessed, 'Observation')
+    observed_model = ScriptedModel(['observed'])
+    async with Agent(model=observed_model).session() as session:
+        session.observe(message, source='browser', refs=('wheel-frame',))
+        await session.run('Inspect')
+        assert message in observed_model.requests[0].messages
+
     continuation = Agent(model=ScriptedModel(["remembered", "continued"]))
     initial = await continuation.run("remember")
     state = SessionState.from_json(initial.state.to_json())
@@ -103,7 +115,7 @@ async def main():
         store = JsonSessionStore(root=directory)
         persistent = Agent(model=ScriptedModel(['persisted', 'restored']), store=store)
         async with persistent.session(id='wheel-conversation') as session:
-            await session.add_context('The customer is Ada.')
+            await session.append_message(UserMessage('The customer is Ada.'))
             await session.run('Remember the customer.')
         record = await store.load_session('wheel-conversation')
         assert isinstance(record, StoredSession)

@@ -15,18 +15,17 @@ from harnessed import (
     tool,
 )
 from harnessed.core.events.compaction import CompactionAppliedEvent
-from harnessed.core.events.messages import ContextValueChangedEvent
+from harnessed.core.events.messages import PluginInstructionsChangedEvent
 from harnessed.core.events.tools import ToolPolicyAppliedEvent
 from harnessed.core.events.turn import TurnEndedEvent, TurnStartedEvent
 from harnessed.core.messages import PolicyDecision, ToolStatus
 from harnessed.core.model import ModelChunk
-from harnessed.core.prompt.context import DynamicContext
+from harnessed.core.prompt.plugin_instructions import PluginInstructions
 from harnessed.core.session.session import SessionLog
-from harnessed.kernel import PluginStatus
+from harnessed.kernel import needs
 from harnessed.models import Model
-from harnessed.plugins import Approvals, ContextValue, PromptRenderer, Service
+from harnessed.plugins import Approvals, PromptRenderer, Service
 from harnessed.testing import ScriptedModel
-from tests._audit import Audit
 
 
 class Calculator(Plugin):
@@ -114,37 +113,6 @@ async def test_plugin_instruction_block_can_be_overridden_or_omitted():
             assert await session.prompt.render() == expected
 
 
-async def test_dynamic_context_is_durable_changes_only_and_does_not_change_system_prompt():
-    current = ["one"]
-    app = Agent(
-        model=ScriptedModel(["first", "second", "third"]),
-        instructions="Fixed rules.",
-        plugins=[ContextValue("user", lambda: current[0])],
-    )
-    async with app.session() as session:
-        session_audit = Audit(session)
-        await session.run("First")
-        await session.run("Same context")
-        current[0] = "two"
-        await session.run("Changed context")
-        changes = [
-            event for event in session_audit.events if isinstance(event, ContextValueChangedEvent)
-        ]
-        assert [event.value for event in changes] == ["one", "two"]
-        assert await session.prompt.render() == "Fixed rules."
-        assert session.scope[DynamicContext].values == {"user": "two"}
-
-
-async def test_runtime_context_is_explicit_and_disposes_with_its_plugin():
-    async with Agent(model=ScriptedModel(["done"]), instructions="Fixed.").session() as session:
-        handle = await session.mount(ContextValue(key="runtime.help", value="Runtime help."))
-        await session.run("Refresh context")
-        assert list(session.scope[DynamicContext].values.values()) == ["Runtime help."]
-        assert await session.prompt.render() == "Fixed."
-        await handle.aclose()
-        assert session.scope[DynamicContext].values == {}
-
-
 async def test_removed_runtime_plugins_are_collectable_while_the_session_stays_open():
     class Missing:
         pass
@@ -160,7 +128,7 @@ async def test_removed_runtime_plugins_are_collectable_while_the_session_stays_o
         await session.scope.settle()
         gc.collect()
         assert all(reference() is None for reference in references)
-        assert not session.scope[DynamicContext].values
+        assert not session.scope[PluginInstructions].values
 
 
 async def test_default_approvals_allow_reads_and_reject_side_effects_without_a_responder():
@@ -204,44 +172,21 @@ async def test_denials_distinguish_policy_from_the_user_in_log_and_result(user_a
         assert applied.source == ("approval" if user_answer else "policy")
 
 
-async def test_latest_dynamic_context_survives_compaction_and_replay():
-    from harnessed.core.prompt.context import DynamicContext
+async def test_feature_instruction_state_survives_compaction_without_creating_messages():
+    from harnessed.core.prompt.plugin_instructions import PluginInstructions
 
     session = SessionLog("context-compaction")
-    values = DynamicContext(session)
+    values = PluginInstructions(session)
     await session.append(TurnStartedEvent("first"))
     await values.set("user", "old")
     await values.set("user", "current")
     await session.append(TurnEndedEvent("first"))
     await session.append(CompactionAppliedEvent(len(session), "Earlier work."))
     text = "\n".join(message.text for message in session.messages)
-    assert "current" in text and ">old<" not in text
+    assert "current" not in text and "old" not in text
     replay = SessionLog("context-replay", state=session.snapshot())
     assert replay.messages == session.messages
-    assert DynamicContext(replay).values == {"user": "current"}
-
-
-async def test_runtime_context_tracks_temporal_dependency_restarts():
-    class Backend:
-        pass
-
-    class Runtime(ContextValue):
-        needs = (*ContextValue.needs, Backend)
-
-    async with Agent(model=ScriptedModel(["one", "two"])).session() as session:
-        handle = await session.mount(Runtime(key="backend", value="Use the active backend."))
-        assert handle.status == PluginStatus.WAITING and session.scope[DynamicContext].values == {}
-        remove = session.scope.provide(Backend, Backend())
-        await session.scope.settle()
-        await session.run("Refresh context")
-        assert list(session.scope[DynamicContext].values.values()) == ["Use the active backend."]
-        await remove()
-        await session.scope.settle()
-        assert session.scope[DynamicContext].values == {}
-        session.scope.provide(Backend, Backend())
-        await session.scope.settle()
-        await session.run("Refresh context")
-        assert list(session.scope[DynamicContext].values.values()) == ["Use the active backend."]
+    assert PluginInstructions(replay).values == {"user": "current"}
 
 
 async def test_public_session_type_and_forks_open_as_independent_conversations():
@@ -262,7 +207,13 @@ async def test_public_session_type_and_forks_open_as_independent_conversations()
 
 
 async def test_raw_subscription_includes_dependent_teardown_before_it_finishes():
-    app = Agent(model=ScriptedModel(["done"]), plugins=[ContextValue("temporary", "present")])
+    class Temporary(Plugin):
+        state = needs(PluginInstructions)
+
+        async def teardown(self) -> None:
+            await self.state.remove("temporary")
+
+    app = Agent(model=ScriptedModel(["done"]), plugins=[Temporary()])
     seen = []
     async with app.session() as session:
 
@@ -272,8 +223,9 @@ async def test_raw_subscription_includes_dependent_teardown_before_it_finishes()
 
         observing = asyncio.create_task(observe())
         await asyncio.sleep(0)
+        await session.scope[PluginInstructions].set("temporary", "present")
         await session.run("Go")
         assert not observing.done()
     await asyncio.wait_for(observing, 2)
-    changes = [event for event in seen if isinstance(event, ContextValueChangedEvent)]
+    changes = [event for event in seen if isinstance(event, PluginInstructionsChangedEvent)]
     assert [event.value for event in changes] == ["present", None]

@@ -16,11 +16,11 @@ from harnessed import (
     tool,
 )
 from harnessed.core.messages import ImageReference, UserMessage
-from harnessed.core.prompt.context import DynamicContext
+from harnessed.core.prompt.plugin_instructions import PluginInstructions
 from harnessed.errors import ConfigError, SessionClosed, SessionFormatError, SessionWriteConflict
-from harnessed.events import ApprovalRequestedEvent, ContextMessageEvent
+from harnessed.events import ApprovalRequestedEvent, MessageAppendedEvent
 from harnessed.integrations.json import JsonSessionStore
-from harnessed.plugins import ContextValue, Spill
+from harnessed.plugins import Spill
 from harnessed.plugins.spill import SpillStore
 from harnessed.sessions import SessionCheckpoint, SessionCommit, SessionStore, StoredSession
 from harnessed.testing import ScriptedModel, call
@@ -61,7 +61,7 @@ async def test_repository_reopens_by_id_and_saves_context_and_results_before_ret
     model = ScriptedModel(["first", "second"])
     agent = Agent(model=model, store=store, instructions="Current instructions.")
     async with agent.session(id="tenant:customer/4711") as session:
-        await session.add_context("The customer is Ada.")
+        await session.append_message(UserMessage("The customer is Ada."))
         assert await store.load_session(session.id) is not None
         result = await session.run("Remember this.")
         stored = await store.load_session(session.id)
@@ -138,7 +138,7 @@ async def test_paused_inbox_and_quiet_context_survive_reopening(store):
         await session.pause()
     async with agent.session(id="inbox") as session:
         assert session.status is SessionStatus.PAUSED
-        await session.add_context("Status: ready")
+        await session.append_message(UserMessage("Status: ready"))
         await session.submit("First")
         await session.submit("Second")
     async with agent.session(id="inbox") as restored:
@@ -158,9 +158,9 @@ async def test_paused_inbox_and_quiet_context_survive_reopening(store):
 async def test_stale_worker_cannot_overwrite_a_new_revision(store):
     agent = Agent(model=ScriptedModel([]), store=store)
     async with agent.session(id="shared") as first, agent.session(id="shared") as second:
-        await first.add_context("Owner: first")
+        await first.append_message(UserMessage("Owner: first"))
         with pytest.raises(SessionWriteConflict):
-            await second.add_context("Owner: second")
+            await second.append_message(UserMessage("Owner: second"))
     async with agent.session(id="shared") as restored:
         assert [message.text for message in restored.messages] == ["Owner: first"]
 
@@ -210,10 +210,10 @@ async def test_cancelled_write_finishes_before_cancellation_is_delivered(monkeyp
     repository = SlowRepository()
     async with Agent(model=ScriptedModel([]), store=repository).session(id="cancel") as session:
         if operation == "flush":
-            await session.emit(ContextMessageEvent(UserMessage("retained")))
+            await session.emit(MessageAppendedEvent(UserMessage("retained")))
             write = asyncio.create_task(session.flush())
         else:
-            write = asyncio.create_task(session.add_context("retained"))
+            write = asyncio.create_task(session.append_message(UserMessage("retained")))
         await asyncio.wait_for(entered.wait(), timeout=5)
         write.cancel()
         release.set()
@@ -329,10 +329,10 @@ async def test_intermediate_changes_coalesce_and_restore_at_the_requested_bounda
     repository = ConversationRepository()
     agent = Agent(model=ScriptedModel([]), store=repository)
     async with agent.session(id="batch") as session:
-        await session.scope[DynamicContext].set("seed", "ready")
+        await session.scope[PluginInstructions].set("seed", "ready")
         before = repository.rows["batch"].revision
-        await session.emit(ContextMessageEvent(UserMessage("first")))
-        await session.emit(ContextMessageEvent(UserMessage("second")))
+        await session.emit(MessageAppendedEvent(UserMessage("first")))
+        await session.emit(MessageAppendedEvent(UserMessage("second")))
         assert repository.rows["batch"].revision == before
         if boundary == "flush":
             await session.flush()
@@ -353,7 +353,7 @@ async def test_intermediate_changes_are_saved_in_the_background():
 
     repository.before_save = observe
     async with Agent(model=ScriptedModel([]), store=repository).session(id="background") as session:
-        await session.emit(ContextMessageEvent(UserMessage("background fact")))
+        await session.emit(MessageAppendedEvent(UserMessage("background fact")))
         await asyncio.wait_for(persisted.wait(), timeout=5)
         stored = repository.rows["background"]
         assert stored.checkpoint.state.history[-1].message.text == ("background fact")
@@ -382,7 +382,7 @@ async def test_background_failure_reaches_a_live_handle_and_cleans_up_its_tool()
         handle = await session.submit("Work")
         await asyncio.wait_for(entered.wait(), timeout=5)
         repository.before_save = unavailable
-        await session.emit(ContextMessageEvent(UserMessage("pending fact")))
+        await session.emit(MessageAppendedEvent(UserMessage("pending fact")))
         with pytest.raises(OSError, match="background storage unavailable"):
             await asyncio.wait_for(handle.result(), timeout=5)
         await asyncio.wait_for(cleaned.wait(), timeout=5)
@@ -400,7 +400,7 @@ async def test_background_failure_while_idle_is_reported_when_closing():
     agent = Agent(model=ScriptedModel([]), store=repository)
     with pytest.raises(OSError, match="idle storage unavailable"):
         async with agent.session(id="idle") as session:
-            await session.emit(ContextMessageEvent(UserMessage("pending fact")))
+            await session.emit(MessageAppendedEvent(UserMessage("pending fact")))
             await asyncio.wait_for(failed.wait(), timeout=5)
 
 
@@ -417,28 +417,3 @@ async def test_model_request_is_not_executed_when_its_intent_cannot_be_saved():
         with pytest.raises(OSError, match="model intent unavailable"):
             await session.run("Work")
     assert not model.requests
-
-
-async def test_context_provider_can_unmount_while_a_persistent_session_closes(store):
-    agent = Agent(model=ScriptedModel(["done"]), store=store, plugins=[ContextValue("ci", "ready")])
-    async with agent.session(id="provider") as session:
-        result = await session.run("Work")
-        assert result.state.context == {"ci": "ready"}
-    async with Agent(model=ScriptedModel([]), store=store).session(id="provider") as restored:
-        assert "ci" not in restored.scope[DynamicContext].values
-
-
-async def test_reported_store_failure_is_not_raised_again_by_context_provider_teardown():
-    repository = ConversationRepository()
-
-    def unavailable(checkpoint: SessionCheckpoint) -> None:
-        raise OSError("storage unavailable")
-
-    agent = Agent(
-        model=ScriptedModel(["done"]), store=repository, plugins=[ContextValue("ci", "ready")]
-    )
-    async with agent.session(id="provider") as session:
-        await session.run("First")
-        repository.before_save = unavailable
-        with pytest.raises(OSError, match="storage unavailable"):
-            await session.run("Second")

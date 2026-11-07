@@ -188,7 +188,7 @@ expensive external state before the request, for example in `PreStep`. Browser
 backends must still validate their own invariants if state changes during an
 asynchronous action.
 
-`ConfigureRequest` can separately filter model-facing tools; that alone does not
+`PrepareRequest` can separately filter model-facing tools; that alone does not
 prevent execution. `ToolPolicy` remains the authorization/approval mechanism.
 See the [offline conditional tools example](https://github.com/mathisarends/harnessed/blob/main/examples/30_conditional_tools.py).
 
@@ -402,11 +402,11 @@ Async callbacks return those values after awaiting. Additional parameters use
 `Inject[T]`. Class-based plugin methods follow the same signatures after `self`.
 `Next[R]` is a zero-argument async continuation and may be called once.
 
-Runtime hook events (`PreStep`, `PrepareRequest`, `ConfigureRequest`,
+Runtime hook events (`PreStep`, `PrepareRequest`, `PrepareRequest`,
 `ToolPolicy`, `ExecuteTool`, `ReviewToolResult`, `RequestApproval`,
 `TurnStopping` and `SessionClosing`) carry `event.session: SessionContext`, not
 the application `Session`. The context exposes `id`, `status`, `log`, `messages`,
-`last(Event)`, `inbox`, `approvals`, `tools`, `observe()`, `add_context()` and
+`last(Event)`, `inbox`, `approvals`, `tools`, `observe()`, `append_message()` and
 `emit()`. It cannot start turns, mount plugins or close the session from inside
 its own loop. Plugins that need the same view outside a hook declare
 `SessionContext` from `harnessed.services` as a dependency; resolve other session

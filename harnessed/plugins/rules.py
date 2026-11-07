@@ -13,10 +13,11 @@ from pydantic import AfterValidator, ConfigDict, Field, StringConstraints, TypeA
 from pydantic.dataclasses import dataclass
 
 from harnessed.core.events.base import DurableEvent, Identifier
-from harnessed.core.hooks import ReviewToolResult
-from harnessed.core.messages import ToolCall, ToolResult, to_dict, user
+from harnessed.core.hooks import PrepareRequest, ReviewToolResult
+from harnessed.core.messages import ToolCall, ToolResult, UserMessage, to_dict, user
+from harnessed.core.model import ModelRequest
 from harnessed.core.plugin import Plugin
-from harnessed.core.prompt.context import DynamicContext
+from harnessed.core.prompt.plugin_instructions import PluginInstructions
 from harnessed.core.runtime.inbox import SessionInbox
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import TokenCounter, count_content
@@ -134,15 +135,8 @@ def when(
     return Rule(tools, command_contains, exit_code, repeated, result_tokens_over, predicate)
 
 
-class Rules(
-    Plugin,
-    needs=(
-        SessionLog,
-        TokenCounter,
-        SessionInbox,
-    ),
-):
-    context = needs(DynamicContext)
+class Rules(Plugin, needs=(SessionLog, TokenCounter, SessionInbox)):
+    context = needs(PluginInstructions)
 
     events = (RuleTriggeredEvent,)
     _counts = PluginState[Counter[tuple[int, str]]](Counter)
@@ -186,7 +180,7 @@ class Rules(
         event: ReviewToolResult,
         next_: Next[ToolResult],
         session: Inject[SessionLog],
-        context: Inject[DynamicContext],
+        context: Inject[PluginInstructions],
         inbox: Inject[SessionInbox],
         counter: Inject[TokenCounter],
     ) -> ToolResult:
@@ -228,3 +222,19 @@ class Rules(
         for index, rule in enumerate(self.rules):
             if any(kind is RuleAction.CONTEXT for kind, _ in rule.actions):
                 await self.context.remove(f"rule:{self.name}:{index}")
+
+    @hook(PrepareRequest)
+    async def enrich(
+        self,
+        event: PrepareRequest,
+        next_: Next[ModelRequest],
+        context: Inject[PluginInstructions],
+    ) -> ModelRequest:
+        request = await next_()
+        for index, rule in enumerate(self.rules):
+            name = f"rule:{self.name}:{index}"
+            if any(kind is RuleAction.CONTEXT for kind, _ in rule.actions):
+                text = context.values.get(name)
+                if text is not None:
+                    request = request.append_message(UserMessage(text, id=name))
+        return request

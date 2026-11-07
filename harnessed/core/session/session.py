@@ -20,7 +20,7 @@ from harnessed.core.events.inbox import (
 )
 from harnessed.core.events.messages import (
     AssistantMessageEvent,
-    ContextMessageEvent,
+    MessageAppendedEvent,
     UserMessageEvent,
 )
 from harnessed.core.events.model import (
@@ -320,8 +320,8 @@ class SessionLog:
         return self._closed_count
 
     @property
-    def context_values(self) -> dict[str, str]:
-        return self._history.context.copy()
+    def plugin_instructions(self) -> dict[str, str]:
+        return self._history.plugin_instructions.copy()
 
     @property
     def resources(self) -> tuple[SpillRef, ...]:
@@ -336,7 +336,7 @@ class SessionLog:
         keys = {ref.path for entry in entries for ref in entry.resources}
         return SessionState(
             history=entries,
-            context=self.context_values,
+            plugin_instructions=self.plugin_instructions,
             turns=tuple(HistoryTurn(turn, boundary) for boundary, turn in self._turn_boundaries),
             turns_since_compaction=self._uncompacted_turns,
             compacted_through=self._compacted_through,
@@ -392,7 +392,7 @@ class SessionLog:
         refs.update(
             part.asset
             for event in self._pending.values()
-            for message in (event.message, *event.context)
+            for message in (event.message,)
             if not isinstance(message.content, str)
             for part in message.content
             if isinstance(part, ImageReference)
@@ -703,7 +703,7 @@ class SessionLog:
                 del self._pending[event.message_id]
                 self._step_pending.discard(event.message_id)
                 self._inbox = None
-            elif isinstance(event, UserMessageEvent | ContextMessageEvent):
+            elif isinstance(event, UserMessageEvent | MessageAppendedEvent):
                 if self._pending.pop(event.message.id, None) is not None:
                     self._step_pending.discard(event.message.id)
                     self._inbox = None

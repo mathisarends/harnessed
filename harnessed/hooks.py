@@ -1,5 +1,4 @@
 from harnessed.core.hooks import (
-    ConfigureRequest,
     ExecuteTool,
     Next,
     PrepareRequest,
@@ -16,7 +15,6 @@ from harnessed.core.hooks import (
 from harnessed.kernel import Priority
 
 __all__ = [
-    "ConfigureRequest",
     "ExecuteTool",
     "Next",
     "PreStep",

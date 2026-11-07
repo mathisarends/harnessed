@@ -6,7 +6,7 @@ from harnessed import Agent, Plugin, PolicyDecision, ToolCall, ToolResult, ToolS
 from harnessed.events import InboxAddedEvent, InboxMode, ToolCallFinishedEvent
 from harnessed.hooks import ReviewToolResult
 from harnessed.kernel import hook
-from harnessed.models import ModelChunk, user
+from harnessed.models import ModelChunk, UserMessage, user
 from harnessed.plugins import Approvals
 from harnessed.plugins.rules import Rules, when
 from harnessed.testing import ScriptedModel
@@ -33,7 +33,9 @@ class TestDiscipline(Plugin):
         if self.failures == 1:
             return result.with_note("Read the first failure before editing anything.")
         if self.failures == 3:
-            await event.session.add_context("Tests failed three times. Reconsider your approach.")
+            await event.session.append_message(
+                UserMessage("Tests failed three times. Reconsider your approach.")
+            )
         if self.failures >= 5:
             await event.session.inbox.steer(
                 user("Stop editing. Summarize what you tried and what is wrong.")
@@ -80,7 +82,11 @@ async def demo(name, policy):
             async for event in run_stream:
                 if isinstance(event, ToolCallFinishedEvent):
                     print(f"exit_code={event.result.exit_code}: {event.result.content}")
-        assert any("three times" in message.text for message in session.messages)
+        assert any(
+            "three times" in message.text
+            for request in model.requests
+            for message in request.messages
+        )
         assert any(
             isinstance(event, InboxAddedEvent) and event.mode == InboxMode.STEER
             for event in steering

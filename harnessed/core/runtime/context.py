@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from harnessed.core.events.base import DurableEvent, TransientEvent
-from harnessed.core.events.messages import ContextMessageEvent
-from harnessed.core.messages import Message, Observation, UserMessage
+from harnessed.core.events.messages import MessageAppendedEvent
+from harnessed.core.messages import Message, UserMessage
 from harnessed.core.runtime.control import SessionControl, SessionStatus
 from harnessed.core.runtime.inbox import SessionInbox
 from harnessed.core.session.session import SessionLog
@@ -18,13 +19,20 @@ class PendingObservations:
     """The latest unrecorded observation per source, drained by the next step."""
 
     def __init__(self) -> None:
-        self._items: dict[str, Observation] = {}
+        self._items: dict[str, tuple[UserMessage, tuple[str, ...]]] = {}
 
-    def add(self, observation: Observation) -> None:
-        self._items[observation.source] = observation
+    def add(self, message: UserMessage, *, source: str, refs: Iterable[str]) -> None:
+        if not isinstance(message, UserMessage):
+            raise TypeError("Observations require a UserMessage")
+        if not isinstance(source, str) or not source:
+            raise ValueError("Observations require a non-empty source")
+        references = tuple(refs)
+        if any(not isinstance(ref, str) for ref in references):
+            raise TypeError("Observation refs must be strings")
+        self._items[source] = (message, references)
 
-    def drain(self) -> tuple[Observation, ...]:
-        items = tuple(self._items.values())
+    def drain(self) -> tuple[tuple[str, UserMessage, tuple[str, ...]], ...]:
+        items = tuple((source, message, refs) for source, (message, refs) in self._items.items())
         self._items.clear()
         return items
 
@@ -68,7 +76,7 @@ class SessionContext:
     def last[E: DurableEvent](self, kind: type[E]) -> E | None:
         return self.log.last(kind)
 
-    def observe(self, observation: Observation) -> None:
+    def observe(self, message: UserMessage, *, source: str, refs: Iterable[str] = ()) -> None:
         """Buffer a text/image snapshot per source for the next step.
 
         A newer pending snapshot replaces the same source before recording.
@@ -76,19 +84,19 @@ class SessionContext:
         observation retention policy removes them from model history.
         """
         self._control.check_open()
-        self._observations.add(observation)
+        self._observations.add(message, source=source, refs=refs)
 
-    async def add_context(self, content: str) -> None:
-        """Append text for subsequent model requests without starting a turn.
+    async def append_message(self, message: UserMessage) -> None:
+        """Append a user message to history without starting a turn.
 
-        Each call adds a user-role context message, including repeated text.
+        Each call appends to conversation history, including repeated messages.
         It follows ordinary history retention and may be summarized by compaction.
         A configured session store commits the contribution before this returns.
         """
         self._control.check_open()
-        if not isinstance(content, str):
-            raise TypeError("Context content must be a string")
-        await self.log.append(ContextMessageEvent(UserMessage(content)))
+        if not isinstance(message, UserMessage):
+            raise TypeError("append_message requires a UserMessage")
+        await self.log.append(MessageAppendedEvent(message))
         await self.log.flush()
 
     async def emit(self, event: DurableEvent | TransientEvent) -> None:

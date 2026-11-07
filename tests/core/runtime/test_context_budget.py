@@ -16,7 +16,7 @@ from harnessed.core.events.model import (
     ModelRequestOutcome,
 )
 from harnessed.core.events.turn import TurnOutcome
-from harnessed.core.hooks import ConfigureRequest, PrepareRequest
+from harnessed.core.hooks import PrepareRequest
 from harnessed.core.messages import Role, SystemMessage
 from harnessed.core.model import Model, ModelChunk, ModelInfo
 from harnessed.core.plugin import Bundle, Service
@@ -215,7 +215,7 @@ async def test_budget_guard_blocks_oversized_requests_after_configure_hooks():
         ],
     )
 
-    @extensions.on(ConfigureRequest)
+    @extensions.on(PrepareRequest)
     async def inflate(event, next_):
         request = await next_()
         return replace(request, messages=(*request.messages, SystemMessage("x" * 1000)))

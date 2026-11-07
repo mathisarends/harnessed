@@ -17,16 +17,23 @@ from pydantic import (
 )
 
 from harnessed.core.errors import ConfigError
-from harnessed.core.events.compaction import CompactionAppliedEvent
 from harnessed.core.events.tools import ToolCallFinishedEvent, ToolCallRequestedEvent
-from harnessed.core.hooks import SessionAppended
-from harnessed.core.messages import AssistantMessage, ToolMessage, ToolStatus, freeze, to_dict
+from harnessed.core.hooks import PrepareRequest, SessionAppended
+from harnessed.core.messages import (
+    AssistantMessage,
+    ToolMessage,
+    ToolStatus,
+    UserMessage,
+    freeze,
+    to_dict,
+)
+from harnessed.core.model import ModelRequest
 from harnessed.core.plugin import Plugin
-from harnessed.core.prompt.context import DynamicContext
+from harnessed.core.prompt.plugin_instructions import PluginInstructions
 from harnessed.core.prompt.values import Instructions, SystemPrompt
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tools import ToolError, tool
-from harnessed.kernel import Key, Scope, hook, needs
+from harnessed.kernel import Key, Next, Scope, hook, needs
 
 type SkillName = Annotated[
     str, StringConstraints(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$", max_length=64)
@@ -274,7 +281,7 @@ class Skills(Plugin, slot="skills"):
     """Discover explicit sources once per session, then load instructions and files on demand."""
 
     _log = needs(SessionLog)
-    _context = needs(DynamicContext)
+    _context = needs(PluginInstructions)
 
     def __init__(self, *sources: str | Path | Skill | _DirectorySkill) -> None:
         super().__init__()
@@ -382,12 +389,17 @@ class Skills(Plugin, slot="skills"):
         if event.log is not self._log:
             return
         self._remember(event.event)
-        if isinstance(event.event, CompactionAppliedEvent):
+        if isinstance(event.event, ToolCallFinishedEvent):
             await self._retain()
-        elif isinstance(event.event, ToolCallFinishedEvent):
-            for name, instructions in self._loaded.items():
-                if f"skill:{name}" in self._context.values:
-                    await self._context.set(f"skill:{name}", instructions)
+
+    @hook(PrepareRequest)
+    async def enrich(self, event: PrepareRequest, next_: Next[ModelRequest]) -> ModelRequest:
+        request = await next_()
+        for name, instructions in self._loaded.items():
+            request = request.append_message(
+                UserMessage(f"Loaded skill {name}:\n{instructions}", id=f"skill:{name}")
+            )
+        return request
 
     def _entry(self, name: str) -> SkillEntry:
         if name not in self._entries:

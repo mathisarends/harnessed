@@ -4,7 +4,7 @@ from typing import Self
 
 from harnessed.core.events.base import DurableEvent
 from harnessed.core.events.inbox import InboxAddedEvent, InboxRemovedEvent, InboxTarget
-from harnessed.core.events.messages import ContextMessageEvent, UserMessageEvent
+from harnessed.core.events.messages import MessageAppendedEvent, UserMessageEvent
 
 
 @dataclass(frozen=True, init=False)
@@ -28,7 +28,7 @@ class Inbox:
                 if event.message_id not in pending:
                     raise ValueError(f"Removing unknown inbox message: {event.message_id}")
                 del pending[event.message_id]
-            elif isinstance(event, UserMessageEvent | ContextMessageEvent):
+            elif isinstance(event, UserMessageEvent | MessageAppendedEvent):
                 pending.pop(event.message.id, None)
         object.__setattr__(self, "pending", tuple(pending.values()))
 

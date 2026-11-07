@@ -115,7 +115,7 @@ class CountingTools(Plugin, needs=(str,)):
 
 
 async def consumer(agent: Session) -> None:
-    assert_type(await agent.add_context("Include source URLs."), None)
+    assert_type(await agent.append_message(UserMessage("Include source URLs.")), None)
     assert_type(CountingTools().create_instance(), CountingTools)
     assert_type(await CountingTools().count(1, injected="service"), int)
     assert_type(await agent.run("hello"), RunResult[None])
@@ -247,3 +247,14 @@ async def state_consumer(agent: AppAgent) -> None:
     assert_type(result.state.to_json(), str)
     async with agent.session(state=SessionState.from_json(result.state.to_json())) as session:
         assert_type(session.snapshot(), SessionState)
+
+
+async def message_input_contract(session: Session, agent: AppAgent) -> None:
+    request = ModelRequest((UserMessage("Task"),))
+    assert_type(request.append_message(UserMessage("Additional knowledge")), ModelRequest)
+    assert_type(await session.append_message(UserMessage("Recorded fact")), None)
+    assert_type(session.observe(UserMessage("Screen"), source="browser", refs=("frame",)), None)
+    assert_type(await agent.run("Task"), RunResult[None])
+    assert_type(await session.run(UserMessage("Task")), RunResult[None])
+    session.observe("Screen", source="browser")  # ty: ignore[invalid-argument-type]
+    await session.append_message("Fact")  # ty: ignore[invalid-argument-type]

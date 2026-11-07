@@ -114,9 +114,9 @@ raises or disconnects; neither event means that the session has no queued work.
 | `ObservationsIncludedEvent` | `observations.included` | Yes | No | Observation sources and forms present in `request_id` |
 | `SystemMessageEvent` | `system.message` | Yes | No | Effective fixed system content |
 | `UserMessageEvent` | `user.message` | Yes | No | Accepted user `message` |
-| `ContextMessageEvent` | `context.message` | Yes | No | Scope `message` with its lifetime and optional `turn_id` |
-| `ContextValueChangedEvent` | `context.value.changed` | Yes | No | Named context fact changed or removed |
-| `ObservationRecordedEvent` | `observation.recorded` | Yes | No | Observation received at `(turn_id, step)` |
+| `MessageAppendedEvent` | `message.appended` | Yes | No | Scope `message` with its lifetime and optional `turn_id` |
+| `PluginInstructionsChangedEvent` | `plugin.instructions.changed` | Yes | No | Feature-owned instruction state changed; rendered by its request hook |
+| `ObservationRecordedEvent` | `observation.recorded` | Yes | No | User `message`, source and refs captured at `(turn_id, step)` |
 | `ObservationPolicyAppliedEvent` | `observation.policy.applied` | Yes | No | Explicit observation-count retention policy changed |
 
 A model request closes with exactly one assistant message or request failure.

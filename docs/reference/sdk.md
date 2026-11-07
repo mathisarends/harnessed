@@ -87,7 +87,7 @@ Each mount owns one connection and a fixed catalog of namespaced tools. See
 Plugin lifetime ownership uses `Scope` from `harnessed.kernel`. A setup method
 accepts `scope: Scope`; service resolution, owned registrations and cleanup all
 belong to that scope. Advanced session integrations use `session.scope`.
-Model-visible input uses `add_context()` and `DynamicContext`; per-call services
+Model-visible input uses messages and `PrepareRequest` hooks; per-call services
 use `ToolContext`.
 
 `session.tools` is a live, read-only mapping. Use `session.tools.names` for a
@@ -97,10 +97,10 @@ itself yields names. Missing, disabled or inactive tools raise `KeyError` on
 lookup. Existing views reflect activation, removal and replacement, using the
 same visibility rules as model requests. Register tools through plugins.
 
-Plugin authors import `DynamicContext`, `SessionContext`, `SystemPromptStore`
+Plugin authors import `SessionContext`, `SystemPromptStore`
 and `ToolRegistry` from `harnessed.services`. `SessionContext` is the in-loop
 session view carried by runtime hook events as `event.session`; it reads state,
-adds context, emits events and requests approvals, but cannot run, mount or close.
+appends messages, records observations, emits events and requests approvals, but cannot run, mount or close.
 It is the only session service in a plugin scope; the application `Session` is
 not injectable, and applications obtain the same view from `session.plugin_context`. `SessionTools` is also exported there for annotations.
 These explicit service exports keep plugin code off deep internal import paths;
@@ -222,7 +222,7 @@ and `save_session(conversation_id, commit, *, expected_revision) -> int`.
 ordered `SessionChange(sequence, event)` values since the previous acknowledged
 save. Map domain changes and checkpoint in one application-owned transaction.
 Old changes are not emitted again on restore. Token deltas are excluded. The JSON
-store ignores changes and retains its existing format-2 checkpoint envelope.
+store ignores changes and retains its format-3 checkpoint envelope.
 Checkpoints are frozen Pydantic dataclasses with typed state, execution events,
 controls and resources. Adapters map them to application-owned repository models;
 the SDK defines no database schema. `to_json()` / `from_json()` provide optional
@@ -357,12 +357,12 @@ after completion it raises `SessionStateError` instead of starting a new turn.
 
 | Member | Behavior |
 | --- | --- |
-| run(content, output=None, attachments=(), context=None, settings=None, max_steps=None, token_budget=None) | Queue and await this turn's RunResult[T]; content is text or a Message, as on Agent.run() |
+| run(content, output=None, attachments=(), settings=None, max_steps=None, token_budget=None) | Queue and await this turn's RunResult[T]; content is text or a UserMessage, as on Agent.run() |
 | submit(content, output=None, ...) | Acknowledge queued input and return RunHandle[T] |
 | stream(content, output=None, ...) | Async context manager yielding RunHandle[T]; iterate it for UI and custom events, ending with TurnResultEvent |
 | steer(content, attachments=()) | Send a next-step correction and return its InboxItem |
-| observe(observation) | Buffer the latest text/image snapshot per source for the next step; recorded snapshots stay unchanged until compaction or an explicit retention policy |
-| add_context(content: str) | Append text for subsequent model requests without starting a turn or invoking the model; commit before returning when a store is configured |
+| observe(message: UserMessage, source=..., refs=()) | Buffer the latest text/image snapshot per source for the next step; recorded snapshots stay unchanged until compaction or an explicit retention policy |
+| append_message(message: UserMessage) | Append a user message for subsequent model requests without starting a turn or invoking the model; commit before returning when a store is configured |
 | inbox.pending / remove(id) | Frozen in-memory queued input / admitted removal |
 | pause() / resume() | Pause at a committed step boundary / continue |
 | stop(keep_inbox=False) | Finish this step, end its turn, return to idle |
@@ -396,9 +396,9 @@ data for plugins and integrations; prefer the session views when both exist.
 turn IDs, step numbers and message IDs using exact message provenance rather
 than prompt text searches. See [automatic observations](../guides/context.md#steering-observations-and-retrieval).
 
-`Observation(source, content, refs=())` accepts text or a tuple of `TextPart` and
-`ImagePart` values. The existing `PreStep` hook supplies snapshots automatically
-through `session.observe()`; no model tool call is required. Text and images
+`observe(UserMessage(content), source=..., refs=())` accepts text or a tuple of
+`TextPart` and `ImagePart` values in the message. A `PreStep` hook supplies snapshots
+automatically; no model tool call is required. Text and images
 share one recorded message and lifecycle. `LatestObservationOnly()` explicitly
 keeps only the latest snapshot per source; otherwise snapshots remain unchanged
 until compaction. `Compaction(keep_steps=5, ...)` retains five completed steps in
@@ -424,6 +424,11 @@ step for an action-free text summary. Import `FinalStepPolicy` from
 `harnessed.plugins`; the default is `NONE`. The summary returns `MAX_STEPS` with
 `completed=False`, respects per-run limits and produces only `result.text`, even
 when the run requested structured output. See [reserved summaries](../guides/sessions.md#step-progress-and-a-reserved-summary).
+
+`ModelRequest.append_message(message)` returns an extended request without
+mutating it or adding to conversation history. Transform requests through
+`PrepareRequest`; `ConfigureRequest` is removed. There is no `context=` run option,
+`ContextValue` helper, or public `DynamicContext` service.
 
 ## RunResult and values
 
@@ -575,8 +580,8 @@ reaching into those implementations.
 
 `SessionState` is exported from `harnessed`. `state=None` starts a conversation
 without history. `SessionState.from_json(str_or_bytes)` validates format version
-1 and resource integrity; `state.to_json()` returns a string without I/O. State
-contains retained history and provenance, named context, compaction metadata,
+2 and resource integrity; `state.to_json()` returns a string without I/O. State
+contains retained history and provenance, feature-owned instruction state, compaction metadata,
 parent/child references and terminal child receipts, and
 referenced image/text resources. It contains no runtime handles, queued turns,
 Python validators, approval grants or historical request/event archive.

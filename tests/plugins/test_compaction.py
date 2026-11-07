@@ -15,7 +15,7 @@ from harnessed.core.errors import ConfigError, ContextLengthExceeded, SessionSta
 from harnessed.core.events.compaction import CompactionAppliedEvent, CompactionStartedEvent
 from harnessed.core.events.model import ModelRequestedEvent, ModelUsageRecordedEvent
 from harnessed.core.events.turn import TurnOutcome
-from harnessed.core.hooks import ConfigureRequest
+from harnessed.core.hooks import PrepareRequest
 from harnessed.core.messages import AssistantMessage, SystemMessage, ToolCall
 from harnessed.core.model import (
     Model,
@@ -49,7 +49,7 @@ async def test_compaction_window_uses_captured_model(context_window: int | None)
     windows: list[int | None] = []
 
     async def swap(
-        event: ConfigureRequest, next_: Callable[[], Awaitable[ModelRequest]]
+        event: PrepareRequest, next_: Callable[[], Awaitable[ModelRequest]]
     ) -> ModelRequest:
         session.scope.provide(Model, replacement)
         return await next_()
@@ -61,7 +61,7 @@ async def test_compaction_window_uses_captured_model(context_window: int | None)
             Compaction(trigger=lambda state: windows.append(state.context_window) or False),
         ],
     ).session() as session:
-        session.on(ConfigureRequest, swap)
+        session.on(PrepareRequest, swap)
         assert (await session.run("hello")).text == "original"
         assert windows == [context_window or original.info.context_window]
         assert replacement.requests == []
@@ -72,7 +72,7 @@ async def test_default_summary_uses_captured_model_after_a_request_hook() -> Non
     replacement = ScriptedModel([], info=ModelInfo("replacement"))
 
     async def swap(
-        event: ConfigureRequest, next_: Callable[[], Awaitable[ModelRequest]]
+        event: PrepareRequest, next_: Callable[[], Awaitable[ModelRequest]]
     ) -> ModelRequest:
         session.scope.provide(Model, replacement)
         return await next_()
@@ -81,7 +81,7 @@ async def test_default_summary_uses_captured_model_after_a_request_hook() -> Non
         model=original, plugins=[Compaction(trigger=every_turns(1), keep_turns=0)]
     ).session() as session:
         await session.run("x" * 4000)
-        session.on(ConfigureRequest, swap)
+        session.on(PrepareRequest, swap)
         assert (await session.run("current")).text == "second"
         assert session.last(CompactionAppliedEvent).summary == "summary"
         assert len(original.requests) == 3
@@ -119,7 +119,7 @@ async def test_context_recovery_summary_uses_captured_model() -> None:
     replacement = ScriptedModel(["continued"], info=ModelInfo("replacement"))
 
     async def swap(
-        event: ConfigureRequest, next_: Callable[[], Awaitable[ModelRequest]]
+        event: PrepareRequest, next_: Callable[[], Awaitable[ModelRequest]]
     ) -> ModelRequest:
         session.scope.provide(Model, replacement)
         return await next_()
@@ -128,7 +128,7 @@ async def test_context_recovery_summary_uses_captured_model() -> None:
         model=original, plugins=[Compaction(trigger=lambda state: False, keep_turns=0)]
     ).session() as session:
         await session.run("x" * 4000)
-        session.on(ConfigureRequest, swap)
+        session.on(PrepareRequest, swap)
         assert (await session.run("current")).text == "continued"
         assert session.last(CompactionAppliedEvent).summary == "summary"
         assert len(original.requests) == 3
@@ -232,7 +232,7 @@ async def test_periodic_trigger_counts_new_closed_turns_and_reuses_the_previous_
 
 async def test_compaction_runs_after_request_hooks_and_preserves_their_extra_context():
     class Scope(Plugin):
-        @hook(ConfigureRequest)
+        @hook(PrepareRequest)
         async def add(self, event, next_):
             request = await next_()
             return replace(request, messages=(*request.messages, SystemMessage("HOOK CONTEXT")))

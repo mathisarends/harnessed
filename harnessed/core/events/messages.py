@@ -9,7 +9,7 @@ from harnessed.core.messages import AssistantMessage, Message, UserMessage
 from harnessed.core.model import StopReason
 
 
-class ContextLifetime(StrEnum):
+class MessageLifetime(StrEnum):
     SESSION = "session"
     TURN = "turn"
 
@@ -35,23 +35,23 @@ class UserMessageEvent(DurableEvent):
 
 
 @dataclass(frozen=True)
-class ContextMessageEvent(DurableEvent):
+class MessageAppendedEvent(DurableEvent):
     __hash__ = None
 
-    type: Literal[EventKind.CONTEXT_MESSAGE] = field(
-        default=EventKind.CONTEXT_MESSAGE, kw_only=True
+    type: Literal[EventKind.MESSAGE_APPENDED] = field(
+        default=EventKind.MESSAGE_APPENDED, kw_only=True
     )
     message: Message
-    lifetime: ContextLifetime = ContextLifetime.SESSION
+    lifetime: MessageLifetime = MessageLifetime.SESSION
     turn_id: str | None = None
 
 
 @dataclass(frozen=True)
-class ContextValueChangedEvent(DurableEvent):
+class PluginInstructionsChangedEvent(DurableEvent):
     __hash__ = None
 
-    type: Literal[EventKind.CONTEXT_VALUE_CHANGED] = field(
-        default=EventKind.CONTEXT_VALUE_CHANGED, kw_only=True
+    type: Literal[EventKind.PLUGIN_INSTRUCTIONS_CHANGED] = field(
+        default=EventKind.PLUGIN_INSTRUCTIONS_CHANGED, kw_only=True
     )
     name: str
     value: str | None

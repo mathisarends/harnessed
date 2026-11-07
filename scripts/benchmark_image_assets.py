@@ -7,8 +7,8 @@ import json
 import tracemalloc
 from time import perf_counter
 
-from harnessed import Agent, Observation, SessionState
-from harnessed.models import ImageReference
+from harnessed import Agent, SessionState
+from harnessed.models import ImageReference, UserMessage
 from harnessed.plugins import LatestObservationOnly
 from scripts.benchmark_sessions import EchoModel
 
@@ -22,7 +22,7 @@ async def sample(frames: int, image_bytes: int) -> dict[str, int | float]:
         for index in range(frames):
             data = index.to_bytes(8) + b"x" * max(0, image_bytes - 8)
             ref = await session.assets.put(data, media_type="image/png")
-            session.observe(Observation("screen", (ImageReference(ref),)))
+            session.observe(UserMessage((ImageReference(ref),)), source="screen")
             await session.run("inspect")
         state = session.snapshot()
         payload = state.to_json()

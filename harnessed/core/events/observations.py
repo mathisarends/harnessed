@@ -4,7 +4,7 @@ from typing import Literal
 
 from harnessed.core.events.base import DurableEvent, Identifier, StepNumber
 from harnessed.core.events.kinds import EventKind
-from harnessed.core.messages import Observation, SpillRef
+from harnessed.core.messages import SpillRef, UserMessage
 
 
 class SpillExpirationReason(StrEnum):
@@ -19,9 +19,20 @@ class ObservationRecordedEvent(DurableEvent):
     type: Literal[EventKind.OBSERVATION_RECORDED] = field(
         default=EventKind.OBSERVATION_RECORDED, kw_only=True
     )
-    observation: Observation
+    message: UserMessage
+    source: str
     turn_id: Identifier
     step: StepNumber
+    refs: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.message, UserMessage):
+            raise TypeError("Observations require a user message")
+        if not isinstance(self.source, str) or not self.source:
+            raise ValueError("Observations require a non-empty source")
+        object.__setattr__(self, "refs", tuple(self.refs))
+        if any(not isinstance(ref, str) for ref in self.refs):
+            raise TypeError("Observation refs must be strings")
 
 
 @dataclass(frozen=True)

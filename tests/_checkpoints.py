@@ -5,7 +5,7 @@ from harnessed.sessions import SessionCheckpoint, SessionCommit
 
 def checkpoint(marker: str = "") -> SessionCheckpoint:
     return SessionCheckpoint(
-        state=SessionState(context={"marker": marker}),
+        state=SessionState(plugin_instructions={"marker": marker}),
         offset=0,
         control=SessionControlChangedEvent(ControlState.ACTIVE),
     )

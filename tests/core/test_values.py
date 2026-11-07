@@ -3,15 +3,9 @@ from collections.abc import Hashable
 import pytest
 
 from harnessed.core.events.model import ModelRequestedEvent
+from harnessed.core.events.observations import ObservationRecordedEvent
 from harnessed.core.events.turn import TurnStartedEvent
-from harnessed.core.messages import (
-    AssistantMessage,
-    ImagePart,
-    Observation,
-    TextPart,
-    ToolCall,
-    UserMessage,
-)
+from harnessed.core.messages import AssistantMessage, ImagePart, TextPart, ToolCall, UserMessage
 from harnessed.core.model import ModelInfo, ModelRequest, ModelResponse, ModelUsage, ToolDefinition
 
 
@@ -36,17 +30,20 @@ def test_mapping_values_and_log_records_are_explicitly_unhashable(value):
 def test_observation_detaches_content_and_refs_from_mutable_capture_buffers():
     parts = [TextPart("page"), ImagePart("https://example.test/screen.png")]
     refs = ["frame"]
-    snapshot = Observation("browser", parts, refs)
+    snapshot = ObservationRecordedEvent(UserMessage(parts), "browser", "turn", 1, refs)
     parts.clear()
     refs.clear()
-    assert snapshot.content == (TextPart("page"), ImagePart("https://example.test/screen.png"))
+    assert snapshot.message.content == (
+        TextPart("page"),
+        ImagePart("https://example.test/screen.png"),
+    )
     assert snapshot.refs == ("frame",)
 
 
 @pytest.mark.parametrize("content", [None, 42, ("plain text is not a content part",)])
 def test_observation_rejects_unsupported_content(content):
     with pytest.raises(TypeError):
-        Observation("browser", content)
+        UserMessage(content)
 
 
 def test_scalar_values_remain_hashable_and_payload_equality_remains_structural():

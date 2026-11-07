@@ -38,7 +38,7 @@ candidates. Existing per-turn token budgets are step-boundary limits.
 
 `allowed-tools` frontmatter is retained as metadata and currently grants no
 permissions. Whether and how to enforce it remains a separate design question.
-Applications can trigger skills through existing tools, steering or named context;
+Applications can trigger skills through existing tools, steering or request hooks;
 a dedicated user-invocation API is deferred until a concrete application needs it.
 YAML parsing is already implemented through the optional `harnessed[skills]` extra.
 

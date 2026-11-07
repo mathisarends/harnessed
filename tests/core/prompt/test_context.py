@@ -4,24 +4,12 @@ from pathlib import Path
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import (
-    File,
-    Image,
-    Inject,
-    Observation,
-    Plugin,
-    PolicyDecision,
-    SessionState,
-    ToolCall,
-    tool,
-)
-from harnessed.core.events.messages import ContextMessageEvent
+from harnessed import File, Image, Inject, Plugin, PolicyDecision, SessionState, ToolCall, tool
 from harnessed.core.events.model import ModelRequestedEvent
 from harnessed.core.events.observations import ObservationRecordedEvent
-from harnessed.core.hooks import PreStep
+from harnessed.core.hooks import PrepareRequest, PreStep
 from harnessed.core.messages import ImageDetail, ImagePart, Role, TextPart, UserMessage, user
 from harnessed.core.model import ModelChunk
-from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.errors import SessionClosed
 from harnessed.kernel import hook
@@ -31,29 +19,15 @@ from harnessed.testing import ScriptedModel
 from tests._audit import Audit, AuditProjection
 
 
-async def test_task_context_lasts_one_turn_and_precedes_task_prompt():
-
-    class ToolsPlugin(Plugin):
-        @tool
-        async def step(self) -> str:
-            return "done"
-
-    tools = ToolsPlugin(name="continue")
-
-    model = ScriptedModel([[ModelChunk(tool_call=ToolCall("step"))], "first", "second"])
-    async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), tools]
-    ).session() as agent:
-        agent_audit = Audit(agent)
-        await agent.run("review", context={"ticket": "Fix login", "details": {"issue": 42}})
-        for request in model.requests[:2]:
-            assert "Task context [ticket]:\nFix login" in [m.text for m in request.messages]
-            assert request.messages[0].role == Role.SYSTEM
-            assert request.messages[2].text == "review"
-        await agent.run("unrelated")
-        assert all("Task context" not in m.text for m in model.requests[-1].messages)
-        assert any(isinstance(e, ContextMessageEvent) for e in agent_audit.events)
-        assert "Fix login" in json.dumps([encode_event(e) for e in agent_audit.events])
+async def test_task_background_is_ordinary_user_input_and_remains_in_history():
+    model = ScriptedModel(["first", "second"])
+    prompt = "Review the fix.\n\nTicket: Fix login; issue 42."
+    async with Application(model=model).session() as session:
+        await session.run(prompt)
+        await session.run("Continue")
+        assert model.requests[0].messages[0].text == prompt
+        assert model.requests[1].messages[0].text == prompt
+        assert session.messages[0].text == prompt
 
 
 async def test_file_and_image_attachments_are_snapshotted_in_log_and_wire_payload(tmp_path):
@@ -99,8 +73,8 @@ async def test_added_context_is_additive_quiet_and_retained_across_turns():
     async with Application(
         model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
     ).session() as agent:
-        await agent.add_context("External change")
-        await agent.add_context("External change")
+        await agent.append_message(UserMessage("External change"))
+        await agent.append_message(UserMessage("External change"))
         await agent.control.join()
         assert model.requests == []
         assert not agent.inbox.pending
@@ -114,7 +88,7 @@ async def test_added_context_is_additive_quiet_and_retained_across_turns():
             "Check auth",
         ]
         assert all(message.role == Role.USER for message in model.requests[0].messages)
-        await agent.add_context("Updated project facts")
+        await agent.append_message(UserMessage("Updated project facts"))
         await agent.run("another turn")
         texts = [message.text for message in model.requests[-1].messages]
         assert texts.count("External change") == 2
@@ -125,8 +99,8 @@ async def test_added_context_is_additive_quiet_and_retained_across_turns():
 async def test_added_context_rejects_non_text_without_changing_history(content):
     model = ScriptedModel([])
     async with Application(model=model).session() as session:
-        with pytest.raises(TypeError, match="Context content must be a string"):
-            await session.add_context(content)
+        with pytest.raises(TypeError, match="append_message requires a UserMessage"):
+            await session.append_message(content)
         assert not session.messages and not model.requests
 
 
@@ -135,7 +109,7 @@ async def test_added_context_rejects_closed_sessions():
     async with Application(model=model).session() as session:
         pass
     with pytest.raises(SessionClosed):
-        await session.add_context("Too late")
+        await session.append_message(UserMessage("Too late"))
     assert not session.messages and not model.requests
 
 
@@ -143,10 +117,10 @@ async def test_added_context_roundtrips_through_an_explicit_snapshot():
     model = ScriptedModel(["Remembered", "Continued"])
     app = Application(model=model)
     async with app.session() as session:
-        await session.add_context("Include source URLs.")
+        await session.append_message(UserMessage("Include source URLs."))
         saved = SessionState.from_json(session.snapshot().to_json())
     async with app.session(state=saved) as restored:
-        await restored.add_context("Use a comparison table.")
+        await restored.append_message(UserMessage("Use a comparison table."))
         await restored.run("Compare the missions.")
     assert [message.text for message in model.requests[0].messages] == [
         "Include source URLs.",
@@ -164,7 +138,7 @@ async def test_push_context_from_pre_step_is_in_the_current_request():
         async def recall(self, event, next_):
             seen.append((event.is_turn_start, event.latest_user_text))
             if event.is_turn_start:
-                await event.session.add_context("Relevant memory: prefers Python")
+                await event.session.append_message(UserMessage("Relevant memory: prefers Python"))
             return await next_()
 
     model = ScriptedModel(["done"])
@@ -182,13 +156,11 @@ async def test_explicit_class_needs_and_injected_dynamic_project_context(tmp_pat
     instructions = tmp_path / "AGENTS.md"
     instructions.write_text("first rules", encoding="utf-8")
 
-    class Project(Plugin, needs=(DynamicContext, FileSystemBackend)):
-        @hook(PreStep)
-        async def refresh(
-            self, event, next_, context: Inject[DynamicContext], fs: Inject[FileSystemBackend]
-        ):
-            await context.set("project", await fs.read(Path("AGENTS.md")))
-            return await next_()
+    class Project(Plugin, needs=(FileSystemBackend,)):
+        @hook(PrepareRequest)
+        async def refresh(self, event, next_, fs: Inject[FileSystemBackend]):
+            request = await next_()
+            return request.append_message(UserMessage(await fs.read(Path("AGENTS.md"))))
 
     model = ScriptedModel(["one", "two"])
     async with Application(
@@ -213,7 +185,7 @@ async def test_observations_remain_unchanged_in_later_steps():
         @hook(PreStep)
         async def observe(self, event, next_):
             state = next(states)
-            event.session.observe(Observation("browser", f"FULL {state} refs"))
+            event.session.observe(UserMessage(f"FULL {state} refs"), source="browser")
             return await next_()
 
     class ToolsPlugin(Plugin):

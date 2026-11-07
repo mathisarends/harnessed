@@ -27,7 +27,6 @@ _EXPORTS = {
     "Inject": ("harnessed.kernel", "Inject"),
     "PluginPack": ("harnessed.core.composition", "PluginPack"),
     "PluginPackPromptPolicy": ("harnessed.core.composition", "PluginPackPromptPolicy"),
-    "Observation": ("harnessed.core.messages", "Observation"),
     "OutputContract": ("harnessed.core.outputs", "OutputContract"),
     "Plugin": ("harnessed.core.plugin", "Plugin"),
     "PluginConfig": ("harnessed.core.plugin", "PluginConfig"),
