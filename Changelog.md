@@ -4,6 +4,13 @@
 
 ### Breaking changes
 
+- Configure all approval response timeouts with `Approvals(timeout=...)`; remove
+  `AgentLoop(approval_timeout=...)`. Guards, in-tool questions, SDK requests and
+  forwarded approvals now inherit this same default. Per-question `timeout=`
+  replaces it in either direction; omission and `None` inherit it. Approval waits
+  preserve the asking task's remaining tool execution budget, and unavailable
+  in-tool approvals return `ToolStatus.UNAVAILABLE`.
+
 - Model input now uses ordinary messages throughout. Remove `context=` from
   `Agent.run()` and session `run()`, `submit()` and `stream()`; put task background
   in the input string or add request-only messages in a `PrepareRequest` hook.

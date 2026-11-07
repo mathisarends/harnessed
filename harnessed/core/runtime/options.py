@@ -27,7 +27,6 @@ class AgentLoopConfig(PluginConfig):
     max_steps: Annotated[int, Field(ge=1)] = 32
     tool_timeout: Annotated[float, Field(gt=0)] = 30.0
     max_parallel_tools: Annotated[int, Field(ge=1)] = 4
-    approval_timeout: Annotated[float, Field(gt=0)] = 300.0
     context_window: Annotated[int, Field(ge=1)] | None = None
     on_max_tokens: TokenLimitBehavior = TokenLimitBehavior.ACCEPT
     output_retries: Annotated[int, Field(ge=0)] = 2
@@ -43,7 +42,6 @@ class AgentOptions:
     context_window: int | None
     tool_output_limit: ToolOutputLimit
     max_parallel_tools: int
-    approval_timeout: float
     error_formatter: ErrorFormatter | None
     on_max_tokens: TokenLimitBehavior
     output_retries: int
@@ -63,7 +61,6 @@ class AgentOptions:
             context_window=config.context_window,
             tool_output_limit=tool_output_limit,
             max_parallel_tools=config.max_parallel_tools,
-            approval_timeout=config.approval_timeout,
             error_formatter=error_formatter,
             on_max_tokens=config.on_max_tokens,
             output_retries=config.output_retries,

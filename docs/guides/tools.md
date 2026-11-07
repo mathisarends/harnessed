@@ -213,7 +213,7 @@ to this call. It does not expose the model driver. Normal service arguments use
 
 ## Ask for approval inside a tool
 
-A tool that discovers a risky step mid-call asks with `await call.approve(reason)`.
+A tool that discovers a risky step mid-call asks with `await context.approve(reason)`.
 The request is durable and runs through the session approval flow: an `ALWAYS`
 grant for the tool and scope (default `"tool-call"`), the approver configured on
 `Approvals(approver=...)`, or a stream consumer answering `events.ApprovalNeededEvent`.
@@ -221,12 +221,30 @@ It returns True for allow or always and raises `ApprovalUnavailable` when nobody
 can answer.
 
 ```python
-@tool
-async def cleanup(self, *, call: ToolContext) -> str:
-    if not await call.approve("Delete 3 generated files?"):
-        return "Kept the files."
-    ...
+from harnessed import Plugin, ToolContext, tool
+
+
+class WorkspaceTools(Plugin):
+    @tool
+    async def cleanup(self, *, context: ToolContext) -> str:
+        if not await context.approve("Delete 3 generated files?"):
+            return "Kept the files."
+        # Perform the approved deletion here.
+        return "Deletion approved."
 ```
+
+The framework supplies `context` by its `ToolContext` annotation; it is not a
+model argument. `cleanup` is the tool, and `context.approve()` is a helper that
+uses the session's approval flow. If the tool owns its confirmation in this way,
+allow the outer tool call with `Approvals(allow=[WorkspaceTools.cleanup])` to avoid
+also asking before the tool starts.
+
+`Approvals(timeout=...)` sets the response timeout for these questions too.
+`context.approve(reason, timeout=30)` replaces it for one question; omission or
+`None` inherits it. The finite positive override may be shorter or longer than
+the default. Approval waits do not consume the asking task's tool execution
+budget. [Approval response timeouts](approvals.md#response-timeouts) describe
+expiration, cancellation and the lower-level `session.approvals.request()` API.
 
 Free-text clarifying questions are not a tool API. Let the model end its turn with
 the question; the user's answer arrives as the next run.

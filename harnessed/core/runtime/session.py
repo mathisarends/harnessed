@@ -89,9 +89,7 @@ class Session:
         self._compaction = CompactionManager(scope, session, context_window=options.context_window)
         self.control = SessionControl(session, self._drive, lambda: _driving.get() is self)
         self._live_approvals = LiveApprovals()
-        self.approvals = SessionApprovals(
-            scope, session, self.control, options, self._live_approvals
-        )
+        self.approvals = SessionApprovals(scope, session, self.control, self._live_approvals)
         self._inbox_writer = InboxWriter(session, self.control)
         self.inbox = SessionInbox(session, self.control, self._inbox_writer)
         observations = PendingObservations()

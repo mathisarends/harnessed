@@ -1,3 +1,4 @@
+from harnessed.core.approvals import ApprovalsConfig
 from harnessed.core.budget import ContextBudget
 from harnessed.core.events.model import ModelRequestedEvent, ModelUsageRecordedEvent
 from harnessed.core.hooks import SessionAppended
@@ -19,6 +20,7 @@ class RuntimeServices(Plugin):
 
     async def setup(self, scope: Scope) -> None:
         counter = CalibratedTokenCounter()
+        scope.provide(ApprovalsConfig, ApprovalsConfig())
         scope.provide(ToolRegistry, ToolRegistry(scope))
         scope.provide(SystemPromptStore, SystemPromptStore(scope))
         scope.provide(TokenCounter, counter)

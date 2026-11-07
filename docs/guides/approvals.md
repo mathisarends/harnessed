@@ -81,8 +81,64 @@ a different second response fails. Late or expired responses fail with
 `ApprovalUnavailable`.
 
 Without a callback or an active UI responder, ASK immediately produces an
-unavailable tool result. `Approvals(timeout=...)` sets a finite positive deadline.
+unavailable tool result.
 `run()`, `submit()` and raw subscriptions do not install a UI responder.
+
+## Response timeouts
+
+`Approvals(timeout=120)` sets the default approval response timeout for the whole
+session, in seconds. It applies to tool-policy questions, independent guards,
+questions inside a tool, direct SDK requests and forwarded subagent questions.
+Callbacks, services, hooks and stream responders use the same timeout. The
+default is 300 seconds; values must be finite and positive.
+
+There are two configuration levels:
+
+```python
+# Application default for every approval question.
+Approvals(approver=approve, timeout=120)
+
+# Inside a running tool: inherit the application default.
+await context.approve("Deploy to production?")
+
+# Give this one question a different response timeout.
+await context.approve("Deploy to production?", timeout=30)
+```
+
+`context` is the framework-supplied `ToolContext` parameter of a tool method;
+`approve()` is a helper on that context, not a separate model-facing tool or hook.
+See the [complete tool example](tools.md#ask-for-approval-inside-a-tool).
+
+The lower-level equivalent is
+`await session.approvals.request(call, reason, timeout=30)`, where `call` is a
+`ToolCall`. Omitting `timeout`, or passing `None`, inherits the configured default.
+An explicit value replaces it for this question and may be shorter or longer.
+For example, `timeout=300` allows five minutes even when the default is 120
+seconds. The application default is not a maximum. Overrides do not change later
+questions. Invalid overrides are rejected before recording a question, even when
+a reusable grant exists.
+
+The response timeout starts when the session waits for the answer. Each question
+captures its configured timeout before recording the request; replacing a plugin
+affects new questions. An existing grant answers immediately without waiting.
+Expiration raises `ApprovalUnavailable` and records an unavailable resolution;
+it is distinct from an explicit `DENY`. Late answers cannot authorize the action.
+Tool-policy and in-tool approval failures produce an unavailable tool result.
+
+Time spent waiting for approval does not consume the asking task's tool execution
+timeout. Execution resumes with its remaining budget after the answer, including
+when a tool asks more than once. Concurrent tasks keep their own budgets; an
+approval requested by a background task does not suspend work in its parent task.
+Explicit run cancellation and outer application or subagent deadlines still
+interrupt the wait. Forwarding a child's approval does not extend the child's
+existing response deadline; the parent's response timeout can end it earlier.
+
+Configure approval response timeouts on `Approvals`, and tool execution timeouts
+on `AgentLoop(tool_timeout=...)` or `@tool(timeout=...)`.
+The [API decision and rationale](../contributing/approval-timeouts.md) explain
+these responsibilities.
+
+## Independent guards and grants
 
 Independent hard guards can use `ToolApprovalGuard(risky=[WorkspaceTools.count_lines],
 scope="workspace")` or the `ToolPolicy` hook. They remain active when their

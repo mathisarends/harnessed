@@ -9,7 +9,7 @@ from harnessed.events import ApprovalStatus, ToolCallFinishedEvent
 from harnessed.hooks import RequestApproval, ToolPolicy
 from harnessed.kernel import hook
 from harnessed.models import ModelChunk
-from harnessed.plugins import AgentLoop, Approvals, ToolApprovalGuard
+from harnessed.plugins import Approvals, ToolApprovalGuard
 from harnessed.testing import ScriptedModel
 
 
@@ -91,7 +91,6 @@ async def response_timeout():
     async with Agent(
         model=ScriptedModel([]),
         plugins=[
-            AgentLoop(approval_timeout=0.02),
             Approvals(default=PolicyDecision.ALLOW, timeout=0.02),
         ],
     ).session() as session:
