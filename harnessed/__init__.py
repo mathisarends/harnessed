@@ -11,7 +11,8 @@ def __getattr__(name: str) -> Any:
     if name not in _EXPORTS:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     module, attribute = _EXPORTS[name]
-    value = getattr(import_module(module), attribute)
+    imported = import_module(module)
+    value = imported if attribute is None else getattr(imported, attribute)
     globals()[name] = value
     return value
 
@@ -61,6 +62,7 @@ _EXPORTS = {
     "ToolInfo": ("harnessed.core.tools.info", "ToolInfo"),
     "ToolMetadata": ("harnessed.core.tools.info", "ToolMetadata"),
     "ToolStatus": ("harnessed.core.messages", "ToolStatus"),
+    "events": ("harnessed.events", None),
     "hook": ("harnessed.kernel", "hook"),
     "plugin": ("harnessed.kernel", "plugin"),
     "tool": ("harnessed.core.tools.decorator", "tool"),

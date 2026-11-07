@@ -269,7 +269,7 @@ class Session:
         """
         self.control.check_open()
         if not isinstance(content, str):
-            raise TypeError("Scope content must be a string")
+            raise TypeError("Context content must be a string")
         await self.log.append(ContextMessageEvent(UserMessage(content)))
         await self.log.flush()
 

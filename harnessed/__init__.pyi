@@ -92,6 +92,7 @@ __all__ = [
     "ToolMetadata",
     "ToolResult",
     "ToolStatus",
+    "events",
     "hook",
     "plugin",
     "tool",
