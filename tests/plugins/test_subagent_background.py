@@ -13,7 +13,14 @@ from harnessed import (
     tool,
 )
 from harnessed.core.messages import ToolMessage, ToolStatus
-from harnessed.events import SubagentStartedEvent, SubagentStatus, SubagentUpdatedEvent
+from harnessed.events import (
+    InboxAddedEvent,
+    SubagentFinishedEvent,
+    SubagentStartedEvent,
+    SubagentStatus,
+    SubagentUpdatedEvent,
+    ToolCallFinishedEvent,
+)
 from harnessed.hooks import SessionAppended
 from harnessed.integrations.json import JsonSessionStore
 from harnessed.models import ModelChunk
@@ -498,10 +505,20 @@ async def test_queued_child_accepts_guidance_and_status_without_starting_an_extr
         assert session.children[1].status is SubagentStatus.COMPLETED
 
 
-@pytest.mark.parametrize("ending", ["timeout", "startup_timeout", "parent_error"])
-async def test_background_timeout_or_parent_failure_drains_children(ending):
+@pytest.mark.parametrize(
+    ("ending", "notification_timing"),
+    [
+        ("timeout", "during_turn"),
+        ("timeout", "after_turn"),
+        ("startup_timeout", "during_turn"),
+        ("startup_timeout", "after_turn"),
+        ("parent_error", None),
+    ],
+)
+async def test_background_timeout_or_parent_failure_drains_children(ending, notification_timing):
     started, cleaned, notified = [asyncio.Event() for _ in range(3)]
     startup_entered, startup_cleaned = asyncio.Event(), asyncio.Event()
+    notification_queued, parent_finished = asyncio.Event(), asyncio.Event()
     parent_calls = 0
 
     class SlowStartup(Plugin):
@@ -525,16 +542,23 @@ async def test_background_timeout_or_parent_failure_drains_children(ending):
         parent_calls += 1
         if parent_calls == 1:
             yield ModelChunk(tool_call=_spawn())
-        elif parent_calls == 2:
-            if ending == "parent_error":
-                await asyncio.wait_for(started.wait(), 2)
-                raise RuntimeError("Coordinator failed")
-            # The delegation deadline includes startup. A timeout need not enter
-            # the child model, so the coordinator must not wait for that signal.
-            yield ModelChunk(text="Continue")
+        elif ending == "parent_error":
+            await asyncio.wait_for(started.wait(), 2)
+            raise RuntimeError("Coordinator failed")
         else:
-            notified.set()
-            yield ModelChunk(text="Child timed out")
+            notifications = [
+                json.loads(message.text)
+                for message in request.messages
+                if message.text.startswith('{"type": "subagent.finished"')
+            ]
+            # A receipt can join the next step of this turn or wake a new turn.
+            if notifications:
+                assert len(notifications) == 1
+                assert notifications[0]["data"]["status"] == "timed_out"
+                notified.set()
+                yield ModelChunk(text="Child timed out")
+            else:
+                yield ModelChunk(text="Continue")
 
     parent = _parent(
         Agent(
@@ -545,12 +569,32 @@ async def test_background_timeout_or_parent_failure_drains_children(ending):
         timeout=5 if ending == "parent_error" else 0.1,
     )
     async with parent.session() as session:
+
+        @session.on(InboxAddedEvent)
+        def notification_admitted(event):
+            if event.message.text.startswith('{"type": "subagent.finished"'):
+                notification_queued.set()
+
+        @session.on(ToolCallFinishedEvent)
+        async def wait_for_early_notification(event):
+            if notification_timing == "during_turn" and event.call.name == "spawn":
+                await asyncio.wait_for(notification_queued.wait(), 2)
+
+        @session.on(SubagentFinishedEvent)
+        async def defer_late_notification(event):
+            if notification_timing == "after_turn":
+                await asyncio.wait_for(parent_finished.wait(), 2)
+
         if ending == "parent_error":
             with pytest.raises(RuntimeError, match="Coordinator failed"):
                 await asyncio.wait_for(session.run("Start"), 2)
             assert session.children[0].status is SubagentStatus.CANCELLED
         else:
-            await session.run("Start")
+            try:
+                await session.run("Start")
+                assert notified.is_set() == (notification_timing == "during_turn")
+            finally:
+                parent_finished.set()
             await asyncio.wait_for(notified.wait(), 2)
             assert session.children[0].status is SubagentStatus.TIMED_OUT
         assert cleaned.is_set() == started.is_set()
