@@ -6,7 +6,7 @@ from functools import partial
 from harnessed.core.assets import AssetRef, AssetStore
 from harnessed.core.events.base import DurableEvent
 from harnessed.core.events.inbox import InboxAddedEvent
-from harnessed.core.events.messages import ContextMessageEvent, UserMessageEvent
+from harnessed.core.events.messages import MessageAppendedEvent, UserMessageEvent
 from harnessed.core.events.model import ModelRequestedEvent
 from harnessed.core.events.observations import ObservationRecordedEvent
 from harnessed.core.events.tools import ToolCallFinishedEvent, ToolExecutionFinishedEvent
@@ -107,21 +107,13 @@ class _SessionImages:
         )
 
     async def retain_event(self, event: DurableEvent) -> DurableEvent:
-        if isinstance(event, InboxAddedEvent):
-            message = await self.retain_message(event.message)
-            context = tuple([await self.retain_message(item) for item in event.context])
-            if message is not event.message or any(
-                a is not b for a, b in zip(context, event.context, strict=True)
-            ):
-                return replace(event, message=message, context=context)
-        elif isinstance(event, UserMessageEvent | ContextMessageEvent):
+        if isinstance(
+            event,
+            InboxAddedEvent | UserMessageEvent | MessageAppendedEvent | ObservationRecordedEvent,
+        ):
             message = await self.retain_message(event.message)
             if message is not event.message:
                 return replace(event, message=message)
-        elif isinstance(event, ObservationRecordedEvent):
-            content = await self._retain_content(event.observation.content)
-            if content is not event.observation.content:
-                return replace(event, observation=replace(event.observation, content=content))
         elif isinstance(event, ToolExecutionFinishedEvent | ToolCallFinishedEvent):
             content = await self._retain_content(event.result.content)
             if content is not event.result.content:

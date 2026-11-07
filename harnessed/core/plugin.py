@@ -140,11 +140,6 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         """
         return SystemPrompt()
 
-    @property
-    def context_description(self) -> tuple[str, str] | None:
-        """A named context value this plugin maintains, listed in the system prompt."""
-        return None
-
     @classmethod
     def _configuration_schema(cls) -> type[BaseModel] | None:
         """Resolve model parameters through generic bases without evaluating annotations."""
@@ -205,14 +200,7 @@ def plugin_contribution(value: PluginLike) -> PromptContribution:
         if isinstance(value, Plugin) and type(value).instructions is not Plugin.instructions
         else None
     )
-    description = value.context_description if isinstance(value, Plugin) else None
-    if description is not None and (
-        not isinstance(description, tuple)
-        or len(description) != 2
-        or not all(isinstance(part, str) for part in description)
-    ):
-        raise TypeError("Context descriptions must contain a name and text")
-    return PromptContribution(spec.name, provider, description)
+    return PromptContribution(spec.name, provider)
 
 
 class Service[T](Plugin):

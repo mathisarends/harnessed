@@ -5,7 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from harnessed import Agent
-from harnessed.core.hooks import ConfigureRequest
+from harnessed.core.hooks import PrepareRequest
 from harnessed.core.model import Model, ModelRequest, resolve_request_settings
 from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.events import ModelRequestedEvent
@@ -83,7 +83,7 @@ async def test_request_uses_the_model_binding_captured_before_request_hooks():
         changed = False
 
         async def configure(
-            event: ConfigureRequest, next_: Callable[[], Awaitable[ModelRequest]]
+            event: PrepareRequest, next_: Callable[[], Awaitable[ModelRequest]]
         ) -> ModelRequest:
             nonlocal changed
             if not changed:
@@ -91,7 +91,7 @@ async def test_request_uses_the_model_binding_captured_before_request_hooks():
                 changed = True
             return await next_()
 
-        scope.on(ConfigureRequest, configure)
+        scope.on(PrepareRequest, configure)
         yield
 
     async with Agent(model=original, plugins=[swap()]).session() as session:

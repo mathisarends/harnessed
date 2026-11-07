@@ -6,8 +6,8 @@ from harnessed.core.errors import ContextLengthExceeded
 from harnessed.core.events.compaction import CompactionAppliedEvent
 from harnessed.core.events.messages import (
     AssistantMessageEvent,
-    ContextLifetime,
-    ContextMessageEvent,
+    MessageAppendedEvent,
+    MessageLifetime,
     UserMessageEvent,
 )
 from harnessed.core.events.model import ModelRequestedEvent
@@ -129,8 +129,8 @@ async def test_repeated_compaction_retains_inputs_and_signatures_but_releases_re
     context = SystemMessage("per-turn context")
     persistent_context = SystemMessage("session context")
     await log.append(UserMessageEvent(task))
-    await log.append(ContextMessageEvent(context, ContextLifetime.TURN, "active"))
-    await log.append(ContextMessageEvent(persistent_context))
+    await log.append(MessageAppendedEvent(context, MessageLifetime.TURN, "active"))
+    await log.append(MessageAppendedEvent(persistent_context))
     await append_step(log, "active", 1)
     await log.append(UserMessageEvent(steering))
     await append_step(log, "active", 2)

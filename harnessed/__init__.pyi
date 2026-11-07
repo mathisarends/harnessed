@@ -11,7 +11,6 @@ from harnessed.core.errors import SessionClosed as SessionClosed
 from harnessed.core.errors import StreamOverflow as StreamOverflow
 from harnessed.core.messages import ApprovalAnswer as ApprovalAnswer
 from harnessed.core.messages import ImageDetail as ImageDetail
-from harnessed.core.messages import Observation as Observation
 from harnessed.core.messages import PolicyDecision as PolicyDecision
 from harnessed.core.messages import Role as Role
 from harnessed.core.messages import ToolCall as ToolCall
@@ -57,7 +56,6 @@ __all__ = [
     "Inject",
     "PluginPack",
     "PluginPackPromptPolicy",
-    "Observation",
     "OutputContract",
     "Plugin",
     "PluginConfig",

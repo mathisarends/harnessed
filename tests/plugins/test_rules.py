@@ -3,11 +3,11 @@ import pytest
 from harnessed import Agent as Application
 from harnessed import Plugin, PolicyDecision, ToolCall, ToolResult, tool
 from harnessed.core.events.inbox import InboxAddedEvent
-from harnessed.core.events.messages import ContextValueChangedEvent
+from harnessed.core.events.messages import PluginInstructionsChangedEvent
 from harnessed.core.events.tools import ToolCallFinishedEvent
 from harnessed.core.messages import Role, ToolStatus
 from harnessed.core.model import ModelChunk
-from harnessed.core.prompt.context import DynamicContext
+from harnessed.core.prompt.plugin_instructions import PluginInstructions
 from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.core.session.session import SessionLog
 from harnessed.errors import SessionFormatError
@@ -70,7 +70,7 @@ async def test_rule_note_context_steer_order_and_structured_exit_code():
         assert [e.mode for e in inbox] == ["followup", "steer"]
         assert inbox[-1].message.role == Role.USER
         assert any("Consider the failure." in m.text for m in model.requests[-1].messages)
-        assert agent.scope[DynamicContext].values["rule:rules:1"] == "Consider the failure."
+        assert agent.scope[PluginInstructions].values["rule:rules:1"] == "Consider the failure."
         triggered = [e for e in agent_audit.events if isinstance(e, RuleTriggeredEvent)]
         assert triggered[0].actions == ("note", "steer")
         assert AuditProjection(agent_audit.events).messages == agent.log.messages
@@ -107,7 +107,9 @@ async def test_repeated_failures_are_grouped_by_command_reset_on_success_and_fir
         await agent.run("go")
         triggers = [e for e in agent_audit.events if isinstance(e, RuleTriggeredEvent)]
         assert len(triggers) == 1 and triggers[0].occurrence == 3
-        messages = [e.value for e in agent_audit.events if isinstance(e, ContextValueChangedEvent)]
+        messages = [
+            e.value for e in agent_audit.events if isinstance(e, PluginInstructionsChangedEvent)
+        ]
         assert messages.count("Third failure") == 1
 
 
@@ -299,10 +301,10 @@ async def test_canonical_match_metadata_survives_output_limits_and_context_reset
         assert len(first.tool_calls[0][1].content) == 256
         assert dict(first.tool_calls[0][1].rule_matches)["rules:0"] is True
         await session.run("Second")
-        assert session.scope[DynamicContext].values["rule:rules:0"] == "Use a smaller range."
+        assert session.scope[PluginInstructions].values["rule:rules:0"] == "Use a smaller range."
         source[0] = "fixed"
         await session.run("Success")
-        assert "rule:rules:0" not in session.scope[DynamicContext].values
+        assert "rule:rules:0" not in session.scope[PluginInstructions].values
 
 
 def test_rules_are_immutable_and_require_actions():
@@ -348,7 +350,7 @@ def test_rule_conditions_are_sync_and_must_return_booleans():
 
 
 async def test_rule_and_observation_policies_mount_with_narrow_services_without_a_driver():
-    from harnessed.core.prompt.context import DynamicContext
+    from harnessed.core.prompt.plugin_instructions import PluginInstructions
     from harnessed.core.runtime.control import SessionControl
     from harnessed.core.runtime.inbox import InboxWriter, SessionInbox
     from harnessed.core.tokens import ApproximateTokenCounter, TokenCounter
@@ -362,7 +364,7 @@ async def test_rule_and_observation_policies_mount_with_narrow_services_without_
         log = SessionLog("policy", scope=scope)
         control = SessionControl(log, unused_driver, lambda: False)
         scope.provide(SessionLog, log)
-        scope.provide(DynamicContext, DynamicContext(log))
+        scope.provide(PluginInstructions, PluginInstructions(log))
         scope.provide(SessionInbox, SessionInbox(log, control, InboxWriter(log, control)))
         scope.provide(TokenCounter, ApproximateTokenCounter())
         handles = await scope.install(

@@ -91,12 +91,12 @@ class ReviewToolResult(Waterfall[ToolResult]):
 
 @dataclass(frozen=True)
 class PrepareRequest(Waterfall[ModelRequest]):
-    session: SessionContext
-    request: ModelRequest
+    """Transform an assembled request before output constraints and token checks.
 
+    Compose with the request returned by next_(); request is the original input
+    to this hook chain, rather than another hook's returned value.
+    """
 
-@dataclass(frozen=True)
-class ConfigureRequest(Waterfall[ModelRequest]):
     session: SessionContext
     request: ModelRequest
 

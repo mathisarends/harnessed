@@ -2,7 +2,7 @@ from dataclasses import replace
 
 import pytest
 
-from harnessed import Agent, Observation, Plugin, tool
+from harnessed import Agent, Plugin, tool
 from harnessed.events import (
     CompactionAppliedEvent,
     IncludedObservation,
@@ -10,7 +10,7 @@ from harnessed.events import (
     ObservationRecordedEvent,
     ObservationsIncludedEvent,
 )
-from harnessed.hooks import ConfigureRequest, Next, PrepareRequest, PreStep, StepDecision
+from harnessed.hooks import Next, PrepareRequest, PreStep, StepDecision
 from harnessed.kernel import hook
 from harnessed.models import ImagePart, ModelRequest, TextPart, UserMessage
 from harnessed.plugins import Compaction, LatestObservationOnly, every_turns
@@ -23,14 +23,15 @@ class Observe(Plugin):
     async def observe(self, event: PreStep, next_: Next[StepDecision]) -> StepDecision:
         step = event.step
         event.session.observe(
-            Observation(
-                "browser",
+            UserMessage(
                 (
                     TextPart(f"page state {step}"),
                     ImagePart(f"https://example.test/frame-{step}.png"),
                 ),
-                refs=(f"frame-{step}",),
-            )
+                id=f"capture:{step}",
+            ),
+            source="browser",
+            refs=(f"frame-{step}",),
         )
         return await next_()
 
@@ -43,7 +44,7 @@ def observations(request: ModelRequest) -> tuple[UserMessage, ...]:
     return tuple(
         message
         for message in request.messages
-        if isinstance(message, UserMessage) and message.id.startswith("observation:")
+        if isinstance(message, UserMessage) and message.id.startswith("capture:")
     )
 
 
@@ -96,16 +97,15 @@ async def test_automatic_observations_keep_the_entire_previous_request_prefix():
     assert second.messages[: len(first.messages)] == first.messages
 
 
-@pytest.mark.parametrize("stage", [PrepareRequest, ConfigureRequest])
 @pytest.mark.parametrize("edit", ["remove", "text", "image"])
-async def test_final_request_edits_remove_provenance_for_the_whole_snapshot(stage, edit):
+async def test_final_request_edits_remove_provenance_for_the_whole_snapshot(edit):
     class Filter(Plugin):
-        @hook(stage)
+        @hook(PrepareRequest)
         async def filter(self, event, next_):
             request = await next_()
             messages = []
             for message in request.messages:
-                if message.id.startswith("observation:"):
+                if message.id.startswith("capture:"):
                     if edit == "remove":
                         continue
                     content = (
@@ -128,7 +128,9 @@ async def test_image_only_observation_is_projected_and_has_provenance():
     image = ImagePart("data:image/png;base64,aW1hZ2U=")
     model = ScriptedModel(["done"])
     async with Agent(model=model).session() as session:
-        session.observe(Observation("screen", (image,), refs=("screen-1",)))
+        session.observe(
+            UserMessage((image,), id="capture:130"), source="screen", refs=("screen-1",)
+        )
         await session.run("inspect")
         message = observations(model.requests[0])[0]
         assert message.content == (image,) and not message.text
@@ -184,7 +186,9 @@ async def test_compacted_observations_are_not_reported_as_included():
             ),
         ],
     ).session() as session:
-        session.observe(Observation("browser", "state " * 500, refs=("old",)))
+        session.observe(
+            UserMessage("state " * 500, id="capture:186"), source="browser", refs=("old",)
+        )
         await session.run("large " * 500)
         await session.run("continue")
         assert session.last(CompactionAppliedEvent) is not None
@@ -197,7 +201,11 @@ async def test_snapshots_continue_with_images_and_observation_refs():
     app = Agent(model=model)
     image = ImagePart("data:image/png;base64,aW1hZ2U=")
     async with app.session() as session:
-        session.observe(Observation("browser", (TextPart("state"), image), refs=("frame",)))
+        session.observe(
+            UserMessage((TextPart("state"), image), id="capture:199"),
+            source="browser",
+            refs=("frame",),
+        )
         result = await session.run("go")
         state = result.state
         receipt = session.last(ObservationsIncludedEvent).observations
@@ -214,10 +222,31 @@ async def test_only_the_latest_pending_snapshot_per_source_is_recorded():
     model = ScriptedModel(["done"])
     async with Agent(model=model).session() as session:
         session_audit = Audit(session)
-        session.observe(Observation("browser", "superseded"))
-        session.observe(Observation("browser", "current"))
-        session.observe(Observation("screen", (ImagePart("https://example.test/screen.png"),)))
+        session.observe(UserMessage("superseded", id="capture:216"), source="browser")
+        session.observe(UserMessage("current", id="capture:217"), source="browser")
+        session.observe(
+            UserMessage((ImagePart("https://example.test/screen.png"),), id="capture:218"),
+            source="screen",
+        )
         await session.run("inspect")
         records = [e for e in session_audit.events if isinstance(e, ObservationRecordedEvent)]
-        assert [e.observation.source for e in records] == ["browser", "screen"]
+        assert [e.source for e in records] == ["browser", "screen"]
         assert observations(model.requests[0])[0].text == "current"
+
+
+async def test_observe_preserves_message_identity_and_snapshots_refs_without_starting_work():
+    message = UserMessage("Browser state", id="captured-frame")
+    refs = ["external-frame"]
+    model = ScriptedModel(["done"])
+    async with Agent(model=model).session() as session:
+        session.observe(message, source="browser", refs=refs)
+        refs.clear()
+        assert session.messages == () and model.requests == []
+        await session.run("Inspect")
+        recorded = session.last(ObservationRecordedEvent)
+        assert recorded.message == message
+        assert recorded.source == "browser" and recorded.refs == ("external-frame",)
+        included = session.last(ObservationsIncludedEvent).observations
+        assert len(included) == 1
+        assert included[0].message_id == "captured-frame"
+        assert included[0].refs == ("external-frame",)

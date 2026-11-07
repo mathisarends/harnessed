@@ -2,16 +2,11 @@
 
 import asyncio
 
-from harnessed import (
-    Agent,
-    Observation,
-    Plugin,
-    tool,
-)
+from harnessed import Agent, Plugin, tool
 from harnessed.events import CompactionAppliedEvent, SpillCreatedEvent
 from harnessed.hooks import PreStep
 from harnessed.kernel import hook
-from harnessed.models import ModelChunk
+from harnessed.models import ModelChunk, UserMessage
 from harnessed.plugins import AgentLoop, Compaction, LatestObservationOnly, Spill, at_ratio
 from harnessed.testing import ScriptedModel, call
 
@@ -25,10 +20,7 @@ class WorkspaceState(Plugin):
     async def observe(self, event: PreStep, next_):
         self.frame += 1
         event.session.observe(
-            Observation(
-                "workspace",
-                f"FULL current workspace frame {self.frame}",
-            )
+            UserMessage(f"FULL current workspace frame {self.frame}"), source="workspace"
         )
         return await next_()
 

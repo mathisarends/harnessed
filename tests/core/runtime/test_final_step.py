@@ -12,7 +12,7 @@ from harnessed.events import (
     OutputValidationFailedEvent,
     ToolExecutionStartedEvent,
 )
-from harnessed.hooks import ConfigureRequest, PreStep, ToolPolicy, TurnStopping
+from harnessed.hooks import PrepareRequest, PreStep, ToolPolicy, TurnStopping
 from harnessed.kernel import hook
 from harnessed.plugins import AgentLoop, FinalStepPolicy
 from harnessed.testing import ScriptedModel, call
@@ -83,7 +83,7 @@ async def test_final_step_reserves_one_step_and_runtime_blocks_unadvertised_call
 @pytest.mark.parametrize("native", [False, True])
 async def test_single_reserved_step_returns_text_without_validating_a_structured_answer(native):
     class Reconfigure(Plugin):
-        @hook(ConfigureRequest)
+        @hook(PrepareRequest)
         async def configure(self, event, next_):
             request = await next_()
             return replace(request, tools=(ToolDefinition("injected", "Injected tool", {}),))

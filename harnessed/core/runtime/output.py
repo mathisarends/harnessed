@@ -3,8 +3,8 @@ from dataclasses import replace
 from harnessed.core.errors import ConfigError, SessionStateError
 from harnessed.core.events.messages import (
     AssistantMessageEvent,
-    ContextLifetime,
-    ContextMessageEvent,
+    MessageAppendedEvent,
+    MessageLifetime,
 )
 from harnessed.core.events.output import OutputValidatedEvent, OutputValidationFailedEvent
 from harnessed.core.messages import AssistantMessage, ToolResult, UserMessage
@@ -103,7 +103,7 @@ class OutputHandler:
                 )
             if not outputs:
                 await self.log.append(
-                    ContextMessageEvent(UserMessage(note), ContextLifetime.TURN, current.id)
+                    MessageAppendedEvent(UserMessage(note), MessageLifetime.TURN, current.id)
                 )
             return (
                 {call.id: ToolResult.error(note) for call in outputs},

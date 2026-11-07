@@ -5,10 +5,10 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Protocol
 
-from harnessed import Agent, Observation, Plugin, PolicyDecision, ToolCall, tool
+from harnessed import Agent, Plugin, PolicyDecision, ToolCall, tool
 from harnessed.hooks import Next, PreStep, StepDecision
 from harnessed.kernel import Inject, Scope, hook, plugin
-from harnessed.models import ImagePart, ModelChunk, TextPart
+from harnessed.models import ImagePart, ModelChunk, TextPart, UserMessage
 from harnessed.plugins import Approvals
 from harnessed.testing import ScriptedModel
 
@@ -62,15 +62,15 @@ class BrowserObserver(Plugin, needs=(Browser,)):
     ) -> StepDecision:
         state = await browser.snapshot()
         event.session.observe(
-            Observation(
-                source="browser",
-                content=(
+            UserMessage(
+                (
                     TextPart(state.render()),
                     # ScriptedModel records this reference without downloading it.
                     ImagePart(f"https://example.test/screenshots/{state.title.lower()}.png"),
-                ),
-                refs=(state.url,),
-            )
+                )
+            ),
+            source="browser",
+            refs=(state.url,),
         )
         return await next_()
 

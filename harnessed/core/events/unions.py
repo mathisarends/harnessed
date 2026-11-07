@@ -12,8 +12,8 @@ from harnessed.core.events.compaction import CompactionAppliedEvent
 from harnessed.core.events.inbox import InboxAddedEvent, InboxRemovedEvent
 from harnessed.core.events.messages import (
     AssistantMessageEvent,
-    ContextMessageEvent,
-    ContextValueChangedEvent,
+    MessageAppendedEvent,
+    PluginInstructionsChangedEvent,
     SystemMessageEvent,
     UserMessageEvent,
 )
@@ -70,8 +70,8 @@ type LogEvent = Annotated[
         | StepStartedEvent
         | SystemMessageEvent
         | UserMessageEvent
-        | ContextMessageEvent
-        | ContextValueChangedEvent
+        | MessageAppendedEvent
+        | PluginInstructionsChangedEvent
         | ObservationRecordedEvent
         | ObservationsIncludedEvent
         | ModelRequestedEvent

@@ -17,12 +17,12 @@ serialize the intended JSON payload with a defined canonical encoding and hash
 those bytes.
 
 Conversation snapshots have an explicit versioned boundary. `SessionState`
-format 1 contains retained context, required metadata and verified resource bytes.
+format 2 contains retained context, required metadata and verified resource bytes.
 Its immutable mappings and tuples are detached from mutable runtime containers.
 Old JSONL archives are not accepted as conversation state. Unknown fields,
 invalid versions and incomplete tool pairs fail validation.
 
-Standalone audit-event envelopes use version 4 and dotted tags.
+Standalone audit-event envelopes use version 5 and dotted tags.
 Applications can encode events while executing a turn; these records are not an
 implicit session archive. [Application events](../guides/events.md) use a
 session-local catalog assembled before runtime startup. Frozen dataclasses remain

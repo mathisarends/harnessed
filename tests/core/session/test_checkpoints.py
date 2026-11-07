@@ -47,7 +47,7 @@ def test_checkpoint_has_typed_messages_and_nested_pydantic_roundtrip():
     assert message.message.id == "user-id" and message.message.text == "hello"
     assert restored.control.state is ControlState.PAUSED
     schema = BackendEnvelope.model_json_schema()
-    assert schema["$defs"]["SessionCheckpoint"]["properties"]["version"]["const"] == 2
+    assert schema["$defs"]["SessionCheckpoint"]["properties"]["version"]["const"] == 3
     assert "UserMessageEvent" in schema["$defs"]
 
 
@@ -103,7 +103,7 @@ def test_checkpoint_construction_and_type_adapter_validate_without_json():
         SessionCheckpoint.from_json("{}")
     value = checkpoint("typed")
     assert TypeAdapter(SessionCheckpoint).validate_python(value) is value
-    assert value.state.context == {"marker": "typed"}
+    assert value.state.plugin_instructions == {"marker": "typed"}
     with pytest.raises(TypeError, match="SessionCheckpoint"):
         StoredSession("{}", 1)
 

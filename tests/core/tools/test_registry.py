@@ -8,11 +8,12 @@ from harnessed import Agent, Inject, Plugin, ToolCall
 from harnessed.core.messages import ToolResult
 from harnessed.core.model import ModelChunk
 from harnessed.core.plugin import Bundle
-from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.tools.context import ToolContext
 from harnessed.core.tools.decorator import tool
 from harnessed.core.tools.registry import ToolRegistry
 from harnessed.kernel import InjectMarker, PluginStatus, Scope
+from harnessed.models import UserMessage
+from harnessed.services import SessionContext
 from harnessed.testing import ScriptedModel
 
 
@@ -234,14 +235,14 @@ async def test_result_converters_follow_their_owner_lifetime():
 
 
 async def test_tool_context_exposes_log_inbox_and_progress_without_the_driver():
-    class Inspect(Plugin, needs=(DynamicContext,)):
+    class Inspect(Plugin, needs=(SessionContext,)):
         @tool(readonly=True)
-        async def inspect(self, call: Inject[ToolContext], context: Inject[DynamicContext]) -> str:
+        async def inspect(self, call: Inject[ToolContext], context: Inject[SessionContext]) -> str:
             assert not hasattr(call, "agent")
             assert isinstance(call.log.id, str) and call.log.id
             await call.progress("working")
             assert not call.cancelled
-            await context.set("workspace", "The workspace changed.")
+            await context.append_message(UserMessage("The workspace changed."))
             return "ready"
 
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("inspect"))], "done"])

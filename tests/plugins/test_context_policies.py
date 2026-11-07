@@ -6,14 +6,7 @@ import pytest
 from harnessed import (
     Agent as Application,
 )
-from harnessed import (
-    Observation,
-    Plugin,
-    PolicyDecision,
-    ToolCall,
-    ToolResult,
-    tool,
-)
+from harnessed import Plugin, PolicyDecision, ToolCall, ToolResult, tool
 from harnessed.core.compaction import ModelSummarizer
 from harnessed.core.events.compaction import CompactionAppliedEvent
 from harnessed.core.events.messages import SystemMessageEvent, UserMessageEvent
@@ -146,14 +139,13 @@ async def test_threshold_compaction_commits_once_and_replays_and_forks(tmp_path)
     async with harness.session() as agent:
         agent_audit = Audit(agent)
         await agent.run("old context " + "x" * 1200)
-        await agent.run("current task", context={"ticket": "preserve current context"})
+        await agent.run("current task\nTicket: preserve current context")
         applied = [e for e in agent_audit.events if isinstance(e, CompactionAppliedEvent)]
         assert len(applied) == 1
         request = model.requests[1]
         texts = [m.text for m in request.messages]
         assert any(text.startswith("Conversation summary:") for text in texts)
-        assert "current task" in texts
-        assert "Task context [ticket]:\npreserve current context" in texts
+        assert "current task\nTicket: preserve current context" in texts
         assert "x" * 1200 not in "\n".join(texts)
         replay = AuditProjection(agent_audit.events)
         assert replay.messages == agent.log.messages
@@ -300,7 +292,7 @@ async def test_latest_observation_policy_keeps_one_unchanged_snapshot_and_unwind
         @hook(PreStep)
         async def observe(self, event, next_):
             self.index += 1
-            event.session.observe(Observation("browser", f"full {self.index}"))
+            event.session.observe(UserMessage(f"full {self.index}"), source="browser")
             return await next_()
 
     model = ScriptedModel(["one", "two", "three"])

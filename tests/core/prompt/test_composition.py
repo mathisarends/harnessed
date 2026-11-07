@@ -2,7 +2,6 @@ import pytest
 
 from harnessed import Agent, Instructions, Plugin, PromptFormat, SystemPrompt, tool
 from harnessed.kernel import Scope
-from harnessed.plugins import ContextValue
 from harnessed.testing import ScriptedModel
 
 
@@ -12,15 +11,6 @@ class Observe(Plugin):
             Instructions(title="Page state", text="DOM snapshot."),
             Instructions(title="Freshness", text="Use the latest observation."),
         )
-
-
-def test_prompt_description_labels_dynamic_context() -> None:
-    agent = Agent(plugins=[ContextValue("user", "Prefers Python")])
-    assert str(agent.prompt) == (
-        "System prompt (plain, 0 sections)\n"
-        "Context (dynamic, outside the system prompt)\n"
-        "  - user: 'Prefers Python'"
-    )
 
 
 @pytest.mark.parametrize(

@@ -9,8 +9,7 @@ from harnessed.core.errors import ContextLengthExceeded, OutputValidationError
 from harnessed.core.events.inbox import InboxRemovalReason, InboxRemovedEvent
 from harnessed.core.events.messages import (
     AssistantMessageEvent,
-    ContextLifetime,
-    ContextMessageEvent,
+    MessageAppendedEvent,
     SystemMessageEvent,
     UserMessageEvent,
 )
@@ -29,11 +28,10 @@ from harnessed.core.events.turn import (
     TurnEndedEvent,
     TurnOutcome,
 )
-from harnessed.core.hooks import ConfigureRequest, PrepareRequest, PreStep, StepDecision
+from harnessed.core.hooks import PrepareRequest, PreStep, StepDecision
 from harnessed.core.limits import FinalStepPolicy
 from harnessed.core.messages import AssistantMessage, Role, SystemMessage, UserMessage
 from harnessed.core.model import GenerationSettings, Model, ModelRequest, resolve_request_settings
-from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.prompt.system_prompt import SystemPromptStore
 from harnessed.core.runtime.context import PendingObservations, SessionContext
 from harnessed.core.runtime.control import SessionControl
@@ -115,33 +113,23 @@ class StepRunner:
             if item.message.id not in accepted_ids:
                 await self.log.append(InboxRemovedEvent(item.message.id))
         for message in accepted:
-            for item in pending:
-                if item.message.id == message.id:
-                    for contribution in item.context:
-                        await self.log.append(
-                            ContextMessageEvent(contribution, ContextLifetime.TURN, turn)
-                        )
             event = (
                 UserMessageEvent(message)
                 if isinstance(message, UserMessage)
-                else ContextMessageEvent(message)
+                else MessageAppendedEvent(message)
             )
             await self.log.append(event)
         observations = self.observations.drain()
-        for observation in observations:
-            await self.log.append(ObservationRecordedEvent(observation, turn, step))
+        for source, message, refs in observations:
+            await self.log.append(ObservationRecordedEvent(message, source, turn, step, refs))
         model = self.scope[Model]
         request = ModelRequest(
-            (*self.log.messages, *self.scope[DynamicContext].owned_messages),
+            self.log.messages,
             self.scope[ToolRegistry].visible_definitions(self.scope),
             settings=settings,
         )
         request = await self.scope.dispatch(
             PrepareRequest(self.context, request),
-            default=lambda request=request: request,
-        )
-        request = await self.scope.dispatch(
-            ConfigureRequest(self.context, request),
             default=lambda request=request: request,
         )
         if final:

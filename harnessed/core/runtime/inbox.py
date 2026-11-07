@@ -1,9 +1,8 @@
 import asyncio
-from collections.abc import AsyncGenerator, Callable, Iterable, Mapping
+from collections.abc import AsyncGenerator, Callable, Iterable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
 
 from harnessed.core.attachments import Attachment, _prepare_input
 from harnessed.core.events.inbox import (
@@ -13,7 +12,7 @@ from harnessed.core.events.inbox import (
     InboxRemovedEvent,
 )
 from harnessed.core.events.turn import TurnLimits
-from harnessed.core.messages import Message
+from harnessed.core.messages import UserMessage
 from harnessed.core.model import GenerationSettings, OutputSchema
 from harnessed.core.runtime.control import SessionControl
 from harnessed.core.session.session import SessionLog
@@ -29,7 +28,7 @@ class InboxItem:
     __hash__ = None
     id: str
     kind: InboxKind
-    content: Message
+    content: UserMessage
     created_at: float
 
 
@@ -66,11 +65,10 @@ class InboxWriter:
 
     async def send(
         self,
-        content: str | Message,
+        content: str | UserMessage,
         mode: InboxMode,
         *,
         attachments: Iterable[Attachment] = (),
-        context: Mapping[str, Any] | None = None,
         settings: GenerationSettings | None = None,
         output_schema: OutputSchema | None = None,
         limits: TurnLimits | None = None,
@@ -79,19 +77,13 @@ class InboxWriter:
     ) -> InboxItem:
         async with self._sending():
             self.control.check_open()
-            message, contributions = await _prepare_input(
-                content, attachments=attachments, context=context, assets=self.log.assets
-            )
+            message = await _prepare_input(content, attachments=attachments, assets=self.log.assets)
             self.control.check_open()
             message = await self.log._images.retain_message(message)
-            contributions = tuple(
-                [await self.log._images.retain_message(item) for item in contributions]
-            )
             self.control.check_open()
             event = InboxAddedEvent.create(
                 message,
                 mode,
-                context=contributions,
                 settings=settings,
                 output_schema=output_schema,
                 limits=limits,
@@ -132,7 +124,7 @@ class SessionInbox:
 
     async def steer(
         self,
-        content: str | Message,
+        content: str | UserMessage,
         *,
         attachments: Iterable[Attachment] = (),
         during_run: str | None = None,

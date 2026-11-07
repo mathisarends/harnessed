@@ -382,7 +382,7 @@ assert 'events' in dir(harnessed)
 events = harnessed.events
 assert events is sys.modules['harnessed.events']
 assert harnessed.events is events
-assert events.ContextMessageEvent.__name__ == 'ContextMessageEvent'
+assert events.MessageAppendedEvent.__name__ == 'MessageAppendedEvent'
 """
     result = subprocess.run(
         [sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, timeout=10

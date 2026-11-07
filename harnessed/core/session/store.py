@@ -11,7 +11,7 @@ from harnessed.core.events.approvals import (
 )
 from harnessed.core.events.compaction import CompactionAppliedEvent
 from harnessed.core.events.inbox import InboxAddedEvent, InboxRemovedEvent
-from harnessed.core.events.messages import ContextValueChangedEvent
+from harnessed.core.events.messages import PluginInstructionsChangedEvent
 from harnessed.core.events.model import ModelRequestedEvent
 from harnessed.core.events.session import SessionControlChangedEvent
 from harnessed.core.events.tools import (
@@ -118,7 +118,7 @@ class SessionPersistence:
             | ApprovalRequestedEvent
             | ApprovalResolvedEvent
             | ApprovalRevokedEvent
-            | ContextValueChangedEvent
+            | PluginInstructionsChangedEvent
             | CompactionAppliedEvent
             | CheckpointExtension,
         ):

@@ -17,16 +17,23 @@ from pydantic import (
 )
 
 from harnessed.core.errors import ConfigError
-from harnessed.core.events.compaction import CompactionAppliedEvent
 from harnessed.core.events.tools import ToolCallFinishedEvent, ToolCallRequestedEvent
-from harnessed.core.hooks import SessionAppended
-from harnessed.core.messages import AssistantMessage, ToolMessage, ToolStatus, freeze, to_dict
+from harnessed.core.hooks import PrepareRequest, SessionAppended
+from harnessed.core.messages import (
+    AssistantMessage,
+    ToolMessage,
+    ToolStatus,
+    UserMessage,
+    freeze,
+    to_dict,
+)
+from harnessed.core.model import ModelRequest
 from harnessed.core.plugin import Plugin
-from harnessed.core.prompt.context import DynamicContext
+from harnessed.core.prompt.plugin_instructions import PluginInstructions
 from harnessed.core.prompt.values import Instructions, SystemPrompt
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tools import ToolError, tool
-from harnessed.kernel import Inject, Key, Scope, hook
+from harnessed.kernel import Inject, Key, Next, Scope, hook
 
 type SkillName = Annotated[
     str, StringConstraints(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$", max_length=64)
@@ -270,7 +277,7 @@ def _read_resource(root: Path, path: str) -> str:
         return stream.read()
 
 
-class Skills(Plugin, slot="skills", needs=(SessionLog, DynamicContext)):
+class Skills(Plugin, slot="skills", needs=(SessionLog, PluginInstructions)):
     """Discover explicit sources once per session, then load instructions and files on demand."""
 
     def __init__(self, *sources: str | Path | Skill | _DirectorySkill) -> None:
@@ -331,7 +338,7 @@ class Skills(Plugin, slot="skills", needs=(SessionLog, DynamicContext)):
         )
 
     async def setup(
-        self, scope: Scope, session: Inject[SessionLog], context: Inject[DynamicContext]
+        self, scope: Scope, session: Inject[SessionLog], context: Inject[PluginInstructions]
     ) -> None:
         catalog = await self._catalog(scope)
         scope.provide(SkillCatalog, catalog)
@@ -383,12 +390,17 @@ class Skills(Plugin, slot="skills", needs=(SessionLog, DynamicContext)):
         if event.log is not self._log:
             return
         self._remember(event.event)
-        if isinstance(event.event, CompactionAppliedEvent):
+        if isinstance(event.event, ToolCallFinishedEvent):
             await self._retain()
-        elif isinstance(event.event, ToolCallFinishedEvent):
-            for name, instructions in self._loaded.items():
-                if f"skill:{name}" in self._context.values:
-                    await self._context.set(f"skill:{name}", instructions)
+
+    @hook(PrepareRequest)
+    async def enrich(self, event: PrepareRequest, next_: Next[ModelRequest]) -> ModelRequest:
+        request = await next_()
+        for name, instructions in self._loaded.items():
+            request = request.append_message(
+                UserMessage(f"Loaded skill {name}:\n{instructions}", id=f"skill:{name}")
+            )
+        return request
 
     def _entry(self, name: str) -> SkillEntry:
         if name not in self._entries:

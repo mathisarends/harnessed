@@ -242,7 +242,7 @@ Leaving the inner scope removes the tool, hook and mount-owned guidance.
 session's system prompt stays fixed. Each activation has its own lifetime and
 can keep mutable data in `PluginState`.
 
-Sessions also expose named context, steering, pause/resume and immutable
+Sessions also expose message history, steering, pause/resume and immutable
 `SessionState` snapshots. Opt into automatic persistence with
 `Agent(store=JsonSessionStore(root=...))`, importing the JSON store from
 `harnessed.integrations.json`, or implement `SessionStore` in your conversation

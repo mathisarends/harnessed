@@ -1,11 +1,9 @@
 import asyncio
 import base64
-import json
 import mimetypes
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from harnessed.core.assets import AssetStore
 from harnessed.core.messages import (
@@ -13,13 +11,9 @@ from harnessed.core.messages import (
     ImageDetail,
     ImagePart,
     ImageReference,
-    Message,
     Role,
     TextPart,
     UserMessage,
-    freeze,
-    system,
-    to_dict,
     user,
 )
 
@@ -59,13 +53,14 @@ type Attachment = File | Image
 
 
 async def _prepare_input(
-    content: str | Message,
+    content: str | UserMessage,
     *,
     attachments: Iterable[Attachment] = (),
-    context: Mapping[str, Any] | None = None,
     assets: AssetStore | None = None,
-) -> tuple[Message, tuple[Message, ...]]:
+) -> UserMessage:
     message = user(content) if isinstance(content, str) else content
+    if not isinstance(message, UserMessage):
+        raise TypeError("Run input must be text or a UserMessage")
     attachments = tuple(attachments)
     if attachments:
         if message.role != Role.USER:
@@ -82,14 +77,4 @@ async def _prepare_input(
                 else await attachment._parts()
             )
         message = UserMessage(tuple(parts), id=message.id)
-    contributions = []
-    for name, value in (context if context is not None else {}).items():
-        if not isinstance(name, str):
-            raise TypeError("Context keys must be strings")
-        text = (
-            value
-            if isinstance(value, str)
-            else json.dumps(to_dict(freeze(value)), ensure_ascii=False)
-        )
-        contributions.append(system(f"Task context [{name}]:\n{text}"))
-    return message, tuple(contributions)
+    return message

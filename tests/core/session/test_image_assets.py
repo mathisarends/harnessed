@@ -2,7 +2,7 @@ from dataclasses import replace
 
 import pytest
 
-from harnessed import Agent, Observation, Plugin
+from harnessed import Agent, Plugin
 from harnessed.core.assets import AssetRef
 from harnessed.core.events.model import ModelRequestedEvent
 from harnessed.core.events.observations import ObservationRecordedEvent, ObservationsIncludedEvent
@@ -50,9 +50,9 @@ async def test_compaction_does_not_load_images_removed_from_the_request(tmp_path
         ],
     )
     async with app.session() as session:
-        session.observe(Observation("screen", (TextPart("state " * 500), inline(b"old"))))
+        session.observe(UserMessage((TextPart("state " * 500), inline(b"old"))), source="screen")
         await session.run("inspect")
-        old = session.last(ObservationRecordedEvent).observation.content[1].asset
+        old = session.last(ObservationRecordedEvent).message.content[1].asset
         # Cold-cache compaction must not load discarded images.
         session.log._images.clear()
         # Neither the text-only summarizer nor the following request needs this file.

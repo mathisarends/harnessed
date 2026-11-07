@@ -118,6 +118,13 @@ class ModelRequest:
         object.__setattr__(self, "messages", tuple(self.messages))
         object.__setattr__(self, "tools", tuple(self.tools))
 
+    def append_message(self, message: Message) -> Self:
+        """Return a request with one more message, retaining all other fields.
+
+        This does not mutate this request or append to the session's history.
+        """
+        return replace(self, messages=(*self.messages, message))
+
 
 def resolve_request_settings(request: ModelRequest, defaults: GenerationSettings) -> ModelRequest:
     """Resolve defaults before compaction, budgeting, audit and execution."""

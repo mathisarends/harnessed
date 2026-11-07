@@ -148,7 +148,6 @@ class SystemPrompt:
 class PromptContribution:
     name: str
     instructions: Callable[[], SystemPrompt] | None = None
-    context_description: tuple[str, str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -183,11 +182,6 @@ class PromptComposition:
         self.document = document
         self.format = document.format
         contributions = tuple(contributions)
-        self.context_entries = tuple(
-            description
-            for contribution in contributions
-            if (description := contribution.context_description) is not None
-        )
         providers = tuple(item for item in contributions if item.instructions is not None)
         self.omitted = () if document.collects_plugins else tuple(item.name for item in providers)
         if self.omitted:
@@ -226,9 +220,6 @@ class PromptComposition:
         if self.omitted:
             lines.append("Plugin instructions omitted by the explicit prompt")
             lines.extend(f"  - {name}" for name in self.omitted)
-        if self.context_entries:
-            lines.append("Context (dynamic, outside the system prompt)")
-            lines.extend(f"  - {key}: {preview}" for key, preview in self.context_entries)
         return "\n".join(lines)
 
     async def render(self, scope: Scope | None = None) -> str:

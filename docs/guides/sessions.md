@@ -40,7 +40,7 @@ admission and writes remain serialized within each session.
 
 Durability barriers await committed state: input admission/removal, model request
 intent, tool execution intent and receipts, reviewed tool results, turn completion,
-controls, approval changes, named facts, compaction and custom durable events.
+controls, approval changes, feature-owned instruction state, compaction and custom durable events.
 Thus an awaited `run()` has saved its final reply, and `pause()` waits for the
 completed step's checkpoint. Transient token notifications and unrecorded
 observations are not saved. Intermediate internal events may be lost in a crash
@@ -173,7 +173,7 @@ Unit-of-Work abstraction or web-framework integration is added to Harnessed.
 
 Adapters can ignore `changes` when only recovery state is needed. The bundled
 JSON store does this: its file remains a current checkpoint, not a domain-message
-archive or an incremental journal. Checkpoint and JSON-envelope formats remain 2.
+archive or an incremental journal. Checkpoint and JSON-envelope formats are 3.
 Application-specific event payloads use the same `CheckpointExtension` boundary
 as checkpoints. Resource references are SDK event data; retained checkpoint
 resources cover recovery, while long-term application attachment storage remains
@@ -196,7 +196,7 @@ its commit; successful terminal completion still awaits committed storage.
 | `events` | Discriminated built-in events plus explicit `CheckpointExtension` values |
 | `control` | Typed `SessionControlChangedEvent` with its `ControlState` |
 | `assets` / `files` | Resources needed in addition to the conversation baseline |
-| `version` | Current checkpoint format, `Literal[2]` |
+| `version` | Current checkpoint format, `Literal[3]` |
 
 For example, `checkpoint.state.history[i].message` is the SDK's typed message
 union. Narrow with `isinstance(message, UserMessage)` from `harnessed.models`.
@@ -245,10 +245,12 @@ automatically retry a conflicted run: its external actions may already have happ
 ## Persist a deliberate pause
 
 ```python
+from harnessed.models import UserMessage
+
 async with agent.session(id="investigation") as session:
     handle = await session.submit("Investigate the outage.", max_steps=20)
     await session.pause()
-    await session.add_context("Checks passed.")
+    await session.append_message(UserMessage("Checks passed."))
 
 # The previous Python handles close; the persisted execution remains paused.
 async with agent.session(id="investigation") as session:
@@ -326,7 +328,7 @@ is active. Queued work is never imported by a conversation snapshot.
 ## Snapshot contents and compaction
 
 Snapshots contain the active summary, retained messages and the small amount of
-metadata needed for named context, observation provenance and future compaction.
+metadata needed for feature-owned instructions, observation provenance and future compaction.
 Full typed assistant messages preserve provider replay data and tool-call/result
 pairs. The final assistant reply is included; exporting only the last model
 request would omit that reply.
@@ -410,7 +412,7 @@ withdraw its accepted operation. A handle opened with `session.stream()` also
 iterates live events inside its context; see [streaming](streaming.md).
 
 `steer(text)` adds input to the next step of an active turn, or starts a new turn
-while idle. `add_context(content)` appends quiet background for subsequent model
+while idle. `append_message(UserMessage(content))` appends quiet background for subsequent model
 requests without starting work. `observe(observation)` buffers the latest pending snapshot per source until
 the next step records it. Unrecorded observations are not exported. Use these
 operations from hooks as described in [context](context.md).
@@ -418,9 +420,11 @@ operations from hooks as described in [context](context.md).
 ## Control a live run
 
 ```python
+from harnessed.models import UserMessage
+
 handle = await session.submit("Investigate the outage.")
 await session.pause()
-await session.add_context("Checks passed.")
+await session.append_message(UserMessage("Checks passed."))
 await session.resume()
 result = await handle.result()
 await session.wait_until_idle()

@@ -9,7 +9,7 @@ from harnessed import Agent, Plugin, StopReason, ToolCall, tool
 from harnessed.core.errors import ConfigError, OutputUnavailable, OutputValidationError
 from harnessed.core.events.output import OutputValidatedEvent, OutputValidationFailedEvent
 from harnessed.core.events.turn import TurnEndedEvent, TurnOutcome
-from harnessed.core.hooks import ConfigureRequest, ToolPolicy
+from harnessed.core.hooks import PrepareRequest, ToolPolicy
 from harnessed.core.messages import AssistantMessage, PolicyDecision
 from harnessed.core.model import (
     Model,
@@ -71,12 +71,12 @@ async def test_output_mode_uses_the_model_captured_before_request_hooks(
     @plugin
     async def swap(scope: Scope) -> AsyncIterator[None]:
         async def configure(
-            event: ConfigureRequest, next_: Callable[[], Awaitable[ModelRequest]]
+            event: PrepareRequest, next_: Callable[[], Awaitable[ModelRequest]]
         ) -> ModelRequest:
             scope.provide(Model, replacement)
             return await next_()
 
-        scope.on(ConfigureRequest, configure)
+        scope.on(PrepareRequest, configure)
         yield
 
     async with Agent(

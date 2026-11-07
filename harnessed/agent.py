@@ -12,7 +12,7 @@ from harnessed.core.composition import (
 )
 from harnessed.core.errors import ConfigError
 from harnessed.core.events.registry import EventRegistry
-from harnessed.core.messages import Message
+from harnessed.core.messages import UserMessage
 from harnessed.core.model import Model
 from harnessed.core.outputs import OutputContract, OutputTypes
 from harnessed.core.plugin import Service, plugin_contribution, plugin_events
@@ -147,7 +147,7 @@ class Agent:
     @overload
     async def run[T](
         self,
-        content: str | Message,
+        content: str | UserMessage,
         *,
         state: SessionState | None = None,
         output: type[T] | OutputContract[T],
@@ -157,7 +157,7 @@ class Agent:
     @overload
     async def run(
         self,
-        content: str | Message,
+        content: str | UserMessage,
         *,
         state: SessionState | None = None,
         output: None = None,
@@ -166,7 +166,7 @@ class Agent:
 
     async def run(
         self,
-        content: str | Message,
+        content: str | UserMessage,
         *,
         state: SessionState | None = None,
         output: type[Any] | OutputContract[Any] | None = None,

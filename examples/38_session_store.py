@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 
 from harnessed import Agent
 from harnessed.integrations.json import JsonSessionStore
+from harnessed.models import UserMessage
 from harnessed.testing import ScriptedModel
 
 
@@ -14,7 +15,7 @@ async def main() -> None:
         store = JsonSessionStore(root=Path(directory))
         agent = Agent(model=ScriptedModel(["Remembered.", "Continued."]), store=store)
         async with agent.session(id="support:4711") as session:
-            await session.add_context("The customer is Ada.")
+            await session.append_message(UserMessage("The customer is Ada."))
             first = await session.run("Remember the customer.")
             print(first.text)
 

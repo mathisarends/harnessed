@@ -3,9 +3,11 @@ import asyncio
 import pytest
 
 from harnessed import Agent, Inject, Instructions, Plugin, SectionDelivery, SystemPrompt, tool
-from harnessed.core.events.messages import ContextValueChangedEvent
-from harnessed.core.prompt.context import DynamicContext
+from harnessed.core.events.messages import PluginInstructionsChangedEvent
+from harnessed.hooks import PrepareRequest
 from harnessed.kernel import PluginStatus, Scope
+from harnessed.models import ModelRequest
+from harnessed.services import SessionContext
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit
 
@@ -41,15 +43,14 @@ async def test_context_delivery_is_mount_owned_and_leaves_system_text_fixed():
     async with Agent(model=model, instructions="Fixed.").session() as session:
         session_audit = Audit(session)
         handle = await session.mount(Feature(), section_delivery=SectionDelivery.CONTEXT)
-        assert list(session.scope[DynamicContext].values.values()) == ["Runtime guidance."]
-        assert not any(isinstance(e, ContextValueChangedEvent) for e in session_audit.events)
+        assert not any(isinstance(e, PluginInstructionsChangedEvent) for e in session_audit.events)
         await session.run("Use the capability")
         first = model.requests[-1]
         assert first.messages[0].text == "Fixed."
         assert any("Runtime guidance." in m.text for m in first.messages[1:])
         assert [definition.name for definition in first.tools] == ["inspect"]
         await handle.aclose()
-        assert session.scope[DynamicContext].values == {}
+        assert session.snapshot().plugin_instructions == {}
         await session.run("After unmount")
         assert all("Runtime guidance." not in m.text for m in model.requests[-1].messages)
         assert model.requests[-1].tools == ()
@@ -72,19 +73,17 @@ async def test_context_delivery_suspends_and_restarts_with_the_plugin():
     async with Agent(model=model).session() as session:
         handle = await session.mount(Temporal(), section_delivery=SectionDelivery.CONTEXT)
         assert handle.status is PluginStatus.WAITING
-        assert calls == [] and session.scope[DynamicContext].values == {}
+        assert calls == [] and session.snapshot().plugin_instructions == {}
         remove = session.scope.provide(Backend, Backend())
         await session.scope.settle()
-        assert list(session.scope[DynamicContext].values.values()) == ["Activation 1."]
         await session.run("Mounted")
         await remove()
         await session.scope.settle()
-        assert session.scope[DynamicContext].values == {}
+        assert session.snapshot().plugin_instructions == {}
         await session.run("Suspended")
         assert all("Activation 1." not in m.text for m in model.requests[-1].messages)
         session.scope.provide(Backend, Backend())
         await session.scope.settle()
-        assert list(session.scope[DynamicContext].values.values()) == ["Activation 2."]
         await session.run("Restarted")
         assert any("Activation 2." in m.text for m in model.requests[-1].messages)
         assert len(calls) == 2
@@ -105,7 +104,7 @@ async def test_ignore_does_not_execute_providers_or_factories_or_read_files(tmp_
     async with Agent(model=ScriptedModel(["done"])).session() as session:
         handle = await session.mount(Ignored(), section_delivery=SectionDelivery.IGNORE)
         assert handle.status is PluginStatus.ACTIVE
-        assert session.scope[DynamicContext].values == {}
+        assert session.snapshot().plugin_instructions == {}
         await session.run("Tools still mounted")
         assert await session.prompt.render() == ""
 
@@ -154,7 +153,7 @@ async def test_delivery_failures_roll_back_tools_context_and_owned_effects(failu
         )
         with pytest.raises(error):
             await session.mount(Broken(), section_delivery=SectionDelivery.CONTEXT)
-        assert session.scope[DynamicContext].values == {}
+        assert session.snapshot().plugin_instructions == {}
         assert "setup cleaned" in effects
         if failure != "setup":
             assert "teardown" in effects
@@ -184,7 +183,7 @@ async def test_factory_runs_once_per_mount_activation_and_cleanup_belongs_to_mou
         await session.run("Second")
         assert len(calls) == 1 and cleaned == []
         await handle.aclose()
-        assert cleaned == calls and session.scope[DynamicContext].values == {}
+        assert cleaned == calls and session.snapshot().plugin_instructions == {}
 
 
 async def test_duplicate_plugin_names_have_independent_mount_context():
@@ -192,14 +191,18 @@ async def test_duplicate_plugin_names_have_independent_mount_context():
         def instructions(self) -> SystemPrompt:
             return SystemPrompt("Runtime guidance.")
 
-    async with Agent(model=ScriptedModel([])).session() as session:
+    model = ScriptedModel(["both", "one", "none"])
+    async with Agent(model=model).session() as session:
         one = await session.mount(Guidance(), section_delivery=SectionDelivery.CONTEXT)
         two = await session.mount(Guidance(), section_delivery=SectionDelivery.CONTEXT)
-        assert len(session.scope[DynamicContext].values) == 2
+        await session.run("Both")
+        assert [m.text for m in model.requests[-1].messages].count("Runtime guidance.") == 2
         await one.aclose()
-        assert list(session.scope[DynamicContext].values.values()) == ["Runtime guidance."]
+        await session.run("One")
+        assert [m.text for m in model.requests[-1].messages].count("Runtime guidance.") == 1
         await two.aclose()
-        assert session.scope[DynamicContext].values == {}
+        await session.run("None")
+        assert all(m.text != "Runtime guidance." for m in model.requests[-1].messages)
 
 
 async def test_runtime_guidance_is_not_restored_as_a_durable_fact():
@@ -209,19 +212,21 @@ async def test_runtime_guidance_is_not_restored_as_a_durable_fact():
         await session.mount(Feature(), section_delivery=SectionDelivery.CONTEXT)
         await session.run("Mounted")
     async with agent.session() as restored:
-        assert restored.scope[DynamicContext].values == {}
+        assert restored.snapshot().plugin_instructions == {}
         await restored.run("Reopened")
         assert all("Runtime guidance." not in m.text for m in model.requests[-1].messages)
 
 
-async def test_owned_context_visibility_uses_registration_state_during_teardown():
+async def test_owned_request_hook_is_inactive_during_its_plugin_teardown():
     observed = []
 
     class InspectTeardown(Feature):
-        async def teardown(self, context: Inject[DynamicContext]) -> None:
-            observed.append(dict(context.values))
+        async def teardown(self, scope: Scope, context: Inject[SessionContext]) -> None:
+            request = ModelRequest(())
+            result = await scope.dispatch(PrepareRequest(context, request), default=lambda: request)
+            observed.append(result.messages)
 
     async with Agent(model=ScriptedModel([])).session() as session:
         handle = await session.mount(InspectTeardown(), section_delivery=SectionDelivery.CONTEXT)
         await handle.aclose()
-        assert observed == [{}]
+        assert observed == [()]

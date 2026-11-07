@@ -4,6 +4,32 @@
 
 ### Breaking changes
 
+- Model input now uses ordinary messages throughout. Remove `context=` from
+  `Agent.run()` and session `run()`, `submit()` and `stream()`; put task background
+  in the input string or add request-only messages in a `PrepareRequest` hook.
+  `ModelRequest.append_message(message)` returns an extended immutable request.
+  `ConfigureRequest` is folded into `PrepareRequest`.
+- Replace `await session.add_context(text)` with
+  `await session.append_message(UserMessage(text))`; import `UserMessage` from
+  `harnessed.models`. This appends durable conversation input without starting
+  work. The restricted plugin `SessionContext` exposes the same operation.
+- Replace `observe(Observation(source, content, refs=refs))` with
+  `observe(UserMessage(content), source=source, refs=refs)`. The `Observation`
+  container is removed. Pending coalescing, full text/image retention and
+  inclusion receipts remain; supplied message IDs are preserved.
+- Remove `ContextValue`, the public `DynamicContext` service and
+  `Plugin.context_description`. Plugins contribute current facts through their
+  own `PrepareRequest` hooks. Skills and Rules retain feature-owned instruction
+  state independently of conversation text; runtime mount guidance is scoped to
+  its request hook. No compatibility aliases are provided.
+- Conversation state is format **2**, execution checkpoints and JSON-store
+  envelopes are format **3**, and audit-event envelopes are version **5**.
+  `message.appended` replaces `context.message`; `plugin.instructions.changed`
+  records feature state without producing context XML. Start new prototype
+  snapshots, stores and audit logs; old formats are rejected without migration.
+  Rename `ContextMessageEvent` to `MessageAppendedEvent`, `ContextLifetime` to
+  `MessageLifetime`, and `ContextValueChangedEvent` to `PluginInstructionsChangedEvent`.
+
 - Plugins can no longer resolve the application `Session` from their scope.
   `Inject[Session]`, `dependency(Session)` and `needs=(Session,)` now report a
   missing service. Use `event.session` in hooks, or declare `SessionContext` from
@@ -39,7 +65,7 @@
 
 - Runtime hook events carry `event.session: SessionContext` instead of the
   application `Session`. The context keeps `id`, `status`, `log`, `inbox`,
-  `approvals`, `tools`, `observe()`, `add_context()` and `emit()`; `run()`,
+  `approvals`, `tools`, `observe()`, `append_message()` and `emit()`; `run()`,
   `use()`, `aclose()` and `scope` are no longer reachable from a hook. Resolve
   services with `Inject[T]`, or declare `SessionContext` from `harnessed.services`
   as a plugin dependency. Compare sessions in hooks by `event.session.log`.
@@ -47,8 +73,7 @@
   and `ContextClosed`. The root SDK no longer exports the container type.
   Replace `session.ctx` with `session.scope` and use `scope: Scope` for kernel
   parameters, including `scope=` keywords on service and runtime APIs. The old
-  kernel module and names have no aliases. `ToolContext`, `DynamicContext`,
-  `add_context()` and model-visible context retain their meanings.
+  kernel module and names have no aliases.
 | Approval configuration before | Current API |
 | --- | --- |
 | `Approvals(trust=[...])` | `Approvals(allow=[...])` |
@@ -82,13 +107,10 @@
   Rules events are plugin-declared; readers of `rule.triggered` records must
   register `Rules.events`. Missing declarations fail strictly. Core no longer
   exports `EventKind.RULE_TRIGGERED`; use the event's plugin-owned discriminator.
-- Audit-event envelopes now require version **4**; version 3 is rejected without
-  migration. Conversation state, execution checkpoint and JSON-store envelope
-  versions remain unchanged. Start a new audit log when upgrading.
 - Update event tag consumers: `turn.start` → `turn.started`, `turn.end` →
   `turn.ended`, `step.start` → `step.started`, `step.end` → `step.ended`,
   `model.usage` → `model.usage.recorded`, `model.cache` → `model.cache.metrics`,
-  and `context.changed` → `context.value.changed`. Matching `EventKind` members
+  and `context.changed` → `plugin.instructions.changed`. Matching `EventKind` members
   now use `TURN_STARTED`, `TURN_ENDED`, `STEP_STARTED`, `STEP_ENDED`,
   `MODEL_CACHE_METRICS`, `SESSION_CONTROL_CHANGED` and `SESSION_STATUS_CHANGED`.
 - Replace `CacheMetricsEvent` with `ModelCacheMetricsEvent`,
