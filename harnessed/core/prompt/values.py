@@ -3,12 +3,11 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
-from enum import StrEnum, auto
+from enum import StrEnum
 from pathlib import Path
 from typing import Self
 from xml.sax.saxutils import escape, quoteattr
 
-from harnessed.core.errors import ConfigError
 from harnessed.kernel import Scope
 
 
@@ -16,12 +15,6 @@ class PromptFormat(StrEnum):
     PLAIN = "plain"
     XML = "xml"
     MARKDOWN = "markdown"
-
-
-class PluginOrder(StrEnum):
-    """Order selected plugin instruction blocks by the configured plugin list."""
-
-    AS_LISTED = auto()
 
 
 class SectionDelivery(StrEnum):
@@ -112,13 +105,14 @@ type PromptPart = str | Instructions | SystemPrompt
 class SystemPrompt:
     """An ordered document of actual content; nested documents inherit its format.
 
-    Plugin collection is an explicit whole-document strategy selected with
-    from_plugins(), never an implicit rest slot.
+    A document built with the constructor is the complete system prompt: passing it
+    as Agent(prompt=...) leaves plugin instruction blocks out. from_plugins() keeps
+    the fixed content and appends plugin blocks after it, as Agent does by default.
     """
 
     sections: tuple[PromptPart, ...]
     format: PromptFormat
-    plugin_order: PluginOrder | None
+    collects_plugins: bool
 
     def __init__(
         self,
@@ -128,29 +122,25 @@ class SystemPrompt:
         content = tuple(part for part in sections if part is not None)
         if any(not isinstance(part, str | Instructions | SystemPrompt) for part in content):
             raise TypeError("SystemPrompt sections must be strings, Instructions or SystemPrompt")
-        if any(
-            isinstance(part, SystemPrompt) and part.plugin_order is not None for part in content
-        ):
+        if any(isinstance(part, SystemPrompt) and part.collects_plugins for part in content):
             raise ValueError("Plugin collection belongs to the outermost SystemPrompt")
         object.__setattr__(self, "sections", content)
         object.__setattr__(self, "format", PromptFormat(format))
-        object.__setattr__(self, "plugin_order", None)
+        object.__setattr__(self, "collects_plugins", False)
 
     @classmethod
     def from_plugins(
         cls,
         *sections: PromptPart | None,
-        order: PluginOrder = PluginOrder.AS_LISTED,
         format: PromptFormat = PromptFormat.PLAIN,
     ) -> Self:
         """Append selected plugin blocks in resolved list order after fixed content.
 
         Nested packs expand at their list position. Removals contribute nothing;
         slot replacements retain the inherited position. Setup order is unrelated.
-        The default is resolved plugin-list order, independently of setup order.
         """
         document = cls(*sections, format=format)
-        object.__setattr__(document, "plugin_order", PluginOrder(order))
+        object.__setattr__(document, "collects_plugins", True)
         return document
 
 
@@ -168,7 +158,12 @@ class PromptEntry:
 
 
 class PromptComposition:
-    """Collect selected recipes once, before taking each session's fixed snapshot."""
+    """Collect selected recipes once, before taking each session's fixed snapshot.
+
+    Without a prompt, plugin instruction blocks follow the application instructions.
+    A prompt built with the SystemPrompt constructor opts out; omitted plugin blocks
+    stay listed in str(composition).
+    """
 
     def __init__(
         self,
@@ -177,22 +172,14 @@ class PromptComposition:
         *,
         instructions: str | None = None,
     ) -> None:
-        document = prompt if prompt is not None else SystemPrompt()
+        document = prompt if prompt is not None else SystemPrompt.from_plugins()
         if not isinstance(document, SystemPrompt):
             raise TypeError("prompt must be a SystemPrompt")
         if instructions is not None and not isinstance(instructions, str):
             raise TypeError("instructions must be a string or None")
         if instructions is not None:
-            document = (
-                SystemPrompt.from_plugins(
-                    instructions,
-                    *document.sections,
-                    order=document.plugin_order,
-                    format=document.format,
-                )
-                if document.plugin_order is not None
-                else SystemPrompt(instructions, *document.sections, format=document.format)
-            )
+            build = SystemPrompt.from_plugins if document.collects_plugins else SystemPrompt
+            document = build(instructions, *document.sections, format=document.format)
         self.document = document
         self.format = document.format
         contributions = tuple(contributions)
@@ -202,11 +189,9 @@ class PromptComposition:
             if (description := contribution.context_description) is not None
         )
         providers = tuple(item for item in contributions if item.instructions is not None)
-        if providers and document.plugin_order is None:
-            raise ConfigError(
-                "Plugin instructions require "
-                "SystemPrompt.from_plugins(): " + ", ".join(item.name for item in providers)
-            )
+        self.omitted = () if document.collects_plugins else tuple(item.name for item in providers)
+        if self.omitted:
+            providers = ()
         entries: list[PromptEntry] = []
 
         def flatten(group: SystemPrompt, origin: str) -> None:
@@ -227,7 +212,7 @@ class PromptComposition:
             block = provider()
             if not isinstance(block, SystemPrompt):
                 raise TypeError(f"{contribution.name}.instructions() must return a SystemPrompt")
-            if block.plugin_order is not None:
+            if block.collects_plugins:
                 raise ValueError(
                     f"{contribution.name}.instructions() must return content, not plugin collection"
                 )
@@ -238,6 +223,9 @@ class PromptComposition:
         lines = [f"System prompt ({self.format.value}, {len(self.entries)} sections)"]
         for index, entry in enumerate(self.entries, 1):
             lines.append(f"  {index}. {entry.origin}: {entry.section.preview!r}")
+        if self.omitted:
+            lines.append("Plugin instructions omitted by the explicit prompt")
+            lines.extend(f"  - {name}" for name in self.omitted)
         if self.context_entries:
             lines.append("Context (dynamic, outside the system prompt)")
             lines.extend(f"  - {key}: {preview}" for key, preview in self.context_entries)

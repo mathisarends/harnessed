@@ -6,7 +6,6 @@ from harnessed import (
     Agent,
     Instructions,
     Plugin,
-    PluginOrder,
     SystemPrompt,
     ToolCall,
     tool,
@@ -38,11 +37,7 @@ async def main():
     agent = Agent(
         plugins=[
             Service(Model, model),
-            PromptRenderer(
-                SystemPrompt.from_plugins(
-                    Instructions(text="Keep answers concise."), order=PluginOrder.AS_LISTED
-                )
-            ),
+            PromptRenderer(SystemPrompt.from_plugins(Instructions(text="Keep answers concise."))),
             calculator,
         ]
     )

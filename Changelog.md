@@ -12,6 +12,13 @@
   dependent plugins tear down. Applications reach the same view through
   `session.plugin_context`. `Subagents` now depends on `SessionContext` and the
   session control instead of the full session.
+- Agents collect plugin instruction blocks by default, after `instructions=` and
+  in resolved plugin-list order. Remove `prompt=SystemPrompt.from_plugins()` where
+  it only enabled collection; keep `from_plugins(*parts, format=...)` for fixed
+  content or a format. A prompt built with the `SystemPrompt` constructor now
+  omits plugin blocks instead of raising `ConfigError`; `print(agent.prompt)`
+  lists the omitted plugins. `PluginOrder` and the `order=` argument are removed,
+  and `SystemPrompt.plugin_order` becomes the boolean `collects_plugins`.
 - Open turn streams with `async with session.stream(...) as run`. The context
   yields `RunHandle[T]`: iterate it for typed events, await `run.result()` for
   the same terminal result independently of observation, or `await run.cancel()`
@@ -26,8 +33,6 @@
   Typed Python application `metadata=` stays separate.
 - `Agent.run(content, ...)` now accepts `str | Message` consistently with session
   operations. Replace an explicit `prompt=` keyword with `content=`.
-- `SystemPrompt.from_plugins()` defaults to resolved plugin-list order; its
-  `order=` argument is optional. Plugin instruction collection remains explicit.
 - `result.require_output()` returns the original validated value only for a
   completed turn; incomplete turns raise `OutputUnavailable` with their stop
   reason. Existing `result.output` remains available for validated-value inspection.

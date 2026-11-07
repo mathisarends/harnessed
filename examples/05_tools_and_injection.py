@@ -7,7 +7,6 @@ from harnessed import (
     Agent,
     ApprovalAnswer,
     PolicyDecision,
-    SystemPrompt,
 )
 from harnessed.events import ToolCallFinishedEvent, ToolProgressEvent
 from harnessed.plugins import Approvals, Filesystem
@@ -29,7 +28,6 @@ async def main():
     )
     filesystem = Filesystem(root=".")
     agent = Agent(
-        prompt=SystemPrompt.from_plugins(),
         model=model,
         plugins=[
             filesystem,

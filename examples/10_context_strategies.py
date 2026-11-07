@@ -6,7 +6,6 @@ from harnessed import (
     Agent,
     Observation,
     Plugin,
-    SystemPrompt,
     tool,
 )
 from harnessed.events import CompactionAppliedEvent, SpillCreatedEvent
@@ -51,7 +50,6 @@ async def main():
     )
     spill = Spill(threshold_tokens=100, preview_tokens=8)
     agent = Agent(
-        prompt=SystemPrompt.from_plugins(),
         model=model,
         plugins=[
             AgentLoop(context_window=2000),

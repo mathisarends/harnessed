@@ -10,7 +10,7 @@ tool, approval and persistence pipelines and requires no additional dependency.
 ## Configure specialists
 
 ```python
-from harnessed import Agent, PluginOrder, SystemPrompt
+from harnessed import Agent
 from harnessed.plugins import Approvals, Subagents
 
 reviewer = Agent(
@@ -18,7 +18,6 @@ reviewer = Agent(
     instructions="Review the supplied code and explain concrete findings.",
 )
 coordinator = Agent(
-    prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     model="openai:gpt-4.1",
     plugins=[
         Subagents({"review": reviewer}, max_parallel=2, max_steps=8),
@@ -44,9 +43,8 @@ Include the information it needs in the task. Each specialist uses its own model
 instructions, plugins and session store. Scope isolation is not an operating
 system sandbox: configured backends still determine access to shared resources.
 
-The `Subagents.instructions()` block lists available names. Select
-`SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)` to collect it with other
-plugin instructions. Runtime mounts use `section_delivery=SectionDelivery.CONTEXT`
+The `Subagents.instructions()` block lists available names and is collected
+with the other plugin instructions. Runtime mounts use `section_delivery=SectionDelivery.CONTEXT`
 to add their instructions to session context. Unknown names and empty
 tasks return tool errors without opening children. Python tools keep their normal
 names, so this plugin reserves all six names in the parent's tool registry.

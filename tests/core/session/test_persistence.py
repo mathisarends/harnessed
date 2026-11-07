@@ -11,9 +11,7 @@ from harnessed import (
     ApprovalAnswer,
     OutputContract,
     Plugin,
-    PluginOrder,
     SessionStatus,
-    SystemPrompt,
     ToolCall,
     tool,
 )
@@ -304,7 +302,6 @@ async def test_images_and_spilled_text_survive_a_paused_turn(store):
     agent = Agent(
         model=model,
         store=store,
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         plugins=[Source(), Spill(threshold_tokens=32)],
     )
     async with agent.session(id="resources") as session:

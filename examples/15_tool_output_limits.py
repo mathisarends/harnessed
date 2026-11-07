@@ -9,7 +9,6 @@ from harnessed import (
     Plugin,
     PolicyDecision,
     Role,
-    SystemPrompt,
     ToolResult,
     ToolStatus,
     tool,
@@ -58,7 +57,6 @@ async def main():
             ]
         )
         agent = Agent(
-            prompt=SystemPrompt.from_plugins(),
             model=model,
             plugins=[
                 Approvals(default=PolicyDecision.ALLOW),

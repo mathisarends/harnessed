@@ -5,8 +5,6 @@ import pytest
 from harnessed import (
     Agent,
     Plugin,
-    PluginOrder,
-    SystemPrompt,
 )
 from harnessed.core.messages import (
     ImageDetail,
@@ -49,7 +47,6 @@ async def test_multimodal_tool_loop_retains_images_and_metadata_through_replay(t
     async with Agent(
         model=model,
         plugins=plugins,
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     ).session() as session:
         session_audit = Audit(session)
         result = await session.run("Look at the screenshot.")

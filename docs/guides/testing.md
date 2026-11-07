@@ -70,14 +70,12 @@ and tool execution are unavailable.
 They use the normal tool schemas, injection, approvals, execution and log paths.
 
 ```python
-from harnessed import PluginOrder, SystemPrompt
 from harnessed.plugins import Approvals
 from harnessed.testing import FakeShell, InMemoryFS
 
 files = InMemoryFS({"project/notes.txt": "Remember this."})
 commands = FakeShell({"pytest": "1 passed"})
 agent = Agent(
-    prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     model=ScriptedModel([call("run_command", argv=["pytest"]), reply("Tests pass")]),
     plugins=[files, commands, Approvals(default=PolicyDecision.ALLOW)],
 )
@@ -100,13 +98,9 @@ The fixture opens a real session with a scripted model. Extra plugins replace
 matching slots in an existing agent configuration:
 
 ```python
-from harnessed import PluginOrder
-
-
 async def test_workspace(harnessed_session):
     files = InMemoryFS({"note.txt": "virtual"})
     async with harnessed_session(
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         script=[call("read_file", path="note.txt"), reply("done")],
         plugins=[files],
     ) as session:
@@ -114,11 +108,10 @@ async def test_workspace(harnessed_session):
         assert assert_tool_called(result, "read_file")[1].content == "virtual"
 ```
 
-The fixture also accepts an existing `Agent` as its first argument. When replacing
-plugins, retain an explicit `prompt=SystemPrompt.from_plugins(
-order=PluginOrder.AS_LISTED)` strategy to collect their selected instruction
-blocks. The fixture accepts `instructions=` for caller text and `prompt=` for
-the strategy. Provider SDKs
+The fixture also accepts an existing `Agent` as its first argument. Replaced
+plugins contribute their instruction blocks like any other selected plugin. The
+fixture accepts `instructions=` for caller text and `prompt=` for an explicit
+document. Provider SDKs
 and credentials are unnecessary for these tests. Configure pytest-asyncio as you
 normally would for asynchronous tests; Harnessed does not change its settings.
 

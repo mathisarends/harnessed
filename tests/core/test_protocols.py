@@ -7,8 +7,6 @@ from harnessed import (
     Agent as Application,
 )
 from harnessed import (
-    PluginOrder,
-    SystemPrompt,
     ToolCall,
     plugin,
 )
@@ -89,7 +87,6 @@ async def test_foreign_fs_and_model_work_through_di_without_framework_inheritanc
     assert ForeignFiles.__bases__ == (object,)
     assert ForeignModel.__bases__ == (object,)
     async with Application(
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
         plugins=[Approvals(default=PolicyDecision.ALLOW), foreign_files(), FilesystemTools()],
     ).session() as agent:

@@ -36,7 +36,6 @@ def library_pack() -> PluginPack:
     return PluginPack(
         "library",
         [TextTools(), DebugTools(), AgentLoop(max_steps=12)],
-        prompt=SystemPrompt.from_plugins(),
     )
 
 

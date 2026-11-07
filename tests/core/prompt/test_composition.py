@@ -1,7 +1,6 @@
 import pytest
 
-from harnessed import Agent, Instructions, Plugin, PluginOrder, PromptFormat, SystemPrompt, tool
-from harnessed.errors import ConfigError
+from harnessed import Agent, Instructions, Plugin, PromptFormat, SystemPrompt, tool
 from harnessed.kernel import Scope
 from harnessed.plugins import ContextValue
 from harnessed.testing import ScriptedModel
@@ -49,7 +48,7 @@ async def test_explicit_collection_renders_complete_blocks(format, expected):
     agent = Agent(
         instructions="Role.",
         plugins=[Observe()],
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED, format=format),
+        prompt=SystemPrompt.from_plugins(format=format),
     )
     assert await agent.prompt.render() == expected
     assert "Observe.instructions" in str(agent.prompt)
@@ -57,25 +56,32 @@ async def test_explicit_collection_renders_complete_blocks(format, expected):
         model=ScriptedModel([]),
         instructions="Role.",
         plugins=[Observe()],
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED, format=format),
+        prompt=SystemPrompt.from_plugins(format=format),
     ).session() as session:
         assert await session.prompt.render() == expected
 
 
-def test_plugin_order_defaults_to_configured_order_and_is_validated():
-    assert SystemPrompt.from_plugins().plugin_order is PluginOrder.AS_LISTED
-    with pytest.raises(ValueError):
-        SystemPrompt.from_plugins(order="setup")
+async def test_plugin_instructions_follow_application_instructions_by_default():
+    agent = Agent(instructions="Role.", plugins=[Observe()])
+    assert await agent.prompt.render() == "Role.\n\nDOM snapshot.\n\nUse the latest observation."
+    assert SystemPrompt.from_plugins().collects_plugins
+    assert not SystemPrompt("Fixed.").collects_plugins
+    with pytest.raises(TypeError):
+        SystemPrompt.from_plugins(order="as_listed")
 
 
-@pytest.mark.parametrize("prompt", [None, SystemPrompt("Application text.")])
-def test_missing_collection_fails_before_configuration_providers_run(prompt):
+async def test_explicit_prompt_omits_plugin_instructions_without_evaluating_them():
     class Feature(Plugin):
         def instructions(self) -> SystemPrompt:
-            pytest.fail("No implicit instruction collection")
+            pytest.fail("An explicit prompt must not evaluate plugin instructions")
 
-    with pytest.raises(ConfigError, match="from_plugins.*Feature"):
-        Agent(instructions="Role.", plugins=[Feature()], prompt=prompt)
+    agent = Agent(
+        instructions="Role.", plugins=[Feature()], prompt=SystemPrompt("Application text.")
+    )
+    assert await agent.prompt.render() == "Role.\n\nApplication text."
+    assert str(agent.prompt).endswith(
+        "Plugin instructions omitted by the explicit prompt\n  - Feature"
+    )
 
 
 def test_only_selected_configuration_is_evaluated_once():
@@ -87,7 +93,7 @@ def test_only_selected_configuration_is_evaluated_once():
             return SystemPrompt(str(len(calls)))
 
     feature = Feature()
-    agent = Agent(plugins=[feature], prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED))
+    agent = Agent(plugins=[feature])
     assert calls == [feature]
     assert agent.prompt.entries[0].section.text == "1"
 
@@ -103,7 +109,6 @@ async def test_configuration_is_not_recomputed_per_session():
     agent = Agent(
         model=ScriptedModel([]),
         plugins=[Feature()],
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
     async with agent.session() as first:
         assert await first.prompt.render() == "Configured."
@@ -119,16 +124,16 @@ def test_plugin_provider_must_return_a_document(value):
             return value
 
     with pytest.raises(TypeError, match="Invalid.instructions.*SystemPrompt"):
-        Agent(plugins=[Invalid()], prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED))
+        Agent(plugins=[Invalid()])
 
 
 def test_plugin_provider_cannot_request_recursive_collection():
     class Invalid(Plugin):
         def instructions(self) -> SystemPrompt:
-            return SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED)
+            return SystemPrompt.from_plugins()
 
     with pytest.raises(ValueError, match="must return content"):
-        Agent(plugins=[Invalid()], prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED))
+        Agent(plugins=[Invalid()])
 
 
 async def test_none_is_normalized_and_nested_documents_inherit_outer_format():
@@ -162,7 +167,7 @@ async def test_xml_escaping_and_empty_sections():
 
 def test_collection_only_belongs_to_outer_document():
     with pytest.raises(ValueError, match="outermost"):
-        SystemPrompt(SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED))
+        SystemPrompt(SystemPrompt.from_plugins())
 
 
 @pytest.mark.parametrize("value", [42, ("text",), ["text"]])
@@ -218,7 +223,6 @@ async def test_prompt_order_is_independent_of_dependency_setup_order():
     agent = Agent(
         model=ScriptedModel([]),
         plugins=[Consumer(), Provider()],
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
     async with agent.session() as session:
         assert started == ["provider", "consumer"]
@@ -249,6 +253,5 @@ async def test_additive_plugin_instances_keep_all_blocks_in_list_order():
 
     agent = Agent(
         plugins=[Named(name="one"), Named(name="two"), Named(name="one")],
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
     assert await agent.prompt.render() == "one\n\ntwo\n\none"

@@ -56,7 +56,6 @@ agent = Agent(
     model="deepseek:deepseek-chat",  # DEEPSEEK_API_KEY
     plugins=[calculator],
     instructions="You are a helpful assistant. Keep answers concise.",
-    prompt=SystemPrompt.from_plugins(),
 )
 
 
@@ -71,8 +70,8 @@ asyncio.run(main())
 One plugin colocates the tool, its model-facing instructions and its event hook.
 `@tool` derives the input schema from Python types; the method docstring describes
 the tool. `@hook` observes the selected event type across the session.
-`SystemPrompt.from_plugins()` explicitly collects
-complete instruction blocks in resolved plugin-list order.
+The agent appends each plugin's instruction block to its own instructions, in
+plugin-list order; `print(agent.prompt)` shows every section and its origin.
 
 `Agent` is reusable configuration. `agent.run()` opens a session for one turn;
 use `agent.session()` when several turns should share a conversation.
@@ -145,7 +144,7 @@ Bundle library defaults, nest packs, and replace individual policies at the
 application boundary:
 
 ```python
-from harnessed import Agent, PluginPack, SystemPrompt
+from harnessed import Agent, PluginPack
 from harnessed.plugins import AgentLoop, Compaction, Filesystem, Shell
 
 
@@ -158,7 +157,6 @@ def workspace_pack(root: str) -> PluginPack:
             AgentLoop(max_steps=30),
             Compaction(keep_steps=4),
         ],
-        prompt=SystemPrompt.from_plugins(),
     )
 
 
@@ -175,8 +173,7 @@ print(agent.describe())
 `without(Shell)` removes that capability from the pack. The direct `AgentLoop`
 replaces the pack's loop through its `loop` slot; custom plugins can declare slots
 with `class MyPolicy(Plugin, slot="my.policy")`. Unslotted plugins are additive.
-`SystemPrompt.from_plugins()` follows the selected
-plugins, and `agent.describe()` shows their origins, replacements and exclusions before any session starts.
+Plugin instructions follow the selected plugins, and `agent.describe()` shows their origins, replacements and exclusions before any session starts.
 
 Tools, approvals, output limits, compaction and tracing all compose through
 plugins. See [plugin composition](https://github.com/mathisarends/harnessed/blob/main/docs/guides/plugins.md) for nested-pack precedence and lifecycle rules.

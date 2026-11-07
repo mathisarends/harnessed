@@ -30,53 +30,62 @@ helpers can return content too. The method returns actual content, never section
 references. It must be pure and use only recipe configuration, without injected
 services or live activation state. A class docstring remains Python documentation.
 
-## Select plugin order explicitly
+## Plugin instructions are collected by default
 
-The application opts into collection with `SystemPrompt.from_plugins()`.
-Its optional `order` argument defaults to `PluginOrder.AS_LISTED`:
+An agent appends every selected plugin's instruction block after its own
+`instructions=` text. No prompt configuration is needed:
 
 ```python
-from harnessed import Agent, PluginOrder, PromptFormat, SystemPrompt
+from harnessed import Agent
 
 agent = Agent(
     instructions="You are a browser agent.",
     plugins=[Observe(config=ObserveConfig())],
-    prompt=SystemPrompt.from_plugins(
-        order=PluginOrder.AS_LISTED,
-        format=PromptFormat.MARKDOWN,
-    ),
+)
+print(agent.prompt)  # lists every section and the plugin it came from
+```
+
+Use `SystemPrompt.from_plugins(...)` to keep collection while adding fixed
+content or choosing a format:
+
+```python
+from harnessed import Agent, PromptFormat, SystemPrompt
+
+agent = Agent(
+    instructions="You are a browser agent.",
+    plugins=[Observe(config=ObserveConfig())],
+    prompt=SystemPrompt.from_plugins(format=PromptFormat.MARKDOWN),
 )
 ```
 
-`PluginOrder.AS_LISTED` collects complete instruction blocks in final configured
+Collection keeps complete instruction blocks in final configured
 plugin-list order. Nested packs expand at their list position. Removed and
 replaced recipes are discarded before providers run. A slot replacement retains
 the inherited position. Dependency setup order never changes prompt order.
 Configuration providers run once when constructing the agent, after plugin
 selection; sessions reuse that content.
 
-A selected plugin overriding `instructions()` requires this explicit strategy.
-Omitting it raises `ConfigError` before providers are called, even when an
-override would return empty content. Omitting `order` uses configured plugin-list order.
-Plain plugins inheriting the empty base method require no prompt configuration.
+To own the complete system prompt, pass a document built with the constructor,
+such as `prompt=SystemPrompt("...")`. Plugin instruction blocks are then left out
+without calling their providers, and `print(agent.prompt)` lists the omitted
+plugins so the choice stays visible.
 
 `Agent(instructions="...")` prepends application-owned text. `prompt=` accepts a
 `SystemPrompt` document or collection strategy. Fixed application content in
-`SystemPrompt.from_plugins(*parts, order=...)` follows the caller text and precedes
+`SystemPrompt.from_plugins(*parts)` follows the caller text and precedes
 plugin blocks. No plugin is moved to the end by its type or name: put completion
 and policy components at their intended list positions.
 
 ## Publish the strategy in a pack
 
 ```python
-from harnessed import Agent, PluginPack, PluginOrder, PromptFormat, SystemPrompt
+from harnessed import Agent, PluginPack, PromptFormat, SystemPrompt
 from harnessed.plugins import Filesystem, Shell
 
 workspace = PluginPack(
     "workspace",
     plugins=[Filesystem(), Shell()],
     prompt=SystemPrompt.from_plugins(
-        order=PluginOrder.AS_LISTED,
         format=PromptFormat.MARKDOWN,
     ),
 )

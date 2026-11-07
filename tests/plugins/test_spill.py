@@ -6,8 +6,6 @@ from pydantic import ValidationError
 from harnessed import (
     Agent,
     Plugin,
-    PluginOrder,
-    SystemPrompt,
 )
 from harnessed.core.events.observations import SpillCreatedEvent, SpillExpiredEvent
 from harnessed.core.messages import ImagePart, TextPart, ToolCall, ToolResult, ToolStatus
@@ -35,7 +33,6 @@ def configure(model, *, plugins=()):
     return Agent(
         model=model,
         plugins=[Source(), *plugins],
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
 
 

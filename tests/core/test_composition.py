@@ -7,7 +7,6 @@ from harnessed import (
     CompositionDescription,
     Instructions,
     Plugin,
-    PluginOrder,
     PluginPack,
     SystemPrompt,
 )
@@ -184,7 +183,6 @@ def test_callable_plugin_instances_keep_their_prompt_metadata():
     recipe = CallablePlugin()
     agent = Agent(
         plugins=[PluginPack("library", [recipe])],
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
     assert recipe in agent.plugins
     assert "Keep this contribution." in str(agent.prompt)

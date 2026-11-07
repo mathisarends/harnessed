@@ -6,8 +6,6 @@ import pytest
 
 from harnessed import (
     Agent,
-    PluginOrder,
-    SystemPrompt,
     ToolCall,
 )
 from harnessed.core.messages import ToolStatus
@@ -85,7 +83,6 @@ async def test_filesystem_plugin_schema_bounds_search_notices_and_safe_approvals
     (tmp_path / "other.txt").write_text("match", encoding="utf-8")
     filesystem = Filesystem(tmp_path)
     app = Agent(
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([]),
         plugins=[filesystem],
     )
@@ -113,7 +110,6 @@ async def test_filesystem_plugin_schema_bounds_search_notices_and_safe_approvals
     )
     filesystem_2 = Filesystem(tmp_path)
     result = await Agent(
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=model,
         plugins=[filesystem_2],
     ).run("Write")

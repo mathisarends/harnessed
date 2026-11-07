@@ -12,9 +12,7 @@ from harnessed import (
     Inject,
     Observation,
     Plugin,
-    PluginOrder,
     SessionState,
-    SystemPrompt,
     tool,
 )
 from harnessed.core.errors import SessionClosed, SessionFormatError, SessionStateError
@@ -143,7 +141,6 @@ async def test_spill_contents_survive_compaction_json_and_session_close():
             return text
 
     agent = Agent(
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([call(Source.source), "stored", "continued"]),
         plugins=[
             Source(),
@@ -223,7 +220,6 @@ async def test_default_state_images_and_spill_need_no_filesystem_writes(monkeypa
     monkeypatch.setattr(Path, "write_bytes", denied)
     monkeypatch.setattr(Path, "write_text", denied)
     agent = Agent(
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([call(Source.source), "done"]),
         plugins=[Source(), Spill(threshold_tokens=32)],
     )

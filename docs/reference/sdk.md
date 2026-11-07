@@ -202,7 +202,7 @@ plugin_validation=PluginValidation.ERROR, store=None)` resolves reusable configu
 | --- | --- |
 | model | Harnessed Model or provider:model string; wrap native models with PydanticAIModel |
 | instructions | Caller-owned text prepended to the selected prompt |
-| prompt | Content document or explicit SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED) strategy |
+| prompt | Complete content document, or SystemPrompt.from_plugins(...) to keep collecting plugin blocks; defaults to collection |
 | plugins | Iterable of configured plugins or PluginPack values, resolved by local slots before mounting |
 | plugin_validation | ERROR rejects unresolved plugins at session startup; WARN emits PluginDependencyWarning and retains them for later activation |
 | agent.plugins | Tuple of resolved plugins |
@@ -309,14 +309,15 @@ Parts are strings, `Instructions`, nested documents or `None`; `None` is normali
 away. The outermost format controls all nested content. PLAIN joins text with blank
 lines, MARKDOWN adds optional level-two headings, and XML escapes section content.
 
-`SystemPrompt.from_plugins(*parts, order=PluginOrder.AS_LISTED, format=...)` opts into
-collection. The optional `order` defaults to `PluginOrder.AS_LISTED`. Fixed parts appear
+`SystemPrompt.from_plugins(*parts, format=...)` collects plugin blocks; it is
+also the default when `Agent(prompt=)` is omitted. Fixed parts appear
 before complete plugin blocks in resolved plugin-list order. Nested packs expand
 at their list position; removals disappear and replacements keep inherited slot
 positions. Only final winners' providers run, once at agent construction.
 A plugin provider returns a content document and cannot request collection itself.
-A selected override without an explicit collection strategy raises `ConfigError`
-before providers run. Collection strategies cannot be nested inside content.
+A prompt built with the `SystemPrompt` constructor omits plugin blocks without
+calling their providers; `str(agent.prompt)` lists the omitted plugins.
+Collection strategies cannot be nested inside content.
 
 `Agent(instructions="...")` prepends caller text. `Agent(prompt=...)` selects the
 outer document or strategy. `PluginPack(name, plugins, prompt=...)` supplies a default

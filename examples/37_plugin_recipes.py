@@ -10,7 +10,6 @@ from harnessed import (
     Instructions,
     Plugin,
     PluginConfig,
-    PluginOrder,
     PluginPack,
     SystemPrompt,
     ToolContext,
@@ -91,9 +90,7 @@ async def main() -> None:
     agent = Agent(
         model=ScriptedModel([call(files.read_document, name="README.md"), "Read the document."]),
         plugins=(workspace, ReadObserver()),
-        prompt=SystemPrompt.from_plugins(
-            "Help with documents.", "Answer concisely.", order=PluginOrder.AS_LISTED
-        ),
+        prompt=SystemPrompt.from_plugins("Help with documents.", "Answer concisely."),
     )
     print(agent.describe())
     result = await agent.run("Read README.md")

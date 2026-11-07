@@ -3,8 +3,6 @@ import pytest
 from harnessed import (
     Agent,
     Plugin,
-    PluginOrder,
-    SystemPrompt,
     tool,
 )
 from harnessed.plugins import Spill, ToolOutputLimit
@@ -28,7 +26,6 @@ async def test_explicit_output_policy_on_tool_methods(limit):
     async with Agent(
         model=model,
         plugins=plugins,
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     ).session() as session:
         result = (await session.run("Read the instructions")).tool_calls[0][1]
         if limit is None:

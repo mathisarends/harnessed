@@ -8,10 +8,8 @@ from harnessed import (
     Agent,
     ApprovalAnswer,
     Plugin,
-    PluginOrder,
     PolicyDecision,
     SessionState,
-    SystemPrompt,
     ToolCall,
     ToolContext,
     tool,
@@ -71,7 +69,6 @@ def coordinator(child, calls=None, **limits):
     return Agent(
         model=model,
         instructions="Private parent instructions",
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         plugins=[Subagents({"review": child}, **limits), Approvals(default=PolicyDecision.ALLOW)],
     )
 
@@ -241,7 +238,6 @@ async def test_dynamic_unmount_drains_active_child():
 
     child = Agent(model=CallbackModel(blocked))
     parent = Agent(
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([[ModelChunk(tool_call=delegate())], "Done"]),
         plugins=[Approvals(default=PolicyDecision.ALLOW)],
     )
@@ -286,7 +282,6 @@ async def test_default_depth_limit_is_inherited_and_cannot_be_raised_by_child(ne
     leaf = Agent(model=leaf_model)
     store = RecordingStore()
     middle = Agent(
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel(
             [
                 [ModelChunk(tool_call=ToolCall(nested_tool, {"agent": "leaf", "task": "Task"}))],
@@ -307,7 +302,6 @@ async def test_default_depth_limit_is_inherited_and_cannot_be_raised_by_child(ne
 async def test_nested_usage_counts_each_model_once():
     leaf = Agent(model=ScriptedModel([[ModelChunk(text="Leaf", usage=ModelUsage(3, 2))]]))
     middle = Agent(
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel(
             [
                 [ModelChunk(tool_call=delegate("leaf"))],
@@ -342,7 +336,6 @@ async def test_persistent_parent_and_child_are_replayable_without_running_models
     store = JsonSessionStore(root=tmp_path)
     child = Agent(model=ScriptedModel(["Child answer"]), store=store)
     parent = Agent(
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([[ModelChunk(tool_call=delegate())], "Parent answer"]),
         store=store,
         plugins=[Subagents({"review": child}), Approvals(default=PolicyDecision.ALLOW)],
@@ -399,7 +392,6 @@ async def test_delegate_overrides_ordinary_tool_timeout():
         yield ModelChunk(text="Child answer")
 
     parent = Agent(
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([[ModelChunk(tool_call=delegate())], "Parent answer"]),
         plugins=[
             AgentLoop(tool_timeout=0.001),
@@ -558,7 +550,6 @@ async def test_stable_call_identity_returns_recorded_receipt_without_starting_ch
     child_model = ScriptedModel(["Only child answer"])
     child = Agent(model=child_model)
     parent = Agent(
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel(
             [[ModelChunk(tool_call=call)], "One", [ModelChunk(tool_call=call)], "Two"]
         ),
@@ -609,7 +600,6 @@ async def test_repeated_cancellation_does_not_interrupt_child_cleanup():
 
     child = Agent(model=CallbackModel(blocked), plugins=[Resource()])
     parent = Agent(
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel([[ModelChunk(tool_call=delegate())], "Done"]),
         plugins=[Approvals(default=PolicyDecision.ALLOW)],
     )
@@ -656,7 +646,6 @@ async def test_child_factory_rejects_existing_stored_conversation():
 async def test_reused_call_identity_cannot_change_its_task():
     child_model = ScriptedModel(["Original answer"])
     parent = Agent(
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         model=ScriptedModel(
             [
                 [ModelChunk(tool_call=delegate(task="Original", id="same"))],
@@ -692,7 +681,6 @@ async def test_snapshot_restoration_preserves_receipts_call_limits_and_parent_li
                 "Restored",
             ]
         ),
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         plugins=[Subagents({"review": child}, max_calls=1), Approvals(allow=[Subagents.delegate])],
     )
     async with restored.session(state=state) as session:
@@ -742,7 +730,6 @@ async def test_start_and_receipt_are_committed_before_crossing_session_boundarie
     parent = Agent(
         model=CallbackModel(parent_response),
         store=parent_store,
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         plugins=[Subagents({"review": child}), Approvals(allow=[Subagents.delegate])],
     )
     async with parent.session(id="parent") as session:

@@ -5,11 +5,11 @@ import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from harnessed import Agent, Plugin, PolicyDecision, Role, SystemPrompt, ToolCall, tool
+from harnessed import Agent, Plugin, PolicyDecision, Role, ToolCall, tool
 from harnessed.events import ToolCallFinishedEvent
 from harnessed.kernel import Inject
 from harnessed.models import ModelChunk
-from harnessed.plugins import AgentLoop, Approvals, Filesystem, PromptRenderer
+from harnessed.plugins import AgentLoop, Approvals, Filesystem
 from harnessed.plugins.filesystem import FileSystemBackend
 from harnessed.testing import ScriptedModel
 
@@ -82,7 +82,6 @@ async def writes_with_resource_keys(root: Path):
         plugins=[
             Approvals(default=PolicyDecision.ALLOW),
             filesystem,
-            PromptRenderer(SystemPrompt.from_plugins()),
             tools,
         ],
     ).session() as session:

@@ -6,10 +6,8 @@ import pytest
 from harnessed import (
     Agent,
     Plugin,
-    PluginOrder,
     PolicyDecision,
     SessionState,
-    SystemPrompt,
     ToolCall,
     tool,
 )
@@ -37,7 +35,6 @@ def _spawn(task="Review the code", *, id=None):
 def _parent(child, model, **limits):
     return Agent(
         model=model,
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         plugins=[
             Subagents({"review": child}, **limits),
             Approvals(allow=[Subagents.spawn, Subagents.send, Subagents.cancel]),
@@ -420,7 +417,6 @@ async def test_status_while_awaiting_child_approval_returns_facts_then_terminal_
 
     parent = Agent(
         model=CallbackModel(parent_response),
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
         plugins=[
             Subagents(
                 {

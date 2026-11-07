@@ -8,8 +8,6 @@ import pytest
 
 from harnessed import (
     Agent,
-    PluginOrder,
-    SystemPrompt,
 )
 from harnessed.integrations import bubblewrap, docker
 from harnessed.integrations.sandbox import (
@@ -429,7 +427,6 @@ async def exercise_live_sandbox(sandbox, tmp_path):
     agent = Agent(
         model=ScriptedModel([]),
         plugins=[sandbox, FilesystemTools(), ShellTools()],
-        prompt=SystemPrompt.from_plugins(order=PluginOrder.AS_LISTED),
     )
     async with agent.session() as session:
         services = sandbox.services(session)

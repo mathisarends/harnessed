@@ -5,7 +5,6 @@ from tempfile import TemporaryDirectory
 
 from harnessed import (
     Agent,
-    SystemPrompt,
 )
 from harnessed.plugins import Skill, Skills, Spill, ToolOutputLimit
 from harnessed.plugins.skills import SkillCatalog
@@ -41,7 +40,6 @@ async def main():
         )
         spill = Spill(threshold_tokens=1)
         agent = Agent(
-            prompt=SystemPrompt.from_plugins(),
             model=model,
             plugins=[
                 skills,

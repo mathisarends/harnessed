@@ -8,7 +8,6 @@ from tempfile import TemporaryDirectory
 from harnessed import (
     Agent,
     ApprovalAnswer,
-    SystemPrompt,
     ToolCall,
 )
 from harnessed.models import ModelChunk, ModelRequest, ToolMessage
@@ -74,7 +73,6 @@ async def main() -> None:
     with TemporaryDirectory() as temporary:
         workspace = Path(temporary)
         agent = Agent(
-            prompt=SystemPrompt.from_plugins(),
             model=CallbackModel(respond),
             plugins=[
                 Shell(workspace),
