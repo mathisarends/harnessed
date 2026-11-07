@@ -254,6 +254,11 @@ message, including identical content. A configured store commits the message
 before the method returns. Await the write before work that must see it.
 The same method is available on the restricted `SessionContext` in hooks.
 
+An ID still queued in the inbox cannot be appended: the operation raises
+`ValueError` before changing history, assets or stored state. The queued run
+remains executable and cancellable. Create a fresh `UserMessage` for additive
+input instead of reusing a queued message or its ID.
+
 Subsequent requests see the message until ordinary history compaction replaces
 or removes it. It survives state export and stored-session reopening. It does
 not change the system prompt or an already assembled request. The old

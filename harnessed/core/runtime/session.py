@@ -289,6 +289,8 @@ class Session:
         It follows ordinary history retention and may be summarized by compaction.
         Await this method before starting work that must see the contribution.
         A configured session store commits the contribution before this returns.
+        A message ID still queued in the inbox raises ValueError without changing
+        history or the queued run; use a fresh UserMessage for additive input.
         """
         await self._context.append_message(message)
 

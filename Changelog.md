@@ -1,6 +1,18 @@
 # Changelog
 
-## Unreleased
+Harnessed 0.x is **alpha software**. APIs and persisted session formats may
+change in minor releases before 1.0. See the
+[release notes and compatibility policy](docs/releases.md).
+Version-specific breaking changes and upgrade instructions are recorded below.
+
+## 0.13.0 (unreleased)
+
+This minor release makes plugin service bindings explicit, separates run handles
+from live streams, and uses ordinary messages for conversation input and request
+enrichment. It also consolidates approval timeouts and the public event API.
+It contains breaking API and persistence changes from 0.12.0: conversation state
+is format **2**, checkpoints and JSON stores are format **3**, and audit envelopes
+are version **5**. Earlier formats are rejected without automatic migration.
 
 ### Breaking changes
 
@@ -26,13 +38,6 @@
   and keyword-only `ToolContext` parameters fail registration with a migration
   hint. The marker excludes framework parameters from model schemas, including
   scripted tool references and parameter-object tools.
-- `session.tools.explain(name)` inspects the current tool registration even when
-  unavailable to the model. The frozen `ToolExplanation` and `ToolAvailability`
-  types from `harnessed.services` distinguish missing tool/predicate services,
-  disabled predicates, available tools and absent registrations. Tools belonging
-  to waiting plugins are not registered. The existing visible-tool mapping and
-  call-scoped injection semantics are unchanged.
-
 - Configure all approval response timeouts with `Approvals(timeout=...)`; remove
   `AgentLoop(approval_timeout=...)`. Guards, in-tool questions, SDK requests and
   forwarded approvals now inherit this same default. Per-question `timeout=`
@@ -67,7 +72,7 @@
   `MessageLifetime`, and `ContextValueChangedEvent` to `PluginInstructionsChangedEvent`.
 
 - Plugins can no longer resolve the application `Session` from their scope.
-  `Inject[Session]`, `dependency(Session)` and `needs=(Session,)` now report a
+  `Inject[Session]`, `needs(Session)` and `needs=(Session,)` now report a
   missing service. Use `event.session` in hooks, or declare `SessionContext` from
   `harnessed.services` for setup, tools and teardown. Replace `session.steer(...)`
   with `context.inbox.steer(...)`. `SessionContext` stays available while
@@ -93,7 +98,7 @@
   `@tool(presentation=ToolPresentation(...))`, including `title`, `tags`, `icons`,
   `annotations` and `meta`. Native registry registration uses the same argument.
   Typed Python application `metadata=` stays separate.
-- `Agent.run(content, ...)` now accepts `str | Message` consistently with session
+- `Agent.run(content, ...)` now accepts `str | UserMessage` consistently with session
   operations. Replace an explicit `prompt=` keyword with `content=`.
 - `result.require_output()` returns the original validated value only for a
   completed turn; incomplete turns raise `OutputUnavailable` with their stop
@@ -110,13 +115,6 @@
   Replace `session.ctx` with `session.scope` and use `scope: Scope` for kernel
   parameters, including `scope=` keywords on service and runtime APIs. The old
   kernel module and names have no aliases.
-| Approval configuration before | Current API |
-| --- | --- |
-| `Approvals(trust=[...])` | `Approvals(allow=[...])` |
-| `Approvals(require=[...])` | `Approvals(ask=[...])` |
-| `Approvals.allow_all()` / `Approvals.ask_all()` | `Approvals(default=PolicyDecision.ALLOW)` / `Approvals(default=PolicyDecision.ASK)` |
-| `ApprovalGate(...)` | `ToolApprovalGuard(...)` |
-
 - Configure `Approvals` with `allow=` and `ask=` instead of `trust=` and
   `require=`. Precedence is `deny`, `ask`, `allow`, `confirm`, `readonly`,
   `policy`, then `default`; explicit application rules now precede the callable
@@ -160,17 +158,70 @@
 - Rename `PluginDescription.kit_path` to `PluginDescription.pack_path`, including
   descriptions nested in replacement histories and exclusions. Update attribute
   access and keyword construction accordingly.
-- Composition behavior is unchanged: packs retain ordered plugin defaults,
+- The pack rename preserves composition behavior: ordered plugin defaults,
   nesting, slot overrides, `without()` exclusions and optional prompt strategies.
-  Persisted state and storage format versions are unchanged.
 
 ### Added
 
 - Inspect model-visible tools through the read-only `session.tools` mapping and
   its `.names` set. `harnessed.services` explicitly exports injectable prompt and
   tool services, plus the `SessionTools` view type.
+- `session.tools.explain(name)` inspects the current registration even when
+  unavailable to the model. `ToolExplanation` and `ToolAvailability` from
+  `harnessed.services` distinguish missing services, disabled tools, available
+  tools and absent registrations. Tools of waiting plugins are not registered.
+
+### Fixed
+
+- Reject additive user messages whose ID is still queued in the inbox, before
+  retaining assets or admitting an event. Previously, appending the same message
+  as a queued run silently consumed its input and left its handle unresolved,
+  including after cancellation. The rejected append leaves history, the queue
+  and the stored revision unchanged; use a fresh `UserMessage` for additive input.
+- Correct the README and custom-event guide to use `Inject[ToolContext]`.
+- Keep historical upgrade instructions in this changelog and remove the
+  version-specific migration paragraph from the README.
 
 ### Upgrade from 0.12.0
+
+1. Start new conversation snapshots, stores and audit logs. State format **1**,
+   checkpoint/store format **2** and audit format **3** from 0.12.0 are rejected.
+   The current versions are **2**, **3** and **5**, respectively. Back up older
+   application data; there is no automatic migration or tool replay.
+2. Replace `session.add_context(text)` with
+   `session.append_message(UserMessage(text))`. Remove `context=` from run, submit
+   and stream calls. Use input text for task background and `PrepareRequest`
+   hooks returning `request.append_message(...)` for request-only facts.
+   Replace `observe(Observation(...))` with `observe(UserMessage(...), source=...)`.
+   Move `ContextValue`/`DynamicContext` usage to feature-owned request hooks;
+   `ConfigureRequest` is now part of `PrepareRequest`.
+3. Rename kernel `Context`/`ContextClosed` to `Scope`/`ScopeClosed`, and
+   `session.ctx` to `session.scope`. Replace `dependency(T)` with `needs(T)` and
+   optional dependencies with `observes(T)`. Move lifecycle `Inject` parameters
+   to these fields; explicitly mark tool context parameters `Inject[ToolContext]`.
+   Plugins and runtime hooks receive `SessionContext` from `harnessed.services`
+   instead of the application `Session`; steer through `context.inbox.steer(...)`.
+4. Open streams with `async with session.stream(...) as run` and annotate them
+   `RunStream[T]`. Handles from `submit()` are `RunHandle[T]` without event
+   iteration or `aclose()`. Context exit closes observation; `cancel()` targets
+   execution. Use `session.use(...)` for scoped mounts and `await session.mount(...)`
+   for manually managed handles.
+5. Remove `prompt=SystemPrompt.from_plugins()` where it only enabled plugin
+   instruction collection, which is now the default. Preserve explicit strategies
+   that add text or set a format. Rename `Kit` and its related types to
+   `PluginPack`, `PluginPackPromptPolicy` and `ResolvedPluginPack`; use `pack_path`
+   in composition descriptions. See the example below.
+6. Replace approval `trust=`/`require=` with `allow=`/`ask=`, the removed all-tools
+   factories with explicit `default=PolicyDecision.ALLOW`/`ASK`, and `ApprovalGate`
+   with `ToolApprovalGuard`. Put response timeouts on `Approvals(timeout=...)`
+   instead of `AgentLoop(approval_timeout=...)`. Per-question positive timeouts
+   replace the default; omission and `None` inherit it.
+7. Update event names and tags using the breaking-change list above, including
+   `TurnResultEvent`, `StreamItem`, `MessageAppendedEvent` and
+   `PluginInstructionsChangedEvent`. Import plugin-owned rule events from
+   `harnessed.plugins.rules` and supply `Rules.events` to audit readers. Use
+   `ToolPresentation` for display/JSON integration metadata, `content=` for the
+   `Agent.run()` keyword, and `require_output()` only for completed turns.
 
 ```python
 from harnessed import PluginPack, PluginPackPromptPolicy, ResolvedPluginPack

@@ -155,6 +155,28 @@ async def test_paused_inbox_and_quiet_context_survive_reopening(store):
         ]
 
 
+async def test_rejected_append_keeps_the_stored_inbox_and_revision_unchanged(store) -> None:
+    model = ScriptedModel(["done"])
+    agent = Agent(model=model, store=store)
+    message = UserMessage("queued work")
+    async with agent.session(id="append-collision") as session:
+        await session.pause()
+        await session.submit(message)
+        await session.flush()
+        before = await store.load_session(session.id)
+        assert before is not None
+        with pytest.raises(ValueError, match="queued inbox"):
+            await session.emit(MessageAppendedEvent(message))
+        assert await store.load_session(session.id) == before
+        assert session.messages == ()
+    async with agent.session(id="append-collision") as restored:
+        assert [item.id for item in restored.inbox.pending] == [message.id]
+        await restored.resume()
+        await asyncio.wait_for(restored.wait_until_idle(), timeout=5)
+        assert [item.text for item in restored.messages] == ["queued work", "done"]
+        assert len(model.requests) == 1
+
+
 async def test_stale_worker_cannot_overwrite_a_new_revision(store):
     agent = Agent(model=ScriptedModel([]), store=store)
     async with agent.session(id="shared") as first, agent.session(id="shared") as second:

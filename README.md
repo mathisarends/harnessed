@@ -13,16 +13,6 @@ session. Harnessed owns the agent loop and plugin lifetimes.
 Python **3.12-3.14**, Pydantic v2. Optional provider integrations use PydanticAI's
 Direct API.
 
-Harnessed 0.x is **alpha software**. APIs and persisted session formats may
-change in minor releases before 1.0. See the
-[release notes and compatibility policy](https://github.com/mathisarends/harnessed/blob/main/docs/releases.md).
-For additive context input and parent-owned subagents in 0.12.0, follow the
-[upgrade from 0.11.0](https://github.com/mathisarends/harnessed/blob/main/docs/releases.md#upgrade-from-0110).
-Applications on 0.10.0 should also read the
-[0.11.0 persistence guide](https://github.com/mathisarends/harnessed/blob/main/docs/releases.md#upgrade-from-0100).
-The earlier [0.10.0 prompt migration](https://github.com/mathisarends/harnessed/blob/main/docs/releases.md#upgrade-from-090)
-remains available for applications upgrading from 0.9.0.
-
 ## Build an agent
 
 ```bash
@@ -201,7 +191,7 @@ from harnessed.plugins.filesystem import FileSystemBackend, LocalFileSystem
 class ProjectDocs(Plugin, needs=(FileSystemBackend,)):
     @tool(readonly=True)
     async def read_document(
-        self, path: str, *, files: Inject[FileSystemBackend], ctx: ToolContext
+        self, path: str, *, files: Inject[FileSystemBackend], ctx: Inject[ToolContext]
     ) -> str:
         """Read up to 4,000 characters from a workspace document."""
         await ctx.progress(f"Reading {path}")
