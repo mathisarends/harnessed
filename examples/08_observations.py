@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Protocol
 
-from harnessed import Agent, Observation, Plugin, PolicyDecision, Session, ToolCall, tool
+from harnessed import Agent, Observation, Plugin, PolicyDecision, ToolCall, tool
 from harnessed.hooks import Next, PreStep, StepDecision
 from harnessed.kernel import Inject, Scope, hook, plugin
 from harnessed.models import ImagePart, ModelChunk, TextPart
@@ -52,17 +52,16 @@ async def browser_backend(scope: Scope) -> AsyncGenerator[None]:
     yield
 
 
-class BrowserObserver(Plugin, needs=(Browser, Session)):
+class BrowserObserver(Plugin, needs=(Browser,)):
     @hook(PreStep)
     async def observe(
         self,
         event: PreStep,
         next_: Next[StepDecision],
         browser: Inject[Browser],
-        session: Inject[Session],
     ) -> StepDecision:
         state = await browser.snapshot()
-        session.observe(
+        event.session.observe(
             Observation(
                 source="browser",
                 content=(

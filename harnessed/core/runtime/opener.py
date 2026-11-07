@@ -10,6 +10,7 @@ from harnessed.core.plugin import Service
 from harnessed.core.prompt.context import DynamicContext
 from harnessed.core.runtime.agent_loop import AgentFactory
 from harnessed.core.runtime.child_reports import ChildReports
+from harnessed.core.runtime.context import SessionContext
 from harnessed.core.runtime.session import Session
 from harnessed.core.session.files import MemoryFiles, SessionFiles
 from harnessed.core.session.session import SessionLog
@@ -81,7 +82,7 @@ async def open_session(
         await scope.install(
             [
                 Service(SessionLog, log),
-                Service(Session, runtime),
+                Service(SessionContext, runtime.plugin_context),
                 Service(DynamicContext, DynamicContext(log)),
             ]
         )

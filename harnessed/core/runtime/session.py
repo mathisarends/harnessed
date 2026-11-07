@@ -102,7 +102,6 @@ class Session:
         self._context = SessionContext(
             session, self.control, self.inbox, self.approvals, self._tools_view, observations
         )
-        scope.provide(SessionContext, self._context)
         scope.provide(SessionControl, self.control)
         scope.provide(SessionInbox, self.inbox)
         scope.provide(ToolContexts, BoundToolContexts(session, self.inbox, self.approvals))
@@ -130,6 +129,15 @@ class Session:
         session.set_persistence_error_handler(self._persistence_failed)
         scope.on(SessionAppended, self._session_event)
         scope.on(SessionPublished, self._stream_event)
+
+    @property
+    def plugin_context(self) -> SessionContext:
+        """The restricted view that plugins and hooks receive instead of this Session.
+
+        It reads state, contributes context, emits events and requests approvals,
+        but it cannot start turns, mount plugins or close the session.
+        """
+        return self._context
 
     @property
     def tools(self) -> SessionTools:

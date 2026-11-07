@@ -7,12 +7,10 @@ from harnessed import (
     Agent as Application,
 )
 from harnessed import (
-    Inject,
     Observation,
     Plugin,
     PluginOrder,
     PolicyDecision,
-    Session,
     SystemPrompt,
     ToolCall,
     ToolResult,
@@ -300,15 +298,15 @@ async def test_compaction_does_not_commit_a_summary_that_expands_the_request():
 
 async def test_latest_observation_policy_keeps_one_unchanged_snapshot_and_unwinds():
 
-    class Observer(Plugin, needs=(Session,)):
+    class Observer(Plugin):
         def __init__(self):
             super().__init__()
             self.index = 0
 
         @hook(PreStep)
-        async def observe(self, event, next_, agent: Inject[Session]):
+        async def observe(self, event, next_):
             self.index += 1
-            agent.observe(Observation("browser", f"full {self.index}"))
+            event.session.observe(Observation("browser", f"full {self.index}"))
             return await next_()
 
     model = ScriptedModel(["one", "two", "three"])

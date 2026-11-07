@@ -13,7 +13,6 @@ from harnessed import (
     Observation,
     Plugin,
     PluginOrder,
-    Session,
     SessionState,
     SystemPrompt,
     tool,
@@ -26,6 +25,7 @@ from harnessed.events import TurnEndedEvent, TurnResultEvent, TurnStartedEvent
 from harnessed.kernel import Scope
 from harnessed.plugins import Compaction, LatestObservationOnly, Spill, every_turns
 from harnessed.plugins.spill import SpillStore
+from harnessed.services import SessionContext
 from harnessed.testing import ExtractiveSummarizer, ScriptedModel, call
 
 
@@ -195,10 +195,10 @@ async def test_queued_stream_results_have_their_own_turn_boundary_state():
 
 
 async def test_reused_agent_retains_no_completed_runtime():
-    refs: list[weakref.ReferenceType[Session]] = []
+    refs: list[weakref.ReferenceType[SessionContext]] = []
 
-    class Watch(Plugin, needs=(Session,)):
-        async def setup(self, scope, session: Inject[Session]) -> None:
+    class Watch(Plugin, needs=(SessionContext,)):
+        async def setup(self, scope, session: Inject[SessionContext]) -> None:
             refs.append(weakref.ref(session))
 
     agent = Agent(model=ScriptedModel(["done"] * 8), plugins=[Watch()])

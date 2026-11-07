@@ -4,6 +4,14 @@
 
 ### Breaking changes
 
+- Plugins can no longer resolve the application `Session` from their scope.
+  `Inject[Session]`, `dependency(Session)` and `needs=(Session,)` now report a
+  missing service. Use `event.session` in hooks, or declare `SessionContext` from
+  `harnessed.services` for setup, tools and teardown. Replace `session.steer(...)`
+  with `context.inbox.steer(...)`. `SessionContext` stays available while
+  dependent plugins tear down. Applications reach the same view through
+  `session.plugin_context`. `Subagents` now depends on `SessionContext` and the
+  session control instead of the full session.
 - Open turn streams with `async with session.stream(...) as run`. The context
   yields `RunHandle[T]`: iterate it for typed events, await `run.result()` for
   the same terminal result independently of observation, or `await run.cancel()`

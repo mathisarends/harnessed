@@ -5,7 +5,6 @@ import json
 import math
 from collections.abc import Mapping
 from hashlib import sha256
-from typing import TYPE_CHECKING
 
 from harnessed.core.children import ChildLimits, ChildSessionFactory
 from harnessed.core.events.subagents import (
@@ -18,10 +17,7 @@ from harnessed.core.messages import ToolResult, ToolStatus, UserMessage, to_dict
 from harnessed.core.session.children import ChildSession
 from harnessed.core.tools import ToolContext, ToolError
 
-from .child_execution import ChildExecution
-
-if TYPE_CHECKING:
-    from .session import Session
+from .child_execution import ChildExecution, ChildParent
 
 
 class ChildSessionSupervisor:
@@ -29,7 +25,7 @@ class ChildSessionSupervisor:
 
     def __init__(
         self,
-        parent: Session,
+        parent: ChildParent,
         agents: Mapping[str, ChildSessionFactory],
         limits: ChildLimits,
     ) -> None:
@@ -119,7 +115,7 @@ class ChildSessionSupervisor:
             raise ToolError(f"Unknown subagent {agent!r}; choose from {', '.join(self.agents)}")
         if not task.strip():
             raise ToolError("A subagent task must not be empty")
-        parent = self.parent.parent
+        parent = self.parent.link
         depth = parent.depth + 1 if parent is not None else 1
         depth_limit = (
             min(self.limits.max_depth, parent.depth_limit)

@@ -16,8 +16,10 @@ from harnessed.core.hooks import SessionAborting, SessionClosing
 from harnessed.core.messages import ToolResult
 from harnessed.core.plugin import Plugin, PluginConfig
 from harnessed.core.prompt.values import SystemPrompt
+from harnessed.core.runtime.child_execution import ChildParent
 from harnessed.core.runtime.children import ChildSessionSupervisor
-from harnessed.core.runtime.session import Session
+from harnessed.core.runtime.context import SessionContext
+from harnessed.core.runtime.control import SessionControl
 from harnessed.core.session.children import ChildSession as ChildSession
 from harnessed.core.tools import ToolContext, tool
 from harnessed.kernel import Inject, Scope
@@ -35,7 +37,7 @@ class SubagentsConfig(PluginConfig):
 _DEFAULTS = SubagentsConfig()
 
 
-class Subagents(Plugin[SubagentsConfig], needs=(Session,)):
+class Subagents(Plugin[SubagentsConfig], needs=(SessionContext, SessionControl)):
     """Delegate explicit tasks to configured agents in isolated child sessions."""
 
     def __init__(
@@ -76,7 +78,9 @@ class Subagents(Plugin[SubagentsConfig], needs=(Session,)):
             f"Available agents: {', '.join(self.agents)}."
         )
 
-    async def setup(self, scope: Scope, session: Inject[Session]) -> None:
+    async def setup(
+        self, scope: Scope, session: Inject[SessionContext], control: Inject[SessionControl]
+    ) -> None:
         limits = ChildLimits(
             self.config.max_parallel,
             self.config.max_calls,
@@ -85,7 +89,9 @@ class Subagents(Plugin[SubagentsConfig], needs=(Session,)):
             self.config.max_steps,
             self.config.token_budget,
         )
-        self._supervisor = ChildSessionSupervisor(session, self.agents, limits)
+        self._supervisor = ChildSessionSupervisor(
+            ChildParent(session, control, scope), self.agents, limits
+        )
         scope.effect(self._supervisor.aclose)
         scope.on(SessionAborting, self._supervisor.aborting)
         scope.on(SessionClosing, self._supervisor.closing)
