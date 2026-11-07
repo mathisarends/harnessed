@@ -177,7 +177,9 @@ def test_public_exports_resolve_to_their_canonical_classes_and_functions(module)
                 type_aliases.add(node.name.id)
     assert set(declarations) | type_aliases == set(facade.__all__)
     for name, (canonical, attribute) in declarations.items():
-        assert getattr(facade, name) is getattr(importlib.import_module(canonical), attribute)
+        module = importlib.import_module(canonical)
+        expected = module if attribute is None else getattr(module, attribute)
+        assert getattr(facade, name) is expected
     assert facade.__all__ == sorted(set(facade.__all__))
 
 
@@ -327,9 +329,19 @@ def test_lazy_sdk_exports_and_type_stub_stay_in_sync():
 
     stub = ast.parse((PACKAGE / "__init__.pyi").read_text(encoding="utf-8"))
     declared = {
-        alias.asname or alias.name: (node.module, alias.name)
+        alias.asname or alias.name: (
+            (
+                importlib.util.resolve_name("." * node.level + alias.name, "harnessed"),
+                None,
+            )
+            if node.module is None
+            else (
+                importlib.util.resolve_name("." * node.level + node.module, "harnessed"),
+                alias.name,
+            )
+        )
         for node in stub.body
-        if isinstance(node, ast.ImportFrom) and not node.level
+        if isinstance(node, ast.ImportFrom)
         for alias in node.names
     }
     source = ast.parse((PACKAGE / "__init__.py").read_text(encoding="utf-8"))
@@ -341,3 +353,22 @@ def test_lazy_sdk_exports_and_type_stub_stay_in_sync():
     )
     assert declared == ast.literal_eval(exports)
     assert set(declared) == set(harnessed.__all__)
+
+
+def test_events_module_is_available_lazily_from_a_fresh_sdk_import() -> None:
+    code = """
+import sys
+import harnessed
+
+assert 'harnessed.events' not in sys.modules
+assert 'pydantic' not in sys.modules
+assert 'events' in dir(harnessed)
+events = harnessed.events
+assert events is sys.modules['harnessed.events']
+assert harnessed.events is events
+assert events.ContextMessageEvent.__name__ == 'ContextMessageEvent'
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, timeout=10
+    )
+    assert result.returncode == 0, result.stderr

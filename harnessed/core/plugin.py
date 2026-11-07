@@ -211,7 +211,7 @@ def plugin_contribution(value: PluginLike) -> PromptContribution:
         or len(description) != 2
         or not all(isinstance(part, str) for part in description)
     ):
-        raise TypeError("Scope descriptions must contain a name and text")
+        raise TypeError("Context descriptions must contain a name and text")
     return PromptContribution(spec.name, provider, description)
 
 

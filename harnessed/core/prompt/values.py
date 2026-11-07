@@ -240,7 +240,7 @@ class PromptComposition:
         for index, entry in enumerate(self.entries, 1):
             lines.append(f"  {index}. {entry.origin}: {entry.section.preview!r}")
         if self.context_entries:
-            lines.append("Scope (dynamic, outside the system prompt)")
+            lines.append("Context (dynamic, outside the system prompt)")
             lines.extend(f"  - {key}: {preview}" for key, preview in self.context_entries)
         return "\n".join(lines)
 
