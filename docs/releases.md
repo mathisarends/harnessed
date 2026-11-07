@@ -6,7 +6,7 @@ still evolving before 1.0.
 Detailed breaking changes and upgrade instructions are recorded in the repository
 [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md).
 
-## 0.13.0 (unreleased)
+## 0.13.0 (2026-11-07)
 
 This minor release makes plugin service contracts explicit, separates run
 completion from live observation, and uses ordinary messages for model input.

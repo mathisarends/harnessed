@@ -5,7 +5,7 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
-## 0.13.0 (unreleased)
+## 0.13.0 (2026-11-07)
 
 This minor release makes plugin service bindings explicit, separates run handles
 from live streams, and uses ordinary messages for conversation input and request
