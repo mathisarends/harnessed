@@ -5,7 +5,7 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
-## 0.14.0 (unreleased)
+## 0.14.0 (2026-11-08)
 
 This minor release introduces a restricted plugin activation scope, upgrades the
 optional MCP integration, and adds public library and hook tracing. It includes

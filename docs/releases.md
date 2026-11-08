@@ -6,7 +6,7 @@ still evolving before 1.0.
 Detailed breaking changes and upgrade instructions are recorded in the repository
 [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md).
 
-## 0.14.0 (unreleased)
+## 0.14.0 (2026-11-08)
 
 This minor release adds a restricted plugin activation scope, per-activation tool
 deadlines and public library and hook tracing, and upgrades the optional MCP
