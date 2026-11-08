@@ -63,6 +63,7 @@ from harnessed.core.session.turns import Turn
 from harnessed.core.tools import ToolRegistry
 from harnessed.core.tools.context import BoundToolContexts, ToolContexts
 from harnessed.core.tools.view import SessionTools
+from harnessed.core.tracing import TraceSession, bind_tracer
 from harnessed.kernel import (
     Disposer,
     HookFactory,
@@ -85,6 +86,7 @@ class Session:
         self._options = options
         self._close_task: asyncio.Task[None] | None = None
         self.id = session.id
+        scope.provide(TraceSession, TraceSession(self.id))
         self._boundary_state = session.boundary_state
         self._compaction = CompactionManager(scope, session, context_window=options.context_window)
         self.control = SessionControl(session, self._drive, lambda: _driving.get() is self)
@@ -317,6 +319,10 @@ class Session:
 
     async def compact(self) -> CompactionAppliedEvent | None:
         """Summarize completed history while idle or paused; return its log record."""
+        with bind_tracer(self.scope):
+            return await self._compact()
+
+    async def _compact(self) -> CompactionAppliedEvent | None:
         async with self.control.maintenance():
             model = self.scope[Model]
             request = ModelRequest(
@@ -335,6 +341,7 @@ class Session:
     def _session_event(self, event: SessionAppended) -> None:
         if event.log is self.log:
             if isinstance(event.event, TurnEndedEvent):
+                self._runner.record_turn(self.log.turns[-1])
                 self._boundary_state = self.log.snapshot()
             self._submission_event(event.event)
             if isinstance(event.event, SessionControlChangedEvent):
@@ -658,7 +665,8 @@ class Session:
         finally:
             try:
                 if self.control.closing:
-                    await self.scope.dispatch(SessionClosing(self._context))
+                    with bind_tracer(self.scope):
+                        await self.scope.dispatch(SessionClosing(self._context))
             finally:
                 try:
                     await self.log.close_persistence()

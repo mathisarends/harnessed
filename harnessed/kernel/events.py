@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import TYPE_CHECKING, Any, Generic, Self, TypeVar, cast, overload
+from typing import TYPE_CHECKING, Any, Generic, Protocol, Self, TypeVar, cast, overload
 
 from .di import BindingPlan, binding_plan
 from .effects import Disposer, resolve
@@ -111,6 +112,23 @@ class Parallel(Event[None]):
         return ObserverHook(cls, owner, prepend, priority)
 
 
+@dataclass(frozen=True)
+class HookInvocation:
+    """Identity of one invoked listener; event payloads are deliberately absent."""
+
+    event: type[Event[Any]]
+    registered_event: type[Event[Any]]
+    callback: Callable[..., object]
+    owner_name: str
+    priority: int
+
+
+class HookInstrumentation(Protocol):
+    """Bracket an eligible callback without altering dispatch or its result."""
+
+    def invoke(self, scope: Scope, invocation: HookInvocation) -> AbstractContextManager[None]: ...
+
+
 @dataclass(eq=False)
 class _Listener:
     event: type[Event[Any]]
@@ -169,13 +187,25 @@ class EventBus:
         default: Callable[[], R | Awaitable[R]] | None = None,
     ) -> R:
         listeners = self.matching(event)
+        instrumentation = scope[HookInstrumentation] if HookInstrumentation in scope else None
 
         async def invoke(listener, *args):
             if not listener.active or not listener.owner._registrations_active():
                 return None
             with listener.owner.activate():
-                bound = listener.plan.bind(scope, args)
-                return await resolve(listener.callback(*bound.args, **bound.kwargs))
+                if instrumentation is None:
+                    bound = listener.plan.bind(scope, args)
+                    return await resolve(listener.callback(*bound.args, **bound.kwargs))
+                invocation = HookInvocation(
+                    type(event),
+                    listener.event,
+                    listener.callback,
+                    listener.owner.owner_name,
+                    listener.priority,
+                )
+                with instrumentation.invoke(scope, invocation):
+                    bound = listener.plan.bind(scope, args)
+                    return await resolve(listener.callback(*bound.args, **bound.kwargs))
 
         if isinstance(event, Waterfall):
 

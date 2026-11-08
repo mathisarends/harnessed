@@ -25,6 +25,7 @@ architecture:
     harnessed.testing: testing
     harnessed.events: events
     harnessed.services: sdk
+    harnessed.tracing: sdk
   layers:
     kernel:
       path: kernel

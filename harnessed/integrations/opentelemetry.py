@@ -16,6 +16,9 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.util.types import AttributeValue
 from pydantic import Field, JsonValue, SecretBytes
 
+from harnessed.core.events.messages import AssistantMessageEvent, UserMessageEvent
+from harnessed.core.events.output import OutputValidatedEvent
+from harnessed.core.events.turn import TurnOutcome
 from harnessed.core.messages import (
     AssistantMessage,
     Message,
@@ -23,20 +26,21 @@ from harnessed.core.messages import (
     ToolResult,
     ToolStatus,
 )
-from harnessed.core.model import ModelRequest, ModelUsage
+from harnessed.core.model import ModelRequest, ModelUsage, StopReason
 from harnessed.core.plugin import Plugin, PluginConfig
 from harnessed.core.runtime.control import StopAtBoundary
-from harnessed.core.tracing import Span, Tracer
-from harnessed.kernel import PluginScope
+from harnessed.core.session.turns import Turn
+from harnessed.core.tracing import HookTracing, Span, Tracer
+from harnessed.kernel import HookInstrumentation, PluginScope
 
 _correlation: ContextVar[dict[str, str | int] | None] = ContextVar(
     "harnessed_trace_scope", default=None
 )
 _KINDS = {
-    "turn": ("AGENT", "agent"),
-    "step": ("CHAIN", "chain"),
-    "model": ("LLM", "generation"),
-    "tool": ("TOOL", "tool"),
+    "harnessed.turn": ("AGENT", "agent"),
+    "harnessed.step": ("CHAIN", "chain"),
+    "harnessed.model": ("LLM", "generation"),
+    "harnessed.tool": ("TOOL", "tool"),
 }
 
 
@@ -77,8 +81,13 @@ async def otlp_provider(
 
 
 class TraceContentKind(StrEnum):
+    TURN_INPUT = "turn.input"
+    TURN_OUTPUT = "turn.output"
     MODEL_INPUT = "model.input"
     MODEL_OUTPUT = "model.output"
+    MODEL_TOOLS = "model.tools"
+    MODEL_SETTINGS = "model.settings"
+    MODEL_OUTPUT_SCHEMA = "model.output_schema"
     TOOL_ARGUMENTS = "tool.arguments"
     TOOL_RESULT = "tool.result"
     EXCEPTION_MESSAGE = "exception.message"
@@ -186,6 +195,7 @@ class ContentCapture:
 class OpenTelemetryConfig(PluginConfig):
     capture_content: bool = False
     max_content_length: int = Field(default=16_384, ge=1)
+    trace_hooks: bool = False
 
 
 class OpenTelemetryTracer(Plugin[OpenTelemetryConfig], slot="tracer"):
@@ -204,6 +214,7 @@ class OpenTelemetryTracer(Plugin[OpenTelemetryConfig], slot="tracer"):
         capture_content: bool | ContentCapture = False,
         max_content_length: int = 16_384,
         content_filter: TraceContentFilter | None = None,
+        trace_hooks: bool = False,
     ) -> None:
         super().__init__(
             config=OpenTelemetryConfig(
@@ -211,6 +222,7 @@ class OpenTelemetryTracer(Plugin[OpenTelemetryConfig], slot="tracer"):
                 if isinstance(capture_content, ContentCapture)
                 else capture_content,
                 max_content_length=max_content_length,
+                trace_hooks=trace_hooks,
             )
         )
         self.tracer_provider = tracer_provider
@@ -224,17 +236,24 @@ class OpenTelemetryTracer(Plugin[OpenTelemetryConfig], slot="tracer"):
     async def setup(self, scope: PluginScope) -> None:
         self._tracer = trace.get_tracer("harnessed", tracer_provider=self.tracer_provider)
         scope.provide(Tracer, self)
+        scope.provide(HookInstrumentation, HookTracing(trace_hooks=self.config.trace_hooks))
 
     @contextmanager
     def span(self, name: str, **attributes: Any) -> Generator[Span]:
-        correlation = {} if name == "turn" else dict(_correlation.get() or {})
+        inherited = _correlation.get()
+        correlation = dict(inherited) if inherited is not None else {}
+        session = attributes.get("session_id")
+        if name == "harnessed.turn" or (
+            isinstance(session, str | int) and session != correlation.get("session_id")
+        ):
+            correlation = {}
         for key in ("session_id", "turn_id", "step"):
             if isinstance(value := attributes.get(key), str | int):
                 correlation[key] = value
         token = _correlation.set(correlation)
         try:
             with self._tracer.start_as_current_span(
-                f"harnessed.{name}", record_exception=False, set_status_on_exception=False
+                name, record_exception=False, set_status_on_exception=False
             ) as native:
                 kind, observation = _KINDS.get(name, ("CHAIN", "span"))
                 native.set_attribute("openinference.span.kind", kind)
@@ -255,6 +274,11 @@ class OpenTelemetryTracer(Plugin[OpenTelemetryConfig], slot="tracer"):
                     native.set_attribute("harnessed.outcome", "stopped")
                     raise
                 except BaseException as error:
+                    if name == "harnessed.turn":
+                        native.set_attribute(
+                            "harnessed.outcome",
+                            "aborted" if isinstance(error, asyncio.CancelledError) else "failed",
+                        )
                     if isinstance(error, asyncio.CancelledError):
                         native.set_attribute("harnessed.cancelled", True)
                     current.error(error)
@@ -285,12 +309,24 @@ class _Span:
         if isinstance(value, ModelRequest):
             if value.settings.max_tokens is not None:
                 self.native.set_attribute("gen_ai.request.max_tokens", value.settings.max_tokens)
+            if value.settings.temperature is not None:
+                self.native.set_attribute("gen_ai.request.temperature", value.settings.temperature)
             if self.config.capture_content:
                 self.content(
                     "input",
                     TraceContentKind.MODEL_INPUT,
                     [_message(message) for message in value.messages],
                 )
+                self.content("request.tools", TraceContentKind.MODEL_TOOLS, value.tools)
+                self.content("request.settings", TraceContentKind.MODEL_SETTINGS, value.settings)
+                if value.output_schema is not None:
+                    self.content(
+                        "request.output_schema",
+                        TraceContentKind.MODEL_OUTPUT_SCHEMA,
+                        value.output_schema,
+                    )
+        elif isinstance(value, Turn):
+            self._turn(value)
         elif isinstance(value, ModelUsage):
             self.usage(value)
         elif isinstance(value, AssistantMessage):
@@ -312,7 +348,7 @@ class _Span:
             if self.config.capture_content:
                 self.content("output", TraceContentKind.TOOL_RESULT, value.content)
         elif isinstance(value, str | bool | int | float):
-            self.native.set_attribute(f"harnessed.{name}", value)
+            self.native.set_attribute(name if "." in name else f"harnessed.{name}", value)
             if name == "session_id":
                 self.native.set_attribute("session.id", value)
             elif name == "model":
@@ -344,18 +380,20 @@ class _Span:
             return
         try:
             serialized = json.dumps(captured.value, ensure_ascii=False, allow_nan=False)
+            original_length = len(serialized)
+            truncated = original_length > self.config.max_content_length
+            omitted = 0
+            if truncated:
+                serialized, omitted = _limit_json(captured.value, self.config.max_content_length)
         except (TypeError, ValueError, RecursionError):
             self.native.set_attribute(f"harnessed.{direction}.serialization_error", True)
             return
-        truncated = len(serialized) > self.config.max_content_length
-        self.native.set_attribute(
-            f"{direction}.value", serialized[: self.config.max_content_length]
-        )
-        self.native.set_attribute(
-            f"{direction}.mime_type", "text/plain" if truncated else "application/json"
-        )
+        self.native.set_attribute(f"{direction}.value", serialized)
+        self.native.set_attribute(f"{direction}.mime_type", "application/json")
         if truncated:
             self.native.set_attribute(f"harnessed.{direction}.truncated", True)
+            self.native.set_attribute(f"harnessed.{direction}.original_length", original_length)
+            self.native.set_attribute(f"harnessed.{direction}.omitted_items", omitted)
 
     def error(self, error: BaseException) -> None:
         if not self.native.is_recording():
@@ -371,6 +409,50 @@ class _Span:
             if captured is not None and isinstance(captured.value, str) and captured.value:
                 attributes["exception.message"] = captured.value[: self.config.max_content_length]
         self.native.add_event("exception", attributes)
+
+    def _turn(self, turn: Turn) -> None:
+        if turn.reason is not None:
+            self.native.set_attribute("harnessed.outcome", turn.reason.value)
+        if not self.config.capture_content:
+            return
+        self.content(
+            "input",
+            TraceContentKind.TURN_INPUT,
+            [
+                _message(event.message)
+                for event in turn.events
+                if isinstance(event, UserMessageEvent)
+            ],
+        )
+        final = next(
+            (event for event in reversed(turn.events) if isinstance(event, AssistantMessageEvent)),
+            None,
+        )
+        if final is None:
+            return
+        output = _message(final.message)
+        proof = next(
+            (
+                event
+                for event in reversed(turn.events)
+                if isinstance(event, OutputValidatedEvent) and event.message_id == final.message.id
+            ),
+            None,
+        )
+        if proof is not None:
+            output["validated_output"] = proof.data
+        self.native.set_attribute(
+            "harnessed.output.partial",
+            final.interrupted
+            or turn.reason != TurnOutcome.COMPLETED
+            or (
+                final.stop_reason not in (None, StopReason.END)
+                and not (proof is not None and final.stop_reason is StopReason.TOOL_CALLS)
+            ),
+        )
+        if final.stop_reason is not None:
+            self.native.set_attribute("harnessed.output.stop_reason", final.stop_reason.value)
+        self.content("output", TraceContentKind.TURN_OUTPUT, output)
 
     def _capture(self, kind: TraceContentKind, value: Any, *, field: str) -> TraceContent | None:
         try:
@@ -425,6 +507,72 @@ def _message(message: Message) -> dict[str, Any]:
     if message.tool_call_id is not None:
         value["tool_call_id"] = message.tool_call_id
     return value
+
+
+def _limit_json(value: JsonValue, budget: int) -> tuple[str, int]:
+    """Share the budget across siblings, keeping later conversation items visible."""
+    serialized = json.dumps(value, ensure_ascii=False, allow_nan=False)
+    if len(serialized) <= budget:
+        return serialized, 0
+    if budget < 2:
+        return "0", len(value) if isinstance(value, list | dict) else 0
+    match value:
+        case str():
+            low = 0
+            high = min(len(value), budget - 2)
+            while low < high:
+                middle = (low + high + 1) // 2
+                if len(json.dumps(value[:middle], ensure_ascii=False)) <= budget:
+                    low = middle
+                else:
+                    high = middle - 1
+            return json.dumps(value[:low], ensure_ascii=False), 0
+        case list():
+            selected: list[JsonValue] = []
+            available = budget - 2
+            for item in reversed(value):
+                minimum = min(len(json.dumps(item, ensure_ascii=False, allow_nan=False)), 64)
+                cost = minimum + (2 if selected else 0)
+                if cost > available:
+                    break
+                selected.append(item)
+                available -= cost
+            if not selected:
+                return "[]", len(value)
+            selected.reverse()
+            count = len(selected)
+            available = budget - 2 - 2 * (count - 1)
+            fragments: list[str] = []
+            omitted = len(value) - count
+            for index, item in enumerate(selected):
+                share = available // (count - index)
+                fragment, dropped = _limit_json(item, share)
+                fragments.append(fragment)
+                omitted += dropped
+                available -= len(fragment)
+            return "[" + ", ".join(fragments) + "]", omitted
+        case dict():
+            entries: list[tuple[str, JsonValue]] = []
+            available = budget - 2
+            for key, item in value.items():
+                if not isinstance(key, str):
+                    raise TypeError("Trace object keys must be strings")
+                encoded = json.dumps(key, ensure_ascii=False)
+                minimum = len(encoded) + 3 + (2 if entries else 0)
+                if minimum <= available:
+                    entries.append((encoded, item))
+                    available -= minimum
+            fragments = []
+            omitted = len(value) - len(entries)
+            for index, (encoded, item) in enumerate(entries):
+                share = 1 + available // (len(entries) - index)
+                fragment, dropped = _limit_json(item, share)
+                fragments.append(encoded + ": " + fragment)
+                omitted += dropped
+                available -= len(fragment) - 1
+            return "{" + ", ".join(fragments) + "}", omitted
+        case _:
+            return "0", 0
 
 
 __all__ = [

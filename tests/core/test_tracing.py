@@ -7,9 +7,11 @@ from harnessed import Agent, ApprovalAnswer, Plugin, ToolCall
 from harnessed.core.model import ModelChunk
 from harnessed.core.tools.decorator import tool
 from harnessed.core.tracing import Tracer
-from harnessed.kernel import PluginScope
+from harnessed.hooks import PreStep, SessionClosing, StepDecision
+from harnessed.kernel import Next, PluginScope, Scope, hook
 from harnessed.plugins import Approvals, Compaction, every_turns
 from harnessed.testing import ScriptedModel
+from harnessed.tracing import current, span
 
 
 class Recorder(Plugin, slot="tracer"):
@@ -46,19 +48,19 @@ async def test_tool_span_starts_after_approval_wait_and_all_spans_close():
     class Work(Plugin):
         @tool
         async def work(self) -> str:
-            assert trace.active == ["turn", "step", "tool"]
+            assert trace.active == ["harnessed.turn", "harnessed.step", "harnessed.tool"]
             return "ready"
 
     def approve(request):
-        assert trace.active == ["turn", "step", "approval_wait"]
+        assert trace.active == ["harnessed.turn", "harnessed.step", "harnessed.approval_wait"]
         return ApprovalAnswer.ALLOW
 
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("work"))], "done"])
     await Agent(model=model, plugins=[Work(), Approvals(approver=approve), trace]).run("Go")
     names = [name for name, _ in trace.finished]
-    assert names.index("approval_wait") < names.index("tool")
-    assert names.count("model") == names.count("step") == 2
-    assert names[-1] == "turn" and trace.active == []
+    assert names.index("harnessed.approval_wait") < names.index("harnessed.tool")
+    assert names.count("harnessed.model") == names.count("harnessed.step") == 2
+    assert names[-1] == "harnessed.turn" and trace.active == []
 
 
 async def test_failed_model_closes_every_span():
@@ -66,7 +68,65 @@ async def test_failed_model_closes_every_span():
     with pytest.raises(RuntimeError, match="ran out"):
         await Agent(model=ScriptedModel([]), plugins=[trace]).run("Go")
     assert trace.active == []
-    assert [name for name, _ in trace.finished] == ["model", "step", "turn"]
+    assert [name for name, _ in trace.finished] == [
+        "harnessed.model",
+        "harnessed.step",
+        "harnessed.turn",
+    ]
+
+
+async def test_explicit_tracing_owner_overrides_ambient_context_and_restores_after_error():
+    outer = Recorder()
+    replacement = Recorder()
+    previous = current()
+    async with Scope() as owner, Scope() as untraced:
+        owner.provide(Tracer, outer)
+        with pytest.raises(RuntimeError, match="source failure"):
+            with span("library.outer", scope=owner):
+                assert current() is outer
+                owner.provide(Tracer, replacement)
+                with span("library.child"):
+                    assert current() is outer
+                with span("library.suppressed", scope=untraced):
+                    assert current() is not outer
+                    with span("library.also_suppressed"):
+                        pass
+                assert current() is outer
+                raise RuntimeError("source failure")
+        assert current() is previous
+        with span("library.replacement", scope=owner):
+            assert current() is replacement
+    assert [name for name, _ in outer.finished] == ["library.child", "library.outer"]
+    assert [name for name, _ in replacement.finished] == ["library.replacement"]
+    assert current() is previous
+
+
+async def test_library_tracing_is_available_in_step_and_closing_hooks():
+    trace = Recorder()
+
+    class Observe(Plugin):
+        @hook(PreStep)
+        async def prepare(self, event: PreStep, next_: Next[StepDecision]) -> StepDecision:
+            assert isinstance(current(), Recorder)
+            with span("library.prepare"):
+                return await next_()
+
+        @hook(SessionClosing)
+        async def closing(self, event: SessionClosing) -> None:
+            assert isinstance(current(), Recorder)
+            with span("library.cleanup"):
+                pass
+
+    result = await Agent(model=ScriptedModel(["done"]), plugins=[trace, Observe()]).run("go")
+    assert result.text == "done"
+    assert [name for name, _ in trace.finished] == [
+        "library.prepare",
+        "harnessed.model",
+        "harnessed.step",
+        "harnessed.turn",
+        "library.cleanup",
+    ]
+    assert trace.active == []
 
 
 async def test_ineffective_compaction_backs_off_and_has_its_own_span(caplog):
@@ -106,9 +166,9 @@ async def test_ineffective_compaction_backs_off_and_has_its_own_span(caplog):
     async with app.session() as session:
         await session.run("first")
         await session.run("second")
-        assert [name for name, _ in trace.finished].count("compaction") == 1
+        assert [name for name, _ in trace.finished].count("harnessed.compaction") == 1
         await session.run("third")
-        assert [name for name, _ in trace.finished].count("compaction") == 1
+        assert [name for name, _ in trace.finished].count("harnessed.compaction") == 1
         await session.run("fourth")
-        assert [name for name, _ in trace.finished].count("compaction") == 2
+        assert [name for name, _ in trace.finished].count("harnessed.compaction") == 2
     assert "did not reduce context" in caplog.text

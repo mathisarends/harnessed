@@ -193,7 +193,8 @@ tracer = OpenTelemetryTracer(
 ```
 
 This captures portable model inputs and outputs, tool-call arguments and tool
-results, including copies in subsequent model history. For example, if a tool
+results, turn summaries, tool definitions, resolved generation settings and output
+schemas, including copies in subsequent model history. For example, if a tool
 returns `Authorization: Bearer <token>`, both its result span and the next model
 input contain `Authorization: Bearer [redacted]`. Execution and session history
 retain their original values.
@@ -227,11 +228,55 @@ the same literal redaction before its length limit. `capture_content=True`
 retains the plain boolean opt-in, including exception text, with no registered
 literal secrets. Both forms mask wrapped secrets encountered during conversion.
 
-The limit counts characters per serialized input/output field and exception
-message. Truncated fields are marked and use `text/plain`; complete fields use
-`application/json`. Serialization failures omit the field and set a marker.
+The limit counts characters separately for each serialized content field and
+exception message. Content fields always contain valid `application/json`.
+After filtering and redaction, structural truncation shares the budget across
+sibling values, shortens strings and omits array items or object fields. Arrays
+retain their most recent items in order when all items cannot fit. This keeps a
+large early observation from consuming every later message's budget. It is a
+lossy diagnostic view, not a replayable conversation. At extremely small limits,
+only an empty container or a scalar placeholder (`0` for a one-character budget)
+may fit.
+
+Truncated fields have `harnessed.<field>.truncated`, `original_length` (serialized
+characters after filtering/redaction, before truncation) and `omitted_items`
+(dropped array items and object fields throughout the value). Shortened strings
+do not add to the item count. Exception messages remain plain text with their
+own character limit. Serialization failures omit the field and set a marker.
 Opaque provider state, reasoning and stack traces are excluded even with capture
 enabled.
+
+### Turn summaries and request details
+
+The root `harnessed.turn` span captures only user messages accepted in that turn,
+including steering consumed by later steps. It excludes previous turns, pending
+followups, system instructions and browser observations. Rejected input that was
+never accepted is absent. A resumed turn includes its previously accepted
+messages. Its output is the last portable assistant message in that turn, with
+`validated_output` when that exact message has an accepted structured-output
+verdict. No Python application serializer runs. A turn without an assistant
+message has no captured output.
+
+`harnessed.outcome` distinguishes completion, limits, stops, aborts and failures;
+`harnessed.output.partial` marks interrupted or incomplete answers. A failed
+model stream can therefore retain a redacted partial answer without presenting
+it as a completed result. Turn summaries pass through the same content policy
+and length limits as model/tool content.
+
+Model spans retain the message list in `input.value` and expose these separate,
+independently bounded JSON fields:
+
+| Field | Captured value |
+| --- | --- |
+| `request.tools.value` | Portable tool names, descriptions and parameter schemas. |
+| `request.settings.value` | Resolved `max_tokens`, `temperature` and JSON provider options. |
+| `request.output_schema.value` | Output contract identity, schema and mode, when configured. |
+
+Each field also has a `.mime_type` and uses the truncation/error markers above.
+Numeric `gen_ai.request.max_tokens` and `gen_ai.request.temperature` remain
+metadata even without content capture. The settings describe Harnessed's
+resolved request, not additional defaults or transformations inside a provider
+SDK. Native client configuration and raw HTTP bodies are not captured.
 
 ### Application filtering
 
@@ -274,8 +319,13 @@ and is distinct from returning `None` to omit a field.
 
 | Kind | Value before filtering |
 | --- | --- |
+| `TURN_INPUT` (`turn.input`) | User messages accepted within this turn |
+| `TURN_OUTPUT` (`turn.output`) | Last assistant message, with `validated_output` when available |
 | `MODEL_INPUT` (`model.input`) | Portable message list, including historical tool-call arguments and tool results |
 | `MODEL_OUTPUT` (`model.output`) | Portable assistant message, including tool-call arguments |
+| `MODEL_TOOLS` (`model.tools`) | Portable tool-definition list |
+| `MODEL_SETTINGS` (`model.settings`) | Resolved generation settings and JSON provider options |
+| `MODEL_OUTPUT_SCHEMA` (`model.output_schema`) | Portable output schema, when configured |
 | `TOOL_ARGUMENTS` (`tool.arguments`) | Arguments object; `tool_name` identifies the executing tool |
 | `TOOL_RESULT` (`tool.result`) | Tool content; `tool_name` identifies the executing tool |
 | `EXCEPTION_MESSAGE` (`exception.message`) | Full exception message before truncation |
@@ -285,20 +335,70 @@ can appear in both a model message and a tool span. The filter sees the complete
 portable value before serialization and truncation. Provider state and reasoning
 are already excluded. IDs, names, timings, usage and error types remain metadata
 outside content filtering and redaction. Omitting a tool-result field leaves
-copies in model history available to separate filtering. For sensitive tool
-data, apply rules to model input/output as well.
+copies in model history and final turn summaries available to separate filtering.
+For sensitive data, apply rules to every kind that can carry a copy, including
+turn/model inputs and outputs and request details.
 
 A filter or redaction exception or invalid return omits the field and sets
-`harnessed.input.filter_error`, `harnessed.output.filter_error` or
-`harnessed.exception.filter_error`. Neither the original content nor the filter
+`harnessed.<field>.filter_error`, for example `harnessed.input.filter_error`,
+`harnessed.request.tools.filter_error` or `harnessed.exception.filter_error`.
+Neither the original content nor the filter
 exception message is exported as a fallback, and the agent's operation retains
 its original outcome. Invalid JSON output is omitted with the existing
 serialization-error marker. Independent HTTP or model instrumentors have their
 own capture settings and do not use this callback.
 
-Custom tracer implementations still use the provider-independent
-`harnessed.core.tracing.Tracer` and `Span` protocols. `span(name, **attributes)`
-opens a synchronous context manager across asynchronous work. The runtime sets
-typed `ModelRequest`, `ModelUsage`, `AssistantMessage`, `ToolCall` and `ToolResult` values
-on the span; exporters map these values at the integration boundary. The default
-tracer ignores them without serializing content.
+## Library spans and hook instrumentation
+
+Libraries and custom tracers import `span`, `current`, `Tracer` and `Span` from
+the public, provider-independent `harnessed.tracing` facade. Importing it requires
+no OTel extra and preserves the canonical protocol identities.
+
+```python
+from harnessed.tracing import span
+
+with span("browserrig.wait_until_ready") as measured:
+    ready = await wait_until_ready(page)
+    measured.set_attribute("browserrig.readiness.ready", ready)
+```
+
+The synchronous context manager stays active across `await`. Names are exported
+exactly as supplied; qualified scalar attributes such as `code.function.name`
+or `browserrig.readiness.ready` also retain their names. Unqualified scalar
+attributes use the `harnessed.` prefix. The runtime explicitly names its spans
+`harnessed.turn`, `harnessed.model`, etc.
+
+`current()` returns the context's tracer, or a no-op. Runtime spans bind that
+tracer for nested library calls and synchronous tools. The OTel integration also
+binds it around invoked hooks, even when automatic hook spans are disabled.
+Explicit compaction and `SessionClosing` hooks have session correlation without
+reopening a completed turn. Context is restored on return, failure and
+cancellation; concurrent sessions keep separate bindings.
+
+`span(name, scope=owner, **attributes)` selects an explicit kernel `Scope` or
+plugin `PluginScope`. It takes precedence over ambient context, including
+selecting a no-op when that owner has no configured tracer. The selection stays
+fixed for the open span. Setup/teardown code can use this form; work before the
+tracer is available or after it is removed produces no spans. A library must
+still own the lifetime of background tasks, which inherit their creation
+context. Tracing context is not persisted in conversation snapshots.
+
+Enable automatic invocation spans with
+`OpenTelemetryTracer(tracer_provider=provider, trace_hooks=True)`. It defaults to
+`False`. Every listener actually invoked gets a `harnessed.hook` span, including
+custom kernel events. Metadata identifies the actual and registered event types
+(`harnessed.hook.event`, `harnessed.hook.registered_event`), owner, priority and
+`code.function.name`; event payloads are excluded. Skipped and disposed listeners
+and Waterfall terminal defaults have no handler spans. Emit handlers are
+siblings; Parallel handlers overlap; Waterfall continuations nest. A Waterfall
+handler's duration includes awaited downstream work and is not its own exclusive
+cost. Source-location caching and duration-based export filtering remain future
+work.
+
+The kernel's optional `HookInstrumentation` protocol brackets invocation and
+dependency binding without importing Core or OTel. It resolves from the
+dispatching scope once per dispatch, preserving child overrides and the existing
+ordering, Bail, Waterfall and cancellation contracts. Custom tracers use the
+same `Tracer` and `Span` protocols: the runtime supplies typed request, usage,
+message, tool-result and turn values for exporters to map. The default tracer
+ignores these without serializing content.

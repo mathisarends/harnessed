@@ -204,8 +204,8 @@ class SessionApprovals:
         timeout: float,
     ) -> ApprovalAnswer:
         with span(
-            self.scope,
-            "approval_wait",
+            "harnessed.approval_wait",
+            scope=self.scope,
             session_id=self.log.id,
             tool=request.call.name,
             call_id=request.call.id,

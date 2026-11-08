@@ -1,8 +1,11 @@
 # Proposal: trace hook handlers and library work
 
-Status: design for review. This PR changes documentation only. The APIs and
-behavior below are proposed, and are not available in the current release.
-The roadmap records this work under future scope.
+Status: partially implemented. The public tracing facade, ambient binding,
+verbatim span names and opt-in hook invocation spans are implemented and
+documented in `docs/guides/tracing.md`. This document retains the broader design:
+source-location caching, duration-filtering processor/helper options and their
+acceptance criteria remain proposed and are not available. The guide and SDK
+reference are the contracts for implemented behavior.
 
 ## Rationale
 

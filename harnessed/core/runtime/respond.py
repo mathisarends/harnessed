@@ -26,8 +26,8 @@ class ModelResponder:
         self, request: ModelRequest, *, model: Model, request_id: str
     ) -> AssistantMessage:
         with span(
-            self.scope,
-            "model",
+            "harnessed.model",
+            scope=self.scope,
             session_id=self.log.id,
             model=model.info.name,
             request_id=request_id,

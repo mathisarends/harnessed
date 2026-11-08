@@ -20,8 +20,8 @@ from harnessed.core.runtime.control import SessionControl
 from harnessed.core.runtime.options import AgentOptions
 from harnessed.core.runtime.stepper import StepRunner
 from harnessed.core.session.session import SessionLog
-from harnessed.core.session.turns import Step
-from harnessed.core.tracing import span
+from harnessed.core.session.turns import Step, Turn
+from harnessed.core.tracing import Span, span
 from harnessed.kernel import Scope
 
 
@@ -41,16 +41,29 @@ class TurnRunner:
         self.control = control
         self.steps = steps
         self.context = context
+        self._trace: tuple[str, Span] | None = None
+
+    def record_turn(self, turn: Turn) -> None:
+        """Capture a turn before publication releases its execution buffers."""
+        if self._trace is not None and self._trace[0] == turn.id:
+            self._trace[1].set_attribute("turn", turn)
 
     async def run(self) -> bool:
         previous = self.log.open_turn
         turn = previous.id if previous is not None else uuid4().hex
-        with span(self.scope, "turn", session_id=self.log.id, turn_id=turn) as current:
-            result = await self._run(turn)
-            ended = self.log.last(TurnEndedEvent)
-            if ended is not None and ended.turn_id == turn:
-                current.set_attribute("outcome", ended.reason)
-            return result
+        with span(
+            "harnessed.turn", scope=self.scope, session_id=self.log.id, turn_id=turn
+        ) as current:
+            self._trace = (turn, current)
+            try:
+                return await self._run(turn)
+            finally:
+                try:
+                    opened = self.log.open_turn
+                    if opened is not None:
+                        self.record_turn(opened)
+                finally:
+                    self._trace = None
 
     async def _run(self, turn: str) -> bool:
         previous = self.log.open_turn
@@ -88,7 +101,9 @@ class TurnRunner:
                 await self.log.append(TurnEndedEvent(turn, TurnOutcome.TOKEN_BUDGET))
                 return True
             final = step == max_steps and start.final_step is FinalStepPolicy.SUMMARIZE
-            with span(self.scope, "step", session_id=self.log.id, turn_id=turn, step=step):
+            with span(
+                "harnessed.step", scope=self.scope, session_id=self.log.id, turn_id=turn, step=step
+            ):
                 if not await self.steps.run(turn, step, settings, max_steps=max_steps, final=final):
                     return True
             await self.control.checkpoint()
