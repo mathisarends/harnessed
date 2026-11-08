@@ -1,3 +1,5 @@
+import inspect
+from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from typing import Self
 
@@ -11,7 +13,7 @@ from harnessed.hooks import PreStep, SessionClosing, StepDecision
 from harnessed.kernel import Next, PluginScope, Scope, hook
 from harnessed.plugins import Approvals, Compaction, every_turns
 from harnessed.testing import ScriptedModel
-from harnessed.tracing import current, span
+from harnessed.tracing import current, record, span, traced
 
 
 class Recorder(Plugin, slot="tracer"):
@@ -99,6 +101,64 @@ async def test_explicit_tracing_owner_overrides_ambient_context_and_restores_aft
     assert [name for name, _ in outer.finished] == ["library.child", "library.outer"]
     assert [name for name, _ in replacement.finished] == ["library.replacement"]
     assert current() is previous
+
+
+async def test_traced_preserves_sync_async_signatures_and_works_without_a_tracer():
+    def source(value: int, *, offset: int = 1) -> int:
+        """Add an offset."""
+        record(value=value)
+        return value + offset
+
+    async def async_source(value: str, *, suffix: str = "!") -> str:
+        record(length=len(value))
+        return value + suffix
+
+    synchronous = traced(source)
+    asynchronous = traced(async_source)
+    assert synchronous(4, offset=3) == 7
+    assert await asynchronous("ready", suffix=".") == "ready."
+    assert synchronous.__name__ == source.__name__
+    assert synchronous.__doc__ == source.__doc__
+    assert inspect.unwrap(synchronous) is source
+    assert inspect.unwrap(asynchronous) is async_source
+    assert inspect.signature(synchronous) == inspect.signature(source)
+    assert inspect.signature(asynchronous) == inspect.signature(async_source)
+    assert inspect.iscoroutinefunction(asynchronous)
+    assert not inspect.iscoroutinefunction(synchronous)
+    record(outside=True)
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_traced_rejects_generators_instead_of_timing_their_creation(asynchronous: bool) -> None:
+    def source() -> Iterator[int]:
+        yield 1
+
+    async def async_source() -> AsyncIterator[int]:
+        yield 1
+
+    with pytest.raises(TypeError, match="inside generator functions"):
+        traced(async_source if asynchronous else source)
+
+
+async def test_traced_preserves_instance_class_and_static_method_binding():
+    class Operations:
+        @traced
+        def increment(self, value: int) -> int:
+            return value + 1
+
+        @classmethod
+        @traced
+        async def name(cls, *, prefix: str) -> str:
+            return prefix + cls.__name__
+
+        @staticmethod
+        @traced
+        def double(value: int) -> int:
+            return value * 2
+
+    assert Operations().increment(3) == 4
+    assert await Operations.name(prefix="type:") == "type:Operations"
+    assert Operations.double(3) == 6
 
 
 async def test_library_tracing_is_available_in_step_and_closing_hooks():

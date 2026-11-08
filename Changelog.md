@@ -40,6 +40,12 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 
 ### Added
 
+- Add public `@traced` and `record(...)` helpers based on Browserrig's existing
+  sync/async decorator pattern. Function identity and source metadata are cached
+  at decoration; signatures and coroutine kind are preserved. Nested spans,
+  concurrent tasks, errors and cancellation restore the active parent, while
+  untraced sessions cannot record into their parent's span. Arguments and return
+  values are not captured automatically. Use blocks inside generator functions.
 - Capture bounded, filtered/redacted turn input and final/partial output on root
   spans, including accepted structured output. Capture portable tool definitions,
   resolved settings and output schemas in independently bounded model fields.

@@ -350,9 +350,41 @@ own capture settings and do not use this callback.
 
 ## Library spans and hook instrumentation
 
-Libraries and custom tracers import `span`, `current`, `Tracer` and `Span` from
-the public, provider-independent `harnessed.tracing` facade. Importing it requires
-no OTel extra and preserves the canonical protocol identities.
+Use `@traced` for whole functions and `record(...)` for explicit diagnostic
+attributes. These public, provider-independent helpers reuse Browserrig's
+sync/async wrapper pattern with Harnessed's ambient context. A browser library
+can keep its function bodies and decorators, using its own `Page` and
+`Observation` types:
+
+```python
+from harnessed.tracing import record, traced
+
+
+@traced
+async def capture_page(page: Page) -> Observation:
+    observation = await page.observe()
+    record(elements=len(observation.elements))
+    return observation
+```
+
+Each call opens a span named `<module>.<qualified function name>`, with
+`code.function.name`, `code.file.path` and `code.line.number`. Source metadata is
+computed once at decoration. The decorator preserves signatures, annotations,
+docstrings, method binding and coroutine detection. Coroutine spans cover the
+complete awaited call, including error and cancellation cleanup. Without a
+configured tracer, the wrapper calls the function directly. It does not capture
+function arguments or return values. Apply `@traced` below `@tool`, `@classmethod`
+or `@staticmethod`. Generator and async-generator functions are rejected; use a
+`span()` inside their body to measure iteration rather than generator creation.
+
+`record(**attributes)` adds scalar attributes to the innermost Harnessed span,
+including spans opened by a decorator or the block API. Nested calls and
+concurrent tasks keep their own active span, and every exit restores the parent.
+Outside a span it is a no-op. These explicitly recorded values are metadata and
+do not pass through the content filter/redaction policy; choose diagnostic
+values rather than credentials or arbitrary application content.
+
+For a portion of a function, use `span()` directly:
 
 ```python
 from harnessed.tracing import span
@@ -362,7 +394,9 @@ with span("browserrig.wait_until_ready") as measured:
     measured.set_attribute("browserrig.readiness.ready", ready)
 ```
 
-The synchronous context manager stays active across `await`. Names are exported
+The facade also exports `current`, `Tracer` and `Span`. Importing it requires no
+OTel extra and preserves canonical protocol identities. The synchronous context
+manager stays active across `await`. Names are exported
 exactly as supplied; qualified scalar attributes such as `code.function.name`
 or `browserrig.readiness.ready` also retain their names. Unqualified scalar
 attributes use the `harnessed.` prefix. The runtime explicitly names its spans
@@ -392,8 +426,16 @@ custom kernel events. Metadata identifies the actual and registered event types
 and Waterfall terminal defaults have no handler spans. Emit handlers are
 siblings; Parallel handlers overlap; Waterfall continuations nest. A Waterfall
 handler's duration includes awaited downstream work and is not its own exclusive
-cost. Source-location caching and duration-based export filtering remain future
-work.
+cost. Automatic source-location caching for hook handlers and duration-based
+export filtering remain future work; decorated library functions already cache
+their source metadata.
+
+When adopting this API in Browserrig, replace its local `traced`, `record` and
+`span` helpers with imports from `harnessed.tracing`. After the local tracing wrapper is migrated,
+its `use_tracer` context and priority-sensitive `ExecuteTool`/`PreStep` binding
+hooks can be removed. Existing `@traced` annotations and `record(...)` calls stay
+in place. File paths now use the function's Python code filename rather than a
+Browserrig repository root, so other libraries use the same implementation.
 
 The kernel's optional `HookInstrumentation` protocol brackets invocation and
 dependency binding without importing Core or OTel. It resolves from the

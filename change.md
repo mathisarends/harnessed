@@ -1,9 +1,10 @@
 # Proposal: trace hook handlers and library work
 
 Status: partially implemented. The public tracing facade, ambient binding,
-verbatim span names and opt-in hook invocation spans are implemented and
+verbatim span names, public `traced`/`record` helpers and opt-in hook invocation
+spans are implemented and
 documented in `docs/guides/tracing.md`. This document retains the broader design:
-source-location caching, duration-filtering processor/helper options and their
+automatic hook source-location caching, duration-filtering processor/helper options and their
 acceptance criteria remain proposed and are not available. The guide and SDK
 reference are the contracts for implemented behavior.
 
@@ -189,8 +190,10 @@ with span("browserrig.wait_until_ready") as measured:
 
 The context manager is synchronous and remains active across `await`. Existing
 library decorators can use it to instrument both synchronous and asynchronous
-functions without passing `Scope` through every helper. A new public decorator
-is outside this proposal.
+functions without passing `Scope` through every helper. The public `@traced`
+decorator now supplies this wrapper, reusing Browserrig's sync/async handling
+with cached function source metadata. `record(...)` attaches explicit scalar
+attributes to the innermost span; the guide documents the implemented API.
 
 Internal callers use the same canonical `span(name, scope=scope, ...)` form.
 The existing `span(scope, name, ...)` helper is replaced at its call sites;

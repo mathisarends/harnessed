@@ -17,9 +17,11 @@ The public `harnessed.tracing` facade, ambient library tracing and opt-in hook
 invocation spans are implemented; see the [tracing guide](../guides/tracing.md).
 The neutral Kernel instrumentation boundary preserves the standalone Kernel's
 dependency rules. The repository-root `change.md` retains follow-up design for
-source-location caching and optional duration filtering in the OTel export
+automatic hook source-location caching and optional duration filtering in the OTel export
 pipeline, preserving parents of visible children. Those follow-ups remain
 proposals rather than implemented API contracts.
+Library function tracing via `@traced` and `record(...)`, including source
+metadata cached at decoration, is implemented in the public facade.
 
 ## Conversation state follow-ups
 

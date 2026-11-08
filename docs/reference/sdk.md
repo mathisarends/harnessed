@@ -15,6 +15,16 @@ kernel `Scope` or `PluginScope` overrides the ambient tracer, including selectin
 a no-op when no tracer is configured. Selection stays fixed for the open span;
 bindings are restored on every exit path and are never persisted.
 
+`traced(fn)` decorates Python functions and coroutine functions without changing
+their signature or coroutine kind. Each call uses the module-qualified function
+name and source metadata cached at decoration. Arguments and return values are
+not automatically recorded. Apply below tool/classmethod/staticmethod decorators.
+Generator functions are rejected; place a `span()` inside their iteration body.
+`record(**attributes)` attaches scalar metadata to the innermost Harnessed span
+and does nothing outside a span. It restores the parent after nested work,
+exceptions and cancellation and isolates concurrent or untraced session contexts.
+Explicitly recorded attributes are outside content filtering/redaction.
+
 `harnessed.integrations.opentelemetry.otlp_provider(*, service_name,
 endpoint=None, resource_attributes=None)` is an async context manager yielding an
 SDK `TracerProvider` with batched OTLP/HTTP export. It requires `harnessed[otel]`.
@@ -74,7 +84,7 @@ identity metadata and inclusive Waterfall timing. Hook dispatch binds the
 selected tracer even when this option is false; library work in hooks can use
 the public facade. The optional standard-library-only kernel
 `HookInstrumentation.invoke(scope, invocation)` boundary preserves dispatch
-semantics and resolves from the dispatching scope. Automatic source-location
+semantics and resolves from the dispatching scope. Automatic hook source-location
 caching and duration filtering remain future work.
 See [tracing](../guides/tracing.md) for Phoenix and Langfuse configuration,
 content capture, parent context and the emitted attributes.

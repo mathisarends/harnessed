@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 import os
 import subprocess
@@ -48,6 +49,7 @@ from harnessed.integrations.opentelemetry import (
 from harnessed.kernel import Next, Waterfall, hook
 from harnessed.plugins import Approvals, Compaction, every_turns
 from harnessed.testing import CallbackModel, ScriptedModel, reply
+from harnessed.tracing import record, traced
 from harnessed.tracing import span as library_span
 
 type Collector = tuple[str, list[tuple[str, HTTPMessage, bytes]]]
@@ -475,6 +477,180 @@ async def test_nested_session_cleanup_does_not_inherit_the_parent_turn_identity(
     assert cleanup.attributes["session.id"] != parent.attributes["session.id"]
     assert "harnessed.turn_id" not in cleanup.attributes
     assert "harnessed.step" not in cleanup.attributes
+
+
+async def test_traced_tools_record_nested_attributes_and_cached_source_metadata(telemetry):
+    provider, exporter = telemetry
+
+    @traced
+    def extract(value: str, *, offset: int = 0) -> int:
+        """Count an observation."""
+        record(elements=len(value))
+        return len(value) + offset
+
+    class Actions(Plugin):
+        @tool(readonly=True)
+        @traced
+        async def capture(self, value: str) -> int:
+            record(operation="capture")
+            await asyncio.sleep(0)
+            with library_span("library.capture.parse"):
+                record(phase="parse")
+            result = extract(value, offset=1)
+            record(finished=True)
+            return result
+
+    result = await Agent(
+        model=ScriptedModel(
+            [[ModelChunk(tool_call=ToolCall("capture", {"value": "private"}))], "done"]
+        ),
+        plugins=[Actions(), OpenTelemetryTracer(tracer_provider=provider)],
+    ).run("go")
+    spans = exporter.get_finished_spans()
+    capture = next(item for item in spans if item.name.endswith(".Actions.capture"))
+    extraction = next(item for item in spans if item.name.endswith(".extract"))
+    block = next(item for item in spans if item.name == "library.capture.parse")
+    tool_span = next(item for item in spans if item.name == "harnessed.tool")
+    assert result.text == "done" and result.tool_calls[0][1].text == "8"
+    assert capture.parent.span_id == tool_span.context.span_id
+    assert extraction.parent.span_id == capture.context.span_id
+    assert block.parent.span_id == capture.context.span_id
+    assert extraction.name == f"{extract.__module__}.{extract.__qualname__}"
+    assert extraction.attributes["code.function.name"] == extraction.name
+    source = inspect.unwrap(extract)
+    assert extraction.attributes["code.file.path"] == inspect.getsourcefile(source)
+    assert extraction.attributes["code.line.number"] == source.__code__.co_firstlineno
+    assert extraction.attributes["harnessed.elements"] == 7
+    assert capture.attributes["harnessed.operation"] == "capture"
+    assert capture.attributes["harnessed.finished"] is True
+    assert block.attributes["harnessed.phase"] == "parse"
+    assert "harnessed.elements" not in capture.attributes
+    assert "harnessed.phase" not in capture.attributes
+    assert "private" not in str([item.attributes for item in spans])
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_traced_preserves_source_exceptions_and_restores_parent_recording(
+    telemetry, asynchronous
+):
+    provider, exporter = telemetry
+    failure = LookupError("original failure")
+
+    @traced
+    def fail_sync() -> None:
+        record(failing=True)
+        raise failure
+
+    @traced
+    async def fail_async() -> None:
+        await asyncio.sleep(0)
+        record(failing=True)
+        raise failure
+
+    async with Agent(
+        model=ScriptedModel([]), plugins=[OpenTelemetryTracer(tracer_provider=provider)]
+    ).session() as session:
+        with library_span("library.parent", scope=session.scope):
+            with pytest.raises(LookupError) as raised:
+                if asynchronous:
+                    await fail_async()
+                else:
+                    fail_sync()
+            record(recovered=True)
+    spans = exporter.get_finished_spans()
+    failed = next(item for item in spans if item.name.endswith((".fail_sync", ".fail_async")))
+    parent = next(item for item in spans if item.name == "library.parent")
+    assert raised.value is failure
+    assert failed.status.status_code is trace.StatusCode.ERROR
+    assert failed.attributes["harnessed.failing"] is True
+    assert "harnessed.recovered" not in failed.attributes
+    assert parent.attributes["harnessed.recovered"] is True
+    assert parent.status.status_code is not trace.StatusCode.ERROR
+    record(outside=True)
+    assert "harnessed.outside" not in parent.attributes
+
+
+async def test_traced_cancellation_closes_the_span_after_async_cleanup(telemetry):
+    provider, exporter = telemetry
+    entered = asyncio.Event()
+
+    @traced
+    async def wait() -> None:
+        entered.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            record(cleaned_up=True)
+
+    async with asyncio.timeout(5):
+        async with Agent(
+            model=ScriptedModel([]), plugins=[OpenTelemetryTracer(tracer_provider=provider)]
+        ).session() as session:
+            with library_span("library.parent", scope=session.scope):
+                task = asyncio.create_task(wait())
+                await entered.wait()
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+                record(parent_resumed=True)
+    spans = exporter.get_finished_spans()
+    cancelled = next(item for item in spans if item.name.endswith(".wait"))
+    parent = next(item for item in spans if item.name == "library.parent")
+    assert cancelled.parent.span_id == parent.context.span_id
+    assert cancelled.attributes["harnessed.cancelled"] is True
+    assert cancelled.attributes["harnessed.cleaned_up"] is True
+    assert "harnessed.parent_resumed" not in cancelled.attributes
+    assert parent.attributes["harnessed.parent_resumed"] is True
+
+
+async def test_traced_concurrent_calls_keep_recorded_attributes_separate(telemetry):
+    provider, exporter = telemetry
+    barrier = asyncio.Barrier(2)
+
+    @traced
+    async def work(identity: str) -> str:
+        await barrier.wait()
+        record(identity=identity)
+        return identity
+
+    async with asyncio.timeout(5):
+        async with Agent(
+            model=ScriptedModel([]), plugins=[OpenTelemetryTracer(tracer_provider=provider)]
+        ).session() as session:
+            with library_span("library.parent", scope=session.scope):
+                assert await asyncio.gather(work("first"), work("second")) == ["first", "second"]
+                record(parent=True)
+    spans = exporter.get_finished_spans()
+    workers = [item for item in spans if item.name.endswith(".work")]
+    parent = next(item for item in spans if item.name == "library.parent")
+    assert len(workers) == 2
+    assert {item.attributes["harnessed.identity"] for item in workers} == {"first", "second"}
+    assert all(item.parent.span_id == parent.context.span_id for item in workers)
+    assert "harnessed.identity" not in parent.attributes
+    assert parent.attributes["harnessed.parent"] is True
+
+
+async def test_untraced_session_cleanup_cannot_record_on_the_parent_span(telemetry):
+    provider, exporter = telemetry
+
+    class Cleanup(Plugin):
+        @hook(SessionClosing)
+        @traced
+        def closing(self, event: SessionClosing) -> None:
+            record(child_cleanup=True)
+
+    async with Agent(
+        model=ScriptedModel([]), plugins=[OpenTelemetryTracer(tracer_provider=provider)]
+    ).session() as session:
+        with library_span("library.parent", scope=session.scope):
+            result = await Agent(model=ScriptedModel(["done"]), plugins=[Cleanup()]).run("child")
+            record(parent_after=True)
+    spans = exporter.get_finished_spans()
+    assert result.text == "done"
+    assert len(spans) == 1
+    assert spans[0].name == "library.parent"
+    assert spans[0].attributes["harnessed.parent_after"] is True
+    assert "harnessed.child_cleanup" not in spans[0].attributes
 
 
 async def test_content_is_explicit_bounded_and_excludes_opaque_state(telemetry):
@@ -1117,7 +1293,12 @@ import harnessed.models
 import harnessed.integrations
 from harnessed import Agent
 from harnessed.core.tracing import NoopTracer
-from harnessed.tracing import current, span
+from harnessed.tracing import current, record, span, traced
+@traced
+def work(value: int) -> int:
+    record(value=value)
+    return value + 1
+assert work(1) == 2
 with span('library.noop'), current().span('library.also_noop'):
     pass
 assert not any(n.startswith('opentelemetry') for n in sys.modules)
@@ -1317,4 +1498,5 @@ def test_otlp_example_exports_on_exit(otlp_collector: Collector) -> None:
         "harnessed.step",
         "harnessed.model",
         "harnessed.tool",
+        "__main__.Calculator.add",
     }

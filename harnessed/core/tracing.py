@@ -1,8 +1,10 @@
-from collections.abc import Generator
+import functools
+import inspect
+from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from harnessed.core.plugin import Plugin
 from harnessed.kernel import HookInvocation, PluginScope, Scope
@@ -36,6 +38,61 @@ def current() -> Tracer:
     return _current.get()
 
 
+def traced[F: Callable[..., Any]](fn: F) -> F:
+    """Trace a sync function or coroutine with its qualified name and source.
+
+    Metadata is captured once at decoration; arguments and return values are not
+    captured. The wrapper preserves the function's signature and coroutine kind.
+    Apply below classmethod/staticmethod. Generator functions must use span()
+    inside their body so tracing follows their iteration lifetime.
+    """
+    if not (inspect.isfunction(fn) or inspect.ismethod(fn)):
+        raise TypeError("traced expects a Python function or method")
+    if inspect.isgeneratorfunction(fn) or inspect.isasyncgenfunction(fn):
+        raise TypeError("Use span() inside generator functions to trace iteration")
+    name = f"{fn.__module__}.{fn.__qualname__}"
+    location: dict[str, str | int] = {"code.function.name": name}
+    source = inspect.unwrap(fn)
+    if inspect.isfunction(source) or inspect.ismethod(source):
+        location["code.file.path"] = source.__code__.co_filename
+        location["code.line.number"] = source.__code__.co_firstlineno
+    if inspect.iscoroutinefunction(fn):
+
+        @functools.wraps(fn)
+        async def run_async(*args: Any, **kwargs: Any) -> Any:
+            tracer = current()
+            if tracer is _NOOP or isinstance(tracer, NoopTracer):
+                return await fn(*args, **kwargs)
+            with span(name, scope=None, **location):
+                return await fn(*args, **kwargs)
+
+        # The variadic decorator boundary preserves the original callable's
+        # parameter and return types for both sync and coroutine branches.
+        return cast(F, run_async)
+
+    @functools.wraps(fn)
+    def run(*args: Any, **kwargs: Any) -> Any:
+        tracer = current()
+        if tracer is _NOOP or isinstance(tracer, NoopTracer):
+            return fn(*args, **kwargs)
+        with span(name, scope=None, **location):
+            return fn(*args, **kwargs)
+
+    return cast(F, run)
+
+
+def record(**attributes: str | bool | int | float) -> None:
+    """Add explicit diagnostic attributes to the innermost Harnessed span.
+
+    Without an active span this is a no-op. Attributes are metadata, outside the
+    content capture/filter policy; callers choose which values to record.
+    """
+    active = _active_span.get()
+    if active is not None:
+        for key, value in attributes.items():
+            active.set_attribute(key, value)
+
+
 @contextmanager
 def span(
     name: str, *, scope: Scope | PluginScope | None = None, **attributes: Any
@@ -50,7 +107,11 @@ def span(
     if session_id is not None:
         attributes.setdefault("session_id", session_id)
     with _using(tracer, session_id), tracer.span(name, **attributes) as active:
-        yield active
+        token = _active_span.set(active)
+        try:
+            yield active
+        finally:
+            _active_span.reset(token)
 
 
 @contextmanager
@@ -123,6 +184,11 @@ def _session(scope: Scope | PluginScope) -> str | None:
 
 @contextmanager
 def _using(tracer: Tracer, session_id: str | None) -> Generator[None]:
+    active = (
+        _active_span.set(None)
+        if tracer is not current() or session_id != _session_id.get()
+        else None
+    )
     token = _current.set(tracer)
     correlation = _session_id.set(session_id)
     try:
@@ -130,8 +196,11 @@ def _using(tracer: Tracer, session_id: str | None) -> Generator[None]:
     finally:
         _session_id.reset(correlation)
         _current.reset(token)
+        if active is not None:
+            _active_span.reset(active)
 
 
 _NOOP = _NoopTracer()
 _current: ContextVar[Tracer] = ContextVar("harnessed_tracer", default=_NOOP)
 _session_id: ContextVar[str | None] = ContextVar("harnessed_trace_session", default=None)
+_active_span: ContextVar[Span | None] = ContextVar("harnessed_active_span", default=None)
