@@ -17,6 +17,7 @@ from harnessed.kernel import (
     HookEntry,
     Key,
     PluginLike,
+    PluginScope,
     PluginSpec,
     Registration,
     Scope,
@@ -47,7 +48,7 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
 
     Declare lifetime service bindings with needs()/observes() and mutable runtime data
     with PluginState. Constructors describe capabilities; setup acquires resources
-    and registers cleanup on its Scope. Agent composition collects instructions.
+    and registers cleanup on its PluginScope. Agent composition collects instructions.
     """
 
     config: ConfigT
@@ -141,6 +142,22 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         """
         return SystemPrompt()
 
+    async def setup(self, scope: PluginScope) -> None:
+        """Acquire resources and publish services for this activation.
+
+        Dependencies and PluginState are bound first. Publications become visible
+        to other plugins after setup and declared registrations succeed. Failure
+        or cancellation rolls back owned resources and registrations.
+        """
+
+    async def teardown(self, scope: PluginScope) -> None:
+        """Finish a successful activation before its owned cleanup runs.
+
+        Dependents stop first. State and dependencies remain bound through cleanup.
+        This method is skipped when setup fails; register partial-acquisition
+        cleanup immediately with scope.enter(), effect() or register().
+        """
+
     @classmethod
     def _configuration_schema(cls) -> type[BaseModel] | None:
         """Resolve model parameters through generic bases without evaluating annotations."""
@@ -189,12 +206,30 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
 
     def _as_plugin_spec(self) -> PluginSpec:
         for name, callback in (("setup", self.setup), ("teardown", self.teardown)):
-            if binding_plan(callback).dependencies:
+            plan = binding_plan(callback)
+            if plan.dependencies:
                 raise TypeError(
                     f"{type(self).__name__}.{name}() cannot use Inject parameters; "
                     "declare plugin service fields with needs(T) or observes(T)"
                 )
+            parameters = tuple(plan.signature.parameters.values())
+            if (
+                not inspect.iscoroutinefunction(callback)
+                or len(parameters) != 1
+                or parameters[0].kind
+                not in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+            ):
+                raise TypeError(
+                    f"{type(self).__name__}.{name}() must be async and accept "
+                    "one scope: PluginScope parameter"
+                )
         return super()._as_plugin_spec()
+
+    async def _setup(self, scope: Scope) -> None:
+        await self.setup(scope.plugin_scope)
+
+    async def _teardown(self, scope: Scope) -> None:
+        await self.teardown(scope.plugin_scope)
 
 
 def plugin_events(value: PluginLike) -> tuple[type[DurableEvent | TransientEvent], ...]:
@@ -222,7 +257,7 @@ class Service[T](Plugin):
         self.value = value
         self.slot = "model" if key is Model else None
 
-    async def setup(self, scope: Scope) -> None:
+    async def setup(self, scope: PluginScope) -> None:
         if self.key is Model and isinstance(self.value, AbstractAsyncContextManager):
             await scope.enter(self.value)
         scope.provide(self.key, self.value)

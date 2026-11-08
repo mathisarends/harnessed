@@ -6,14 +6,14 @@ from harnessed import (
     SystemPrompt,
 )
 from harnessed.core.prompt.system_prompt import SystemPromptStore
-from harnessed.kernel import Scope, plugin
+from harnessed.kernel import PluginScope, Scope, plugin
 from harnessed.testing import ScriptedModel
 
 
 async def test_session_section_factories_render_once_and_own_their_registrations(tmp_path):
     calls = []
 
-    async def catalog(scope: Scope) -> str:
+    async def catalog(scope: PluginScope) -> str:
         calls.append(scope)
         scope.provide(str, "catalog dependency")
         return "Available catalog."
@@ -39,7 +39,7 @@ async def test_session_section_factories_render_once_and_own_their_registrations
 
 
 async def test_session_section_factory_requires_an_explicit_owner():
-    async def catalog(scope: Scope) -> str:
+    async def catalog(scope: PluginScope) -> str:
         return "catalog"
 
     with pytest.raises(ValueError, match="session context"):

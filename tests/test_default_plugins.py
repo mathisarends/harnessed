@@ -10,6 +10,7 @@ from harnessed.core.events.model import ModelRequestedEvent
 from harnessed.core.model import ModelChunk, ModelInfo, ModelUsage
 from harnessed.core.runtime.services import RuntimeServices
 from harnessed.core.tokens import ApproximateTokenCounter, CalibratedTokenCounter, TokenCounter
+from harnessed.kernel import PluginScope
 from harnessed.plugins import (
     AgentLoop,
     Approvals,
@@ -66,11 +67,10 @@ async def test_replacing_the_loop_slot_keeps_shared_tools_and_prompt():
     from harnessed import Plugin, tool
     from harnessed.core.runtime.agent_loop import AgentFactory, ReactLoopFactory
     from harnessed.core.runtime.options import AgentLoopConfig
-    from harnessed.kernel import Scope
     from harnessed.testing import call
 
     class CustomLoop(Plugin, slot="loop"):
-        async def setup(self, scope: Scope) -> None:
+        async def setup(self, scope: PluginScope) -> None:
             scope.provide(AgentFactory, ReactLoopFactory(AgentLoopConfig(max_steps=3), None))
 
     class Math(Plugin):

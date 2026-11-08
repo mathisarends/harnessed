@@ -10,7 +10,7 @@ from harnessed.core.runtime.session import Session
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tools.output_limit import ToolOutputLimit
 from harnessed.core.tools.registry import ErrorFormatter
-from harnessed.kernel import Scope
+from harnessed.kernel import PluginScope, Scope
 
 
 class AgentFactory(Protocol):
@@ -48,7 +48,7 @@ class AgentLoop(Plugin[AgentLoopConfig], slot="loop"):
         )
         self.error_formatter = error_formatter
 
-    async def setup(self, scope: Scope) -> None:
+    async def setup(self, scope: PluginScope) -> None:
         scope.provide(AgentFactory, ReactLoopFactory(self.config, self.error_formatter))
 
 

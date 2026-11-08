@@ -31,7 +31,7 @@ from harnessed.events import (
     ToolProgressEvent,
 )
 from harnessed.integrations.json import JsonSessionStore
-from harnessed.kernel import Inject
+from harnessed.kernel import Inject, PluginScope
 from harnessed.models import UserMessage
 from harnessed.plugins import AgentLoop, Approvals, Subagents
 from harnessed.sessions import SessionCommit, StoredSession
@@ -249,7 +249,7 @@ async def test_cleanup_cancels_child_driver_and_drains_effects(mode):
             cancelled.set()
 
     class Resource(Plugin):
-        async def setup(self, scope):
+        async def setup(self, scope: PluginScope) -> None:
             scope.effect(cleaned.set)
 
     child = Agent(model=CallbackModel(blocked), plugins=[Resource()])
@@ -632,7 +632,7 @@ async def test_repeated_cancellation_does_not_interrupt_child_cleanup():
     cleaned = asyncio.Event()
 
     class Resource(Plugin):
-        async def setup(self, scope):
+        async def setup(self, scope: PluginScope) -> None:
             async def cleanup():
                 cleaning.set()
                 await asyncio.wait_for(release.wait(), timeout=5)

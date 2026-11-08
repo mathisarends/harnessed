@@ -22,7 +22,7 @@ from harnessed.core.session.files import FileOffset, ReadLimit, SessionFiles
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import TokenCounter
 from harnessed.core.tools import ToolError, tool
-from harnessed.kernel import Inject, Priority, Scope, hook, needs
+from harnessed.kernel import Inject, PluginScope, Priority, hook, needs
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +161,7 @@ class Spill(Plugin[SpillConfig], slot="spill", needs=(TokenCounter,)):
     def instructions(self) -> SystemPrompt:
         return SystemPrompt(_SPILL_INSTRUCTIONS)
 
-    async def setup(self, scope: Scope) -> None:
+    async def setup(self, scope: PluginScope) -> None:
         self.store = _SessionSpills(self.files, self.session, self.config)
         await self.store.restore()
         scope.provide(SpillStore, self.store)

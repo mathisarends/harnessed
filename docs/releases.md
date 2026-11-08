@@ -6,6 +6,17 @@ still evolving before 1.0.
 Detailed breaking changes and upgrade instructions are recorded in the repository
 [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md).
 
+## Unreleased: plugin activation scope
+
+Higher-level class `Plugin.setup()` and `teardown()` now accept exactly one
+`scope: PluginScope` parameter, imported from `harnessed.kernel`. Add it to
+previously parameterless methods and update deferred instruction factory
+annotations as well. Resource acquisition, registrations and explicit lookup use
+the same operations; composition and closure stay with the framework's full
+`Scope`. Standalone kernel plugins and application `session.scope` retain `Scope`.
+Read the [activation contract](guides/plugins.md#activation-scope-and-lifecycle-contract)
+and [design rationale](contributing/plugin-scope.md) for the complete surface.
+
 ## 0.13.0 (2026-11-07)
 
 This minor release makes plugin service contracts explicit, separates run

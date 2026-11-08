@@ -21,7 +21,7 @@ from harnessed.core.prompt.plugin_instructions import PluginInstructions
 from harnessed.core.runtime.inbox import SessionInbox
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import TokenCounter, count_content
-from harnessed.kernel import Inject, Next, PluginState, hook, needs
+from harnessed.kernel import Inject, Next, PluginScope, PluginState, hook, needs
 
 
 class RuleEventKind(StrEnum):
@@ -218,7 +218,7 @@ class Rules(Plugin, needs=(SessionLog, TokenCounter, SessionInbox)):
                     await inbox.steer(user(text))
         return replace(result, rule_matches=tuple(matches))
 
-    async def teardown(self) -> None:
+    async def teardown(self, scope: PluginScope) -> None:
         for index, rule in enumerate(self.rules):
             if any(kind is RuleAction.CONTEXT for kind, _ in rule.actions):
                 await self.context.remove(f"rule:{self.name}:{index}")

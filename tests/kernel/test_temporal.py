@@ -9,7 +9,7 @@ from harnessed.core.prompt.system_prompt import SystemPromptStore
 from harnessed.core.runtime.services import RuntimeServices
 from harnessed.core.tools.decorator import tool
 from harnessed.core.tools.registry import ToolRegistry
-from harnessed.kernel import Emit, MissingService, PluginStatus, Scope, needs
+from harnessed.kernel import Emit, MissingService, PluginScope, PluginStatus, Scope, needs
 
 
 @dataclass
@@ -23,7 +23,7 @@ async def test_class_keyword_dependencies_suspend_and_restart_the_plugin():
     class Feature(Plugin, needs=(Backend,)):
         backend = needs(Backend)
 
-        async def setup(self) -> None:
+        async def setup(self, scope: PluginScope) -> None:
             seen.append(self.backend.name)
 
     async with Scope() as scope:
@@ -188,7 +188,7 @@ async def test_class_and_bundle_explicit_needs_remove_tools_and_prompt_sections(
     class FeaturePlugin(Plugin, needs=(Backend, SystemPromptStore)):
         prompt = needs(SystemPromptStore)
 
-        async def setup(self, scope):
+        async def setup(self, scope: PluginScope) -> None:
             self.name = scope[Backend].name
             self.calls = 0
             self.prompt.fixed(self.name)

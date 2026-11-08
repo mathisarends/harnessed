@@ -144,7 +144,9 @@ placement selectors, exclusions or unplaced policies. Override a plugin's
 `Instructions.from_file(path="AGENTS.md", missing_ok=True)` reads a file once per
 opened session. `Instructions.from_factory(factory=callback, title="Catalog",
 description="Read at session startup")` accepts an async callback taking the
-session's kernel `Scope`. Registrations and cleanup belong to that session.
+session owner's `PluginScope` view from `harnessed.kernel`. Registrations and
+cleanup belong to that session. The view provides resource, service and event
+operations while composition and closure stay with the framework.
 Return these values inside the plugin's `SystemPrompt`, or include application
 values in the outer document. Configuration methods run once per agent; these
 session-dependent content sources run once per opened session.

@@ -12,7 +12,7 @@ from harnessed import (
 )
 from harnessed.core.composition import compose_plugins
 from harnessed.errors import PluginConflict, PluginDependencyError
-from harnessed.kernel import Bundle, PluginLike, Scope, plugin
+from harnessed.kernel import Bundle, PluginLike, PluginScope, Scope, plugin
 from harnessed.plugins import AgentLoop, Compaction
 from harnessed.testing import ScriptedModel
 
@@ -190,7 +190,7 @@ def test_callable_plugin_instances_keep_their_prompt_metadata():
 
 def test_description_is_static_structured_and_immutable():
     class Unmounted(Plugin, provides=True):
-        async def setup(self) -> None:
+        async def setup(self, scope: PluginScope) -> None:
             pytest.fail("describe() must not mount plugins")
 
     pack = PluginPack("library", [Choice(name="original"), Extra(), Unmounted()]).without(Extra)

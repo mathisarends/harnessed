@@ -22,7 +22,7 @@ from harnessed.core.runtime.context import SessionContext
 from harnessed.core.runtime.control import SessionControl
 from harnessed.core.session.children import ChildSession as ChildSession
 from harnessed.core.tools import ToolContext, tool
-from harnessed.kernel import Inject, Scope, needs
+from harnessed.kernel import Inject, PluginScope, needs
 
 
 class SubagentsConfig(PluginConfig):
@@ -81,7 +81,7 @@ class Subagents(Plugin[SubagentsConfig]):
             f"Available agents: {', '.join(self.agents)}."
         )
 
-    async def setup(self, scope: Scope) -> None:
+    async def setup(self, scope: PluginScope) -> None:
         limits = ChildLimits(
             self.config.max_parallel,
             self.config.max_calls,

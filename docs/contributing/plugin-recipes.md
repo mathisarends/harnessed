@@ -98,6 +98,13 @@ consumption does not construct or acquire it. Resource owners acquire resources
 in setup and register cleanup immediately. A consumer cannot require a service
 that it only plans to publish later in its own setup.
 
+Lifecycle methods receive the concrete `PluginScope` view, with a fixed async
+signature accepting one scope parameter. Composition and closure remain with the
+framework's full kernel `Scope`. This follows the existing `SessionContext`
+boundary: plugin code receives the operations it needs, without orchestration of
+its own owner. See [plugin scope design](plugin-scope.md) for the rationale,
+retained integration operations and migration examples.
+
 This is an intentional breaking change: `dependency(T)` becomes `needs(T)`,
 `dependency(T, optional=True)` becomes `observes(T)`, lifecycle service parameters
 become fields, and implicit tool contexts gain an `Inject` marker. Compatibility

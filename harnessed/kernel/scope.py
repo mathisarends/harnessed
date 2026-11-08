@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable, Generator, Iterable
 from contextlib import AbstractAsyncContextManager, AsyncExitStack, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -48,6 +48,87 @@ class RegistrationState:
     def active(self) -> bool:
         return not self._disposed and self._owner._registrations_active()
 
+    @contextmanager
+    def activate(self) -> Generator[None, None, None]:
+        """Invoke an owned callback in its registration's ambient scope."""
+        with self._owner.activate():
+            yield
+
+
+class PluginScope:
+    """Resource and registration operations for one owner.
+
+    Class-plugin lifecycle methods receive this view of their activation's Scope.
+    It shares the owner's services, event bus and cleanup stack, while composition
+    and closure remain with the framework. It is not a separate service container.
+    """
+
+    def __init__(self, owner: Scope) -> None:
+        self._owner = owner
+
+    def __getitem__[T](self, key: ServiceKey[T]) -> T:
+        return self._owner[key]
+
+    def __contains__(self, key: ServiceKey[Any]) -> bool:
+        return key in self._owner
+
+    @property
+    def owner_name(self) -> str:
+        """The activation name used in registration diagnostics."""
+        return self._owner.owner_name
+
+    async def enter[T](self, manager: AbstractAsyncContextManager[T]) -> T:
+        """Acquire an async resource and close it with this owner, including rollback."""
+        return await self._owner.enter(manager)
+
+    def effect(self, cleanup: Callable[[], object]) -> Disposer:
+        """Own a sync or async cleanup callback without calling it now.
+
+        Cleanup runs at most once, in reverse acquisition order, even after failed
+        setup. The returned async disposer can release it earlier.
+        """
+        return self._owner.effect(cleanup)
+
+    def provide[T](self, key: ServiceKey[T], implementation: T) -> Disposer:
+        """Publish a service for this activation; other plugins see it once active."""
+        return self._owner.provide(key, implementation)
+
+    def register(self, install: Callable[[RegistrationState], Callable[[], object]]) -> Disposer:
+        """Install synchronously with owned visibility and idempotent cleanup."""
+        return self._owner.register(install)
+
+    @overload
+    def on[H](
+        self, event: HookFactory[H], fn: None = None, *, prepend: bool = False, priority: int = 0
+    ) -> H: ...
+
+    @overload
+    def on[C](
+        self,
+        event: ListenerFactory[C],
+        fn: C,
+        *,
+        prepend: bool = False,
+        priority: int = 0,
+    ) -> Disposer: ...
+
+    def on(
+        self,
+        event: HookFactory[Any] | ListenerFactory[Any],
+        fn: Any = None,
+        *,
+        prepend: bool = False,
+        priority: int = 0,
+    ) -> Any:
+        """Register a typed hook owned by this activation, directly or as a decorator."""
+        return self._owner.on(event, fn, prepend=prepend, priority=priority)
+
+    async def dispatch[R](
+        self, event: Event[R], *, default: Callable[[], R | Awaitable[R]] | None = None
+    ) -> R:
+        """Invoke kernel hooks; persistence and stream publication belong to session emit."""
+        return await self._owner.dispatch(event, default=default)
+
 
 class Scope:
     """A service/event scope with an AsyncExitStack for every owner.
@@ -61,6 +142,12 @@ class Scope:
         self._stack = AsyncExitStack()
         self._closed = False
         self._handle: PluginHandle | None = None
+        self._plugin_scope = PluginScope(self)
+
+    @property
+    def plugin_scope(self) -> PluginScope:
+        """The stable plugin-facing view sharing this owner's lifetime and registrations."""
+        return self._plugin_scope
 
     @classmethod
     def current(cls) -> Scope | None:

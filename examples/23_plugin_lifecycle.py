@@ -2,7 +2,7 @@
 
 import asyncio
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, override
 
 from harnessed import (
     Agent,
@@ -14,7 +14,7 @@ from harnessed import (
 )
 from harnessed.events import TurnEndedEvent
 from harnessed.hooks import ExecuteTool, SessionAppended
-from harnessed.kernel import Inject, PluginState, Scope, plugin
+from harnessed.kernel import Inject, PluginScope, PluginState, Scope, plugin
 from harnessed.models import ModelChunk
 from harnessed.plugins import Approvals
 from harnessed.testing import ScriptedModel
@@ -64,7 +64,8 @@ class NotesTools(Plugin, needs=(Notes,)):
         self.saved += 1
         return result
 
-    async def teardown(self):
+    @override
+    async def teardown(self, scope: PluginScope) -> None:
         print(f"Notes plugin stopped after {self.saved} saves in this mount.")
 
 

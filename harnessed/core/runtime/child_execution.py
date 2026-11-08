@@ -44,7 +44,7 @@ from harnessed.core.tools.output_limit import ToolOutputLimit
 if TYPE_CHECKING:
     from harnessed.core.events.subagents import SubagentLinkedEvent
     from harnessed.core.session.children import ChildSession
-    from harnessed.kernel import Scope
+    from harnessed.kernel import PluginScope, Scope
 
     from .context import SessionContext
     from .control import SessionControl
@@ -62,7 +62,9 @@ class ChildParent:
     mount plugins or close the parent.
     """
 
-    def __init__(self, session: SessionContext, control: SessionControl, scope: Scope) -> None:
+    def __init__(
+        self, session: SessionContext, control: SessionControl, scope: Scope | PluginScope
+    ) -> None:
         self.log = session.log
         self.approvals = session.approvals
         self.control = control

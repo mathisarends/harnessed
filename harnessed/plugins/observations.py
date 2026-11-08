@@ -1,7 +1,7 @@
 from harnessed.core.events.observations import ObservationPolicyAppliedEvent
 from harnessed.core.plugin import Plugin
 from harnessed.core.session.session import SessionLog
-from harnessed.kernel import needs
+from harnessed.kernel import PluginScope, needs
 
 
 class LatestObservationOnly(Plugin):
@@ -15,10 +15,10 @@ class LatestObservationOnly(Plugin):
 
     _previous: int | None
 
-    async def setup(self) -> None:
+    async def setup(self, scope: PluginScope) -> None:
         previous = self.session.last(ObservationPolicyAppliedEvent)
         self._previous = previous.max_observations if previous is not None else None
         await self.session.append(ObservationPolicyAppliedEvent(1))
 
-    async def teardown(self) -> None:
+    async def teardown(self, scope: PluginScope) -> None:
         await self.session.append(ObservationPolicyAppliedEvent(self._previous))

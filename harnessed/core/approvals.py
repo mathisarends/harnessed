@@ -17,7 +17,7 @@ from harnessed.core.messages import ApprovalAnswer, PolicyDecision
 from harnessed.core.plugin import Plugin, PluginConfig
 from harnessed.core.tools import ToolRegistry
 from harnessed.core.tools.references import ToolReference, ToolSelector, tool_selector
-from harnessed.kernel import Inject, Next, Priority, Scope, hook, needs
+from harnessed.kernel import Inject, Next, PluginScope, Priority, hook, needs
 
 from .messages import ToolCall
 
@@ -77,7 +77,7 @@ class ToolApprovalGuard(Plugin[ToolApprovalGuardConfig]):
         self.risky = tuple(tool_selector(item) for item in self.config.risky)
         self.ask = self.config.ask
 
-    async def setup(self, scope: Scope) -> None:
+    async def setup(self, scope: PluginScope) -> None:
         self.risky = tuple(self.tools.reference(item, owner=scope) for item in self.risky)
         scope.on(ToolPolicy, self._gate, priority=self.config.priority)
 
@@ -251,7 +251,7 @@ class Approvals(Plugin[ApprovalsConfig], slot="approvals"):
         self.deny = tuple(tool_selector(item) for item in deny)
         self.policy = policy
 
-    async def setup(self, scope: Scope) -> None:
+    async def setup(self, scope: PluginScope) -> None:
         scope.provide(ApprovalsConfig, self.config)
         self.allow = tuple(self.tools.reference(item, owner=scope) for item in self.allow)
         self.ask = tuple(self.tools.reference(item, owner=scope) for item in self.ask)

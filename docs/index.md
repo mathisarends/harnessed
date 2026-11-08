@@ -39,5 +39,7 @@ Applications on 0.9.0 should also follow the
 [Immutable values and the codec](concepts/values.md) explain the source-of-truth
 contract behind replay. Contributors should follow the repository's
 [executable architecture policy](contributing/smelt.md).
+The [plugin scope rationale](contributing/plugin-scope.md) explains the boundary
+between plugin-owned resources and framework-owned composition.
 The [roadmap](contributing/roadmap.md) records possible future additions separately
 from the implemented SDK reference and guides.

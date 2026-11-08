@@ -84,9 +84,14 @@ Each mount owns one connection and a fixed catalog of namespaced tools. See
 
 ## Session tool inspection and plugin services
 
-Plugin lifetime ownership uses `Scope` from `harnessed.kernel`. A setup method
-accepts `scope: Scope`; service resolution, owned registrations and cleanup all
-belong to that scope. Advanced session integrations use `session.scope`.
+Plugin lifecycle methods use `PluginScope` from `harnessed.kernel`:
+`async def setup(self, scope: PluginScope) -> None` and
+`async def teardown(self, scope: PluginScope) -> None`. The same concrete view
+shares the activation's service/event environment and cleanup stack. It exposes
+resource acquisition, owned registrations, service publication, typed hooks and
+explicit lookup, without composition or closure operations. Advanced session
+integrations and standalone kernel plugins retain the full `Scope` and
+`session.scope`. See the [activation contract](../guides/plugins.md#activation-scope-and-lifecycle-contract).
 Model-visible input uses messages and `PrepareRequest` hooks; per-call services
 use `ToolContext`.
 
@@ -337,7 +342,10 @@ entries in public plugin lists are ignored.
 `Instructions(text="", title=None, description="")` is a content value, not a
 plugin descriptor. `from_file(path=..., title=..., missing_ok=False)` and
 `from_factory(factory=..., title=..., description=...)` defer reads or async
-Scope callbacks until each session opens. Session effects have session ownership.
+callbacks taking `PluginScope` until each session opens. Factory registrations
+and cleanup have session ownership; ordinary plugin lifecycle registrations have
+activation ownership. Passing an existing kernel `Scope` to `render()` supplies
+its stable `scope.plugin_scope` view to the factory.
 `print(agent.prompt)` shows final order and origins;
 `await session.prompt.render()` returns the actual session text.
 
@@ -508,12 +516,15 @@ unhashable. See [values and record versions](../concepts/values.md).
 | name = observes(T) | Nonblocking service-or-None binding; provider changes restart the activation |
 | class Capability(Plugin, provides=True) | Publish the mount under the declaring class; provides=Key selects another key |
 | Plugin.create_instance() | Customize fresh instance construction; defaults to replaying explicit constructor arguments |
+| Plugin.setup(scope: PluginScope) / teardown(scope: PluginScope) | Async activation lifecycle; dependencies bind first and cleanup remains framework-owned |
+| PluginScope | Concrete resource/registration view; enter, effect, provide, on, dispatch, register, lookup and owner_name |
 | @plugin | Kernel services and hooks in an async generator |
 | class Capability(Plugin, needs=(Backend,)) / Inject[T] | Temporal lifetime / per-call service resolution |
 | @hook / Scope.hook | Typed observer, bail or waterfall extension |
 | @hook(EventA, EventB, ...) | One handler accepting every listed event; shared priority and prepend options |
 | ToolContext | Call, log, signal, cancelled, progress, emit and approve(reason) |
 | scope.register(install) / RegistrationState.active | Owned registration and lifecycle visibility |
+| RegistrationState.activate() | Invoke an integration callback in its registration owner's ambient context |
 | scope.effect(cleanup) | Owned idempotent sync/async cleanup |
 | await scope.enter(manager) | Async context manager exited when the scope closes |
 | Service(T, implementation) | Structural dependency registration |

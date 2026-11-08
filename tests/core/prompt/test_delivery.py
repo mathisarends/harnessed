@@ -5,7 +5,7 @@ import pytest
 from harnessed import Agent, Instructions, Plugin, SectionDelivery, SystemPrompt, tool
 from harnessed.core.events.messages import PluginInstructionsChangedEvent
 from harnessed.hooks import PrepareRequest
-from harnessed.kernel import PluginStatus, Scope, needs
+from harnessed.kernel import PluginScope, PluginStatus, needs
 from harnessed.models import ModelRequest
 from harnessed.services import SessionContext
 from harnessed.testing import ScriptedModel
@@ -90,7 +90,7 @@ async def test_context_delivery_suspends_and_restarts_with_the_plugin():
 
 
 async def test_ignore_does_not_execute_providers_or_factories_or_read_files(tmp_path):
-    async def factory(scope: Scope) -> str:
+    async def factory(scope: PluginScope) -> str:
         pytest.fail("Ignored factories must not run")
 
     class Ignored(Feature):
@@ -113,7 +113,7 @@ async def test_ignore_does_not_execute_providers_or_factories_or_read_files(tmp_
 async def test_delivery_failures_roll_back_tools_context_and_owned_effects(failure, tmp_path):
     effects = []
 
-    async def factory(scope: Scope) -> str:
+    async def factory(scope: PluginScope) -> str:
         scope.effect(lambda: effects.append("factory cleaned"))
         if failure == "cancel":
             raise asyncio.CancelledError
@@ -122,12 +122,12 @@ async def test_delivery_failures_roll_back_tools_context_and_owned_effects(failu
         return "Session rules."
 
     class Broken(Feature):
-        async def setup(self, scope: Scope) -> None:
+        async def setup(self, scope: PluginScope) -> None:
             scope.effect(lambda: effects.append("setup cleaned"))
             if failure == "setup":
                 raise ValueError("setup failed")
 
-        async def teardown(self) -> None:
+        async def teardown(self, scope: PluginScope) -> None:
             effects.append("teardown")
 
         def instructions(self) -> SystemPrompt:
@@ -168,7 +168,7 @@ async def test_factory_runs_once_per_mount_activation_and_cleanup_belongs_to_mou
     calls = []
     cleaned = []
 
-    async def factory(scope: Scope) -> str:
+    async def factory(scope: PluginScope) -> str:
         calls.append(scope)
         scope.effect(lambda: cleaned.append(scope))
         return "Factory guidance."
@@ -223,7 +223,7 @@ async def test_owned_request_hook_is_inactive_during_its_plugin_teardown():
     class InspectTeardown(Feature):
         context = needs(SessionContext)
 
-        async def teardown(self, scope: Scope) -> None:
+        async def teardown(self, scope: PluginScope) -> None:
             request = ModelRequest(())
             result = await scope.dispatch(
                 PrepareRequest(self.context, request), default=lambda: request

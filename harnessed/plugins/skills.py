@@ -33,7 +33,7 @@ from harnessed.core.prompt.plugin_instructions import PluginInstructions
 from harnessed.core.prompt.values import Instructions, SystemPrompt
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tools import ToolError, tool
-from harnessed.kernel import Key, Next, Scope, hook, needs
+from harnessed.kernel import Key, Next, PluginScope, hook, needs
 
 type SkillName = Annotated[
     str, StringConstraints(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$", max_length=64)
@@ -311,7 +311,7 @@ class Skills(Plugin, slot="skills"):
             )
         )
 
-    async def setup(self, scope: Scope) -> None:
+    async def setup(self, scope: PluginScope) -> None:
         catalog = await self._catalog(scope)
         scope.provide(SkillCatalog, catalog)
         self._entries = {entry.info.name: entry for entry in catalog.entries}
@@ -331,7 +331,7 @@ class Skills(Plugin, slot="skills"):
                     self._remember_instructions(message.text)
                 self._calls.discard(message.tool_call_id)
 
-    async def _catalog(self, scope: Scope) -> _Catalog:
+    async def _catalog(self, scope: PluginScope) -> _Catalog:
         key = self.recipe._key
         if key not in scope:
             try:
@@ -345,7 +345,7 @@ class Skills(Plugin, slot="skills"):
             scope.provide(key, catalog)
         return scope[key]
 
-    async def _render_catalog(self, scope: Scope) -> str:
+    async def _render_catalog(self, scope: PluginScope) -> str:
         catalog = await self._catalog(scope)
         if not catalog.entries:
             return ""

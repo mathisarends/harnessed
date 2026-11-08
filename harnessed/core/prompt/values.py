@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Self
 from xml.sax.saxutils import escape, quoteattr
 
-from harnessed.kernel import Scope
+from harnessed.kernel import PluginScope, Scope
 
 
 class PromptFormat(StrEnum):
@@ -34,7 +34,7 @@ class Instructions:
     description: str = ""
     _file: Path | None = field(default=None, init=False, repr=False)
     _missing_ok: bool = field(default=False, init=False, repr=False)
-    _factory: Callable[[Scope], Awaitable[str | None]] | None = field(
+    _factory: Callable[[PluginScope], Awaitable[str | None]] | None = field(
         default=None, init=False, repr=False
     )
 
@@ -61,11 +61,11 @@ class Instructions:
     def from_factory(
         cls,
         *,
-        factory: Callable[[Scope], Awaitable[str | None]],
+        factory: Callable[[PluginScope], Awaitable[str | None]],
         title: str | None = None,
         description: str = "",
     ) -> Self:
-        """Evaluate once per session, with session-owned registrations and cleanup."""
+        """Evaluate once per session with a PluginScope for owned resources and registrations."""
         if not callable(factory):
             raise TypeError("System section factories must be callable")
         section = cls(title=title, description=description)
@@ -80,12 +80,13 @@ class Instructions:
     def preview(self) -> str:
         return self.description or (str(self._file) if self._file else self.text[:80])
 
-    async def render(self, scope: Scope | None = None) -> str:
+    async def render(self, scope: Scope | PluginScope | None = None) -> str:
         text: str | None = self.text
         if self._factory is not None:
             if scope is None:
                 raise ValueError("This system section requires a session context")
-            text = await self._factory(scope)
+            owner = scope.plugin_scope if isinstance(scope, Scope) else scope
+            text = await self._factory(owner)
         elif self._file is not None:
             try:
                 text = await asyncio.to_thread(self._file.read_text, encoding="utf-8")
@@ -222,7 +223,7 @@ class PromptComposition:
             lines.extend(f"  - {name}" for name in self.omitted)
         return "\n".join(lines)
 
-    async def render(self, scope: Scope | None = None) -> str:
+    async def render(self, scope: Scope | PluginScope | None = None) -> str:
         parts: list[str] = []
         for entry in self.entries:
             text = await entry.section.render(scope)
