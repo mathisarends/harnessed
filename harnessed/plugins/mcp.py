@@ -10,25 +10,22 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Annotated, NoReturn, Protocol, Self, Unpack
 
-import httpx
+import httpx2
 from fastmcp import Client
 from fastmcp.client.transports import (
     ClientTransport,
     StdioTransport,
     StreamableHttpTransport,
 )
-from fastmcp.client.transports.base import SessionKwargs
+from fastmcp.client.transports.base import SessionKwargs, TransportOptions
 from jsonschema import Draft202012Validator, ValidationError
 from jsonschema.protocols import Validator
 from jsonschema.validators import validator_for
 from mcp import ClientSession
-from mcp.shared.session import RequestResponder
 from mcp.types import (
     CallToolResult,
-    ClientResult,
     ImageContent,
     ServerNotification,
-    ServerRequest,
     TextContent,
     Tool,
 )
@@ -64,19 +61,29 @@ logger = logging.getLogger(__name__)
 _HTTP_CLOSE_TIMEOUT = 5.0
 
 
-async def _bound_http_shutdown(request: httpx.Request) -> None:
+async def _bound_http_shutdown(request: httpx2.Request) -> None:
     # SSE reads may stay open indefinitely; the SDK's session DELETE must not.
     if request.method == "DELETE":
-        request.extensions["timeout"] = httpx.Timeout(_HTTP_CLOSE_TIMEOUT).as_dict()
+        request.extensions["timeout"] = httpx2.Timeout(_HTTP_CLOSE_TIMEOUT).as_dict()
 
 
-async def _check_message(
-    message: RequestResponder[ServerRequest, ClientResult] | ServerNotification | Exception,
-) -> None:
-    # The SDK's default handler ignores malformed messages, leaving pending
-    # requests waiting until timeout. Fail the receive loop and wake its waiters.
-    if isinstance(message, Exception):
-        raise message
+async def _check_http_response(response: httpx2.Response) -> None:
+    # SDK v2 ignores unmatched response IDs; reject them before a waiter can stall.
+    if response.headers.get("content-type", "").partition(";")[0] != "application/json":
+        return
+    request = response.request
+    if request.headers.get("content-type", "").partition(";")[0] != "application/json":
+        return
+    sent = json.loads(await request.aread())
+    if not isinstance(sent, dict) or "id" not in sent:
+        return
+    received = json.loads(await response.aread())
+    if (
+        isinstance(received, dict)
+        and received.get("jsonrpc") == "2.0"
+        and received.get("id") != sent["id"]
+    ):
+        raise ValueError("MCP HTTP response has an unexpected request id")
 
 
 class MCPTransport(Protocol):
@@ -106,7 +113,7 @@ class _Stdio:
 class _HTTP:
     url: str
     headers: Mapping[str, str] = field(repr=False)
-    auth: httpx.Auth | str | None = field(default=None, repr=False)
+    auth: httpx2.Auth | str | None = field(default=None, repr=False)
 
     def create(self) -> ClientTransport:
         return StreamableHttpTransport(
@@ -116,17 +123,17 @@ class _HTTP:
 
 def _http_client(
     headers: dict[str, str] | None = None,
-    timeout: httpx.Timeout | None = None,
-    auth: httpx.Auth | None = None,
+    timeout: httpx2.Timeout | None = None,
+    auth: httpx2.Auth | None = None,
     *,
     follow_redirects: bool = False,
-) -> httpx.AsyncClient:
+) -> httpx2.AsyncClient:
     # Keep the application's redirect boundary and bounded HTTP termination.
-    return httpx.AsyncClient(
+    return httpx2.AsyncClient(
         headers=headers,
         auth=auth,
-        timeout=timeout if timeout is not None else httpx.Timeout(30, read=None),
-        event_hooks={"request": [_bound_http_shutdown]},
+        timeout=timeout if timeout is not None else httpx2.Timeout(30, read=None),
+        event_hooks={"request": [_bound_http_shutdown], "response": [_check_http_response]},
     )
 
 
@@ -147,13 +154,15 @@ class _Connection:
         self.client = Client(
             _MonitoredTransport(transport.create(), self.closed),
             name=name,
-            message_handler=_check_message,
+            message_handler=self._check_message,
+            # Multi-round input is unsupported; never reissue an approved tool call.
+            input_required_max_rounds=0,
         )
 
     async def start(self) -> Client:
-        return await self.client.__aenter__()
+        return await self.request(self.client.__aenter__())
 
-    async def request(self, operation: Coroutine[object, object, CallToolResult]) -> CallToolResult:
+    async def request[T](self, operation: Coroutine[object, object, T]) -> T:
         # SDK shutdown can cancel its receive loop before it wakes every waiter.
         request = asyncio.create_task(operation, name=f"harnessed:mcp:{self.name}:request")
         closed = asyncio.create_task(self.closed.wait(), name=f"harnessed:mcp:{self.name}:closed")
@@ -185,6 +194,11 @@ class _Connection:
     def active(self) -> bool:
         return not self.closed.is_set() and self.client.is_connected()
 
+    async def _check_message(self, message: ServerNotification | Exception) -> None:
+        # SDK v2 logs handler failures; signal our own waiters on malformed input.
+        if isinstance(message, Exception):
+            self.closed.set()
+
     async def _close_client(self) -> None:
         try:
             await self.client.close()
@@ -198,14 +212,21 @@ class _Connection:
 class _MonitoredTransport(ClientTransport):
     def __init__(self, transport: ClientTransport, closed: asyncio.Event) -> None:
         self.transport = transport
+        self.legacy_only = transport.legacy_only
         self.closed = closed
 
     @asynccontextmanager
     async def connect_session(
-        self, **session_kwargs: Unpack[SessionKwargs]
+        self,
+        *,
+        transport_options: TransportOptions | None = None,
+        **session_kwargs: Unpack[SessionKwargs],
     ) -> AsyncGenerator[ClientSession]:
         try:
-            async with self.transport.connect_session(**session_kwargs) as session:
+            async with self.transport.connect_session(
+                transport_options=transport_options, **session_kwargs
+            ) as session:
+                self.legacy_only = self.transport.legacy_only
                 yield session
         finally:
             self.closed.set()
@@ -244,7 +265,7 @@ def _presentation(tool: Tool) -> ToolPresentation:
         icons=tuple(
             ToolIcon(
                 src=icon.src,
-                mime_type=icon.mimeType,
+                mime_type=icon.mime_type,
                 sizes=tuple(icon.sizes if icon.sizes is not None else ()),
             )
             for icon in (tool.icons if tool.icons is not None else ())
@@ -252,10 +273,10 @@ def _presentation(tool: Tool) -> ToolPresentation:
         annotations=None
         if tool.annotations is None
         else ToolAnnotations(
-            read_only_hint=tool.annotations.readOnlyHint,
-            destructive_hint=tool.annotations.destructiveHint,
-            idempotent_hint=tool.annotations.idempotentHint,
-            open_world_hint=tool.annotations.openWorldHint,
+            read_only_hint=tool.annotations.read_only_hint,
+            destructive_hint=tool.annotations.destructive_hint,
+            idempotent_hint=tool.annotations.idempotent_hint,
+            open_world_hint=tool.annotations.open_world_hint,
         ),
         meta=meta,
     )
@@ -274,15 +295,15 @@ def _result(result: CallToolResult) -> ToolResult:
         if isinstance(block, TextContent):
             parts.append(TextPart(block.text))
         elif isinstance(block, ImageContent):
-            parts.append(ImagePart(f"data:{block.mimeType};base64,{block.data}"))
+            parts.append(ImagePart(f"data:{block.mime_type};base64,{block.data}"))
         else:
             raise ToolError(f"Unsupported MCP result content: {block.type}")
-    if result.structuredContent is not None:
+    if result.structured_content is not None:
         # Keep server JSON even when the server also supplies a textual summary.
-        text = json.dumps(result.structuredContent, ensure_ascii=False, allow_nan=False)
+        text = json.dumps(result.structured_content, ensure_ascii=False, allow_nan=False)
         if not any(isinstance(part, TextPart) and part.text == text for part in parts):
             parts.append(TextPart(text))
-    return ToolResult(tuple(parts), ToolStatus.ERROR if result.isError else ToolStatus.OK)
+    return ToolResult(tuple(parts), ToolStatus.ERROR if result.is_error else ToolStatus.OK)
 
 
 @dataclass(frozen=True)
@@ -318,11 +339,11 @@ class _RemoteTool:
             # parallel waiters, when a request is cancelled or its protocol fails.
             await self.connection.aclose()
             raise
-        if not result.isError and self.output_validator is not None:
-            if result.structuredContent is None:
+        if not result.is_error and self.output_validator is not None:
+            if result.structured_content is None:
                 raise ToolError("MCP tool omitted its declared structured output")
             try:
-                self.output_validator.validate(result.structuredContent)
+                self.output_validator.validate(result.structured_content)
             except ValidationError as error:
                 raise ToolError("MCP tool returned invalid structured output") from error
         return _result(result)
@@ -410,7 +431,7 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
         *,
         url: str,
         headers: Mapping[str, str] | None = None,
-        auth: httpx.Auth | str | None = None,
+        auth: httpx2.Auth | str | None = None,
         include_tools: Iterable[str] | None = None,
         readonly_tools: Iterable[str] = (),
         startup_timeout: float = 10.0,
@@ -418,8 +439,8 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
         parallel: bool = False,
         enabled: ToolEnabled = True,
     ) -> Self:
-        """Connect over HTTP with FastMCP bearer, OAuth or custom httpx authentication."""
-        parsed = httpx.URL(url)
+        """Connect over HTTP with FastMCP bearer, OAuth or custom httpx2 authentication."""
+        parsed = httpx2.URL(url)
         if parsed.scheme not in ("http", "https") or not parsed.host:
             raise ValueError("MCP HTTP URL must have an http(s) scheme and host")
         return cls(
@@ -447,12 +468,12 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
             cursor: str | None = None
             seen_cursors: set[str] = set()
             while True:
-                page = await client.list_tools_mcp(cursor=cursor)
+                page = await connection.request(client.list_tools_mcp(cursor=cursor))
                 for tool in page.tools:
                     if tool.name in catalog:
                         raise ValueError(f"Duplicate MCP tool: {tool.name!r}")
                     catalog[tool.name] = tool
-                cursor = page.nextCursor
+                cursor = page.next_cursor
                 if cursor is None:
                     break
                 if cursor in seen_cursors:
@@ -470,14 +491,14 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
                 connection,
                 client,
                 tool,
-                _validator(tool.inputSchema),
-                None if tool.outputSchema is None else _validator(tool.outputSchema),
+                _validator(tool.input_schema),
+                None if tool.output_schema is None else _validator(tool.output_schema),
             )
             registry.register_external(
                 ToolDefinition(
                     _tool_name(self.config.server_name, name),
                     tool.description or "",
-                    tool.inputSchema,
+                    tool.input_schema,
                 ),
                 remote.invoke,
                 owner=scope,

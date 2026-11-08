@@ -14,18 +14,18 @@ pytest.importorskip("fastmcp")
 pytest.importorskip("jsonschema")
 
 import anyio
-import httpx
+import httpx2
 from fastmcp.client.transports import ClientTransport
+from fastmcp.client.transports.base import TransportOptions
 from jsonschema import SchemaError
-from mcp import ClientSession
-from mcp.server import Server
-from mcp.server.fastmcp import FastMCP
+from mcp import MCPError
+from mcp.server import MCPServer, Server
 from mcp.shared.memory import create_client_server_memory_streams
 from mcp.types import (
     AudioContent,
     CallToolResult,
     ImageContent,
-    ListToolsRequest,
+    InputRequiredResult,
     ListToolsResult,
     TextContent,
     Tool,
@@ -37,6 +37,7 @@ from harnessed import Agent, ToolCall
 from harnessed.core.errors import ToolNameConflict
 from harnessed.core.messages import ToolStatus, to_dict
 from harnessed.core.model import ModelChunk
+from harnessed.core.tools import ToolError
 from harnessed.core.tools.registry import ToolRegistry
 from harnessed.events import ToolProgressEvent
 from harnessed.plugins import Approvals, ToolApprovalGuard, ToolOutputLimit
@@ -53,7 +54,7 @@ SCHEMA = {
 
 class MemoryTransport:
     def __init__(self, tools=None, *, page_size=1, result=None, delay=0):
-        self.tools = tools if tools is not None else [Tool(name="search", inputSchema=SCHEMA)]
+        self.tools = tools if tools is not None else [Tool(name="search", input_schema=SCHEMA)]
         self.page_size = page_size
         self.result = result
         self.delay = delay
@@ -69,34 +70,30 @@ class MemoryTransport:
         return MemoryConnection(self)
 
     @asynccontextmanager
-    async def connect(self, **session_kwargs):
+    async def connect(self, transport_options=None, **session_kwargs):
         self.opened += 1
         task = asyncio.current_task()
-        server = Server("test")
+        options = transport_options if transport_options is not None else TransportOptions()
 
-        @server.list_tools()
-        async def list_tools(request: ListToolsRequest):
-            cursor = request.params.cursor if request.params else None
+        async def list_tools(ctx, params):
+            cursor = params.cursor if params is not None else None
             self.pages.append(cursor)
             offset = int(cursor or 0)
             more = offset + self.page_size
             return ListToolsResult(
                 tools=self.tools[offset:more],
-                nextCursor=str(more) if more < len(self.tools) else None,
+                next_cursor=str(more) if more < len(self.tools) else None,
             )
 
-        @server.call_tool(validate_input=False)
-        async def call_tool(name, arguments):
+        async def call_tool(ctx, params):
+            name = params.name
+            arguments = params.arguments
             self.calls.append((name, arguments))
             self.started.set()
             try:
                 if self.delay:
                     await asyncio.sleep(self.delay)
-                token = server.request_context.meta.progressToken
-                if token is not None:
-                    await server.request_context.session.send_progress_notification(
-                        token, progress=1, total=1, message="Found document"
-                    )
+                await ctx.session.report_progress(1, 1, "Found document")
                 return self.result or CallToolResult(
                     content=[TextContent(type="text", text=arguments["query"])]
                 )
@@ -104,6 +101,7 @@ class MemoryTransport:
                 self.cancelled.set()
                 raise
 
+        server = Server("test", on_list_tools=list_tools, on_call_tool=call_tool)
         try:
             async with create_client_server_memory_streams() as (client_streams, server_streams):
                 async with anyio.create_task_group() as group:
@@ -118,7 +116,7 @@ class MemoryTransport:
                             self.server_stopped.set()
 
                     group.start_soon(run_server)
-                    async with ClientSession(*client_streams, **session_kwargs) as client:
+                    async with options.session_class(*client_streams, **session_kwargs) as client:
                         try:
                             yield client
                         finally:
@@ -153,8 +151,8 @@ async def run_tool(transport, arguments=None, **options):
 async def test_discovery_pagination_schemas_results_and_progress():
     transport = MemoryTransport(
         [
-            Tool(name="search", description="Search docs", inputSchema=SCHEMA),
-            Tool(name="other", inputSchema={"type": "object"}),
+            Tool(name="search", description="Search docs", input_schema=SCHEMA),
+            Tool(name="other", input_schema={"type": "object"}),
         ]
     )
     result, model = await run_tool(transport)
@@ -180,8 +178,10 @@ async def test_invalid_arguments_never_reach_the_server(arguments):
 async def test_filters_readonly_and_runtime_unmount():
     transport = MemoryTransport(
         [
-            Tool(name="search", inputSchema=SCHEMA, annotations=ToolAnnotations(readOnlyHint=True)),
-            Tool(name="other", inputSchema={"type": "object"}),
+            Tool(
+                name="search", input_schema=SCHEMA, annotations=ToolAnnotations(read_only_hint=True)
+            ),
+            Tool(name="other", input_schema={"type": "object"}),
         ]
     )
     agent = Agent(model=ScriptedModel(["done"]))
@@ -303,9 +303,9 @@ async def test_structured_and_image_content_and_output_limits():
         result=CallToolResult(
             content=[
                 TextContent(type="text", text="summary"),
-                ImageContent(type="image", data="aA==", mimeType="image/png"),
+                ImageContent(type="image", data="aA==", mime_type="image/png"),
             ],
-            structuredContent={"answer": 42},
+            structured_content={"answer": 42},
         )
     )
     result, _ = await run_tool(transport)
@@ -332,8 +332,8 @@ async def test_structured_and_image_content_and_output_limits():
 @pytest.mark.parametrize(
     "result",
     [
-        CallToolResult(content=[TextContent(type="text", text="business failure")], isError=True),
-        CallToolResult(content=[AudioContent(type="audio", data="aA==", mimeType="audio/wav")]),
+        CallToolResult(content=[TextContent(type="text", text="business failure")], is_error=True),
+        CallToolResult(content=[AudioContent(type="audio", data="aA==", mime_type="audio/wav")]),
     ],
 )
 async def test_errors_and_unsupported_content_are_explicit(result):
@@ -427,13 +427,14 @@ async def test_stdio_failure_hides_tools_without_retry(tmp_path, failure):
         """import asyncio
 import os
 import sys
-from fastmcp import FastMCP
-server = FastMCP("broken-process")
+from mcp.server import MCPServer
+server = MCPServer("broken-process")
+protocol_stdout = os.dup(sys.stdout.fileno())
 @server.tool()
 async def fail() -> str:
     if sys.argv[1] == "exit":
         os._exit(7)
-    print("invalid JSON", flush=True)
+    os.write(protocol_stdout, b"invalid JSON" + bytes([10]))
     await asyncio.sleep(60)
     return "unreachable"
 if __name__ == "__main__":
@@ -457,7 +458,7 @@ if __name__ == "__main__":
 
 async def test_business_error_does_not_close_the_connection():
     transport = MemoryTransport(
-        result=CallToolResult(content=[TextContent(type="text", text="not found")], isError=True)
+        result=CallToolResult(content=[TextContent(type="text", text="not found")], is_error=True)
     )
     async with Agent(model=ScriptedModel(["unused"])).session() as session:
         await session.mount(MCP("docs", transport=transport))
@@ -493,16 +494,16 @@ async def test_repeated_catalog_cursor_fails_startup_and_closes_connection():
 
 
 async def test_http_transport_with_real_mcp_server_and_auth(monkeypatch):
-    server = FastMCP("http-test", stateless_http=True, json_response=True)
+    server = MCPServer("http-test")
 
     @server.tool()
     def echo(query: str) -> str:
         return query
 
-    app = server.streamable_http_app()
+    app = server.streamable_http_app(stateless_http=True, json_response=True)
     clients = []
     requests = []
-    client_type = httpx.AsyncClient
+    client_type = httpx2.AsyncClient
 
     async def record(request):
         requests.append(request)
@@ -511,12 +512,12 @@ async def test_http_transport_with_real_mcp_server_and_auth(monkeypatch):
         kwargs.setdefault("event_hooks", {}).setdefault("request", []).append(record)
         client = client_type(
             **kwargs,
-            transport=httpx.ASGITransport(app=app),
+            transport=httpx2.ASGITransport(app=app),
         )
         clients.append(client)
         return client
 
-    monkeypatch.setattr(mcp_plugin.httpx, "AsyncClient", create_client)
+    monkeypatch.setattr(mcp_plugin.httpx2, "AsyncClient", create_client)
     call = ToolCall("web__echo", {"query": "http works"})
     agent = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=call)], "done"]),
@@ -525,12 +526,12 @@ async def test_http_transport_with_real_mcp_server_and_auth(monkeypatch):
                 "web",
                 url="http://127.0.0.1:8000/mcp",
                 headers={"X-Project": "docs"},
-                auth=httpx.BasicAuth("user", "password"),
+                auth=httpx2.BasicAuth("user", "password"),
                 readonly_tools=("echo",),
             ),
         ],
     )
-    async with server.session_manager.run():
+    async with app.router.lifespan_context(app):
         result = await agent.run("echo")
     assert result.tool_calls[0][1].text.splitlines()[0] == "http works"
     assert clients and all(client.is_closed for client in clients)
@@ -541,22 +542,33 @@ async def test_http_transport_with_real_mcp_server_and_auth(monkeypatch):
 @pytest.mark.parametrize(
     "tools",
     [
-        [Tool(name="a.b", inputSchema={}), Tool(name="a_b", inputSchema={})],
-        [Tool(name="same", inputSchema={}), Tool(name="same", inputSchema={})],
-        [Tool(name="invalid", inputSchema={"type": "not-a-json-type"})],
-        [Tool(name="invalid", inputSchema={"$schema": "https://invalid.example/schema"})],
+        [
+            Tool(name="a.b", input_schema={"type": "object"}),
+            Tool(name="a_b", input_schema={"type": "object"}),
+        ],
+        [
+            Tool(name="same", input_schema={"type": "object"}),
+            Tool(name="same", input_schema={"type": "object"}),
+        ],
+        [Tool(name="invalid", input_schema={"type": "not-a-json-type"})],
+        [
+            Tool(
+                name="invalid",
+                input_schema={"type": "object", "$schema": "https://invalid.example/schema"},
+            )
+        ],
     ],
 )
 async def test_invalid_catalogs_fail_atomically(tools):
     transport = MemoryTransport(tools)
     model = ScriptedModel(["unused"])
-    with pytest.raises((ValueError, ToolNameConflict, SchemaError)):
+    with pytest.raises((ValueError, ToolNameConflict, SchemaError, MCPError)):
         await Agent(model=model, plugins=[MCP("docs", transport=transport)]).run("x")
     assert transport.closed == 1 and model.requests == []
 
 
 async def test_long_names_are_stable_and_provider_safe():
-    transport = MemoryTransport([Tool(name="long." * 25, inputSchema={})])
+    transport = MemoryTransport([Tool(name="long." * 25, input_schema={"type": "object"})])
     recipe = MCP("docs", transport=transport)
     agent = Agent(model=ScriptedModel(["unused"]), plugins=[recipe])
     async with agent.session() as session:
@@ -587,7 +599,7 @@ async def test_long_names_are_stable_and_provider_safe():
     ],
 )
 async def test_schema_references_are_local_only(schema, arguments, success):
-    transport = MemoryTransport([Tool(name="search", inputSchema=schema)])
+    transport = MemoryTransport([Tool(name="search", input_schema=schema)])
     result, _ = await run_tool(transport, arguments)
     assert (not result.tool_calls[0][1].is_error) is success
     assert bool(transport.calls) is success
@@ -599,8 +611,8 @@ async def test_output_contract_is_validated(output):
         [
             Tool(
                 name="search",
-                inputSchema=SCHEMA,
-                outputSchema={
+                input_schema=SCHEMA,
+                output_schema={
                     "type": "object",
                     "properties": {"answer": {"type": "integer"}},
                     "required": ["answer"],
@@ -608,7 +620,7 @@ async def test_output_contract_is_validated(output):
             )
         ],
         result=CallToolResult(
-            content=[TextContent(type="text", text="summary")], structuredContent=output
+            content=[TextContent(type="text", text="summary")], structured_content=output
         ),
     )
     result, _ = await run_tool(transport)
@@ -708,3 +720,30 @@ assert not any(name == 'fastmcp' or name.startswith('fastmcp.') for name in sys.
         timeout=10,
     )
     assert result.returncode == 0, result.stderr
+
+
+async def test_multi_round_result_does_not_repeat_an_approved_call() -> None:
+    transport = MemoryTransport(result=InputRequiredResult(request_state="continue"))
+    result, _ = await run_tool(transport)
+    assert result.tool_calls[0][1].status is ToolStatus.ERROR
+    assert transport.calls == [("search", {"query": "hello"})]
+    assert transport.closed == 1
+
+
+async def test_malformed_stdio_startup_fails_before_startup_timeout(tmp_path: Path) -> None:
+    server = tmp_path / "malformed_server.py"
+    server.write_text(
+        "import time\nprint('invalid JSON', flush=True)\ntime.sleep(60)\n", encoding="utf-8"
+    )
+    model = ScriptedModel(["unused"])
+    async with asyncio.timeout(5):
+        with pytest.raises(ToolError, match="MCP connection closed"):
+            await Agent(
+                model=model,
+                plugins=[
+                    MCP.stdio(
+                        "broken", command=sys.executable, args=[str(server)], startup_timeout=15
+                    )
+                ],
+            ).run("x")
+    assert model.requests == []

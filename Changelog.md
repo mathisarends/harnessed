@@ -9,6 +9,16 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 
 ### Breaking changes
 
+- The optional MCP integration now requires MCP SDK 2.3+ and FastMCP 4.1.2+.
+  Replace custom `httpx.Auth` handlers with `httpx2.Auth`; custom transports must
+  implement FastMCP 4's `transport_options` contract. SDK OAuth callback handlers
+  return `AuthorizationCodeResult` instead of `(code, state)` tuples. The built-in
+  HTTP client negotiates modern sessionless connections and falls back to legacy
+  servers.
+  Bind machine-to-machine OAuth credentials with `issuer=` as described in the
+  [MCP guide](docs/guides/mcp.md). Multi-round input results fail without retrying
+  the approved tool call.
+
 - Class `Plugin.setup()` and `teardown()` are async methods accepting exactly one
   `scope: PluginScope` parameter, imported from `harnessed.kernel`. The concrete
   view provides resource and registration operations while composition and
