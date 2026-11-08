@@ -6,6 +6,16 @@ still evolving before 1.0.
 Detailed breaking changes and upgrade instructions are recorded in the repository
 [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md).
 
+## Unreleased: MCP SDK 2 and FastMCP 4
+
+The optional MCP integration requires MCP SDK 2.3+ and FastMCP 4.1.2+. Custom
+HTTP authentication handlers now use `httpx2.Auth`, and custom client transports
+must forward FastMCP 4's `transport_options`. The client automatically negotiates
+modern sessionless connections or falls back to legacy initialization. Existing
+mount ownership, approvals and failure cleanup remain in place; multi-round input
+results fail without automatically repeating tool calls. See the
+[MCP guide](guides/mcp.md) for authentication migration and OAuth issuer binding.
+
 ## Unreleased: plugin activation scope
 
 Higher-level class `Plugin.setup()` and `teardown()` now accept exactly one

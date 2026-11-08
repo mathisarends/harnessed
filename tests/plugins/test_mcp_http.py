@@ -12,13 +12,14 @@ import pytest
 pytest.importorskip("fastmcp")
 pytest.importorskip("jsonschema")
 
-import httpx
 import uvicorn
 from fastmcp import FastMCP as FastMCPServer
-from mcp.client.auth import OAuthClientProvider
-from mcp.server.fastmcp import Context as MCPContext
-from mcp.server.fastmcp import FastMCP
-from mcp.shared.auth import OAuthClientMetadata, OAuthToken
+from fastmcp.client.auth import ClientCredentialsOAuthProvider
+from mcp import MCPError
+from mcp.client.auth import OAuthClientProvider, OAuthFlowError
+from mcp.server import MCPServer
+from mcp.server.mcpserver import Context as MCPContext
+from mcp.shared.auth import AuthorizationCodeResult, OAuthClientMetadata, OAuthToken
 from mcp.types import Icon
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -53,12 +54,45 @@ async def no_leaked_connections():
 @pytest.fixture
 def serve_http():
     @asynccontextmanager
-    async def serve(app):
+    async def serve(app, *, legacy=False):
+        async def legacy_app(scope, receive, send):
+            if (
+                scope["type"] != "http"
+                or scope["method"] != "POST"
+                or dict(scope["headers"]).get(b"content-type", b"").partition(b";")[0]
+                != b"application/json"
+            ):
+                await app(scope, receive, send)
+                return
+            body = await Request(scope, receive).body()
+            message = json.loads(body)
+            if message.get("method") == "server/discover":
+                await JSONResponse(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": message["id"],
+                        "error": {"code": -32601, "message": "Method not found"},
+                    }
+                )(scope, receive, send)
+                return
+            pending = True
+
+            async def replay():
+                nonlocal pending
+                if pending:
+                    pending = False
+                    return {"type": "http.request", "body": body}
+                return await receive()
+
+            await app(scope, replay, send)
+
         listener = socket.socket()
         listener.bind(("127.0.0.1", 0))
         listener.listen()
         server = uvicorn.Server(
-            uvicorn.Config(app, log_level="error", timeout_graceful_shutdown=0.5)
+            uvicorn.Config(
+                legacy_app if legacy else app, log_level="error", timeout_graceful_shutdown=0.5
+            )
         )
         task = asyncio.create_task(server.serve(sockets=[listener]))
         try:
@@ -92,7 +126,7 @@ async def test_native_fastmcp_http_with_bearer_auth(serve_http, stateless):
     @server.tool(
         title="Echo documentation",
         tags={"docs"},
-        icons=[Icon(src="data:image/png;base64,aA==", mimeType="image/png")],
+        icons=[Icon(src="data:image/png;base64,aA==", mime_type="image/png")],
         annotations={"readOnlyHint": True, "idempotentHint": True},
         meta={"category": "documentation"},
     )
@@ -165,10 +199,11 @@ async def test_mcp_example_consumes_an_external_server(serve_http):
 
 @pytest.mark.parametrize("stateless", [False, True])
 @pytest.mark.parametrize("json_response", [False, True])
+@pytest.mark.parametrize("legacy", [False, True])
 async def test_socket_http_sessions_results_progress_and_shutdown(
-    serve_http, stateless, json_response
+    serve_http, stateless, json_response, legacy
 ):
-    server = FastMCP("http", stateless_http=stateless, json_response=json_response)
+    server = MCPServer("http")
     calls = []
     requests = []
 
@@ -178,14 +213,14 @@ async def test_socket_http_sessions_results_progress_and_shutdown(
         await ctx.report_progress(1, 1, "echo complete")
         return query
 
-    inner = server.streamable_http_app()
+    inner = server.streamable_http_app(stateless_http=stateless, json_response=json_response)
 
     async def app(scope, receive, send):
         if scope["type"] == "http":
             requests.append((scope["method"], dict(scope["headers"])))
         await inner(scope, receive, send)
 
-    async with serve_http(app) as url:
+    async with serve_http(app, legacy=legacy) as url:
         model = ScriptedModel(
             [[ModelChunk(tool_call=ToolCall("web__echo", {"query": "over a socket"}))], "done"]
         )
@@ -208,8 +243,8 @@ async def test_socket_http_sessions_results_progress_and_shutdown(
     session_ids = {
         headers[b"mcp-session-id"] for _, headers in requests if b"mcp-session-id" in headers
     }
-    assert bool(session_ids) is (not stateless)
-    assert ("DELETE" in [method for method, _ in requests]) is (not stateless)
+    assert bool(session_ids) is (legacy and not stateless)
+    assert ("DELETE" in [method for method, _ in requests]) is (legacy and not stateless)
 
 
 @pytest.mark.parametrize("status", [401, 403, 500, 503])
@@ -223,16 +258,15 @@ async def test_http_startup_rejection_releases_connection(serve_http, status):
     app = Starlette(routes=[Route("/mcp", reject, methods=["POST"])])
     async with serve_http(app) as url:
         model = ScriptedModel(["unused"])
-        with pytest.raises(httpx.HTTPStatusError) as caught:
+        with pytest.raises(MCPError, match="Server returned an error response"):
             await Agent(model=model, plugins=[MCP.http("web", url=url, startup_timeout=1)]).run("x")
-        assert caught.value.response.status_code == status
         assert model.requests == []
-    assert requests == ["POST"]
+    assert requests == ["POST", "POST"]
 
 
 async def test_http_shutdown_does_not_wait_forever_for_delete(serve_http, monkeypatch):
     monkeypatch.setattr(mcp_plugin, "_HTTP_CLOSE_TIMEOUT", 0.05, raising=False)
-    server = FastMCP("http")
+    server = MCPServer("http")
     inner = server.streamable_http_app()
     deleting = asyncio.Event()
     release = asyncio.Event()
@@ -245,7 +279,7 @@ async def test_http_shutdown_does_not_wait_forever_for_delete(serve_http, monkey
         else:
             await inner(scope, receive, send)
 
-    async with serve_http(app) as url:
+    async with serve_http(app, legacy=True) as url:
         async with Agent(model=ScriptedModel(["unused"])).session() as session:
             handle = await session.mount(MCP.http("web", url=url))
             closing = asyncio.create_task(handle.aclose())
@@ -259,7 +293,7 @@ async def test_http_shutdown_does_not_wait_forever_for_delete(serve_http, monkey
 
 
 async def test_http_protocol_failure_disables_tools_without_retry(serve_http):
-    server = FastMCP("http", json_response=True)
+    server = MCPServer("http")
     calls = []
 
     @server.tool()
@@ -267,7 +301,7 @@ async def test_http_protocol_failure_disables_tools_without_retry(serve_http):
         calls.append(query)
         return query
 
-    inner = server.streamable_http_app()
+    inner = server.streamable_http_app(json_response=True)
     fail = False
     failures = []
 
@@ -292,13 +326,13 @@ async def test_http_protocol_failure_disables_tools_without_retry(serve_http):
 
 @pytest.mark.parametrize("failure", ["json", "result", "request_id"])
 async def test_malformed_http_response_fails_without_waiting_for_call_timeout(serve_http, failure):
-    server = FastMCP("http", json_response=True)
+    server = MCPServer("http")
 
     @server.tool()
     def echo(query: str) -> str:
         return query
 
-    inner = server.streamable_http_app()
+    inner = server.streamable_http_app(json_response=True)
     fail = False
 
     async def app(scope, receive, send):
@@ -376,23 +410,28 @@ async def test_http_cross_origin_redirect_does_not_forward_credentials(serve_htt
 
         source = Starlette(routes=[Route("/mcp", redirect, methods=["POST"])])
         async with serve_http(source) as url:
-            with pytest.raises(httpx.HTTPStatusError) as caught:
+            with pytest.raises(MCPError, match="Redirect .* not followed"):
                 await Agent(
                     model=ScriptedModel(["unused"]),
-                    plugins=[MCP.http("web", url=url, headers={"Authorization": "Bearer secret"})],
+                    plugins=[
+                        MCP.http(
+                            "web",
+                            url=url,
+                            headers={"Authorization": "Bearer secret", "X-API-Key": "private"},
+                        )
+                    ],
                 ).run("x")
-            assert caught.value.response.status_code == 307
     assert received == []
 
 
 async def test_http_same_origin_redirect_preserves_post_and_credentials(serve_http):
-    server = FastMCP("http", json_response=True)
+    server = MCPServer("http")
 
     @server.tool()
     def echo(query: str) -> str:
         return query
 
-    inner = server.streamable_http_app()
+    inner = server.streamable_http_app(json_response=True)
     forwarded = []
 
     async def app(scope, receive, send):
@@ -423,7 +462,7 @@ async def test_http_same_origin_redirect_preserves_post_and_credentials(serve_ht
 
 
 async def test_parallel_http_calls_keep_results_and_sessions_isolated(serve_http):
-    server = FastMCP("http", json_response=False)
+    server = MCPServer("http")
     started = asyncio.Event()
     release = asyncio.Event()
     calls = []
@@ -437,7 +476,7 @@ async def test_parallel_http_calls_keep_results_and_sessions_isolated(serve_http
         await release.wait()
         return query
 
-    inner = server.streamable_http_app()
+    inner = server.streamable_http_app(json_response=False)
 
     async def app(scope, receive, send):
         if scope["type"] == "http":
@@ -446,7 +485,7 @@ async def test_parallel_http_calls_keep_results_and_sessions_isolated(serve_http
                 ids.add(headers[b"mcp-session-id"])
         await inner(scope, receive, send)
 
-    async with serve_http(app) as url:
+    async with serve_http(app, legacy=True) as url:
         recipe = MCP.http("web", url=url, parallel=True, readonly_tools=["echo"])
         agent = Agent(model=ScriptedModel(["unused"]), plugins=[recipe])
         async with agent.session() as first, agent.session() as second:
@@ -468,7 +507,7 @@ async def test_parallel_http_calls_keep_results_and_sessions_isolated(serve_http
 
 @pytest.mark.parametrize("action", ["timeout", "abort", "unmount"])
 async def test_http_timeout_abort_and_unmount_wake_shared_connection_waiters(serve_http, action):
-    server = FastMCP("http", json_response=False)
+    server = MCPServer("http")
     started = asyncio.Event()
     release = asyncio.Event()
     calls = []
@@ -481,7 +520,7 @@ async def test_http_timeout_abort_and_unmount_wake_shared_connection_waiters(ser
         await release.wait()
         return query
 
-    async with serve_http(server.streamable_http_app()) as url:
+    async with serve_http(server.streamable_http_app(json_response=False)) as url:
         async with Agent(model=ScriptedModel(["unused"])).session() as session:
             mount = await session.mount(
                 MCP.http(
@@ -518,7 +557,8 @@ async def test_http_timeout_abort_and_unmount_wake_shared_connection_waiters(ser
 
 
 @pytest.mark.parametrize("refresh", [False, True])
-async def test_oauth_discovery_authorization_and_token_reuse_over_http(serve_http, refresh):
+@pytest.mark.parametrize("legacy", [False, True])
+async def test_oauth_discovery_authorization_and_token_reuse_over_http(serve_http, refresh, legacy):
     class Storage:
         tokens = None
         client_info = None
@@ -535,13 +575,13 @@ async def test_oauth_discovery_authorization_and_token_reuse_over_http(serve_htt
         async def set_client_info(self, client_info):
             self.client_info = client_info
 
-    server = FastMCP("oauth", json_response=True)
+    server = MCPServer("oauth")
 
     @server.tool()
     def echo(query: str) -> str:
         return query
 
-    inner = server.streamable_http_app()
+    inner = server.streamable_http_app(json_response=True)
     redirects = []
     token_requests = []
     authenticated = []
@@ -552,7 +592,9 @@ async def test_oauth_discovery_authorization_and_token_reuse_over_http(serve_htt
         redirects.append(url)
 
     async def callback_handler():
-        return "test-code", parse_qs(urlsplit(redirects[-1]).query)["state"][0]
+        return AuthorizationCodeResult(
+            code="test-code", state=parse_qs(urlsplit(redirects[-1]).query)["state"][0]
+        )
 
     async def app(scope, receive, send):
         if scope["type"] != "http":
@@ -608,7 +650,7 @@ async def test_oauth_discovery_authorization_and_token_reuse_over_http(serve_htt
             return
         await response(scope, receive, send)
 
-    async with serve_http(app) as url:
+    async with serve_http(app, legacy=legacy) as url:
         origin = url.removesuffix("/mcp")
         auth = OAuthClientProvider(
             server_url=url,
@@ -649,4 +691,52 @@ async def test_oauth_discovery_authorization_and_token_reuse_over_http(serve_htt
         assert token_requests[1]["refresh_token"] == ["refresh-token"]
         assert b"Bearer refreshed-token" in used_tokens
     assert storage.client_info.client_id == "test-client"
-    assert authenticated.count("DELETE") == 2
+    assert authenticated.count("DELETE") == (2 if legacy else 0)
+
+
+@pytest.mark.parametrize("spoof_issuer", [False, True])
+async def test_oauth_issuer_binding_prevents_credential_disclosure(serve_http, spoof_issuer):
+    token_requests = []
+    metadata_requests = []
+
+    async def endpoint(request):
+        if request.url.path == "/mcp":
+            return Response(
+                status_code=401,
+                headers={"WWW-Authenticate": f'Bearer resource_metadata="{origin}/resource"'},
+            )
+        if request.url.path == "/resource":
+            return JSONResponse({"resource": url, "authorization_servers": [origin + "/attacker"]})
+        if request.url.path.startswith("/.well-known/"):
+            metadata_requests.append(request.url.path)
+            return JSONResponse(
+                {
+                    "issuer": origin + ("/trusted" if spoof_issuer else "/attacker"),
+                    "authorization_endpoint": origin + "/authorize",
+                    "token_endpoint": origin + "/token",
+                    "response_types_supported": ["code"],
+                    "grant_types_supported": ["client_credentials"],
+                    "token_endpoint_auth_methods_supported": ["client_secret_basic"],
+                }
+            )
+        if request.url.path == "/token":
+            token_requests.append((dict(request.headers), await request.body()))
+            return JSONResponse({"access_token": "untrusted", "token_type": "Bearer"})
+        return Response(status_code=404)
+
+    app = Starlette(routes=[Route("/{path:path}", endpoint, methods=["GET", "POST"])])
+    async with serve_http(app) as url:
+        origin = url.removesuffix("/mcp")
+        auth = ClientCredentialsOAuthProvider(
+            client_id="docs-client",
+            client_secret="credential-that-must-stay-local",
+            issuer=origin + "/trusted",
+        )
+        model = ScriptedModel(["unused"])
+        with pytest.raises((OAuthFlowError, RuntimeError), match="issuer"):
+            await Agent(
+                model=model, plugins=[MCP.http("web", url=url, auth=auth, startup_timeout=2)]
+            ).run("x")
+    assert metadata_requests
+    assert token_requests == []
+    assert model.requests == []

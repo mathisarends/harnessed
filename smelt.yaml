@@ -37,7 +37,7 @@ architecture:
     plugins:
       path: plugins
       may_depend_on: [kernel, core, models]
-      third_party: {default: deny, allow: [pydantic, pydantic_ai, yaml, fastmcp, mcp, jsonschema, referencing, httpx, anyio]}
+      third_party: {default: deny, allow: [pydantic, pydantic_ai, yaml, fastmcp, mcp, jsonschema, referencing, httpx2, anyio]}
     models:
       path: models
       may_depend_on: [kernel, core]

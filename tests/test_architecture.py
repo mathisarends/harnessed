@@ -118,6 +118,7 @@ def test_optional_integrations_and_features_are_isolated():
                     "jsonschema",
                     "referencing",
                     "httpx",
+                    "httpx2",
                     "anyio",
                 }:
                     assert relative == "plugins/mcp.py", relative
@@ -136,6 +137,7 @@ for layer in ('core', 'seams', 'plugins', 'adapters', 'presets'):
     assert not any(name == 'harnessed.' + layer or name.startswith('harnessed.' + layer + '.')
                    for name in sys.modules), (layer, sorted(sys.modules))
 assert 'httpx' not in sys.modules
+assert 'httpx2' not in sys.modules
 assert 'pydantic' not in sys.modules
 assert not any(name.startswith('opentelemetry') for name in sys.modules)
 print('standalone kernel')

@@ -1,8 +1,8 @@
 # Consume MCP server tools
 
 Install `harnessed[mcp]` and import `MCP` from `harnessed.plugins.mcp`.
-The optional integration uses `fastmcp-slim[client]` and its native client
-transports to consume existing MCP servers. Harnessed does not host MCP servers
+The optional integration uses FastMCP 4 (`fastmcp-slim[client]`) with MCP SDK 2
+and its native client transports to consume existing MCP servers. Harnessed does not host MCP servers
 or publish local tools over MCP. Local Python tools use Harnessed's own `@tool`
 decorator and remain inside the agent runtime.
 Each plugin recipe describes one server. Opening a session connects it, discovers
@@ -26,10 +26,36 @@ agent = Agent(model="openai:gpt-5.4", plugins=[docs])
 ```
 
 `http()` uses Streamable HTTP. It accepts `headers=` and FastMCP's `auth=` options:
-a bearer-token string, `"oauth"` for its interactive OAuth helper, or an `httpx.Auth`
+a bearer-token string, `"oauth"` for its interactive OAuth helper, or an `httpx2.Auth`
 object such as a configured `fastmcp.client.auth.OAuth` or MCP `OAuthClientProvider`.
 Configure token storage and interactive authorization callbacks in the application.
-The plugin creates and closes its HTTP client for each mount.
+MCP SDK 2 callback handlers return `mcp.shared.auth.AuthorizationCodeResult`
+with `code`, `state`, and the optional authorization-response `iss`; replace
+the old `(code, state)` tuple return.
+The plugin creates and closes its HTTP client for each mount. The client negotiates
+the current protocol automatically and falls back to legacy initialization for
+older servers. Modern HTTP connections are sessionless; legacy stateful sessions
+still send a bounded DELETE request on close.
+
+For machine-to-machine OAuth, bind pre-registered credentials to their authorization
+server with `issuer=`; upgrading dependencies alone does not enable this protection:
+
+```python
+from fastmcp.client.auth import ClientCredentialsOAuthProvider
+
+auth = ClientCredentialsOAuthProvider(
+    client_id="docs-client",
+    client_secret="application-provided-secret",
+    issuer="https://auth.example.com",
+)
+docs = MCP.http("docs", url="https://docs.example.com/mcp", auth=auth)
+```
+
+Set `issuer=` on `PrivateKeyJWTOAuthProvider` as well. When migrating stored OAuth
+client registrations from MCP SDK versions older than 1.30, clear unbound client
+information once and register again, or bind a pre-registered record to its issuer.
+If credentials may already have reached an untrusted server, rotate client secrets
+and revoke the associated tokens.
 
 Connect to an installed stdio MCP server using its command and argument vector:
 
@@ -92,10 +118,11 @@ Both must be finite positive numbers. Failed startup unwinds acquired resources.
 
 Timeout or cancellation closes that mount's connection and hides its tools.
 This also interrupts other calls using that connection when `parallel=True`.
-MCP SDK 1.x does not expose the request identity needed for precise cancellation
-through its public high-level API, so Harnessed closes its owned transport.
+Harnessed closes its owned transport so all calls sharing the failed mount
+observe the same unavailable connection.
 Remote cancellation is best-effort: an external operation may already have
-completed. Calls are never automatically retried.
+completed. Calls are never automatically retried. A multi-round
+`InputRequiredResult` fails explicitly instead of repeating an approved tool call.
 
 Protocol errors, including a terminated HTTP session or a crashed stdio server,
 also close the connection when a call detects the failure. A tool's ordinary
