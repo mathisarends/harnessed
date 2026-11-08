@@ -6,7 +6,18 @@ still evolving before 1.0.
 Detailed breaking changes and upgrade instructions are recorded in the repository
 [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md).
 
-## Unreleased: MCP SDK 2 and FastMCP 4
+## 0.14.0 (unreleased)
+
+This minor release adds a restricted plugin activation scope, per-activation tool
+deadlines and public library and hook tracing, and upgrades the optional MCP
+integration. It includes breaking API changes from 0.13.0. Persistence versions
+remain unchanged: conversation snapshots use format **2**, checkpoints and JSON
+stores use format **3**, and standalone audit envelopes use version **5**.
+
+Follow the complete [upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0130)
+before updating custom plugins, tool registrations, MCP clients or tracing filters.
+
+### MCP SDK 2 and FastMCP 4
 
 The optional MCP integration requires MCP SDK 2.3+ and FastMCP 4.1.2+. Custom
 HTTP authentication handlers now use `httpx2.Auth`, and custom client transports
@@ -16,7 +27,7 @@ mount ownership, approvals and failure cleanup remain in place; multi-round inpu
 results fail without automatically repeating tool calls. See the
 [MCP guide](guides/mcp.md) for authentication migration and OAuth issuer binding.
 
-## Unreleased: plugin activation scope
+### Plugin activation scope
 
 Higher-level class `Plugin.setup()` and `teardown()` now accept exactly one
 `scope: PluginScope` parameter, imported from `harnessed.kernel`. Add it to
@@ -26,6 +37,29 @@ the same operations; composition and closure stay with the framework's full
 `Scope`. Standalone kernel plugins and application `session.scope` retain `Scope`.
 Read the [activation contract](guides/plugins.md#activation-scope-and-lifecycle-contract)
 and [design rationale](contributing/plugin-scope.md) for the complete surface.
+
+### Tool execution deadlines
+
+Rename tool declaration and registry `timeout=` to `timeout_seconds=`. Numeric
+deadlines remain finite and positive; omission or `None` inherits
+`AgentLoop(tool_timeout=...)`. A synchronous resolver can now select a deadline
+from the mounted plugin once per activation, after setup. Shell command and
+approval response `timeout` arguments keep their names. See
+[tool execution and cancellation](guides/tools.md#cancellation-and-parallel-work).
+
+### Public library and hook tracing
+
+Import `current`, `span`, `traced` and `record` from `harnessed.tracing` for
+provider-independent instrumentation. Span names are preserved verbatim; function
+arguments and return values are not automatically captured. Enable automatic
+hook invocation spans with `OpenTelemetryTracer(trace_hooks=True)` when needed.
+
+Turn input and final or partial output, model tool definitions, settings and
+output schemas now have independently bounded content fields. Update custom
+content filters to cover the new kinds when omitting sensitive data. Truncated
+content remains valid JSON and carries truncation markers. The
+[tracing guide](guides/tracing.md) covers instrumentation, content controls and
+lifecycle ownership.
 
 ## 0.13.0 (2026-11-07)
 
