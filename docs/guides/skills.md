@@ -47,12 +47,16 @@ metadata:
 Read reference.md before filling a form.
 ```
 
-Names contain 1–64 lowercase letters, digits and single hyphens, match their
-directory, and have no leading or trailing hyphen. Descriptions contain 1–1024
-characters. Optional frontmatter is preserved in `SkillInfo.metadata`; nested
+Names contain 1–64 Unicode alphanumeric characters and single hyphens, are
+lowercase, and have no leading or trailing hyphen. Names are trimmed and normalized
+with Unicode NFKC; directory names must match after NFKC normalization.
+Descriptions contain 1–1024 characters. Optional frontmatter is preserved in
+`SkillInfo.metadata`; nested
 metadata maps string keys to string values. Duplicate YAML keys and unsafe YAML
-tags fail explicitly. `allowed-tools` is retained as metadata and grants no
-execution permission.
+tags fail explicitly. Unquoted scalar values stay strings: `name: 123`,
+`description: on` and `metadata: {version: 1.0}` retain their literal text rather
+than becoming numbers or booleans. `allowed-tools` is retained as metadata and
+grants no execution permission.
 
 `load_skill(name)` reads the body fresh and returns a serialized `LoadedSkill`
 with `name`, `instructions`, absolute `directory` and resource `files`. An inline

@@ -205,10 +205,72 @@ async def test_resource_symlinks_cannot_escape_and_scripts_are_only_read(tmp_pat
         assert "scripts/run.py" in files and "outside.txt" not in files
 
 
-@pytest.mark.parametrize("name", ["", "UPPER", "-leading", "trailing-", "two--hyphens", "x" * 65])
+@pytest.mark.parametrize(
+    "name",
+    ["", "UPPER", "CAFÉ", "-leading", "trailing-", "two--hyphens", "has space", "a/b", "x" * 65],
+)
 def test_inline_names_follow_the_format(name):
     with pytest.raises(ValueError):
         Skill(name=name, description="Description.", instructions="Instructions.")
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("café", "café"),
+        ("cafe\u0301", "café"),
+        ("数据分析", "数据分析"),
+        ("１２３", "123"),
+        (" notes ", "notes"),
+        ("é" * 64, "é" * 64),
+        ("e\u0301" * 64, "é" * 64),
+    ],
+)
+def test_inline_names_use_reference_unicode_normalization(name, expected):
+    skill = Skill(name=name, description="Description.", instructions="Instructions.")
+    assert skill.name == expected
+
+
+@pytest.mark.parametrize("name", ["café", "cafe\u0301", "数据分析", "１２３"])
+async def test_unicode_directory_skills_can_be_discovered_and_loaded(tmp_path, name):
+    root = folder(tmp_path, name=name)
+    model = ScriptedModel([call("load_skill", name=name), "loaded"])
+    async with Agent(model=model, plugins=[Skills(tmp_path)]).session() as session:
+        (entry,) = session.scope[SkillCatalog].entries
+        assert entry.directory == root.resolve()
+        result = await session.run("Load the skill.")
+        loaded = result.tool_calls[0][1]
+        assert loaded.status is ToolStatus.OK
+        assert json.loads(loaded.text)["name"] == entry.info.name
+        assert json.loads(loaded.text)["instructions"] == "Read reference.md first."
+
+
+@pytest.mark.parametrize("name", ["123", "0123", "on", "off", "null", "true"])
+async def test_unquoted_frontmatter_scalars_remain_strings(tmp_path, name):
+    folder(
+        tmp_path,
+        name=name,
+        description="on",
+        extra=(
+            "license: 1\ncompatibility: false\nallowed-tools: off\nmetadata:\n"
+            "  version: 1.0\n  on: false\n  released: 2026-11-08\n  empty: null\n"
+        ),
+    )
+    async with Agent(model=ScriptedModel([]), plugins=[Skills(tmp_path)]).session() as session:
+        (entry,) = session.scope[SkillCatalog].entries
+        assert entry.info.name == name
+        assert entry.info.description == "on"
+        assert entry.info.metadata == {
+            "license": "1",
+            "compatibility": "false",
+            "allowed-tools": "off",
+            "metadata": {
+                "version": "1.0",
+                "on": "false",
+                "released": "2026-11-08",
+                "empty": "null",
+            },
+        }
 
 
 @pytest.mark.parametrize(
@@ -217,9 +279,10 @@ def test_inline_names_follow_the_format(name):
         "name: pdf-forms\ndescription: First\ndescription: Duplicate\n",
         "name: different\ndescription: Description\n",
         "name: pdf-forms\ndescription: ''\n",
-        "name: pdf-forms\ndescription: Description\nmetadata:\n  version: 1\n",
-        "name: pdf-forms\ndescription: Description\ncompatibility: null\n",
-        "name: pdf-forms\ndescription: Description\nlicense: 1\n",
+        "name: pdf-forms\ndescription: Description\nmetadata:\n  version: [one, two]\n",
+        "name: pdf-forms\ndescription: Description\ncompatibility:\n",
+        "name: pdf-forms\ndescription: Description\nlicense: [MIT]\n",
+        "name: pdf-forms\ndescription: Description\nmetadata:\n  version: 1\n  version: 2\n",
     ],
 )
 async def test_invalid_frontmatter_fails_at_session_open_with_its_path(tmp_path, header):

@@ -54,6 +54,13 @@ Applications can trigger skills through existing tools, steering or request hook
 a dedicated user-invocation API is deferred until a concrete application needs it.
 YAML parsing is already implemented through the optional `harnessed[skills]` extra.
 
+Further interoperability work could add fixtures shared with the upstream
+reference validator and opt-in discovery diagnostics that skip malformed skills
+without preventing a session from opening. Resource enumeration could have
+explicit limits for large skill directories. Retaining the skill's base directory
+alongside loaded instructions across compaction would also preserve the context
+needed to resolve relative script and asset paths. These remain proposals.
+
 ## Application-level scope
 
 UI applications, RAG and evaluation systems are not part of the initial SDK scope.
