@@ -7,6 +7,24 @@ and SDK errors from `harnessed.errors`.
 
 ## Tracing
 
+`harnessed.tracing` explicitly exports the canonical provider-independent `Tracer`
+and `Span` protocols, `current() -> Tracer` and
+`span(name, *, scope=None, **attributes)`. The span is a synchronous context
+manager that remains active across awaits. Names are used verbatim. An explicit
+kernel `Scope` or `PluginScope` overrides the ambient tracer, including selecting
+a no-op when no tracer is configured. Selection stays fixed for the open span;
+bindings are restored on every exit path and are never persisted.
+
+`traced(fn)` decorates Python functions and coroutine functions without changing
+their signature or coroutine kind. Each call uses the module-qualified function
+name and source metadata cached at decoration. Arguments and return values are
+not automatically recorded. Apply below tool/classmethod/staticmethod decorators.
+Generator functions are rejected; place a `span()` inside their iteration body.
+`record(**attributes)` attaches scalar metadata to the innermost Harnessed span
+and does nothing outside a span. It restores the parent after nested work,
+exceptions and cancellation and isolates concurrent or untraced session contexts.
+Explicitly recorded attributes are outside content filtering/redaction.
+
 `harnessed.integrations.opentelemetry.otlp_provider(*, service_name,
 endpoint=None, resource_attributes=None)` is an async context manager yielding an
 SDK `TracerProvider` with batched OTLP/HTTP export. It requires `harnessed[otel]`.
@@ -21,7 +39,8 @@ Headers, timeouts and sampling remain configured through standard OTel settings.
 Shutdown attempts to drain batches and does not confirm destination ingestion.
 
 `harnessed.integrations.opentelemetry.OpenTelemetryTracer(*, tracer_provider=None,
-capture_content=False, max_content_length=16384, content_filter=None)` replaces the `tracer` slot and
+capture_content=False, max_content_length=16384, content_filter=None,
+trace_hooks=False)` replaces the `tracer` slot and
 requires `harnessed[otel]`. It emits nested runtime spans through the application's
 OpenTelemetry provider, without owning its exporters or shutdown. Import the
 integration explicitly; public SDK facades remain usable without the extra.
@@ -44,7 +63,8 @@ during portable conversion are masked in either mode.
 returning `TraceContent | None`. These types and `TraceContentKind` are exported
 by the optional integration. The callback receives a detached portable JSON value
 before serialization or truncation, with its kind and optional tool name. It
-covers model input/output, tool arguments/results and exception messages. Return
+covers turn input/output, model input/output, tool definitions, resolved settings,
+output schemas, tool arguments/results and exception messages. Return
 None to omit a field, or replace its value while preserving its identity;
 exception messages must remain strings. Registered literals are masked after
 the callback, including in replacement values, and before serialization and
@@ -52,6 +72,20 @@ limits. Filter and redaction failures omit the field, set a content-free marker
 and preserve the agent's original outcome. Capture must be enabled; metadata
 remains outside content filtering and redaction. `ContentCapture` and
 `SecretText` are exported by the optional integration alongside the filter types.
+Each content field has its own serialized character budget. Truncated content
+remains valid JSON and reports original length and omitted-item counts after
+filtering/redaction. Turn summaries contain accepted user input and the last
+assistant message, including validated structured output and partial-result
+metadata. Model request details live in independently bounded
+`request.tools.value`, `request.settings.value` and `request.output_schema.value`.
+
+`trace_hooks=True` opts into `harnessed.hook` spans for invoked listeners, with
+identity metadata and inclusive Waterfall timing. Hook dispatch binds the
+selected tracer even when this option is false; library work in hooks can use
+the public facade. The optional standard-library-only kernel
+`HookInstrumentation.invoke(scope, invocation)` boundary preserves dispatch
+semantics and resolves from the dispatching scope. Automatic hook source-location
+caching and duration filtering remain future work.
 See [tracing](../guides/tracing.md) for Phoenix and Langfuse configuration,
 content capture, parent context and the emitted attributes.
 

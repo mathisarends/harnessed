@@ -1,9 +1,15 @@
+import asyncio
+from collections.abc import Generator
+from contextlib import contextmanager
+
 import pytest
 
 from harnessed.core.plugin import Plugin
 from harnessed.kernel import (
     Bail,
     Emit,
+    HookInstrumentation,
+    HookInvocation,
     Inject,
     Next,
     Parallel,
@@ -44,6 +50,96 @@ class SecondWrap(Waterfall[str]):
 
 class EmptyWrap(Waterfall[None]):
     pass
+
+
+class _Instrumentation:
+    def __init__(self) -> None:
+        self.calls: list[tuple[Scope, HookInvocation]] = []
+        self.finished: list[HookInvocation] = []
+
+    @contextmanager
+    def invoke(self, scope: Scope, invocation: HookInvocation) -> Generator[None]:
+        self.calls.append((scope, invocation))
+        try:
+            yield
+        finally:
+            self.finished.append(invocation)
+
+
+async def test_instrumentation_observes_only_invoked_bail_handlers() -> None:
+    probe = _Instrumentation()
+
+    def choose(event: FirstChoice) -> int:
+        return 0
+
+    async with Scope() as scope:
+        scope.provide(HookInstrumentation, probe)
+        dispose = scope.on(FirstChoice, lambda event: pytest.fail("disposed"), priority=-1)
+        scope.on(FirstChoice, choose)
+        scope.on(FirstChoice, lambda event: pytest.fail("Bail must stop at zero"))
+        await dispose()
+        assert await scope.dispatch(FirstChoice()) == 0
+        assert len(probe.calls) == 1
+        dispatched, invocation = probe.calls[0]
+        assert dispatched is scope
+        assert invocation.callback is choose
+        assert invocation.event is FirstChoice
+        assert invocation.owner_name == scope.owner_name
+        assert invocation.priority == 0
+    assert probe.finished == [invocation]
+
+
+async def test_instrumentation_preserves_waterfall_single_use_and_unwinds_errors() -> None:
+    probe = _Instrumentation()
+    async with Scope() as scope:
+        scope.provide(HookInstrumentation, probe)
+
+        @scope.on(FirstWrap)
+        async def outer(event: FirstWrap, next_: Next[str]) -> str:
+            await next_()
+            return await next_()
+
+        @scope.on(FirstWrap)
+        async def inner(event: FirstWrap, next_: Next[str]) -> str:
+            return await next_()
+
+        with pytest.raises(RuntimeError, match="only be called once"):
+            await scope.dispatch(FirstWrap(), default=lambda: "terminal")
+    assert [item.callback for _, item in probe.calls] == [outer, inner]
+    assert [item.callback for item in probe.finished] == [inner, outer]
+
+
+async def test_instrumentation_uses_dispatch_scope_and_unwinds_parallel_cancellation() -> None:
+    parent_probe = _Instrumentation()
+    child_probe = _Instrumentation()
+    entered = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    async def wait(event: Together) -> None:
+        entered.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    async def fail(event: Together) -> None:
+        await entered.wait()
+        raise ValueError("source failure")
+
+    async with asyncio.timeout(5):
+        async with Scope() as parent:
+            parent.provide(HookInstrumentation, parent_probe)
+            parent.on(Together, wait)
+            parent.on(Together, fail)
+            async with parent.extend() as child:
+                child.provide(HookInstrumentation, child_probe)
+                with pytest.raises(ExceptionGroup, match="TaskGroup"):
+                    await child.dispatch(Together())
+                assert cancelled.is_set()
+                assert len(child_probe.calls) == len(child_probe.finished) == 2
+                assert all(scope is child for scope, _ in child_probe.calls)
+    assert parent_probe.calls == []
+    assert {item.callback for item in child_probe.finished} == {wait, fail}
 
 
 @pytest.mark.parametrize("base", [PluginBase, Plugin])

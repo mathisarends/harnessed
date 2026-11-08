@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 import os
 import subprocess
@@ -12,7 +13,7 @@ from pathlib import Path
 from threading import Thread, get_ident
 
 import pytest
-from pydantic import JsonValue, SecretStr
+from pydantic import BaseModel, JsonValue, SecretStr
 
 from harnessed import PolicyDecision
 from harnessed.models import ProviderState
@@ -28,9 +29,15 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 from harnessed import Agent, ApprovalAnswer, Plugin, ToolCall, tool
 from harnessed.core.events.session import ControlState, SessionControlChangedEvent
-from harnessed.core.hooks import SessionAppended
-from harnessed.core.messages import AssistantMessage, ToolResult, ToolStatus
-from harnessed.core.model import ModelChunk, ModelUsage
+from harnessed.core.hooks import SessionAppended, SessionClosing
+from harnessed.core.messages import AssistantMessage, ToolResult, ToolStatus, UserMessage
+from harnessed.core.model import (
+    GenerationSettings,
+    ModelChunk,
+    ModelRequest,
+    ModelUsage,
+    StopReason,
+)
 from harnessed.core.tracing import Tracer
 from harnessed.integrations.opentelemetry import (
     ContentCapture,
@@ -39,8 +46,11 @@ from harnessed.integrations.opentelemetry import (
     TraceContentKind,
     otlp_provider,
 )
+from harnessed.kernel import Next, Waterfall, hook
 from harnessed.plugins import Approvals, Compaction, every_turns
 from harnessed.testing import CallbackModel, ScriptedModel, reply
+from harnessed.tracing import record, traced
+from harnessed.tracing import span as library_span
 
 type Collector = tuple[str, list[tuple[str, HTTPMessage, bytes]]]
 
@@ -126,6 +136,523 @@ async def test_runtime_tree_usage_and_backend_attributes(telemetry):
     assert trace.get_current_span().get_span_context().is_valid is False
 
 
+async def test_turn_summaries_are_redacted_and_scoped_to_each_turn(telemetry):
+    provider, exporter = telemetry
+    tracer = OpenTelemetryTracer(
+        tracer_provider=provider, capture_content=ContentCapture.redacted("credential")
+    )
+    async with Agent(
+        model=ScriptedModel(["first credential answer", "second answer"]),
+        instructions="system instructions stay out of the turn summary",
+        plugins=[tracer],
+    ).session() as session:
+        first = await session.run("first credential question")
+        second = await session.run("second question")
+    turns = [item for item in exporter.get_finished_spans() if item.name == "harnessed.turn"]
+    assert len(turns) == 2
+    assert first.text == "first credential answer" and second.text == "second answer"
+    assert json.loads(turns[0].attributes["input.value"]) == [
+        {"role": "user", "content": "first [redacted] question"}
+    ]
+    assert json.loads(turns[1].attributes["input.value"]) == [
+        {"role": "user", "content": "second question"}
+    ]
+    assert json.loads(turns[0].attributes["output.value"])["content"] == "first [redacted] answer"
+    assert json.loads(turns[1].attributes["output.value"])["content"] == "second answer"
+    assert turns[0].attributes["harnessed.output.partial"] is False
+    assert "system instructions" not in turns[0].attributes["input.value"]
+
+
+async def test_turn_summaries_include_steering_and_exclude_queued_followups(telemetry):
+    provider, exporter = telemetry
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    class Work(Plugin):
+        @tool(readonly=True)
+        async def wait(self) -> str:
+            started.set()
+            await release.wait()
+            return "ready"
+
+    async with asyncio.timeout(5):
+        async with Agent(
+            model=ScriptedModel(
+                [[ModelChunk(tool_call=ToolCall("wait"))], "first answer", "followup answer"]
+            ),
+            plugins=[Work(), OpenTelemetryTracer(tracer_provider=provider, capture_content=True)],
+        ).session() as session:
+            first = await session.submit("initial question")
+            await started.wait()
+            await session.steer("steering question")
+            followup = await session.submit("queued question")
+            release.set()
+            assert (await first.result()).text == "first answer"
+            assert (await followup.result()).text == "followup answer"
+    turns = [item for item in exporter.get_finished_spans() if item.name == "harnessed.turn"]
+    assert len(turns) == 2
+    assert [item["content"] for item in json.loads(turns[0].attributes["input.value"])] == [
+        "initial question",
+        "steering question",
+    ]
+    assert json.loads(turns[1].attributes["input.value"]) == [
+        {"role": "user", "content": "queued question"}
+    ]
+
+
+async def test_failed_turn_retains_a_redacted_partial_answer(telemetry):
+    provider, exporter = telemetry
+
+    async def fail(request):
+        yield ModelChunk(text="partial credential answer")
+        raise RuntimeError("model failed")
+
+    with pytest.raises(RuntimeError, match="model failed"):
+        await Agent(
+            model=CallbackModel(fail),
+            plugins=[
+                OpenTelemetryTracer(
+                    tracer_provider=provider, capture_content=ContentCapture.redacted("credential")
+                )
+            ],
+        ).run("credential question")
+    turn = next(item for item in exporter.get_finished_spans() if item.name == "harnessed.turn")
+    assert turn.attributes["harnessed.outcome"] == "failed"
+    assert turn.attributes["harnessed.output.partial"] is True
+    assert json.loads(turn.attributes["output.value"])["content"] == "partial [redacted] answer"
+    assert json.loads(turn.attributes["input.value"])[0]["content"] == "[redacted] question"
+
+
+async def test_accepted_token_limit_still_marks_the_turn_answer_partial(telemetry):
+    provider, exporter = telemetry
+    result = await Agent(
+        model=ScriptedModel(
+            [[ModelChunk(text="partial answer", stop_reason=StopReason.MAX_TOKENS)]]
+        ),
+        plugins=[OpenTelemetryTracer(tracer_provider=provider, capture_content=True)],
+    ).run("question")
+    turn = next(item for item in exporter.get_finished_spans() if item.name == "harnessed.turn")
+    assert result.stop_reason is StopReason.MAX_TOKENS
+    assert turn.attributes["harnessed.outcome"] == "completed"
+    assert turn.attributes["harnessed.output.stop_reason"] == "max_tokens"
+    assert turn.attributes["harnessed.output.partial"] is True
+    assert json.loads(turn.attributes["output.value"])["content"] == "partial answer"
+
+
+async def test_model_request_details_and_validated_turn_output_are_filterable(telemetry):
+    provider, exporter = telemetry
+    seen: list[TraceContentKind] = []
+
+    class Answer(BaseModel):
+        value: str
+
+    class Work(Plugin):
+        @tool(readonly=True)
+        def lookup(self, key: str) -> str:
+            """Look up an application record."""
+            return key
+
+    def filter_settings(content: TraceContent) -> TraceContent | None:
+        seen.append(content.kind)
+        return None if content.kind is TraceContentKind.MODEL_SETTINGS else content
+
+    model = ScriptedModel(
+        [[ModelChunk(tool_call=ToolCall("final_answer", {"value": "credential"}))]],
+        settings=GenerationSettings(
+            max_tokens=150, temperature=0.2, provider_options={"region": "credential"}
+        ),
+    )
+    result = await Agent(
+        model=model,
+        plugins=[
+            Work(),
+            OpenTelemetryTracer(
+                tracer_provider=provider,
+                capture_content=ContentCapture.redacted("credential"),
+                content_filter=filter_settings,
+            ),
+        ],
+    ).run("answer", output=Answer, settings=GenerationSettings(max_tokens=50))
+    spans = exporter.get_finished_spans()
+    model_span = next(item for item in spans if item.name == "harnessed.model")
+    turn = next(item for item in spans if item.name == "harnessed.turn")
+    assert result.output.value == "credential"
+    assert json.loads(turn.attributes["output.value"])["validated_output"] == {
+        "value": "[redacted]"
+    }
+    assert model_span.attributes["gen_ai.request.max_tokens"] == 50
+    assert model_span.attributes["gen_ai.request.temperature"] == 0.2
+    tools = json.loads(model_span.attributes["request.tools.value"])
+    assert any(
+        item["name"] == "lookup" and "key" in item["parameters"]["properties"] for item in tools
+    )
+    schema = json.loads(model_span.attributes["request.output_schema.value"])
+    assert "value" in schema["json_schema"]["properties"]
+    assert "request.settings.value" not in model_span.attributes
+    assert TraceContentKind.MODEL_SETTINGS in seen
+    assert TraceContentKind.MODEL_TOOLS in seen
+    assert TraceContentKind.MODEL_OUTPUT_SCHEMA in seen
+    assert TraceContentKind.TURN_INPUT in seen and TraceContentKind.TURN_OUTPUT in seen
+    assert "credential" not in str([item.attributes for item in spans])
+
+
+@pytest.mark.parametrize("limit", [1, 2, 8, 24, 80, 400])
+async def test_truncated_content_remains_bounded_valid_json(telemetry, limit):
+    provider, exporter = telemetry
+    value = {"content": '\\"\n密钥🔑' * 200, "items": list(range(30))}
+    async with Agent(
+        model=ScriptedModel([]),
+        plugins=[
+            OpenTelemetryTracer(
+                tracer_provider=provider, capture_content=True, max_content_length=limit
+            )
+        ],
+    ).session() as session:
+        with library_span("harnessed.tool", scope=session.scope, tool="read") as active:
+            active.set_attribute("input", ToolCall("read", value))
+    captured = exporter.get_finished_spans()[0]
+    encoded = captured.attributes["input.value"]
+    assert len(encoded) <= limit
+    assert json.loads(encoded) is not None
+    assert captured.attributes["input.mime_type"] == "application/json"
+    assert captured.attributes["harnessed.input.truncated"] is True
+    assert captured.attributes["harnessed.input.original_length"] == len(
+        json.dumps(value, ensure_ascii=False)
+    )
+    assert captured.attributes["harnessed.input.omitted_items"] >= 0
+
+
+async def test_large_observations_do_not_hide_later_messages(telemetry):
+    provider, exporter = telemetry
+    async with Agent(
+        model=ScriptedModel([]),
+        plugins=[
+            OpenTelemetryTracer(
+                tracer_provider=provider, capture_content=True, max_content_length=500
+            )
+        ],
+    ).session() as session:
+        with library_span("harnessed.model", scope=session.scope) as active:
+            active.set_attribute(
+                "request",
+                ModelRequest(
+                    (
+                        UserMessage("large observation " * 1000),
+                        AssistantMessage("previous answer"),
+                        UserMessage("latest question"),
+                    )
+                ),
+            )
+    captured = exporter.get_finished_spans()[0]
+    messages = json.loads(captured.attributes["input.value"])
+    assert len(messages) == 3
+    assert messages[-1] == {"role": "user", "content": "latest question"}
+    assert messages[1] == {"role": "assistant", "content": "previous answer"}
+    assert len(captured.attributes["input.value"]) <= 500
+
+
+@pytest.mark.parametrize("trace_hooks", [False, True])
+async def test_library_spans_correlate_with_waterfall_hooks_and_session_cleanup(
+    telemetry, trace_hooks
+):
+    provider, exporter = telemetry
+
+    class Wrap(Waterfall[int]):
+        pass
+
+    class Cleanup(Plugin):
+        @hook(SessionClosing)
+        def closing(self, event: SessionClosing) -> None:
+            with library_span("browserrig.cleanup"):
+                pass
+
+    async with Agent(
+        model=ScriptedModel([]),
+        plugins=[Cleanup(), OpenTelemetryTracer(tracer_provider=provider, trace_hooks=trace_hooks)],
+    ).session() as session:
+
+        @session.on(Wrap)
+        async def wrap(event: Wrap, next_: Next[int]) -> int:
+            with library_span("browserrig.readiness") as measured:
+                measured.set_attribute("browserrig.ready", True)
+                return await next_() + 1
+
+        @session.on(Wrap)
+        async def inner(event: Wrap, next_: Next[int]) -> int:
+            with library_span("browserrig.extract"):
+                return await next_() + 1
+
+        assert await session.scope.dispatch(Wrap(), default=lambda: 40) == 42
+        session_id = session.id
+    spans = exporter.get_finished_spans()
+    readiness = next(item for item in spans if item.name == "browserrig.readiness")
+    extraction = next(item for item in spans if item.name == "browserrig.extract")
+    cleanup = next(item for item in spans if item.name == "browserrig.cleanup")
+    hooks = [
+        item
+        for item in spans
+        if item.name == "harnessed.hook"
+        and item.attributes["harnessed.hook.event"].endswith(".Wrap")
+    ]
+    assert readiness.attributes["session.id"] == session_id
+    assert readiness.attributes["browserrig.ready"] is True
+    assert extraction.attributes["session.id"] == session_id
+    assert cleanup.attributes["session.id"] == session_id
+    assert "harnessed.turn_id" not in cleanup.attributes
+    if trace_hooks:
+        assert len(hooks) == 2
+        assert extraction.parent.span_id == hooks[0].context.span_id
+        assert hooks[0].parent.span_id == readiness.context.span_id
+        assert readiness.parent.span_id == hooks[1].context.span_id
+        assert hooks[1].attributes["harnessed.hook.priority"] == 0
+    else:
+        assert hooks == []
+        assert extraction.parent.span_id == readiness.context.span_id
+    with library_span("outside.session"):
+        pass
+    assert all(item.name != "outside.session" for item in exporter.get_finished_spans())
+    assert trace.get_current_span().get_span_context().is_valid is False
+
+
+async def test_concurrent_sessions_keep_library_tracers_and_parent_spans_isolated(telemetry):
+    provider, exporter = telemetry
+    barrier = asyncio.Barrier(2)
+
+    async def respond(request):
+        with library_span("library.model_work"):
+            await barrier.wait()
+            yield ModelChunk(text="done")
+
+    first = Agent(
+        model=CallbackModel(respond), plugins=[OpenTelemetryTracer(tracer_provider=provider)]
+    )
+    second = Agent(
+        model=CallbackModel(respond), plugins=[OpenTelemetryTracer(tracer_provider=provider)]
+    )
+    async with asyncio.timeout(5):
+        results = await asyncio.gather(first.run("first"), second.run("second"))
+    assert [result.text for result in results] == ["done", "done"]
+    spans = exporter.get_finished_spans()
+    work = [item for item in spans if item.name == "library.model_work"]
+    models = {item.context.span_id: item for item in spans if item.name == "harnessed.model"}
+    assert len(work) == 2
+    assert len({item.attributes["session.id"] for item in work}) == 2
+    assert all(
+        item.attributes["session.id"] == models[item.parent.span_id].attributes["session.id"]
+        for item in work
+    )
+    with library_span("after.sessions"):
+        pass
+    assert all(item.name != "after.sessions" for item in exporter.get_finished_spans())
+
+
+async def test_nested_session_cleanup_does_not_inherit_the_parent_turn_identity(telemetry):
+    provider, exporter = telemetry
+
+    class Cleanup(Plugin):
+        @hook(SessionClosing)
+        def closing(self, event: SessionClosing) -> None:
+            with library_span("child.cleanup"):
+                pass
+
+    child = Agent(
+        model=ScriptedModel(["child answer"]),
+        plugins=[Cleanup(), OpenTelemetryTracer(tracer_provider=provider)],
+    )
+
+    class Work(Plugin):
+        @tool(readonly=True)
+        async def delegate(self) -> str:
+            return (await child.run("child question")).text
+
+    result = await Agent(
+        model=ScriptedModel([[ModelChunk(tool_call=ToolCall("delegate"))], "parent answer"]),
+        plugins=[Work(), OpenTelemetryTracer(tracer_provider=provider)],
+    ).run("parent question")
+    spans = exporter.get_finished_spans()
+    cleanup = next(item for item in spans if item.name == "child.cleanup")
+    parent = next(item for item in spans if item.name == "harnessed.tool")
+    assert result.text == "parent answer"
+    assert cleanup.parent.span_id == parent.context.span_id
+    assert cleanup.attributes["session.id"] != parent.attributes["session.id"]
+    assert "harnessed.turn_id" not in cleanup.attributes
+    assert "harnessed.step" not in cleanup.attributes
+
+
+async def test_traced_tools_record_nested_attributes_and_cached_source_metadata(telemetry):
+    provider, exporter = telemetry
+
+    @traced
+    def extract(value: str, *, offset: int = 0) -> int:
+        """Count an observation."""
+        record(elements=len(value))
+        return len(value) + offset
+
+    class Actions(Plugin):
+        @tool(readonly=True)
+        @traced
+        async def capture(self, value: str) -> int:
+            record(operation="capture")
+            await asyncio.sleep(0)
+            with library_span("library.capture.parse"):
+                record(phase="parse")
+            result = extract(value, offset=1)
+            record(finished=True)
+            return result
+
+    result = await Agent(
+        model=ScriptedModel(
+            [[ModelChunk(tool_call=ToolCall("capture", {"value": "private"}))], "done"]
+        ),
+        plugins=[Actions(), OpenTelemetryTracer(tracer_provider=provider)],
+    ).run("go")
+    spans = exporter.get_finished_spans()
+    capture = next(item for item in spans if item.name.endswith(".Actions.capture"))
+    extraction = next(item for item in spans if item.name.endswith(".extract"))
+    block = next(item for item in spans if item.name == "library.capture.parse")
+    tool_span = next(item for item in spans if item.name == "harnessed.tool")
+    assert result.text == "done" and result.tool_calls[0][1].text == "8"
+    assert capture.parent.span_id == tool_span.context.span_id
+    assert extraction.parent.span_id == capture.context.span_id
+    assert block.parent.span_id == capture.context.span_id
+    assert extraction.name == f"{extract.__module__}.{extract.__qualname__}"
+    assert extraction.attributes["code.function.name"] == extraction.name
+    source = inspect.unwrap(extract)
+    assert extraction.attributes["code.file.path"] == inspect.getsourcefile(source)
+    assert extraction.attributes["code.line.number"] == source.__code__.co_firstlineno
+    assert extraction.attributes["harnessed.elements"] == 7
+    assert capture.attributes["harnessed.operation"] == "capture"
+    assert capture.attributes["harnessed.finished"] is True
+    assert block.attributes["harnessed.phase"] == "parse"
+    assert "harnessed.elements" not in capture.attributes
+    assert "harnessed.phase" not in capture.attributes
+    assert "private" not in str([item.attributes for item in spans])
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+async def test_traced_preserves_source_exceptions_and_restores_parent_recording(
+    telemetry, asynchronous
+):
+    provider, exporter = telemetry
+    failure = LookupError("original failure")
+
+    @traced
+    def fail_sync() -> None:
+        record(failing=True)
+        raise failure
+
+    @traced
+    async def fail_async() -> None:
+        await asyncio.sleep(0)
+        record(failing=True)
+        raise failure
+
+    async with Agent(
+        model=ScriptedModel([]), plugins=[OpenTelemetryTracer(tracer_provider=provider)]
+    ).session() as session:
+        with library_span("library.parent", scope=session.scope):
+            with pytest.raises(LookupError) as raised:
+                if asynchronous:
+                    await fail_async()
+                else:
+                    fail_sync()
+            record(recovered=True)
+    spans = exporter.get_finished_spans()
+    failed = next(item for item in spans if item.name.endswith((".fail_sync", ".fail_async")))
+    parent = next(item for item in spans if item.name == "library.parent")
+    assert raised.value is failure
+    assert failed.status.status_code is trace.StatusCode.ERROR
+    assert failed.attributes["harnessed.failing"] is True
+    assert "harnessed.recovered" not in failed.attributes
+    assert parent.attributes["harnessed.recovered"] is True
+    assert parent.status.status_code is not trace.StatusCode.ERROR
+    record(outside=True)
+    assert "harnessed.outside" not in parent.attributes
+
+
+async def test_traced_cancellation_closes_the_span_after_async_cleanup(telemetry):
+    provider, exporter = telemetry
+    entered = asyncio.Event()
+
+    @traced
+    async def wait() -> None:
+        entered.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            record(cleaned_up=True)
+
+    async with asyncio.timeout(5):
+        async with Agent(
+            model=ScriptedModel([]), plugins=[OpenTelemetryTracer(tracer_provider=provider)]
+        ).session() as session:
+            with library_span("library.parent", scope=session.scope):
+                task = asyncio.create_task(wait())
+                await entered.wait()
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+                record(parent_resumed=True)
+    spans = exporter.get_finished_spans()
+    cancelled = next(item for item in spans if item.name.endswith(".wait"))
+    parent = next(item for item in spans if item.name == "library.parent")
+    assert cancelled.parent.span_id == parent.context.span_id
+    assert cancelled.attributes["harnessed.cancelled"] is True
+    assert cancelled.attributes["harnessed.cleaned_up"] is True
+    assert "harnessed.parent_resumed" not in cancelled.attributes
+    assert parent.attributes["harnessed.parent_resumed"] is True
+
+
+async def test_traced_concurrent_calls_keep_recorded_attributes_separate(telemetry):
+    provider, exporter = telemetry
+    barrier = asyncio.Barrier(2)
+
+    @traced
+    async def work(identity: str) -> str:
+        await barrier.wait()
+        record(identity=identity)
+        return identity
+
+    async with asyncio.timeout(5):
+        async with Agent(
+            model=ScriptedModel([]), plugins=[OpenTelemetryTracer(tracer_provider=provider)]
+        ).session() as session:
+            with library_span("library.parent", scope=session.scope):
+                assert await asyncio.gather(work("first"), work("second")) == ["first", "second"]
+                record(parent=True)
+    spans = exporter.get_finished_spans()
+    workers = [item for item in spans if item.name.endswith(".work")]
+    parent = next(item for item in spans if item.name == "library.parent")
+    assert len(workers) == 2
+    assert {item.attributes["harnessed.identity"] for item in workers} == {"first", "second"}
+    assert all(item.parent.span_id == parent.context.span_id for item in workers)
+    assert "harnessed.identity" not in parent.attributes
+    assert parent.attributes["harnessed.parent"] is True
+
+
+async def test_untraced_session_cleanup_cannot_record_on_the_parent_span(telemetry):
+    provider, exporter = telemetry
+
+    class Cleanup(Plugin):
+        @hook(SessionClosing)
+        @traced
+        def closing(self, event: SessionClosing) -> None:
+            record(child_cleanup=True)
+
+    async with Agent(
+        model=ScriptedModel([]), plugins=[OpenTelemetryTracer(tracer_provider=provider)]
+    ).session() as session:
+        with library_span("library.parent", scope=session.scope):
+            result = await Agent(model=ScriptedModel(["done"]), plugins=[Cleanup()]).run("child")
+            record(parent_after=True)
+    spans = exporter.get_finished_spans()
+    assert result.text == "done"
+    assert len(spans) == 1
+    assert spans[0].name == "library.parent"
+    assert spans[0].attributes["harnessed.parent_after"] is True
+    assert "harnessed.child_cleanup" not in spans[0].attributes
+
+
 async def test_content_is_explicit_bounded_and_excludes_opaque_state(telemetry):
     provider, exporter = telemetry
     native = AssistantMessage(
@@ -141,7 +668,7 @@ async def test_content_is_explicit_bounded_and_excludes_opaque_state(telemetry):
     async with Agent(model=ScriptedModel(["answer"]), plugins=[plugin]).session() as session:
         await session.run("secret prompt")
         tracer = session.scope[Tracer]
-        with tracer.span("model", session_id=session.id) as span:
+        with tracer.span("harnessed.model", session_id=session.id) as span:
             span.set_attribute("output", native)
     model_spans = [s for s in exporter.get_finished_spans() if s.name == "harnessed.model"]
     assert json.loads(model_spans[0].attributes["input.value"])[0]["content"] == "secret prompt"
@@ -160,9 +687,10 @@ async def test_content_is_explicit_bounded_and_excludes_opaque_state(telemetry):
         ],
     ).run("long prompt")
     model = [s for s in exporter.get_finished_spans() if s.name == "harnessed.model"][-1]
-    assert len(model.attributes["input.value"]) == 8
+    assert len(model.attributes["input.value"]) <= 8
+    json.loads(model.attributes["input.value"])
     assert model.attributes["harnessed.input.truncated"] is True
-    assert model.attributes["input.mime_type"] == "text/plain"
+    assert model.attributes["input.mime_type"] == "application/json"
 
 
 async def test_content_filter_redacts_model_history_and_tool_fields(telemetry):
@@ -226,7 +754,7 @@ async def test_content_filter_can_mutate_a_detached_copy(telemetry):
     )
     call = ToolCall("work", {"api_key": "secret"})
     async with Agent(model=ScriptedModel([]), plugins=[tracer]).session() as session:
-        with session.scope[Tracer].span("tool", tool="work") as span:
+        with session.scope[Tracer].span("harnessed.tool", tool="work") as span:
             span.set_attribute("input", call)
     assert dict(call.arguments) == {"api_key": "secret"}
     captured = exporter.get_finished_spans()[0]
@@ -287,7 +815,7 @@ async def test_filter_runs_before_serialization_and_truncation(telemetry):
     )
     async with Agent(model=ScriptedModel([]), plugins=[tracer]).session() as session:
         with pytest.raises(RuntimeError, match="secret error"):
-            with session.scope[Tracer].span("tool", tool="work") as span:
+            with session.scope[Tracer].span("harnessed.tool", tool="work") as span:
                 span.set_attribute("input", ToolCall("work", {"api_key": "long secret value"}))
                 raise RuntimeError("secret error beyond the limit")
     assert [item.value for item in seen] == [
@@ -413,7 +941,7 @@ async def test_redacted_exception_text_is_separately_enabled(telemetry, include_
     tracer = OpenTelemetryTracer(tracer_provider=provider, capture_content=capture)
     async with Agent(model=ScriptedModel([]), plugins=[tracer]).session() as session:
         with pytest.raises(RuntimeError, match="Bearer token-xyz"):
-            with session.scope[Tracer].span("tool", tool="billing"):
+            with session.scope[Tracer].span("harnessed.tool", tool="billing"):
                 raise RuntimeError("Authorization: Bearer token-xyz")
     span = exporter.get_finished_spans()[0]
     attributes = span.events[0].attributes
@@ -439,8 +967,10 @@ async def test_redaction_covers_filter_output_and_runs_before_limits(telemetry):
     )
     await Agent(model=ScriptedModel(["answer"]), plugins=[tracer]).run("question")
     model = next(span for span in exporter.get_finished_spans() if span.name == "harnessed.model")
-    assert model.attributes["output.value"] == '{"[redacted]": ["prefix [red'
-    assert model.attributes["output.mime_type"] == "text/plain"
+    assert "secret-token" not in model.attributes["output.value"]
+    assert len(model.attributes["output.value"]) <= 28
+    json.loads(model.attributes["output.value"])
+    assert model.attributes["output.mime_type"] == "application/json"
     assert model.attributes["harnessed.output.truncated"] is True
 
 
@@ -763,6 +1293,14 @@ import harnessed.models
 import harnessed.integrations
 from harnessed import Agent
 from harnessed.core.tracing import NoopTracer
+from harnessed.tracing import current, record, span, traced
+@traced
+def work(value: int) -> int:
+    record(value=value)
+    return value + 1
+assert work(1) == 2
+with span('library.noop'), current().span('library.also_noop'):
+    pass
 assert not any(n.startswith('opentelemetry') for n in sys.modules)
 """
     result = subprocess.run(
@@ -960,4 +1498,5 @@ def test_otlp_example_exports_on_exit(otlp_collector: Collector) -> None:
         "harnessed.step",
         "harnessed.model",
         "harnessed.tool",
+        "__main__.Calculator.add",
     }

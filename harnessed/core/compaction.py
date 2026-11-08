@@ -244,7 +244,10 @@ class CompactionManager:
         # The input request stays a snapshot even if new inbox/context records arrive.
         previous = self.session_log.last(CompactionAppliedEvent)
         with span(
-            self.scope, "compaction", session_id=self.session_log.id, through=plan.through
+            "harnessed.compaction",
+            scope=self.scope,
+            session_id=self.session_log.id,
+            through=plan.through,
         ) as trace:
             try:
                 summary = await summarizer.summarize(

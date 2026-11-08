@@ -27,6 +27,7 @@ def redact(content: TraceContent) -> TraceContent | None:
 
 content_filter: TraceContentFilter = redact
 OpenTelemetryTracer(content_filter=content_filter)
+OpenTelemetryTracer(trace_hooks=True)
 OpenTelemetryTracer(content_filter=lambda content: "invalid")  # ty: ignore[invalid-argument-type]
 
 

@@ -13,13 +13,15 @@ candidates for discussion, not committed APIs or release dates.
 
 ## Hook and library tracing
 
-The repository-root `change.md` proposes automatic, opt-in spans for hook
-handlers, a public `harnessed.tracing` facade, and an ambient session tracer for
-library functions and lifecycle hooks. A neutral Kernel instrumentation boundary
-preserves the standalone Kernel's dependency rules. Optional duration filtering
-belongs to the OTel export pipeline and preserves parents of visible children.
-The proposal includes the developer-facing API, trace interpretation, trade-offs,
-and implementation acceptance criteria; these additions are not implemented yet.
+The public `harnessed.tracing` facade, ambient library tracing and opt-in hook
+invocation spans are implemented; see the [tracing guide](../guides/tracing.md).
+The neutral Kernel instrumentation boundary preserves the standalone Kernel's
+dependency rules. The repository-root `change.md` retains follow-up design for
+automatic hook source-location caching and optional duration filtering in the OTel export
+pipeline, preserving parents of visible children. Those follow-ups remain
+proposals rather than implemented API contracts.
+Library function tracing via `@traced` and `record(...)`, including source
+metadata cached at decoration, is implemented in the public facade.
 
 ## Conversation state follow-ups
 

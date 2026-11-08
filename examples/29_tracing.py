@@ -13,12 +13,16 @@ from harnessed.integrations.opentelemetry import OpenTelemetryTracer, otlp_provi
 from harnessed.models import ModelUsage
 from harnessed.plugins import Approvals
 from harnessed.testing import ScriptedModel, call, reply
+from harnessed.tracing import record, traced
 
 
 class Calculator(Plugin):
     @tool
+    @traced
     async def add(self, a: int, b: int) -> int:
-        return a + b
+        result = a + b
+        record(result=result)
+        return result
 
 
 @asynccontextmanager

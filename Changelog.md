@@ -19,6 +19,15 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   [MCP guide](docs/guides/mcp.md). Multi-round input results fail without retrying
   the approved tool call.
 
+- Tracer span names are used verbatim. Custom tracer integrations should use
+  explicit names such as `harnessed.model` for runtime-equivalent spans and keep
+  library names in their own namespace. Replace internal
+  `span(scope, name, ...)` calls with public `harnessed.tracing.span(name,
+  scope=scope, ...)`; canonical `Tracer` and `Span` identities are unchanged.
+- Truncated trace content now remains valid JSON with `application/json` MIME,
+  rather than a sliced `text/plain` prefix. Inspect the truncation markers and
+  parse the JSON; extremely small budgets may retain only a placeholder.
+
 - Class `Plugin.setup()` and `teardown()` are async methods accepting exactly one
   `scope: PluginScope` parameter, imported from `harnessed.kernel`. The concrete
   view provides resource and registration operations while composition and
@@ -28,6 +37,26 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   `PluginBase`, function plugins and application `session.scope` retain `Scope`.
   See the [activation contract](docs/guides/plugins.md#activation-scope-and-lifecycle-contract)
   and [design rationale](docs/contributing/plugin-scope.md).
+
+### Added
+
+- Add public `@traced` and `record(...)` helpers based on Browserrig's existing
+  sync/async decorator pattern. Function identity and source metadata are cached
+  at decoration; signatures and coroutine kind are preserved. Nested spans,
+  concurrent tasks, errors and cancellation restore the active parent, while
+  untraced sessions cannot record into their parent's span. Arguments and return
+  values are not captured automatically. Use blocks inside generator functions.
+- Capture bounded, filtered/redacted turn input and final/partial output on root
+  spans, including accepted structured output. Capture portable tool definitions,
+  resolved settings and output schemas in independently bounded model fields.
+  Filters receive corresponding new `TraceContentKind` values; account for these
+  copies when omitting sensitive content across all trace fields.
+- Add provider-independent `harnessed.tracing.current()` and `span()`, explicit
+  `Scope`/`PluginScope` selection, isolated ambient bindings and optional
+  `OpenTelemetryTracer(trace_hooks=True)` invocation spans. Kernel instrumentation
+  remains standard-library-only and preserves normal dispatch semantics.
+- Preserve structured trace content when truncating and report original lengths
+  and omitted item counts after filtering and redaction.
 
 ## 0.13.0 (2026-11-07)
 
