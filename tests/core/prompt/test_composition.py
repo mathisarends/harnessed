@@ -1,7 +1,7 @@
 import pytest
 
 from harnessed import Agent, Instructions, Plugin, PromptFormat, SystemPrompt, tool
-from harnessed.kernel import Scope
+from harnessed.kernel import PluginScope
 from harnessed.testing import ScriptedModel
 
 
@@ -199,14 +199,14 @@ async def test_prompt_order_is_independent_of_dependency_setup_order():
         def instructions(self) -> SystemPrompt:
             return SystemPrompt("Consumer first.")
 
-        async def setup(self) -> None:
+        async def setup(self, scope: PluginScope) -> None:
             started.append("consumer")
 
     class Provider(Plugin):
         def instructions(self) -> SystemPrompt:
             return SystemPrompt("Provider second.")
 
-        async def setup(self, scope: Scope) -> None:
+        async def setup(self, scope: PluginScope) -> None:
             scope.provide(Backend, Backend())
             started.append("provider")
 

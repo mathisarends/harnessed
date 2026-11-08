@@ -7,6 +7,7 @@ from harnessed import Agent, ApprovalAnswer, Plugin, ToolCall
 from harnessed.core.model import ModelChunk
 from harnessed.core.tools.decorator import tool
 from harnessed.core.tracing import Tracer
+from harnessed.kernel import PluginScope
 from harnessed.plugins import Approvals, Compaction, every_turns
 from harnessed.testing import ScriptedModel
 
@@ -23,7 +24,7 @@ class Recorder(Plugin, slot="tracer"):
         instance.finished = self.finished
         return instance
 
-    async def setup(self, scope):
+    async def setup(self, scope: PluginScope) -> None:
         scope.provide(Tracer, self)
 
     @contextmanager

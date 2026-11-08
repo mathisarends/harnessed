@@ -4,7 +4,7 @@ import pytest
 
 from harnessed import Agent, Plugin, PluginValidation, ToolContext, tool
 from harnessed.errors import PluginDependencyWarning
-from harnessed.kernel import Inject, InjectMarker, Key
+from harnessed.kernel import Inject, InjectMarker, Key, PluginScope
 from harnessed.plugins import Service
 from harnessed.services import SessionTools, ToolAvailability
 from harnessed.testing import ScriptedModel
@@ -74,7 +74,7 @@ async def test_tool_explanation_tracks_call_and_predicate_services_without_resta
     starts = []
 
     class Dynamic(Plugin):
-        async def setup(self) -> None:
+        async def setup(self, scope: PluginScope) -> None:
             starts.append(self)
 
         def allowed(self, state: Inject[Switch]) -> bool:

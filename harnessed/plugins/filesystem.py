@@ -12,7 +12,7 @@ from pydantic import Field
 from harnessed.core.plugin import Plugin, PluginConfig
 from harnessed.core.prompt.values import Instructions, SystemPrompt
 from harnessed.core.tools import ToolError, ToolRegistry, tool
-from harnessed.kernel import Inject, Scope, run_sync
+from harnessed.kernel import Inject, PluginScope, run_sync
 
 
 @dataclass(frozen=True, slots=True)
@@ -324,7 +324,7 @@ class Filesystem(FilesystemTools[FilesystemConfig], slot="filesystem"):
         super().__init__(config=FilesystemConfig(root=Path(root)))
         self.implementation = implementation
 
-    async def setup(self, scope: Scope) -> None:
+    async def setup(self, scope: PluginScope) -> None:
         implementation = self.implementation
         if implementation is None:
             implementation = await run_sync(partial(LocalFileSystem, self.config.root))

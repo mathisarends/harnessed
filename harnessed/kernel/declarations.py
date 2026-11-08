@@ -236,8 +236,7 @@ class PluginBase:
             }
             if self._provides is not None:
                 scope.provide(self._provides, instance)
-            bound = _lifecycle_arguments(instance.setup, scope)
-            await resolve(instance.setup(*bound.args, **bound.kwargs))
+            await instance._setup(scope)
             try:
                 for event, callback, priority in _hooks(getattr(instance, "hooks", ())):
                     scope.on(event, callback, priority=priority)
@@ -253,8 +252,7 @@ class PluginBase:
                         await resolve(registration.mount(scope, callback))
                 yield instance
             finally:
-                bound = _lifecycle_arguments(instance.teardown, scope)
-                await resolve(instance.teardown(*bound.args, **bound.kwargs))
+                await instance._teardown(scope)
 
         return PluginSpec(
             getattr(self, "name", type(self).__name__),
@@ -266,6 +264,14 @@ class PluginBase:
             () if self._provides is None else (self._provides,),
             tuple(binding.key for binding in dependencies.values() if binding.optional),
         )
+
+    async def _setup(self, scope: Scope) -> None:
+        bound = _lifecycle_arguments(self.setup, scope)
+        await resolve(self.setup(*bound.args, **bound.kwargs))
+
+    async def _teardown(self, scope: Scope) -> None:
+        bound = _lifecycle_arguments(self.teardown, scope)
+        await resolve(self.teardown(*bound.args, **bound.kwargs))
 
 
 def _class_dependencies(cls: type[PluginBase]) -> dict[str, Dependency]:

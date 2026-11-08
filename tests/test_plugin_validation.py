@@ -4,7 +4,7 @@ import pytest
 
 from harnessed import Agent, Plugin, PluginValidation, Session, SessionLog, tool
 from harnessed.errors import ConfigError, PluginDependencyError, PluginDependencyWarning
-from harnessed.kernel import Key, Scope, needs, observes
+from harnessed.kernel import Key, PluginScope, needs, observes
 from harnessed.plugins import Service
 from harnessed.services import SessionContext
 from harnessed.testing import ScriptedModel
@@ -69,7 +69,7 @@ async def test_session_services_and_providers_activated_by_them_settle_before_va
         session = needs(SessionContext)
         log = needs(SessionLog)
 
-        async def setup(self, scope: Scope) -> None:
+        async def setup(self, scope: PluginScope) -> None:
             assert self.session.id == self.log.id
             mounted.append(self.log.id)
             scope.provide(RequiredService, RequiredService())
@@ -90,7 +90,7 @@ async def test_optional_injections_do_not_block_session_start():
     class OptionalFeature(Plugin):
         service = observes(RequiredService)
 
-        async def setup(self) -> None:
+        async def setup(self, scope: PluginScope) -> None:
             mounted.append(self.service)
 
     async with Agent(model=ScriptedModel([]), plugins=[OptionalFeature()]).session() as session:
@@ -130,7 +130,7 @@ async def test_validation_failure_closes_runtime_plugins_and_session_lease():
     class Observer(Plugin, needs=(SessionContext,)):
         session = needs(SessionContext)
 
-        async def setup(self, scope: Scope) -> None:
+        async def setup(self, scope: PluginScope) -> None:
             mounted.append(self.session)
             scope.effect(lambda: closed.append(True))
 

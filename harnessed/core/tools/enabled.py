@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from types import MethodType
 from typing import Any
 
-from harnessed.kernel import Scope, ServiceKey, binding_plan
+from harnessed.kernel import PluginScope, RegistrationState, Scope, ServiceKey, binding_plan
 
 from .context import ToolContext
 
@@ -13,10 +13,10 @@ type ToolEnabled = bool | Callable[..., bool]
 
 @dataclass(frozen=True)
 class BoundToolEnabled:
-    check: Callable[[Scope], bool]
+    check: Callable[[Scope | PluginScope], bool]
     required_services: tuple[ServiceKey[Any], ...] = ()
 
-    def __call__(self, scope: Scope) -> bool:
+    def __call__(self, scope: Scope | PluginScope) -> bool:
         return self.check(scope)
 
 
@@ -34,7 +34,7 @@ def validate_enabled(enabled: ToolEnabled) -> None:
 
 
 def bind_enabled(
-    enabled: ToolEnabled, callback: Callable[..., object], owner: Scope
+    enabled: ToolEnabled, callback: Callable[..., object], owner: Scope | RegistrationState
 ) -> BoundToolEnabled:
     """Bind a condition to the tool's mount, resolving its services for each check."""
     validate_enabled(enabled)
@@ -59,7 +59,7 @@ def bind_enabled(
     if any(dependency.key is ToolContext for dependency in plan.dependencies.values()):
         raise TypeError("Tool enabled predicates cannot depend on per-call ToolContext")
 
-    def check(scope: Scope) -> bool:
+    def check(scope: Scope | PluginScope) -> bool:
         if any(
             not dependency.optional and dependency.key not in scope
             for dependency in plan.dependencies.values()

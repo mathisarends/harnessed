@@ -19,7 +19,7 @@ from harnessed.core.errors import ConfigError
 from harnessed.core.model import Model
 from harnessed.core.plugin import Plugin
 from harnessed.core.tokens import TokenCounter
-from harnessed.kernel import Scope
+from harnessed.kernel import PluginScope
 from harnessed.models import PydanticAIModel
 
 if TYPE_CHECKING:
@@ -99,7 +99,7 @@ class Compaction(Plugin[CompactionConfig], slot="compaction"):
         )
         self.summarizer = summarizer
 
-    async def setup(self, scope: Scope) -> None:
+    async def setup(self, scope: PluginScope) -> None:
         selected = self.summarizer
         if selected is not None and not isinstance(selected, Summarizer):
             backend = selected if isinstance(selected, Model) else PydanticAIModel(selected)

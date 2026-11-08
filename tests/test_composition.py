@@ -18,7 +18,7 @@ from harnessed import (
 )
 from harnessed.errors import PluginConflict
 from harnessed.events import DurableEvent
-from harnessed.kernel import Scope, needs
+from harnessed.kernel import PluginScope, Scope, needs
 from harnessed.models import Model
 from harnessed.plugins import AgentLoop, Filesystem, PromptRenderer, Service, Shell
 from harnessed.services import SessionContext
@@ -89,7 +89,7 @@ async def test_session_service_remains_available_during_dependent_teardown():
 
         needs = (SessionContext,)
 
-        async def teardown(self):
+        async def teardown(self, scope: PluginScope) -> None:
             seen.append(self.session.id)
 
     async with Agent(model=ScriptedModel([]), plugins=[Dependent()]).session() as session:
@@ -114,7 +114,7 @@ async def test_only_survivors_contribute_prompts_events_tools_and_lifetimes(remo
         def context_description(self) -> tuple[str, str]:
             pytest.fail("Discarded context metadata must not be collected")
 
-        async def setup(self) -> None:
+        async def setup(self, scope: PluginScope) -> None:
             pytest.fail("Discarded plugins must not mount")
 
         @tool
@@ -127,7 +127,7 @@ async def test_only_survivors_contribute_prompts_events_tools_and_lifetimes(remo
         def instructions(self) -> SystemPrompt:
             return SystemPrompt(Instructions(text="Use the selected capability."))
 
-        async def setup(self) -> None:
+        async def setup(self, scope: PluginScope) -> None:
             started.append(self)
 
         @tool(readonly=True)
@@ -234,7 +234,7 @@ async def test_resolve_keeps_selected_tools_and_instructions_without_mounting(om
             instructed.append(True)
             return SystemPrompt("Feature instructions.")
 
-        async def setup(self) -> None:
+        async def setup(self, scope: PluginScope) -> None:
             mounted.append(True)
 
         @tool(readonly=True)

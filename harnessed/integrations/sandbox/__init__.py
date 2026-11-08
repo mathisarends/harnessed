@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 from harnessed.core.plugin import Plugin
-from harnessed.kernel import Key, Scope, run_sync
+from harnessed.kernel import Key, PluginScope, run_sync
 from harnessed.plugins.filesystem import FileSystemBackend
 from harnessed.plugins.shell import ShellBackend
 
@@ -65,7 +65,7 @@ class Sandbox(Plugin[SandboxConfig], slot="sandbox"):
         self.backend_factory = backend
         self._services_key = Key[SandboxServices]("sandbox services")
 
-    async def setup(self, scope: Scope) -> None:
+    async def setup(self, scope: PluginScope) -> None:
         backend = self.backend_factory()
         scope.effect(backend.aclose)
         startup = asyncio.create_task(backend.start(self.config))

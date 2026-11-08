@@ -4,7 +4,7 @@ import asyncio
 
 from harnessed import Agent, Plugin, SessionLog, ToolResult, tool
 from harnessed.hooks import Next, ReviewToolResult
-from harnessed.kernel import Inject, hook
+from harnessed.kernel import Inject, PluginScope, hook
 from harnessed.testing import ScriptedModel, call
 
 
@@ -33,7 +33,7 @@ class TemporaryEcho(Plugin):
         """Echo text while this plugin is mounted."""
         return text
 
-    async def teardown(self):
+    async def teardown(self, scope: PluginScope) -> None:
         print("Removed temporary_echo.")
 
 

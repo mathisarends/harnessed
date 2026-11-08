@@ -5,7 +5,16 @@ import pytest
 from pydantic import Field, ValidationError
 
 from harnessed import Agent, ApprovalAnswer, Plugin, PluginConfig, PluginState, tool
-from harnessed.kernel import Emit, Inject, PluginFailed, Priority, Scope, as_plugin_spec, hook
+from harnessed.kernel import (
+    Emit,
+    Inject,
+    PluginFailed,
+    PluginScope,
+    Priority,
+    Scope,
+    as_plugin_spec,
+    hook,
+)
 from harnessed.plugins import Approvals
 from harnessed.testing import ScriptedModel, call
 
@@ -19,7 +28,7 @@ async def test_plugin_mount_does_not_deepcopy_external_clients_or_locks():
             super().__init__()
             self.client = client
 
-        async def setup(self, scope):
+        async def setup(self, scope: PluginScope) -> None:
             self.state = []
             seen.append((self.client, self.state))
 
@@ -69,7 +78,7 @@ async def test_failed_setup_reports_immediately_and_releases_partial_effects(cap
     cleaned, failures = [], []
 
     class Broken(Plugin):
-        async def setup(self, scope):
+        async def setup(self, scope: PluginScope) -> None:
             scope.effect(lambda: cleaned.append("closed"))
             raise ValueError("setup failed")
 

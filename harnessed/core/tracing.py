@@ -2,7 +2,7 @@ from contextlib import AbstractContextManager, nullcontext
 from typing import Any, Protocol
 
 from harnessed.core.plugin import Plugin
-from harnessed.kernel import Scope
+from harnessed.kernel import PluginScope, Scope
 
 
 class Span(Protocol):
@@ -35,5 +35,5 @@ class NoopTracer(Plugin, slot="tracer"):
     def span(self, name: str, **attributes: Any) -> AbstractContextManager[Span]:
         return nullcontext(_NoopSpan())
 
-    async def setup(self, scope: Scope) -> None:
+    async def setup(self, scope: PluginScope) -> None:
         scope.provide(Tracer, self)

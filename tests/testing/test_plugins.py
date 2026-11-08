@@ -10,7 +10,7 @@ from harnessed import (
     tool,
 )
 from harnessed.core.tools import ToolRegistry
-from harnessed.kernel import PluginState, Scope, needs
+from harnessed.kernel import PluginScope, PluginState, Scope, needs
 from harnessed.plugins import Service
 from harnessed.testing import mount_plugin
 
@@ -26,7 +26,7 @@ class Feature(Plugin[FeatureConfig]):
     def instructions(self) -> SystemPrompt:
         return SystemPrompt(Instructions(text="Explicit placement is required only in an agent."))
 
-    async def setup(self, scope: Scope) -> None:
+    async def setup(self, scope: PluginScope) -> None:
         scope.effect(lambda: self.values.append("closed"))
 
     @tool(readonly=True)

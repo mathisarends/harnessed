@@ -5,6 +5,20 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## Unreleased
+
+### Breaking changes
+
+- Class `Plugin.setup()` and `teardown()` are async methods accepting exactly one
+  `scope: PluginScope` parameter, imported from `harnessed.kernel`. The concrete
+  view provides resource and registration operations while composition and
+  closure stay with the framework. Add the parameter to previously parameterless
+  methods. Deferred `Instructions.from_factory` callbacks also receive this view;
+  their existing session/activation ownership is preserved. Standalone kernel
+  `PluginBase`, function plugins and application `session.scope` retain `Scope`.
+  See the [activation contract](docs/guides/plugins.md#activation-scope-and-lifecycle-contract)
+  and [design rationale](docs/contributing/plugin-scope.md).
+
 ## 0.13.0 (2026-11-07)
 
 This minor release makes plugin service bindings explicit, separates run handles

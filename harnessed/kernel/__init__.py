@@ -17,7 +17,7 @@ from .events import (
 from .hooks import HookFactory, ListenerFactory, Next
 from .keys import ServiceKey
 from .plugin import PluginHandle, PluginLike, PluginSpec, PluginStatus, as_plugin_spec, hook, plugin
-from .scope import Key, MissingService, RegistrationState, Scope, ScopeClosed
+from .scope import Key, MissingService, PluginScope, RegistrationState, Scope, ScopeClosed
 from .spec import PluginDependencyIssue
 from .state import PluginState
 
@@ -46,6 +46,7 @@ __all__ = [
     "PluginFailed",
     "PluginHandle",
     "PluginLike",
+    "PluginScope",
     "PluginSpec",
     "PluginState",
     "PluginStatus",

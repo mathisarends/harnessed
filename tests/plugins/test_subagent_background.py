@@ -22,6 +22,7 @@ from harnessed.events import (
 )
 from harnessed.hooks import SessionAppended
 from harnessed.integrations.json import JsonSessionStore
+from harnessed.kernel import PluginScope
 from harnessed.models import ModelChunk
 from harnessed.plugins import Approvals, Subagents
 from harnessed.plugins.subagents import ChildActivity, ChildReportState
@@ -519,7 +520,7 @@ async def test_background_timeout_or_parent_failure_drains_children(ending, noti
     parent_calls = 0
 
     class SlowStartup(Plugin):
-        async def setup(self) -> None:
+        async def setup(self, scope: PluginScope) -> None:
             startup_entered.set()
             try:
                 await asyncio.wait_for(asyncio.Event().wait(), 3)

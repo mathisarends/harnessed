@@ -6,6 +6,12 @@ instance: constructors describe configuration, `setup()` acquires resources, and
 instance; use `mount_plugin()` in plugin tests. Post-construction recipe attribute
 assignments are not replayed into activations.
 
+Class lifecycle methods have one signature: `async def setup(self, scope:
+PluginScope) -> None` and `async def teardown(self, scope: PluginScope) -> None`.
+Import `PluginScope` from `harnessed.kernel`. It is the resource and registration
+view for this activation; the framework owns composition and closure. See the
+[activation contract](#activation-scope-and-lifecycle-contract) below.
+
 An Agent is a resolved plugin list. `model=` supplies `Service(Model, model)`;
 `prompt=` configures the `PromptRenderer` plugin; `instructions=` prepends caller text. The default runtime plugins are
 `AgentLoop`, `ToolOutputLimit`, `Approvals` and `NoopTracer`.
@@ -261,20 +267,142 @@ Async-generator function plugins run setup before `yield` and teardown after it.
 They compose services and hooks. Public tools use `Plugin` methods, as shown in
 the [tool guide](tools.md).
 
+## Activation scope and lifecycle contract
+
+`PluginScope` is a concrete view of an existing kernel owner. Setup and teardown
+receive the same view. It shares that owner's service visibility, event bus and
+cleanup stack; creating it does not create a new container or copy any services.
+`scope` is the conventional parameter name. An async lifecycle method always
+accepts this parameter, even when it only uses `self`.
+
+```python
+from typing import override
+
+from harnessed import Plugin, SessionLog
+from harnessed.kernel import PluginScope, needs
+
+
+class BrowserPlugin(Plugin):
+    log = needs(SessionLog)
+
+    @override
+    async def setup(self, scope: PluginScope) -> None:
+        async def tab_changed(tab: Tab, settled: bool) -> None:
+            await scope.dispatch(TabChanged(tab, settled))
+
+        browser = await scope.enter(
+            ChromeBrowser(
+                self.options,
+                emit=self.log.emit,
+                on_tab_change=tab_changed,
+            )
+        )
+        scope.provide(Browser, browser)
+        scope.provide(BrowserEvents, browser.events)
+```
+
+The browser types and options above belong to the integrating library. This is
+the shape of its setup method, with its constructor and event declarations
+omitted. `ChromeBrowser` supplies an async context manager: `scope.enter()` opens
+it now and owns its eventual exit. Merely constructing the reusable plugin must
+not open the browser. A connection to an external browser can close its own
+connection on exit while a locally launched browser can also stop its process;
+that distinction belongs to the resource's context manager.
+
+The lifecycle contract is:
+
+1. The framework reconstructs a fresh instance and binds `needs`, `observes` and
+   `PluginState` before setup. These bindings remain stable through cleanup.
+2. Setup acquires resources and installs owned services, listeners and integration
+   registrations. The activation can use its own services during setup. Other
+   plugins cannot resolve its services or invoke its listeners until setup and
+   all declared hooks, tools and registrations have succeeded.
+3. Success makes the activation visible. Required dependency loss or replacement
+   suspends it; its next activation gets a fresh instance, bindings, state and view.
+4. Shutdown stops dependent plugins first and hides the stopping activation's
+   registrations from normal callers. Teardown runs only after successful setup,
+   with the activation's state and dependencies still bound.
+5. Owned cleanup runs in reverse acquisition order, including when setup fails,
+   is cancelled, or teardown raises. Every cleanup is attempted; a failing cleanup
+   does not skip the remaining ones. State is released after owned cleanup.
+
+The visibility rule is not an isolation transaction: an external callback or an
+event explicitly dispatched during setup can still reach already active plugins.
+Acquire first and register cleanup immediately; a resource which fails inside
+its own acquisition must unwind that incomplete acquisition itself.
+
+For a Stage-style API returning an undo callback, keep installation explicit:
+
+```python
+async def setup(self, scope: PluginScope) -> None:
+    stop_presenting = self.browser.input.present(Stage())
+    scope.effect(stop_presenting)
+
+    renderer = self.renderer
+    if renderer is not None:
+        view = renderer.create()
+        self.state.view = view
+        scope.effect(view.close)
+        scope.on(LiveEvent, self._render)
+        scope.on(BrowserEvent, self._browser_event)
+        scope.effect(self._stop_activities)
+```
+
+These are library-specific resource APIs, not additional Harnessed operations.
+`present(Stage())` performs installation and returns its undo function;
+`effect()` only retains that function. It does not execute an installer. On
+shutdown the activity task stops before the view closes, and the Stage is removed
+afterward. The same order applies if a later setup operation fails. A library
+which already supplies an async context manager can use `scope.enter()` instead.
+
+`PluginScope` exposes:
+
+| Operation | Contract |
+| --- | --- |
+| `await scope.enter(manager)` | Enter an async resource now and own its exit. |
+| `scope.effect(cleanup)` | Own a sync or async cleanup callback without invoking it now. |
+| `scope.provide(key, value)` | Publish a service when the activation becomes visible. |
+| `scope.on(Event, handler)` / `@scope.on(Event)` | Install an owned, typed listener. |
+| `await scope.dispatch(event, default=...)` | Invoke typed kernel hooks, optionally with a terminal default. |
+| `scope.register(install)` | Install an integration registration with owned visibility and cleanup. |
+| `scope[key]` / `key in scope` | Explicit typed lookup for integration registries and shared caches. |
+| `scope.owner_name` | A diagnostic name for the owner. |
+
+`effect`, `provide`, `register` and direct `on` return an async `Disposer` which
+can release the registration early. Repeated disposal and later owner cleanup
+run its cleanup at most once. Prefer `needs(T)` and `observes(T)` for plugin
+dependencies: an explicit lookup does not declare a lifetime requirement or
+subscribe to provider replacement.
+
+Plugins cannot install other plugins, extend composition, settle dependencies or
+close the owner through this view. Applications and standalone kernel integrations
+keep `Scope`, `session.scope` and function-plugin composition. This is an API
+boundary for ordinary plugin code, not a sandbox for arbitrary Python execution.
+Use `@override` from `typing` to make the inherited lifecycle contract visible and
+let a type checker catch misspelled methods. Generator setup and `@lifecycle` are
+not part of this API.
+
+`scope.dispatch()` delivers kernel hooks. Session `emit()` validates declared
+session events and either records durable events or publishes transient events.
+Declare session event types in `Plugin.events`; publish them through the injected
+`SessionLog` or `SessionContext`. A library's `BrowserEvents` service is a separate
+explicit contract and its implementation determines its relationship to these
+surfaces.
+
 ## Dependencies and provided services
 
 Declare plugin services once with `needs` and `observes` from the public kernel facade:
 
 ```python
 from harnessed import Plugin, SessionLog
-from harnessed.kernel import needs, observes
+from harnessed.kernel import PluginScope, needs, observes
 
 
 class Activity(Plugin, provides=True):
     log = needs(SessionLog)
     label = observes(str)
 
-    async def setup(self) -> None:
+    async def setup(self, scope: PluginScope) -> None:
         self.session_id = self.log.id
 ```
 
@@ -290,7 +418,7 @@ The field expresses one contract: this activation needs the service, and accesse
 that stable binding through the attribute. Do not repeat the key in `needs=(...)`.
 Services are provided explicitly; declaring a field never constructs a provider.
 Declare lifecycle services as fields: `Plugin.setup()` and `teardown()` reject
-`Inject` parameters before activation. They may still accept a `scope: Scope`
+`Inject` parameters before activation. Both accept one `scope: PluginScope`
 parameter to acquire and own resources. Standalone kernel `PluginBase` and function
 plugins retain their general callable injection support.
 

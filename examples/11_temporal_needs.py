@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import dataclass
 
 from harnessed import Plugin, ToolCall, tool
-from harnessed.kernel import Emit, Scope, needs
+from harnessed.kernel import Emit, PluginScope, Scope, needs
 from harnessed.services import SystemPromptStore, ToolRegistry
 
 
@@ -24,7 +24,7 @@ class BrowserTools(Plugin):
     browser = needs(Browser)
     prompt = needs(SystemPromptStore)
 
-    async def setup(self, scope: Scope) -> None:
+    async def setup(self, scope: PluginScope) -> None:
         print(f"Setup with {self.browser.name}")
         self.prompt.fixed(f"Current browser: {self.browser.name}")
         scope.on(PageChanged, lambda event: print(f"Listener with {self.browser.name}"))
@@ -35,7 +35,7 @@ class BrowserTools(Plugin):
         """Read the current page title."""
         return await self.browser.title()
 
-    async def teardown(self):
+    async def teardown(self, scope: PluginScope) -> None:
         print(f"Teardown with {self.browser.name}")
 
 

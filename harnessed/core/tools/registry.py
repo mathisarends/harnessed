@@ -41,6 +41,7 @@ from harnessed.kernel import (
     BindingPlan,
     Disposer,
     PluginBase,
+    PluginScope,
     RegistrationState,
     Scope,
     ServiceKey,
@@ -150,7 +151,7 @@ def format_tool_error(
 class _RegisteredTool:
     definition: ToolDefinition
     callback: Callable
-    owner: Scope
+    owner_name: str
     registration: RegistrationState
     spec: ToolSpec
     timeout_seconds: float | None
@@ -181,13 +182,15 @@ class _Converter:
 
 
 class ToolRegistry:
-    def __init__(self, scope: Scope) -> None:
+    def __init__(self, scope: Scope | PluginScope) -> None:
         self._ctx = scope
         self._tools: dict[str, list[_Tool]] = {}
         self._converters: dict[type, list[_Converter]] = {}
         self._references: list[ToolReference] = []
 
-    def reference(self, selector: ToolSelector, *, owner: Scope) -> str | ToolReference:
+    def reference(
+        self, selector: ToolSelector, *, owner: Scope | PluginScope
+    ) -> str | ToolReference:
         selected = tool_selector(selector)
         if isinstance(selected, ToolReference):
 
@@ -214,7 +217,11 @@ class ToolRegistry:
         return tool is not None and selector.matches(tool.callback)
 
     def result_converter[T](
-        self, kind: type[T], callback: Callable[[T], ToolResult], *, owner: Scope | None = None
+        self,
+        kind: type[T],
+        callback: Callable[[T], ToolResult],
+        *,
+        owner: Scope | PluginScope | None = None,
     ) -> Disposer:
         """Own a converter for a feature's result value for the plugin lifetime."""
         owner = owner if owner is not None else Scope.current() or self._ctx
@@ -260,7 +267,7 @@ class ToolRegistry:
         confirm: bool = False,
         output_limit: OutputLimitSetting = OutputLimit.INHERIT,
         override: bool = False,
-        owner: Scope | None = None,
+        owner: Scope | PluginScope | None = None,
         params: type[BaseModel] | None = None,
         metadata: tuple[object, ...] = (),
         chain: ToolChain = ToolChain.CONTINUE,
@@ -282,7 +289,7 @@ class ToolRegistry:
         confirm: bool = False,
         output_limit: OutputLimitSetting = OutputLimit.INHERIT,
         override: bool = False,
-        owner: Scope | None = None,
+        owner: Scope | PluginScope | None = None,
         params: type[BaseModel] | None = None,
         metadata: tuple[object, ...] = (),
         chain: ToolChain = ToolChain.CONTINUE,
@@ -325,7 +332,7 @@ class ToolRegistry:
         confirm: bool = False,
         output_limit: OutputLimitSetting = OutputLimit.INHERIT,
         override: bool = False,
-        owner: Scope | None = None,
+        owner: Scope | PluginScope | None = None,
         spec: ToolSpec | None = None,
         parameter_fields: Mapping[str, FieldInfo] | None = None,
         params: type[BaseModel] | None = None,
@@ -351,7 +358,6 @@ class ToolRegistry:
         name, parallel = spec.name, spec.parallel
         resources, readonly, override = spec.resources, spec.readonly, spec.override
         owner = owner if owner is not None else Scope.current() or self._ctx
-        check_enabled = bind_enabled(spec.enabled, callback, owner)
         ToolScheduling(parallel)
         resources = resource_spec(resources)
         timeout_seconds = _resolve_timeout_seconds(spec.timeout_seconds, callback)
@@ -359,9 +365,9 @@ class ToolRegistry:
         tool_name = name or getattr(callback, "__name__", type(callback).__name__)
         existing = self._tools.get(tool_name, ())
         if existing and not override:
-            previous = existing[-1].owner
+            previous = existing[-1].owner_name
             raise ToolNameConflict(
-                f"Tool {tool_name!r} is already registered by {previous.owner_name}; "
+                f"Tool {tool_name!r} is already registered by {previous}; "
                 f"{owner.owner_name} must declare override=True"
             )
         arguments = ToolArguments.from_signature(
@@ -379,10 +385,11 @@ class ToolRegistry:
         )
 
         def install(registration: RegistrationState):
+            check_enabled = bind_enabled(spec.enabled, callback, registration)
             entry = _PythonTool(
                 definition,
                 callback,
-                owner,
+                owner.owner_name,
                 registration,
                 spec,
                 timeout_seconds,
@@ -408,7 +415,7 @@ class ToolRegistry:
         definition: ToolDefinition,
         handler: ExternalToolHandler,
         *,
-        owner: Scope,
+        owner: Scope | PluginScope,
         spec: ToolSpec | None = None,
     ) -> Disposer:
         """Own a schema-defined tool on the normal execution and policy pipeline.
@@ -425,16 +432,16 @@ class ToolRegistry:
         timeout_seconds = _TIMEOUT.validate_python(spec.timeout_seconds)
         spec = replace(spec, resources=resource_spec(spec.resources))
         ToolScheduling(spec.parallel)
-        check_enabled = bind_enabled(spec.enabled, handler, owner)
         existing = self._tools.get(definition.name, ())
         if existing and not spec.override:
             raise ToolNameConflict(f"Tool {definition.name!r} is already registered")
 
         def install(registration: RegistrationState) -> Callable[[], None]:
+            check_enabled = bind_enabled(spec.enabled, handler, registration)
             entry = _ExternalTool(
                 definition,
                 handler,
-                owner,
+                owner.owner_name,
                 registration,
                 spec,
                 timeout_seconds,
@@ -457,7 +464,7 @@ class ToolRegistry:
         tool = self._visible(self._tools.get(name, []))
         return tool is not None and tool.spec.readonly
 
-    def explain(self, name: str, *, scope: Scope) -> ToolExplanation:
+    def explain(self, name: str, *, scope: Scope | PluginScope) -> ToolExplanation:
         """Inspect the current binding, including registrations hidden from the model."""
         tool = self._visible(self._tools.get(name, []))
         if tool is None:
@@ -476,10 +483,12 @@ class ToolRegistry:
     def definitions(self) -> tuple[ToolDefinition, ...]:
         return self.visible_definitions(self._ctx)
 
-    def _available(self, tool: _Tool, scope: Scope) -> bool:
+    def _available(self, tool: _Tool, scope: Scope | PluginScope) -> bool:
         return not self._missing_services(tool, scope)
 
-    def _missing_services(self, tool: _Tool, scope: Scope) -> tuple[ServiceKey[Any], ...]:
+    def _missing_services(
+        self, tool: _Tool, scope: Scope | PluginScope
+    ) -> tuple[ServiceKey[Any], ...]:
         required = list(tool.enabled.required_services)
         missing: list[ServiceKey[Any]] = []
         if isinstance(tool, _ExternalTool):
@@ -498,7 +507,7 @@ class ToolRegistry:
         )
         return tuple(dict.fromkeys(missing))
 
-    def visible_definitions(self, scope: Scope) -> tuple[ToolDefinition, ...]:
+    def visible_definitions(self, scope: Scope | PluginScope) -> tuple[ToolDefinition, ...]:
         return tuple(
             tool.definition
             for entries in self._tools.values()
@@ -510,7 +519,9 @@ class ToolRegistry:
     def _visible(self, entries: list[_Tool]) -> _Tool | None:
         return next((tool for tool in reversed(entries) if tool.registration.active), None)
 
-    def check_enabled(self, plan: PreparedToolCall, *, scope: Scope) -> ToolResult | None:
+    def check_enabled(
+        self, plan: PreparedToolCall, *, scope: Scope | PluginScope
+    ) -> ToolResult | None:
         """Reject disabled calls before policy/approval without following a replaced binding."""
         tool = self._visible(self._tools.get(plan.call.name, []))
         if tool is not plan.binding:
@@ -559,7 +570,7 @@ class ToolRegistry:
         self,
         call: ToolCall,
         *,
-        scope: Scope | None = None,
+        scope: Scope | PluginScope | None = None,
         call_context: ToolContext | None = None,
         _expected: object = _UNSPECIFIED,
         error_formatter: ErrorFormatter | None = None,
@@ -591,7 +602,7 @@ class ToolRegistry:
             )
             if call_context is None and needs_context:
                 call_context = scope[ToolContexts].create(call)
-            with tool.owner.activate():
+            with tool.registration.activate():
                 async with ToolExecutionBudget(
                     tool.timeout_seconds if tool.timeout_seconds is not None else default_timeout
                 ):

@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 
 from harnessed import Agent, Plugin, PolicyDecision, Role, ToolCall, tool
 from harnessed.events import ToolCallFinishedEvent
-from harnessed.kernel import Inject
+from harnessed.kernel import Inject, PluginScope
 from harnessed.models import ModelChunk
 from harnessed.plugins import AgentLoop, Approvals, Filesystem
 from harnessed.plugins.filesystem import FileSystemBackend
@@ -18,7 +18,7 @@ async def independent_calls():
     completion_order = []
 
     class LookupsTools(Plugin):
-        async def setup(self):
+        async def setup(self, scope: PluginScope) -> None:
             self.together = asyncio.Barrier(3)
             self.finished = [asyncio.Event() for _ in range(3)]
 

@@ -7,7 +7,7 @@ from harnessed.core.plugin import Plugin
 from harnessed.core.prompt.system_prompt import SystemPromptStore
 from harnessed.core.tokens import CalibratedTokenCounter, TokenCounter
 from harnessed.core.tools import ToolRegistry
-from harnessed.kernel import Scope
+from harnessed.kernel import PluginScope
 
 
 class RuntimeServices(Plugin):
@@ -18,7 +18,7 @@ class RuntimeServices(Plugin):
     default token counter calibrates itself against reported input tokens.
     """
 
-    async def setup(self, scope: Scope) -> None:
+    async def setup(self, scope: PluginScope) -> None:
         counter = CalibratedTokenCounter()
         scope.provide(ApprovalsConfig, ApprovalsConfig())
         scope.provide(ToolRegistry, ToolRegistry(scope))

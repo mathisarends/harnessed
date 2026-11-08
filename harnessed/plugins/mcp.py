@@ -3,7 +3,7 @@ import json
 import logging
 import re
 import warnings
-from collections.abc import AsyncGenerator, Coroutine, Iterable, Mapping
+from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine, Iterable, Mapping
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 from hashlib import sha256
@@ -56,8 +56,8 @@ from harnessed.core.tools import (
     ToolRegistry,
     ToolSpec,
 )
-from harnessed.core.tools.enabled import ToolEnabled, bind_enabled
-from harnessed.kernel import Scope
+from harnessed.core.tools.enabled import BoundToolEnabled, ToolEnabled, bind_enabled
+from harnessed.kernel import PluginScope, RegistrationState
 
 logger = logging.getLogger(__name__)
 
@@ -336,6 +336,8 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
     readonly status; configure trusted tools explicitly with readonly_tools.
     """
 
+    _check_enabled: BoundToolEnabled
+
     def __init__(
         self,
         name: str,
@@ -431,9 +433,14 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
             enabled=enabled,
         )
 
-    async def setup(self, scope: Scope) -> None:
+    async def setup(self, scope: PluginScope) -> None:
         connection = _Connection(self.transport, self.config.server_name)
-        scope.effect(connection.aclose)
+
+        def install(registration: RegistrationState) -> Callable[[], Awaitable[None]]:
+            self._check_enabled = bind_enabled(self.enabled, self.setup, registration)
+            return connection.aclose
+
+        scope.register(install)
         async with asyncio.timeout(self.config.startup_timeout):
             client = await connection.start()
             catalog: dict[str, Tool] = {}
@@ -456,7 +463,6 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
         if missing := requested - catalog.keys():
             raise ValueError(f"MCP server omitted configured tools: {sorted(missing)}")
         registry = scope[ToolRegistry]
-        check_enabled = bind_enabled(self.enabled, self.setup, scope)
         for name, tool in catalog.items():
             if selected is not None and name not in selected:
                 continue
@@ -479,7 +485,7 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
                     timeout_seconds=self.config.call_timeout,
                     parallel=self.config.parallel,
                     readonly=name in self.config.readonly_tools,
-                    enabled=lambda: connection.active and check_enabled(scope),
+                    enabled=lambda: connection.active and self._check_enabled(scope),
                     presentation=_presentation(tool),
                 ),
             )

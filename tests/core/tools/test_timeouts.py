@@ -5,7 +5,7 @@ from pydantic import ValidationError
 
 from harnessed import Plugin, ToolCall, ToolStatus, tool
 from harnessed.core.tools.registry import ToolRegistry
-from harnessed.kernel import Scope, needs
+from harnessed.kernel import PluginScope, Scope, needs
 
 
 async def test_timeout_resolves_after_setup_once_per_activation() -> None:
@@ -18,7 +18,7 @@ async def test_timeout_resolves_after_setup_once_per_activation() -> None:
             super().__init__()
             self.seconds = 60.0
 
-        async def setup(self, scope: Scope) -> None:
+        async def setup(self, scope: PluginScope) -> None:
             self.seconds = self.configured_seconds
 
         def _timeout(self) -> float:

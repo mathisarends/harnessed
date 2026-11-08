@@ -4,7 +4,7 @@ from pydantic import Field
 
 from harnessed import Plugin, PluginConfig, ToolContext, tool
 from harnessed.hooks import PrepareRequest, ReviewToolResult
-from harnessed.kernel import Inject, hook, needs
+from harnessed.kernel import Inject, PluginScope, hook, needs
 from harnessed.models import UserMessage
 from harnessed.plugins.filesystem import FileSystemBackend
 
@@ -30,7 +30,7 @@ class FailureNudge(Plugin[FailureNudgeConfig]):
     def __init__(self, threshold: int = 2):
         super().__init__(config=FailureNudgeConfig(threshold=threshold))
 
-    async def setup(self):
+    async def setup(self, scope: PluginScope) -> None:
         self.failures = 0
 
     @hook(ReviewToolResult)

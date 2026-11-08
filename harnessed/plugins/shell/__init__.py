@@ -15,7 +15,7 @@ from harnessed.core.prompt.values import Instructions, SystemPrompt
 from harnessed.core.runtime.inbox import SessionInbox
 from harnessed.core.tools.decorator import tool
 from harnessed.core.tools.registry import ToolError, ToolRegistry
-from harnessed.kernel import Inject, Scope
+from harnessed.kernel import Inject, PluginScope
 
 from .background import BackgroundCommands, command_result
 from .background import CommandInfo as CommandInfo
@@ -64,7 +64,7 @@ class ShellTools[ConfigT: ShellToolsConfig](Plugin[ConfigT], needs=(ShellBackend
             config=ShellToolsConfig(cwd=Path(cwd), timeout=timeout, max_timeout=max_timeout)
         )
 
-    async def setup(self, scope: Scope) -> None:
+    async def setup(self, scope: PluginScope) -> None:
         self.cwd = self.config.cwd
         scope[ToolRegistry].result_converter(ProcResult, proc_result, owner=scope)
 
@@ -128,7 +128,7 @@ class Shell(ShellTools[ShellConfig], slot="shell"):
     def instructions(self) -> SystemPrompt:
         return SystemPrompt(_SHELL_INSTRUCTIONS)
 
-    async def setup(self, scope: Scope) -> None:
+    async def setup(self, scope: PluginScope) -> None:
         await super().setup(scope)
         backend = self.implementation
         if backend is None:
@@ -181,7 +181,7 @@ class BackgroundShell(
     def instructions(self) -> SystemPrompt:
         return SystemPrompt(_BACKGROUNDSHELL_INSTRUCTIONS)
 
-    async def setup(self, scope: Scope) -> None:
+    async def setup(self, scope: PluginScope) -> None:
         self.cwd = self.config.cwd
         self._commands = BackgroundCommands(self.config.max_background_commands)
         scope.effect(self._commands.close)
