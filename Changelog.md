@@ -5,9 +5,21 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
-## Unreleased
+## 0.14.0 (unreleased)
+
+This minor release introduces a restricted plugin activation scope, upgrades the
+optional MCP integration, and adds public library and hook tracing. It includes
+breaking API changes from 0.13.0. Persistence versions are unchanged: conversation
+state is format **2**, checkpoints and JSON stores are format **3**, and standalone
+audit envelopes are version **5**.
 
 ### Breaking changes
+
+- Rename the tool execution deadline keyword `timeout` to `timeout_seconds` on
+  `@tool`, `ToolRegistry.tool()`, `ToolRegistry.register()` and `ToolSpec`.
+  A finite positive number overrides `AgentLoop(tool_timeout=...)`; omission or
+  `None` inherits it. Shell command `timeout` and approval response `timeout`
+  keep their existing names.
 
 - The optional MCP integration now requires MCP SDK 2.3+ and FastMCP 4.1.2+.
   Replace custom `httpx.Auth` handlers with `httpx2.Auth`; custom transports must
@@ -40,6 +52,10 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 
 ### Added
 
+- Tool `timeout_seconds` also accepts a synchronous resolver receiving the mounted
+  plugin. It runs once per activation after setup and captures the validated
+  deadline for that registration. Returning `None` inherits the loop default;
+  reactivation resolves it again. External tools retain numeric deadlines.
 - Add public `@traced` and `record(...)` helpers based on Browserrig's existing
   sync/async decorator pattern. Function identity and source metadata are cached
   at decoration; signatures and coroutine kind are preserved. Nested spans,
@@ -57,6 +73,26 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   remains standard-library-only and preserves normal dispatch semantics.
 - Preserve structured trace content when truncating and report original lengths
   and omitted item counts after filtering and redaction.
+
+### Upgrade from 0.13.0
+
+1. Add `scope: PluginScope` to higher-level async plugin `setup()` and `teardown()`
+   methods and update deferred instruction factory annotations. Import the view
+   from `harnessed.kernel`; keep full `Scope` for standalone kernel plugins and
+   application composition. See the [plugin lifecycle guide](docs/guides/plugins.md#activation-scope-and-lifecycle-contract).
+2. Replace tool declaration and registry `timeout=` keywords with
+   `timeout_seconds=`. Keep `AgentLoop(tool_timeout=...)`, shell command timeouts
+   and approval response timeouts unchanged. See [tool deadlines](docs/guides/tools.md#cancellation-and-parallel-work).
+3. Upgrade the `mcp` extra together with custom authentication and transports:
+   use `httpx2.Auth`, forward `transport_options`, return
+   `AuthorizationCodeResult` from custom OAuth callbacks, and bind machine
+   credentials to `issuer=`. See the [MCP migration guide](docs/guides/mcp.md).
+4. Import library instrumentation from `harnessed.tracing`. Supply span names
+   verbatim and use `span(name, scope=...)` for explicit scope selection. Update
+   content filters for the new turn input/output and model definition/settings
+   kinds; parse truncated content as JSON. See the [tracing guide](docs/guides/tracing.md).
+5. Existing 0.13.0 snapshots, checkpoints, JSON stores and audit envelopes retain
+   their format versions; no persistence migration is required for this release.
 
 ## 0.13.0 (2026-11-07)
 

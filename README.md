@@ -168,6 +168,11 @@ Plugin instructions follow the selected plugins, and `agent.describe()` shows th
 Tools, approvals, output limits, compaction and tracing all compose through
 plugins. See [plugin composition](https://github.com/mathisarends/harnessed/blob/main/docs/guides/plugins.md) for nested-pack precedence and lifecycle rules.
 
+Instrument application and library functions with `@traced`, `span()` and
+`record()` from `harnessed.tracing`. The optional OpenTelemetry integration exports
+these spans alongside agent activity and can trace hook invocations. See the
+[tracing guide](docs/guides/tracing.md) for setup and content controls.
+
 Use `Subagents` from `harnessed.plugins` to delegate explicit tasks to configured
 specialists in isolated child sessions. It supports both `delegate` until
 completion and background tasks with `spawn`, `status`, `send`, `wait` and `cancel`.
