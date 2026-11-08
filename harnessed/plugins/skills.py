@@ -5,9 +5,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 from typing import Annotated, Any, Protocol
+from unicodedata import normalize
 from xml.sax.saxutils import escape, quoteattr
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
@@ -35,8 +37,26 @@ from harnessed.core.session.session import SessionLog
 from harnessed.core.tools import ToolError, tool
 from harnessed.kernel import Key, Next, PluginScope, hook, needs
 
+
+def _skill_name(value: str) -> str:
+    name = normalize("NFKC", value.strip())
+    if (
+        not 1 <= len(name) <= 64
+        or name != name.lower()
+        or name.startswith("-")
+        or name.endswith("-")
+        or "--" in name
+        or not all(character.isalnum() or character == "-" for character in name)
+    ):
+        raise ValueError(
+            "Skill names must contain 1-64 lowercase alphanumeric characters with single "
+            "hyphens between groups"
+        )
+    return name
+
+
 type SkillName = Annotated[
-    str, StringConstraints(pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$", max_length=64)
+    str, AfterValidator(_skill_name), StringConstraints(min_length=1, max_length=64)
 ]
 type Description = Annotated[str, StringConstraints(min_length=1, max_length=1024)]
 
@@ -117,6 +137,10 @@ def _metadata(text: str) -> dict:
     yaml = _yaml()
 
     class UniqueLoader(yaml.SafeLoader):
+        # Skill frontmatter scalars are strings, including names such as `on` and `123`.
+        # Keep this local so ordinary SafeLoader users retain their YAML type resolution.
+        yaml_implicit_resolvers = {}
+
         def construct_mapping(self, node, deep=False):
             self.flatten_mapping(node)
             result = {}
@@ -183,7 +207,7 @@ def _read(root: Path, *, body: bool = False) -> tuple[SkillInfo, str | None]:
                 if field in data and not isinstance(data[field], str):
                     raise ValueError(f"{field} must be a string")
             info = SkillInfo(name=name, description=description, metadata=data)
-            if info.name != root.name:
+            if info.name != normalize("NFKC", root.name):
                 raise ValueError("Skill name must match its directory name")
             return info, stream.read() if body else None
     except Exception as error:
