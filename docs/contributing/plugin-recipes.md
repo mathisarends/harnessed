@@ -109,7 +109,7 @@ This is an intentional breaking change: `dependency(T)` becomes `needs(T)`,
 `dependency(T, optional=True)` becomes `observes(T)`, lifecycle service parameters
 become fields, and implicit tool contexts gain an `Inject` marker. Compatibility
 aliases would preserve competing forms, so the current API has one spelling per
-contract. See the [migration notes](../releases.md#breaking-change-plugin-service-contracts-and-explicit-tool-injection).
+contract. See the [0.13.0 migration notes](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0120).
 
 ## Recipe and activation ownership
 

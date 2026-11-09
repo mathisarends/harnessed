@@ -8,12 +8,9 @@ Harnessed 0.x is alpha software. Read the
 [release notes and compatibility policy](releases.md) before depending on its
 public APIs or persisted session formats.
 
-Upgrading from 0.11.0? See the [0.12.0 upgrade guide](releases.md#upgrade-from-0110)
-for the additive context API and parent-owned subagents.
-Applications on 0.10.0 should also read the
-[0.11.0 persistence guide](releases.md#upgrade-from-0100).
-Applications on 0.9.0 should also follow the
-[0.10.0 prompt migration](releases.md#upgrade-from-090).
+See [0.15.0 (unreleased)](releases.md#0150-unreleased) for declarative registrations,
+phased output contracts and skill parsing fixes. Earlier upgrade checklists are
+linked from the [release overview](releases.md#earlier-releases).
 
 | I want to... | Read |
 | --- | --- |
@@ -26,9 +23,10 @@ Applications on 0.9.0 should also follow the
 | Replace defaults or share services | [Plugins](guides/plugins.md) |
 | Connect MCP server tools | [MCP tools](guides/mcp.md) |
 | Delegate tasks to specialist agents | [Subagents](guides/subagents.md) |
-| Provide instructions, facts or memories | [Scope](guides/context.md) |
+| Provide instructions, facts or memories | [Context](guides/context.md) |
 | Load task instructions and resources on demand | [Skills](guides/skills.md) |
 | Bound or spill large tool results | [Output](guides/output.md) |
+| Summarize context within token budgets | [Compaction](guides/compaction.md) |
 | Continue conversations and control live work | [Sessions](guides/sessions.md) |
 | Approve side effects without a UI | [Approvals](guides/approvals.md) |
 | Test without network calls | [Testing](guides/testing.md) |

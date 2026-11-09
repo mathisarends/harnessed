@@ -5,6 +5,51 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## 0.15.0 (unreleased)
+
+This release adds declarative method registrations and scoped output decisions,
+and fixes skill parsing. No API or persistence migration is required from 0.14.0.
+Conversation state remains format **2**, checkpoints and JSON stores format **3**,
+and standalone audit envelopes version **5**.
+
+### Added
+
+- Export `registration(recipe)` from `harnessed.kernel` for third-party method
+  declarations. It attaches a `Registration` without wrapping the callable or
+  changing its signature, composes with `@tool` and `@hook` in either order, and
+  copies declaration metadata when extending wrappers. Dependencies are collected
+  before activation; each mount receives the newly bound method and owns resources
+  through its supplied scope. See [third-party declarations](docs/guides/plugins.md#third-party-method-declarations).
+- Export `PrepareOutput` and `OutputDecision` from `harnessed.hooks` for phased
+  completion. Session-scoped hooks run after `PrepareRequest` and before output
+  preparation and token checks. `DEFER` withholds native JSON constraints and the
+  reserved `final_answer` tool; validation follows the effective request schema
+  without consuming correction attempts for progress text. Compose with `next_()`
+  to enforce the declared contract at completion. The turn retains its declared
+  output identity for restoration; final-summary steps remain unstructured. See
+  [structured output](docs/guides/structured-output.md#apply-the-contract-only-after-work-finishes).
+
+### Fixed
+
+- Skill names now accept lowercase Unicode alphanumeric characters and single
+  hyphens, trim surrounding whitespace and normalize with NFKC. Directory matching
+  uses the same normalization.
+- Unquoted YAML frontmatter scalars retain their literal string values, including
+  numeric names, boolean-like descriptions and metadata versions. The isolated
+  loader still rejects duplicate keys and unsafe tags.
+
+### Documentation
+
+- Shorten the README and contributor entry point, replace duplicated release
+  history with links to this changelog, and update the documentation index.
+
+### Upgrade from 0.14.0
+
+Existing applications require no changes. Third-party decorators can replace
+private declaration metadata writes with `registration(recipe)`. Output policies
+default to `ENFORCE`; when opting into `DEFER`, keep continuation and completion
+rules in the owning plugin. Existing persisted data needs no migration.
+
 ## 0.14.0 (2026-11-08)
 
 This minor release introduces a restricted plugin activation scope, upgrades the
@@ -394,7 +439,7 @@ audit envelopes remain version **3**. No storage migration is required.
 
 See [context](docs/guides/context.md#add-context-without-running-the-agent),
 [subagents](docs/guides/subagents.md) and the
-[release notes](docs/releases.md#upgrade-from-0110).
+[subagent guide](docs/guides/subagents.md).
 Run `uv run python -m examples.41_subagents` and
 `uv run python -m examples.42_background_subagents` for offline delegation examples.
 

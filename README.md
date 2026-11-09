@@ -70,206 +70,56 @@ Select a model with a `provider:model` string, such as
 `Agent(model="openai-responses:gpt-6.1-terra")` (`OPENAI_API_KEY`). Harnessed
 configures the PydanticAI adapter automatically. Use an explicit model object
 when you need generation defaults or native provider configuration; see
-[model configuration](docs/guides/models.md#choose-a-model).
+[model configuration](https://github.com/mathisarends/harnessed/blob/main/docs/guides/models.md#choose-a-model).
 
-## Stream typed events
+## Keep a conversation open
 
-Using the agent above, handle the events your application needs with ordinary
-Python class patterns:
+Use one session for shared history and typed streaming events:
 
 ```python
-from harnessed.events import (
-    TextDeltaEvent,
-    ToolCallFinishedEvent,
-    ToolCallRequestedEvent,
-    ToolProgressEvent,
-    TurnResultEvent,
-)
+from harnessed.events import TextDeltaEvent
 
 
 async def conversation() -> None:
     async with agent.session() as session:
         async with session.stream("What is 19 + 23?") as run:
             async for event in run:
-                match event:
-                    case TextDeltaEvent(text=text):
-                        print(text, end="", flush=True)
-                    case ToolCallRequestedEvent(call=call):
-                        print(f"\nCalling {call.name}")
-                    case ToolProgressEvent(text=text):
-                        print(f"\n{text}")
-                    case ToolCallFinishedEvent(call=call, result=result):
-                        print(f"\n{call.name}: {result.status}")
-                    case TurnResultEvent(result=result):
-                        print(f"\nFinished: {result.stop_reason}")
+                if isinstance(event, TextDeltaEvent):
+                    print(event.text, end="", flush=True)
+            result = await run.result()
 
         follow_up = await session.run("Add 8 to that result.")
         print(follow_up.text)
 ```
 
-Events are immutable typed values with stable tags such as `text.delta` and
-`tool.call.finished`. The stream includes:
+Sessions own live plugin resources and conversation state. Export `result.state`
+for application-owned persistence, or configure a session store to save automatically.
+See [sessions](https://github.com/mathisarends/harnessed/blob/main/docs/guides/sessions.md)
+and [streaming](https://github.com/mathisarends/harnessed/blob/main/docs/guides/streaming.md)
+for restoration, cancellation and approvals.
 
-| Activity | Events |
+## Explore the SDK
+
+| Task | Guide |
 | --- | --- |
-| Generated text and reasoning | `TextDeltaEvent`, `ReasoningDeltaEvent` |
-| Tool call previews | `ToolCallGenerationStartedEvent`, `ToolArgumentsDeltaEvent` |
-| Tool calls and progress | `ToolCallRequestedEvent`, `ToolProgressEvent`, `ToolCallFinishedEvent` |
-| Approval questions | `ApprovalNeededEvent` |
-| Model requests and retries | `ModelRequestedEvent`, `ModelRequestFailedEvent`, `ModelRetryScheduledEvent` |
-| Scope compaction | `CompactionStartedEvent`, `CompactionAppliedEvent`, `CompactionFinishedEvent` |
-| Large tool-output artifacts | `SpillCreatedEvent`, `SpillExpiredEvent` |
-| Session status and turn result | `SessionStatusChangedEvent`, `TurnResultEvent` |
+| Configure providers and generation settings | [Models](https://github.com/mathisarends/harnessed/blob/main/docs/guides/models.md) |
+| Compose packs, inject services or mount temporary tools | [Plugins](https://github.com/mathisarends/harnessed/blob/main/docs/guides/plugins.md) |
+| Define tools, deadlines and policies | [Tools](https://github.com/mathisarends/harnessed/blob/main/docs/guides/tools.md) |
+| Validate typed answers | [Structured output](https://github.com/mathisarends/harnessed/blob/main/docs/guides/structured-output.md) |
+| Test without credentials | [Testing](https://github.com/mathisarends/harnessed/blob/main/docs/guides/testing.md) |
+| Connect MCP, subagents, sandboxes or tracing | [Documentation index](https://github.com/mathisarends/harnessed/blob/main/docs/index.md) |
 
-`ToolCallFinishedEvent` carries the final tool result, including denied or
-interrupted calls. `TurnResultEvent` carries the assembled run result on normal
-stream completion. Plugins can also hook audit events such as `StepEndedEvent`
-and `TurnEndedEvent`, or declare their own event types.
-See the [event reference](https://github.com/mathisarends/harnessed/blob/main/docs/reference/events.md) for all events and delivery surfaces,
-and [streaming](https://github.com/mathisarends/harnessed/blob/main/docs/guides/streaming.md) for approval handling and stream cleanup.
+The [SDK reference](https://github.com/mathisarends/harnessed/blob/main/docs/reference/sdk.md)
+covers the public API; [executable examples](https://github.com/mathisarends/harnessed/blob/main/docs/guides/examples.md)
+show complete offline compositions. The standalone `harnessed.kernel` uses only
+the standard library.
 
-## Compose capabilities with PluginPack
-
-Bundle library defaults, nest packs, and replace individual policies at the
-application boundary:
-
-```python
-from harnessed import Agent, PluginPack
-from harnessed.plugins import AgentLoop, Compaction, Filesystem, Shell
-
-
-def workspace_pack(root: str) -> PluginPack:
-    return PluginPack(
-        "workspace",
-        [
-            Filesystem(root),
-            Shell(root),
-            AgentLoop(max_steps=30),
-            Compaction(keep_steps=4),
-        ],
-    )
-
-
-workspace = workspace_pack(".").without(Shell)
-agent = Agent(
-    model="deepseek:deepseek-chat",
-    plugins=[workspace, AgentLoop(max_steps=10)],
-    instructions="Help the user understand this codebase. Cite file paths in your answer.",
-)
-
-print(agent.describe())
-```
-
-`without(Shell)` removes that capability from the pack. The direct `AgentLoop`
-replaces the pack's loop through its `loop` slot; custom plugins can declare slots
-with `class MyPolicy(Plugin, slot="my.policy")`. Unslotted plugins are additive.
-Plugin instructions follow the selected plugins, and `agent.describe()` shows their origins, replacements and exclusions before any session starts.
-
-Tools, approvals, output limits, compaction and tracing all compose through
-plugins. See [plugin composition](https://github.com/mathisarends/harnessed/blob/main/docs/guides/plugins.md) for nested-pack precedence and lifecycle rules.
-
-Instrument application and library functions with `@traced`, `span()` and
-`record()` from `harnessed.tracing`. The optional OpenTelemetry integration exports
-these spans alongside agent activity and can trace hook invocations. See the
-[tracing guide](docs/guides/tracing.md) for setup and content controls.
-
-Use `Subagents` from `harnessed.plugins` to delegate explicit tasks to configured
-specialists in isolated child sessions. It supports both `delegate` until
-completion and background tasks with `spawn`, `status`, `send`, `wait` and `cancel`.
-The parent owns child cleanup and routes approvals. See
-[subagents](docs/guides/subagents.md) for configuration, limits and recovery.
-
-## Inject services into tools
-
-Separate a backend from the capabilities that use it. `Service` publishes an
-implementation; `Inject[T]` supplies it without exposing it as a model argument:
-
-```python
-from pathlib import PurePath
-
-from harnessed import Agent, Plugin, ToolContext, tool
-from harnessed.kernel import Inject
-from harnessed.plugins import Service
-from harnessed.plugins.filesystem import FileSystemBackend, LocalFileSystem
-
-
-class ProjectDocs(Plugin, needs=(FileSystemBackend,)):
-    @tool(readonly=True)
-    async def read_document(
-        self, path: str, *, files: Inject[FileSystemBackend], ctx: Inject[ToolContext]
-    ) -> str:
-        """Read up to 4,000 characters from a workspace document."""
-        await ctx.progress(f"Reading {path}")
-        return await files.read(PurePath(path), limit=4_000)
-
-
-agent = Agent(
-    model="deepseek:deepseek-chat",
-    plugins=[Service(FileSystemBackend, LocalFileSystem(".")), ProjectDocs()],
-)
-```
-
-The model supplies only `path`. `ToolContext` provides per-call progress and
-cancellation; `needs=(FileSystemBackend,)` ties the plugin's lifetime to that
-service. Removing the provider suspends its dependent tools; restoring it creates
-a fresh activation. Backends implement ordinary Python protocols, so the same
-tools can use a local, remote or sandboxed implementation.
-
-## Add capabilities for part of a session
-
-Using `Calculator` from the first example, mount its tools, instructions and hooks
-for a bounded scope:
-
-```python
-from harnessed import Agent, SectionDelivery
-
-
-async def temporary_tools() -> None:
-    agent = Agent(model="deepseek:deepseek-chat")
-    async with agent.session() as session:
-        async with session.use(Calculator(), section_delivery=SectionDelivery.CONTEXT):
-            result = await session.run("What is 19 + 23?")
-            print(result.text)
-```
-
-Leaving the inner scope removes the tool, hook and mount-owned guidance.
-`SectionDelivery.CONTEXT` delivers late instructions as active context; the
-session's system prompt stays fixed. Each activation has its own lifetime and
-can keep mutable data in `PluginState`.
-
-Sessions also expose message history, steering, pause/resume and immutable
-`SessionState` snapshots. Opt into automatic persistence with
-`Agent(store=JsonSessionStore(root=...))`, importing the JSON store from
-`harnessed.integrations.json`, or implement `SessionStore` in your conversation
-repository. Stored conversations reopen with `agent.session(id=...)`; the default
-remains in memory. See
-[sessions](https://github.com/mathisarends/harnessed/blob/main/docs/guides/sessions.md) and
-[context](https://github.com/mathisarends/harnessed/blob/main/docs/guides/context.md) for those controls.
-
-## Read by topic
-
-Start with the [documentation index](https://github.com/mathisarends/harnessed/blob/main/docs/index.md) or the
-[SDK reference](https://github.com/mathisarends/harnessed/blob/main/docs/reference/sdk.md).
-
-- [Models and provider settings](https://github.com/mathisarends/harnessed/blob/main/docs/guides/models.md)
-- [Tools, hooks and cancellation](https://github.com/mathisarends/harnessed/blob/main/docs/guides/tools.md)
-- [Plugin composition and lifecycle](https://github.com/mathisarends/harnessed/blob/main/docs/guides/plugins.md)
-- [MCP server tools over stdio and HTTP](https://github.com/mathisarends/harnessed/blob/main/docs/guides/mcp.md)
-- [Docker and Bubblewrap sandboxes](https://github.com/mathisarends/harnessed/blob/main/docs/guides/sandboxes.md)
-- [Instructions and changing context](https://github.com/mathisarends/harnessed/blob/main/docs/guides/context.md)
-- [Sessions, controls and application-owned state](https://github.com/mathisarends/harnessed/blob/main/docs/guides/sessions.md)
-- [Typed events and custom extensions](https://github.com/mathisarends/harnessed/blob/main/docs/guides/events.md)
-- [Approvals and headless operation](https://github.com/mathisarends/harnessed/blob/main/docs/guides/approvals.md)
-- [Offline testing](https://github.com/mathisarends/harnessed/blob/main/docs/guides/testing.md)
-- [OpenTelemetry tracing with Phoenix and Langfuse](https://github.com/mathisarends/harnessed/blob/main/docs/guides/tracing.md)
-- [Executable examples](https://github.com/mathisarends/harnessed/blob/main/docs/guides/examples.md)
-- [Development and CI](https://github.com/mathisarends/harnessed/blob/main/docs/contributing/development.md)
-- [Changelog and breaking changes](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
-
-The standalone `harnessed.kernel` uses only the standard library. Optional
-features live under `harnessed.plugins`; providers live under `harnessed.models`.
+Harnessed 0.x is alpha software. Read the
+[compatibility policy](https://github.com/mathisarends/harnessed/blob/main/docs/releases.md)
+and [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
+before upgrading. For contributions and release checks, see
+[development](https://github.com/mathisarends/harnessed/blob/main/docs/contributing/development.md).
 
 Inspired by [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
 and [Cordis](https://github.com/cordiverse/cordis).
-
 Released under the [MIT License](https://github.com/mathisarends/harnessed/blob/main/LICENSE).

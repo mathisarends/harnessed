@@ -90,9 +90,10 @@ GitHub releases and PyPI; do not reuse an already published version.
 
 Set the package version in `pyproject.toml` and run `uv lock` to synchronize the
 project version in `uv.lock` without upgrading dependencies. Update both the
-[release notes](../releases.md) and the repository
-[changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md),
-including breaking changes and upgrade instructions, then run the checks above
+[release overview](../releases.md) and the repository
+[changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md).
+Keep the overview brief; record detailed changes and upgrade instructions in the
+changelog rather than duplicating release history. Then run the checks above
 with all provider extras. Keep both entries marked unreleased until publication.
 The build produces `dist/harnessed-<version>.tar.gz` and
 `dist/harnessed-<version>-py3-none-any.whl`.
