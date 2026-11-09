@@ -145,6 +145,12 @@ not injectable, and applications obtain the same view from `session.plugin_conte
 These explicit service exports keep plugin code off deep internal import paths;
 the root SDK remains lazy and does not re-export the service catalog.
 
+Third-party decorators attach a `Registration` using
+`harnessed.kernel.registration(recipe)(callback)`. This preserves the callback's
+identity, signature and other declarations. Dependencies and activation-bound
+methods follow the native registration lifecycle; recipes own cleanup through
+the supplied scope. See [method declarations](../guides/plugins.md#third-party-method-declarations).
+
 ## Approval policy
 
 `Approvals(default=PolicyDecision.ALLOW)` and `Approvals(default=PolicyDecision.ASK)`

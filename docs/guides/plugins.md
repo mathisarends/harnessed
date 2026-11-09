@@ -660,3 +660,24 @@ plugins = [
 Plugin mount state, including Rules repetition counters, starts fresh in each live
 session. Append conversation facts as user messages and export SessionState;
 arbitrary Python plugin objects are not serialized.
+
+## Third-party method declarations
+
+`harnessed.kernel.registration(recipe)` attaches a public `Registration` to a
+callable without wrapping it or changing its signature. It composes with `@tool`,
+`@hook` and other registrations in either decorator order:
+
+```python
+from harnessed.kernel import registration
+
+# binding implements Registration.needs and Registration.mount(scope, callback).
+decorated = registration(binding)(callback)
+```
+
+The kernel collects `recipe.needs` before activation. Each activation calls
+`recipe.mount` with the method bound to its newly reconstructed plugin instance,
+not the reusable recipe. Use the supplied `Scope.effect()` or `Scope.register()`
+to own cleanup, including failed startup. Registration objects are reusable
+declarations; per-activation resources belong to their supplied scope. The helper
+copies declaration metadata, so extending a `functools.wraps` wrapper does not
+change the original callable's registrations.

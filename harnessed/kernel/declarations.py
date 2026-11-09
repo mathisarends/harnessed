@@ -35,6 +35,24 @@ class Registration(Protocol):
     def mount(self, scope: Scope, callback: Callable) -> Any: ...
 
 
+def registration[F: Callable[..., Any]](recipe: Registration) -> Callable[[F], F]:
+    """Attach an activation registration without wrapping the declared callable.
+
+    Dependencies come from ``recipe.needs``. Each activation passes its freshly
+    bound method to ``mount``; registrations own cleanup through the supplied Scope.
+    Existing declarations are retained without mutating another callable's metadata.
+    """
+
+    def declare(callback: F) -> F:
+        vars(callback)["_harnessed_registrations"] = [
+            *getattr(callback, "_harnessed_registrations", ()),
+            recipe,
+        ]
+        return callback
+
+    return declare
+
+
 class Bundle:
     def __init__(self, name: str, *, needs: Iterable[ServiceKey[Any]] = ()) -> None:
         self.name = name
