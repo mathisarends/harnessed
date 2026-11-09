@@ -5,7 +5,7 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
-## 0.15.0 (unreleased)
+## 0.15.0 (2026-11-10)
 
 This release adds declarative method registrations and scoped output decisions,
 and fixes skill parsing. No API or persistence migration is required from 0.14.0.

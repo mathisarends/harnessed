@@ -1,10 +1,10 @@
 # Releases and compatibility
 
-Harnessed 0.x is alpha software. This page summarizes the next release and the
+Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
-## 0.15.0 (unreleased)
+## 0.15.0 (2026-11-10)
 
 This release adds declarative method registrations and scoped output decisions,
 and fixes skill frontmatter parsing. No API or persistence migration is required
