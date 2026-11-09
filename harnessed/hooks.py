@@ -1,6 +1,8 @@
 from harnessed.core.hooks import (
     ExecuteTool,
     Next,
+    OutputDecision,
+    PrepareOutput,
     PrepareRequest,
     PreStep,
     RequestApproval,
@@ -17,7 +19,9 @@ from harnessed.kernel import Priority
 __all__ = [
     "ExecuteTool",
     "Next",
+    "OutputDecision",
     "PreStep",
+    "PrepareOutput",
     "PrepareRequest",
     "Priority",
     "RequestApproval",
