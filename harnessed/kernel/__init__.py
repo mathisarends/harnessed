@@ -1,4 +1,4 @@
-from .declarations import Bundle, HookEntry, PluginBase, Registration
+from .declarations import Bundle, HookEntry, PluginBase, Registration, registration
 from .dependencies import DependencyField, needs, observes
 from .di import BindingPlan, Dependency, Inject, InjectMarker, binding_plan
 from .effects import Disposer, effect, run_sync
@@ -69,5 +69,6 @@ __all__ = [
     "hook",
     "on",
     "plugin",
+    "registration",
     "run_sync",
 ]

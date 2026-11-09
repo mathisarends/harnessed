@@ -10,7 +10,7 @@ from harnessed.core.tools.info import ToolChain, ToolPresentation
 from harnessed.core.tools.policy import OutputLimit, OutputLimitSetting
 from harnessed.core.tools.registry import ParameterFields, ToolSpec, ToolTimeout
 from harnessed.core.tools.scheduling import ResourceSpec, resource_spec
-from harnessed.kernel import PluginBase
+from harnessed.kernel import PluginBase, registration
 
 
 @overload
@@ -81,11 +81,7 @@ def tool(
             chain=chain,
         )
         vars(callback)["_harnessed_tool"] = spec
-        vars(callback)["_harnessed_registrations"] = [
-            *getattr(callback, "_harnessed_registrations", ()),
-            spec,
-        ]
-        return callback
+        return registration(spec)(callback)
 
     return decorate(fn) if fn is not None else decorate
 
