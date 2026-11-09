@@ -68,3 +68,38 @@ paused execution restoration is outside their contract.
 
 Run the offline [structured-output example](examples.md#structured-output) to see
 an invalid answer corrected through the tool fallback without provider credentials.
+
+## Apply the contract only after work finishes
+
+A completion plugin may allow standalone progress text before an explicit
+completion tool. Import `PrepareOutput`, `OutputDecision` and `Next` from
+`harnessed.hooks`. In that plugin, derive completion from the current turn's
+successful tool receipts so it also works after restoring paused execution:
+
+```python
+@hook(PrepareOutput)
+async def prepare_output(self, event: PrepareOutput, next_: Next[OutputDecision]) -> OutputDecision:
+    finished = any(
+        isinstance(item, ToolCallFinishedEvent)
+        and item.call.name == "done"
+        and item.result.status is ToolStatus.OK
+        for item in event.session.log.current_turn().events
+    )
+    return await next_() if finished else OutputDecision.DEFER
+```
+
+`ToolCallFinishedEvent` is public in `harnessed.events`; `ToolStatus` and `hook`
+come from `harnessed`. `next_()` preserves other policies; the default is
+`OutputDecision.ENFORCE`. The hook receives the assembled request and the declared
+schema, after `PrepareRequest` and before output preparation and token checks.
+`DEFER` withholds both native JSON constraints and the reserved `final_answer`
+tool. Validation uses the effective request schema, so progress text does not
+consume correction attempts. Once enforced, parsing and correction limits are
+unchanged. The declared turn contract remains available for checkpoint restoration.
+
+This hook only controls output constraints. Use `TurnStopping` to continue after
+progress text and ordinary tool-policy hooks for application-specific phase
+rules. All steps consume the same token and step budgets. A reserved final-summary
+step bypasses `PrepareOutput`, remains unstructured and reports incomplete work.
+Listeners are owned by their mounting scope; no process-wide handler replacement
+or session registry is needed.

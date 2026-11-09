@@ -28,7 +28,13 @@ from harnessed.core.events.turn import (
     TurnEndedEvent,
     TurnOutcome,
 )
-from harnessed.core.hooks import PrepareRequest, PreStep, StepDecision
+from harnessed.core.hooks import (
+    OutputDecision,
+    PrepareOutput,
+    PrepareRequest,
+    PreStep,
+    StepDecision,
+)
 from harnessed.core.limits import FinalStepPolicy
 from harnessed.core.messages import AssistantMessage, Role, SystemMessage, UserMessage
 from harnessed.core.model import GenerationSettings, Model, ModelRequest, resolve_request_settings
@@ -140,8 +146,15 @@ class StepRunner:
                 messages=(*request.messages, SystemMessage(_FINAL_STEP_INSTRUCTION)),
             )
         else:
+            schema = self.log.current_turn().start.output_schema
+            output_decision = await self.scope.dispatch(
+                PrepareOutput(self.context, request, schema),
+                default=lambda: OutputDecision.ENFORCE,
+            )
+            if not isinstance(output_decision, OutputDecision):
+                raise TypeError("PrepareOutput must return an OutputDecision")
             request = self.outputs.prepare(
-                request, self.log.current_turn().start.output_schema, model=model
+                request, schema, model=model, enforce=output_decision is OutputDecision.ENFORCE
             )
         request = resolve_request_settings(request, model.settings)
         request = await self.log._images.retain_request(request)

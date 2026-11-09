@@ -527,6 +527,12 @@ Passing `output=T` or `output=OutputContract("answer.v1", T)` adds a validated
 `output` of type `T`; an unstructured result's
 output is None. See [structured answers](../guides/structured-output.md) for retry
 limits, incomplete turns and restoration after a process restart.
+`PrepareOutput` from `harnessed.hooks` lets a session-scoped plugin return
+`OutputDecision.DEFER` for working steps and compose with `next_()` to enforce the
+declared contract after completion. It runs after `PrepareRequest`, before output
+constraints and token checks. Both native JSON and the reserved answer tool are
+deferred; the effective request schema also controls validation. The turn's
+declared output identity and ordinary correction limits remain unchanged.
 `result.require_output()` returns that original value only after successful turn
 completion. It raises `OutputUnavailable` with the stop reason for incomplete work.
 For completed unstructured runs it returns None. The `output` property remains

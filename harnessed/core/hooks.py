@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import TYPE_CHECKING, Self
 
 from harnessed.core.events.approvals import ApprovalRequestedEvent
@@ -14,7 +15,7 @@ from harnessed.core.messages import (
     ToolCall,
     ToolResult,
 )
-from harnessed.core.model import ModelRequest
+from harnessed.core.model import ModelRequest, OutputSchema
 from harnessed.core.tools import ToolInfo
 from harnessed.core.tools.policy import OutputLimit, OutputLimitSetting
 from harnessed.kernel import Bail, Emit, Waterfall
@@ -99,6 +100,26 @@ class PrepareRequest(Waterfall[ModelRequest]):
 
     session: SessionContext
     request: ModelRequest
+
+
+class OutputDecision(StrEnum):
+    ENFORCE = "enforce"
+    DEFER = "defer"
+
+
+@dataclass(frozen=True)
+class PrepareOutput(Waterfall[OutputDecision]):
+    """Decide whether this step enforces the turn's declared output contract.
+
+    Dispatched after PrepareRequest and before native output preparation, token
+    checks and model dispatch. DEFER permits ordinary text without consuming
+    output correction attempts. The declared turn contract remains unchanged.
+    Reserved final-summary steps bypass this hook and remain unstructured.
+    """
+
+    session: SessionContext
+    request: ModelRequest
+    schema: OutputSchema | None
 
 
 @dataclass(frozen=True)
