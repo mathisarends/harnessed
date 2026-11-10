@@ -9,7 +9,9 @@ exports below are implemented by this documentation change. The
 
 - Replace `focus` with a complete, replaceable `prompt`. Omission selects an
   inspectable default; an explicit prompt replaces it rather than appending to it.
-- Separate `model=` selection from `summarizer=` implementation replacement.
+- Use `llm=` to select the language model, separately from `summarizer=`
+  implementation replacement. The name distinguishes it from a Pydantic output
+  schema.
 - Give summarization the history to replace, retained context and agent
   instructions as distinct, typed inputs, captured from one request snapshot.
 - Replace the fixed `summary_tokens=2048` policy with an automatically derived
@@ -44,7 +46,7 @@ to interpret those sizes as percentages later.
 
 ## Developer-facing API
 
-The application-supplied `main_model` and `summary_model` below implement
+The application-supplied `main_model` and `summary_llm` below implement
 `harnessed.models.Model`. Every new argument and export in these examples is
 part of this proposal.
 
@@ -56,7 +58,7 @@ agent = Agent(
     model=main_model,
     plugins=[
         Compaction(
-            model=summary_model,
+            llm=summary_llm,
             prompt="""
                 Write a handoff for continuing the user's task.
                 Preserve requirements, verified findings with their sources,
@@ -82,9 +84,9 @@ The proposed constructor retains `keep_turns=2`, `keep_steps=2`,
 
 | Parameter | Default | Meaning |
 | --- | --- | --- |
-| `model: Model \| str \| None` | `None` | Select the summarization model; omission uses the current session model. Wrap native provider models explicitly with `PydanticAIModel`, as for `Agent(model=...)`. |
+| `llm: Model \| str \| None` | `None` | Select the language model that writes the summary, not a structured-output schema. Omission uses the current session model. Wrap native PydanticAI models explicitly with `PydanticAIModel`. |
 | `prompt: CompactionPrompt \| None` | `None` | Complete summarization system prompt or a per-attempt factory; omission uses `DEFAULT_COMPACTION_PROMPT`. |
-| `summarizer: Summarizer \| None` | `None` | Replace the summarization implementation. Mutually exclusive with explicit `model` and `prompt`. |
+| `summarizer: Summarizer \| None` | `None` | Replace the summarization implementation. Mutually exclusive with explicit `llm` and `prompt`. |
 | `target_ratio: float \| None` | `None` | Optional post-compaction input ceiling as a fraction of the effective context window; finite and in `(0, 1]`. |
 | `target_tokens: int \| None` | `None` | Optional positive post-compaction input ceiling; mutually exclusive with `target_ratio`. |
 | `max_summary_tokens: int \| None` | `None` | Optional positive ceiling for summary text, measured by the session token counter. Also applies to custom summarizers. |
@@ -106,6 +108,36 @@ Unknown context windows require explicit configuration for ratio-based triggers
 or targets. Absolute token targets and custom triggers remain available. Do not
 introduce a global 100k fallback. Browserrig can retain its own `WindowRatio()`
 policy, including its fallback, by passing that trigger explicitly.
+
+### Retention: completed turns versus steps in the active turn
+
+A **turn** is one agent run: it starts with an admitted task and ends when that
+run finishes, normally with the agent's final answer. Steering input can join an
+active turn without starting another one. A **step** is one model invocation and
+its associated tool execution/results, if any. One step can execute several tools;
+one turn can contain many steps.
+
+| Parameter | Which history stays verbatim? | When does it matter? |
+| --- | --- | --- |
+| `keep_turns=2` | The two most recent **completed turns**, including all their messages and steps. | When compacting a conversation containing earlier completed runs. |
+| `keep_steps=2` | The two most recent **completed steps of the active turn**, plus current inputs/observations. | During a long-running task, even in the session's first turn. |
+
+For example, suppose A, B and C are completed turns, and D is the active turn
+with seven completed steps. With both settings at two:
+
+```text
+A                       eligible for summarization
+B, C                    retained as complete turns
+D: steps 1-5            eligible for summarization
+D: steps 6-7            retained as recent steps
+D: task/steering input  protected regardless of step age
+```
+
+`keep_steps` does not cut down the completed turns retained by `keep_turns`.
+While idle, there is no active turn for `keep_steps` to limit. `keep_first_turns`
+and `preserve_turns` can protect additional history. Retention is an obligation
+to preserve content, so it can prevent a size target from being reached. Only
+completed safe boundaries are eligible; tool calls and their results stay together.
 
 ### Prompt replacement and runtime context
 
@@ -312,7 +344,7 @@ Provider-native encrypted compaction is a different integration concern; this
 proposal retains Harnessed's provider-neutral summarizer contract.
 
 Complete prompt replacement makes application intent inspectable. Separating
-`model` and `summarizer` avoids silently ignored knobs. Typed reference context
+`llm` and `summarizer` avoids silently ignored knobs. Typed reference context
 improves relevance without promoting the agent's entire operational prompt into
 the summarizer's instructions. Explicit metrics let frontends display results
 without depending on internals or counting tokens themselves.
@@ -322,8 +354,8 @@ without depending on internals or counting tokens themselves.
 | Current usage | Proposed replacement |
 | --- | --- |
 | `focus="Keep URLs"` | `prompt=DEFAULT_COMPACTION_PROMPT + "\nPreserve relevant source URLs."`, or a complete custom prompt |
-| `summarizer=model_or_name` | `model=model_or_name` |
-| `summarizer=native_provider_model` | `model=PydanticAIModel(native_provider_model)` |
+| `summarizer=model_or_name` | `llm=model_or_name` |
+| `summarizer=native_provider_model` | `llm=PydanticAIModel(native_provider_model)` |
 | `summary_tokens=2048` | Omit for automatic budgeting; use `max_summary_tokens=2048` for an intentional text ceiling, or a target for whole-request sizing |
 | `summarize(messages, *, max_tokens)` returning text | `summarize(request)` returning `Summary` |
 | Optional token counts in a successful applied event | Required captured counts, plus window, reserve and target metadata |
