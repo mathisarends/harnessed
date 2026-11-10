@@ -3,7 +3,7 @@
 Status: **implemented in the development version**, 2026-11-10. This document
 records the original design and rationale, based on `origin/main` at `ac8de54`.
 The runtime now implements these contracts. The [compaction guide](../guides/compaction.md)
-and [migration notes](../releases.md#unreleased) describe the current API.
+and [migration notes](../releases.md#0160-unreleased) describe the current API.
 
 ## TL;DR
 

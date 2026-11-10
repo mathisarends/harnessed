@@ -5,17 +5,54 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
-## Unreleased
+## 0.16.0 (unreleased)
 
-- Implement the new Compaction API: complete prompt replacement and sync/async
-  prompt factories, separate `llm` selection, typed custom summarizer requests,
-  and `keep_last_steps` retention across turn boundaries and restarts.
-- Derive finite summary budgets automatically; support whole-input targets and
-  explicit text ceilings, with at most two attempts and no silent truncation.
-- Capture input sizes, window, reserve and target in compaction lifecycle events;
-  expose occupancy ratios, freed tokens and target outcomes.
-- Remove the old constructor controls without aliases. State format is now 3
-  and audit envelopes are version 6. See [migration notes](docs/releases.md#unreleased).
+This release implements the Compaction API designed in 0.15.1. It changes the
+public compaction configuration and persisted conversation formats.
+
+### Added
+
+- Complete summarization prompt replacement through `prompt`, including sync and
+  async factories and the public `DEFAULT_COMPACTION_PROMPT`.
+- Separate summary model selection through `llm`. Custom `Summarizer`
+  implementations accept `CompactionRequest` and return `Summary`; these types
+  and `CompactionContext` are exported by `harnessed.services`.
+- `keep_last_steps=2` retains complete model/tool steps across turn boundaries,
+  including while idle and after snapshot restoration. Task inputs, steering,
+  tool-call/result pairs, multimodal content and provider state remain protected.
+- Finite budgets derived from context and model limits, optional whole-input
+  targets through `target_ratio` or `target_tokens`, and an optional strict
+  `max_summary_tokens` text ceiling. At most one further summarization attempt is
+  permitted; complete output is never sliced to fit, and all incurred usage is
+  recorded. Targets remain best effort and the ordinary context guard still
+  applies before provider calls.
+- Captured before/after input counts, context window, output reserve and explicit
+  target in compaction lifecycle events. Derived occupancy ratios, freed tokens
+  and target outcomes remain available after replay or observer failure.
+- Updated guides, SDK/event references, offline examples and consumer typing
+  contracts for the implemented API.
+
+### Upgrade from 0.15.1
+
+| Previous usage | 0.16.0 replacement |
+| --- | --- |
+| `focus="Keep URLs"` | `prompt=DEFAULT_COMPACTION_PROMPT + "\nPreserve source URLs."`, or a complete replacement prompt |
+| `summarizer=model_or_name` | `llm=model_or_name`; explicitly wrap native provider models with `PydanticAIModel` |
+| `summary_tokens=2048` | Omit for automatic budgeting, or use `max_summary_tokens=2048` for an intentional text ceiling |
+| `keep_turns`, `keep_steps`, `keep_first_turns`, `preserve_turns` | `keep_last_steps=N`; retention now spans complete steps across turns rather than pinning whole turns |
+| `summarize(messages, *, max_tokens) -> str` | `summarize(request: CompactionRequest) -> Summary` |
+| Applied events with omitted token counts | Supply required integer `before_tokens` and `after_tokens` |
+
+Removed arguments have no compatibility aliases. Explicit `summarizer` is
+mutually exclusive with `llm` and `prompt`. Prompt factories receive immutable
+history, retained context and instructions as separate reference inputs.
+
+Conversation state is now format **3** and standalone audit envelopes are
+version **6**. Checkpoints and JSON stores remain format **3**, containing the
+new state format. Older state/audit values are rejected without migration;
+retain old application environments when their stored conversations must remain
+readable. See the [compaction guide](docs/guides/compaction.md) and
+[release overview](docs/releases.md#0160-unreleased) for current contracts.
 
 ## 0.15.1 (2026-11-10)
 

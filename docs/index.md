@@ -12,9 +12,10 @@ See [0.15.0](releases.md#0150-2026-11-10) for declarative registrations,
 phased output contracts and skill parsing fixes. Earlier upgrade checklists are
 linked from the [release overview](releases.md#earlier-releases).
 
-The development version implements the new [Compaction API](guides/compaction.md):
+The upcoming [0.16.0 release](releases.md#0160-unreleased) implements the new
+[Compaction API](guides/compaction.md):
 replaceable prompts, separate summary models, complete-step retention and context
-targets with measured lifecycle events. See the [migration notes](releases.md#unreleased).
+targets with measured lifecycle events. See the [migration notes](releases.md#0160-unreleased).
 
 | I want to... | Read |
 | --- | --- |

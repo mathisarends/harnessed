@@ -4,23 +4,22 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
-## Unreleased
+## 0.16.0 (unreleased)
 
-The new Compaction API is implemented. `prompt` replaces the complete summary
-system prompt, `llm` selects its language model, and custom summarizers accept
-`CompactionRequest` and return `Summary`. `keep_last_steps=2` retains complete
-model/tool steps across turns. Summary budgets are derived automatically; optional
-`target_ratio`/`target_tokens` bound the whole input and `max_summary_tokens` caps
-summary text. Lifecycle events expose captured input sizes and occupancy ratios.
+This release implements the Compaction API designed in 0.15.1: replaceable
+prompts, separate `llm` selection, typed summarizer requests and complete-step
+retention across turn boundaries and restarts. Summary budgets are derived
+automatically, with optional whole-input targets and strict text ceilings.
+Lifecycle events expose captured sizes and occupancy metrics.
 
-Migrate `focus` to `prompt`, model-valued `summarizer` to `llm`, and intentional
-`summary_tokens` ceilings to `max_summary_tokens`. Replace turn-retention controls
-with `keep_last_steps`; old arguments have no aliases. Applied event constructors
-now require `before_tokens` and `after_tokens`. See the
-[compaction guide](guides/compaction.md) for the complete contracts.
+**Upgrade required:** old constructor arguments have no aliases and custom
+summarizers use `CompactionRequest -> Summary`. State is now format **3** and
+audit envelopes version **6**; older values are rejected without migration.
+Checkpoints/JSON stores remain format **3**, containing the new state format.
+See the [changelog migration table](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0151)
+and the [compaction guide](guides/compaction.md) for the full contracts.
 
-State format is **3**, audit envelopes **6**; checkpoints/JSON stores remain **3**
-and contain the new state format. Older values are rejected without migration.
+This version is prepared for release and has not been published yet.
 
 ## 0.15.1 (2026-11-10)
 
