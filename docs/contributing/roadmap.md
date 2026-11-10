@@ -69,8 +69,9 @@ Concrete consumers should establish their requirements before adding framework A
 ## Compaction configuration and measurements
 
 The [compaction API proposal](compaction-api.md) describes a future breaking
-change: complete prompt replacement, separate model and summarizer selection,
-typed task/retained reference context, automatic summary budgeting with optional
+change: complete prompt replacement, separate LLM and summarizer selection,
+one `keep_last_steps` retention setting, typed task/retained reference context,
+automatic summary budgeting with optional
 whole-request targets, and before/after context measurements in lifecycle events.
 It includes the developer-facing API, rationale, migration and implementation
 acceptance criteria. It is a design handoff, not an implemented API contract.

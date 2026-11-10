@@ -14,6 +14,9 @@ exports below are implemented by this documentation change. The
   schema.
 - Give summarization the history to replace, retained context and agent
   instructions as distinct, typed inputs, captured from one request snapshot.
+- Use one retention setting, `keep_last_steps`, to append the most recent
+  complete model/tool steps verbatim after the summary, across turn boundaries.
+  Remove the separate turn-retention and active-turn-step controls.
 - Replace the fixed `summary_tokens=2048` policy with an automatically derived
   budget. Offer an optional target for the **whole input request after compaction**
   and an optional `max_summary_tokens` ceiling.
@@ -67,8 +70,7 @@ agent = Agent(
             """,
             trigger=at_ratio(0.8),
             target_ratio=0.4,
-            keep_turns=2,
-            keep_steps=2,
+            keep_last_steps=2,
         ),
     ],
 )
@@ -79,14 +81,15 @@ summary length, a requirement to fill the budget, or a researched optimal defaul
 An absolute `target_tokens=40_000` is the alternative for applications with a
 fixed input budget.
 
-The proposed constructor retains `keep_turns=2`, `keep_steps=2`,
-`keep_first_turns=0` and `preserve_turns=()`. Its new parameters are:
+The proposed constructor replaces the old retention controls with
+`keep_last_steps=2`. Its parameters are:
 
 | Parameter | Default | Meaning |
 | --- | --- | --- |
 | `llm: Model \| str \| None` | `None` | Select the language model that writes the summary, not a structured-output schema. Omission uses the current session model. Wrap native PydanticAI models explicitly with `PydanticAIModel`. |
 | `prompt: CompactionPrompt \| None` | `None` | Complete summarization system prompt or a per-attempt factory; omission uses `DEFAULT_COMPACTION_PROMPT`. |
 | `summarizer: Summarizer \| None` | `None` | Replace the summarization implementation. Mutually exclusive with explicit `llm` and `prompt`. |
+| `keep_last_steps: int` | `2` | Keep the last N complete model/tool steps verbatim after the summary, across the currently available history; a positive integer. |
 | `target_ratio: float \| None` | `None` | Optional post-compaction input ceiling as a fraction of the effective context window; finite and in `(0, 1]`. |
 | `target_tokens: int \| None` | `None` | Optional positive post-compaction input ceiling; mutually exclusive with `target_ratio`. |
 | `max_summary_tokens: int \| None` | `None` | Optional positive ceiling for summary text, measured by the session token counter. Also applies to custom summarizers. |
@@ -109,35 +112,48 @@ or targets. Absolute token targets and custom triggers remain available. Do not
 introduce a global 100k fallback. Browserrig can retain its own `WindowRatio()`
 policy, including its fallback, by passing that trigger explicitly.
 
-### Retention: completed turns versus steps in the active turn
+### Retention: append the last complete steps unchanged
 
-A **turn** is one agent run: it starts with an admitted task and ends when that
-run finishes, normally with the agent's final answer. Steering input can join an
-active turn without starting another one. A **step** is one model invocation and
-its associated tool execution/results, if any. One step can execute several tools;
-one turn can contain many steps.
+`keep_last_steps=N` preserves the N most recent completed steps from the
+currently available projected history. A **step** is one model invocation and
+its associated tool calls and results, if any. Several parallel tool calls from
+one response belong to one step. Text-only model responses also count as steps;
+individual tool calls, messages and streamed chunks are not separate steps.
 
-| Parameter | Which history stays verbatim? | When does it matter? |
-| --- | --- | --- |
-| `keep_turns=2` | The two most recent **completed turns**, including all their messages and steps. | When compacting a conversation containing earlier completed runs. |
-| `keep_steps=2` | The two most recent **completed steps of the active turn**, plus current inputs/observations. | During a long-running task, even in the session's first turn. |
+The setting applies across turn boundaries, both during a running task and while
+idle. It does not preserve whole completed tasks. If the current task has only
+one completed step and N is three, retain that step and the last two available
+steps from the preceding task. If fewer than N steps exist, retain all of them;
+compaction may have no eligible older history.
 
-For example, suppose A, B and C are completed turns, and D is the active turn
-with seven completed steps. With both settings at two:
+For seven completed steps with `keep_last_steps=3`:
 
 ```text
-A                       eligible for summarization
-B, C                    retained as complete turns
-D: steps 1-5            eligible for summarization
-D: steps 6-7            retained as recent steps
-D: task/steering input  protected regardless of step age
+before:  [steps 1-4                         ][step 5][step 6][step 7]
+after:   [summary of older eligible history][step 5][step 6][step 7]
+                                            unchanged original messages
 ```
 
-`keep_steps` does not cut down the completed turns retained by `keep_turns`.
-While idle, there is no active turn for `keep_steps` to limit. `keep_first_turns`
-and `preserve_turns` can protect additional history. Retention is an obligation
-to preserve content, so it can prevent a size target from being reached. Only
-completed safe boundaries are eligible; tool calls and their results stay together.
+The summary replaces only eligible older history. Reattach the retained suffix
+in its original order, with original message identities, tool-call IDs, results,
+multimodal content and provider state; include each message once. This changes
+the next model request, not tool execution: completed tools are never rerun.
+The retained steps are reference context for summarization, not history to
+replace, so the summary need not repeat their detailed tool output.
+
+The active task and its steering/context inputs remain protected regardless of
+age. Also retain task/steering inputs needed to interpret steps kept from an
+earlier turn, placing them before the affected steps. Fixed instructions and
+tool schemas stay in their normal request roles. An unfinished step and current
+observations remain protected in addition to the N completed steps; never split
+a tool call from its results to meet the count or a token target.
+
+The count protects complete steps, not a fixed number of tokens. One large tool
+result can make the retained suffix exceed a size target; report that miss
+instead of truncating or silently reducing N. The existing `keep_turns`,
+`keep_steps`, `keep_first_turns` and `preserve_turns` arguments are removed from
+the proposed constructor, without aliases. Turn-based pinning and token-based
+retention are separate future requirements, not additional controls in this API.
 
 ### Prompt replacement and runtime context
 
@@ -357,6 +373,7 @@ without depending on internals or counting tokens themselves.
 | `summarizer=model_or_name` | `llm=model_or_name` |
 | `summarizer=native_provider_model` | `llm=PydanticAIModel(native_provider_model)` |
 | `summary_tokens=2048` | Omit for automatic budgeting; use `max_summary_tokens=2048` for an intentional text ceiling, or a target for whole-request sizing |
+| `keep_steps=N` with optional `keep_turns`, `keep_first_turns` or `preserve_turns` | `keep_last_steps=N` preserves a suffix across turns; remove turn-based controls. This is a semantic change, not a direct rename of active-turn-only `keep_steps`. |
 | `summarize(messages, *, max_tokens)` returning text | `summarize(request)` returning `Summary` |
 | Optional token counts in a successful applied event | Required captured counts, plus window, reserve and target metadata |
 
@@ -387,6 +404,10 @@ this change and must not be introduced as hidden compaction behavior.
 - [ ] Preserve tool-call/result pairs, active task/steering inputs, retained
   multimodal content, repeated compaction, manual/pause/restart behavior and
   context-limit recovery. No removed history may be reconstructed by retention.
+- [ ] Test `keep_last_steps` across turn boundaries and while idle, fewer than N
+  steps, parallel calls within one step, text-only steps, an unfinished step,
+  required task inputs and a retained suffix larger than the size target. Check
+  original identities/order, one copy per message and no repeated tool effects.
 - [ ] Bump the state format as needed and update the guide, SDK/event reference,
   consumer typing contracts and offline examples alongside implementation.
 - [ ] Run the repository's Smelt, Ruff, formatting, Pylint, ty, strict docs build
@@ -395,6 +416,7 @@ this change and must not be introduced as hidden compaction behavior.
 
 Deferred features: semantic triggers, browser-specific state schemas, provider
 native compaction, background summarization, mandatory structured summaries,
-semantic validators, token-based retention and generic recipe-field overrides.
+semantic validators, token-based retention, turn-based pinning and generic
+recipe-field overrides.
 These can build on the explicit contracts after concrete consumer requirements
 are established.
