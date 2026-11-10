@@ -5,7 +5,7 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
-## 0.16.0 (unreleased)
+## 0.16.0 (2026-11-10)
 
 This release implements the Compaction API designed in 0.15.1. It changes the
 public compaction configuration and persisted conversation formats.
@@ -52,7 +52,7 @@ version **6**. Checkpoints and JSON stores remain format **3**, containing the
 new state format. Older state/audit values are rejected without migration;
 retain old application environments when their stored conversations must remain
 readable. See the [compaction guide](docs/guides/compaction.md) and
-[release overview](docs/releases.md#0160-unreleased) for current contracts.
+[release overview](docs/releases.md#0160-2026-11-10) for current contracts.
 
 ## 0.15.1 (2026-11-10)
 

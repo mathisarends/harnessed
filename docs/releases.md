@@ -4,7 +4,7 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
-## 0.16.0 (unreleased)
+## 0.16.0 (2026-11-10)
 
 This release implements the Compaction API designed in 0.15.1: replaceable
 prompts, separate `llm` selection, typed summarizer requests and complete-step
@@ -18,8 +18,6 @@ audit envelopes version **6**; older values are rejected without migration.
 Checkpoints/JSON stores remain format **3**, containing the new state format.
 See the [changelog migration table](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0151)
 and the [compaction guide](guides/compaction.md) for the full contracts.
-
-This version is prepared for release and has not been published yet.
 
 ## 0.15.1 (2026-11-10)
 
