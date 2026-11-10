@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from harnessed.core.events.registry import EventRegistry
 from harnessed.core.events.base import TransientEvent
 
-CURRENT_VERSION = 5
+CURRENT_VERSION = 6
 
 
 def _validate_event(

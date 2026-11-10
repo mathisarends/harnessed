@@ -12,6 +12,7 @@ from harnessed.core.tracing import Tracer
 from harnessed.hooks import PreStep, SessionClosing, StepDecision
 from harnessed.kernel import Next, PluginScope, Scope, hook
 from harnessed.plugins import Approvals, Compaction, every_turns
+from harnessed.services import Summary
 from harnessed.testing import ScriptedModel
 from harnessed.tracing import current, record, span, traced
 
@@ -191,8 +192,8 @@ async def test_library_tracing_is_available_in_step_and_closing_hooks():
 
 async def test_ineffective_compaction_backs_off_and_has_its_own_span(caplog):
     class Ineffective:
-        async def summarize(self, messages, *, max_tokens):
-            return "long summary " * 10_000
+        async def summarize(self, request):
+            return Summary("long summary " * 10_000)
 
     class Work(Plugin):
         @tool(readonly=True)
@@ -218,8 +219,8 @@ async def test_ineffective_compaction_backs_off_and_has_its_own_span(caplog):
             Compaction(
                 trigger=every_turns(1),
                 summarizer=Ineffective(),
-                keep_turns=0,
-                summary_tokens=40_000,
+                keep_last_steps=1,
+                max_summary_tokens=40_000,
             ),
         ],
     )

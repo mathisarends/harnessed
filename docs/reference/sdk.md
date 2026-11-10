@@ -457,8 +457,8 @@ than prompt text searches. See [automatic observations](../guides/context.md#ste
 automatically; no model tool call is required. Text and images
 share one recorded message and lifecycle. `LatestObservationOnly()` explicitly
 keeps only the latest snapshot per source; otherwise snapshots remain unchanged
-until compaction. `Compaction(keep_steps=5, ...)` retains five completed steps in
-the active turn, including their full observations, plus the current step.
+until compaction. `Compaction(keep_last_steps=5, ...)` retains five completed steps across turn
+boundaries, including their full observations, plus unfinished/current context.
 
 Await methods that perform durable writes. Closed handles raise SessionClosed.
 SDK failures derive from `HarnessedError`, importable from `harnessed.errors`: operations
@@ -681,3 +681,34 @@ turns. Imported state opens idle and never re-executes recorded tool calls.
 `session.snapshot()` requires an idle open conversation with an empty inbox.
 Reuse the same immutable state for independent continuations. See
 [the session guide](../guides/sessions.md) for compaction and application storage.
+
+
+## Compaction policy and services
+
+`harnessed.plugins.Compaction` accepts these keyword arguments:
+
+| Argument | Default | Contract |
+| --- | --- | --- |
+| `trigger` | `at_ratio(0.8)` | Synchronous `ContextState -> bool`; trigger ratio includes reserved output. |
+| `llm` | `None` | Harnessed `Model` or model name; omission captures the current session model. |
+| `prompt` | `None` | Complete system prompt, or sync/async `CompactionContext -> str` factory; omission uses `DEFAULT_COMPACTION_PROMPT`. |
+| `summarizer` | `None` | Custom `Summarizer`; mutually exclusive with explicit `llm` and `prompt`. |
+| `keep_last_steps` | `2` | Positive count of completed model/tool steps retained across turns. |
+| `target_ratio` | `None` | Finite fraction in `(0, 1]` for the whole input after compaction; requires a known window. |
+| `target_tokens` | `None` | Positive absolute whole-input target; mutually exclusive with `target_ratio`. |
+| `max_summary_tokens` | `None` | Positive strict summary-text ceiling, measured by the session counter. |
+
+`CompactionPrompt` and `DEFAULT_COMPACTION_PROMPT` are exported by `harnessed.plugins`.
+`harnessed.services` exports frozen `CompactionContext`, `CompactionRequest`,
+`Summary` and the structural `Summarizer` protocol:
+
+```python
+async def summarize(self, request: CompactionRequest) -> Summary: ...
+```
+
+`CompactionContext` contains `history_to_compact`, `retained_context`, `instructions`,
+`state` and resolved `target_tokens`. `CompactionRequest.max_summary_tokens` is the
+runtime's finite text budget. Results must be complete `Summary(text, usage=None)`
+values; output is never truncated to fit. One further summarization attempt is
+permitted. Targets are best effort; hard request budgets remain mandatory.
+See the [compaction guide](../guides/compaction.md) for lifecycle and acceptance.

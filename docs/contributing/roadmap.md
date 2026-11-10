@@ -68,14 +68,11 @@ Concrete consumers should establish their requirements before adding framework A
 
 ## Compaction configuration and measurements
 
-The [compaction API proposal](compaction-api.md) describes a future breaking
-change: complete prompt replacement, separate LLM and summarizer selection,
-one `keep_last_steps` retention setting, typed task/retained reference context,
-automatic summary budgeting with optional
-whole-request targets, and before/after context measurements in lifecycle events.
-It includes the developer-facing API, rationale, migration and implementation
-acceptance criteria. It is a design handoff, not an implemented API contract.
-The [compaction guide](../guides/compaction.md) remains the current behavior.
+The [compaction API design](compaction-api.md) is implemented. See the
+[compaction guide](../guides/compaction.md) for prompts, model selection, step
+retention, budgets and lifecycle measurements. Semantic triggers, token-based
+retention, background summarization and provider-native compaction remain future
+work. An automatic occupancy target still requires workload measurements.
 
 ## Instruction factory callbacks
 

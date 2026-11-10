@@ -119,7 +119,7 @@ async def test_direct_public_event_imports_observe_the_canonical_runtime_events(
 
 def test_current_record_format_roundtrips_the_turn_end_payload():
     record = {
-        "version": 5,
+        "version": 6,
         "type": "turn.ended",
         "data": {"turn_id": "turn", "reason": "completed"},
     }
@@ -147,7 +147,7 @@ def test_data_notifications_roundtrip_through_a_discriminated_union():
 def test_namespaced_log_events_use_canonical_tags_only():
     event = events.TurnStartedEvent("turn")
     record = encode_event(event)
-    assert record["type"] == "turn.started" and record["version"] == 5
+    assert record["type"] == "turn.started" and record["version"] == 6
     record.update(type="TurnStartedEvent", version=4)
     with pytest.raises(ValueError):
         decode_event(record)
@@ -164,8 +164,10 @@ def test_live_notifications_cannot_spoof_a_different_registered_discriminator():
 def test_compaction_lifecycle_roundtrips_as_live_events_but_cannot_enter_the_durable_codec():
     adapter = TypeAdapter(StreamEvent[None])
     for event in (
-        events.CompactionStartedEvent("compact"),
-        events.CompactionFinishedEvent("compact", events.CompactionOutcome.CANCELLED),
+        events.CompactionStartedEvent("compact", before_tokens=100),
+        events.CompactionFinishedEvent(
+            "compact", events.CompactionOutcome.CANCELLED, before_tokens=100
+        ),
     ):
         assert adapter.validate_json(adapter.dump_json(event)) == event
         with pytest.raises(TypeError):

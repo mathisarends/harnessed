@@ -1,18 +1,16 @@
-from __future__ import annotations
-
 import inspect
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 from pydantic import AfterValidator, ConfigDict, Field
 from pydantic.dataclasses import dataclass
 
 from harnessed.core.compaction import (
     CompactionPolicy,
+    CompactionPrompt,
     CompactionSettings,
     ContextState,
-    ModelSummarizer,
     Summarizer,
 )
 from harnessed.core.errors import ConfigError
@@ -21,9 +19,6 @@ from harnessed.core.plugin import Plugin
 from harnessed.core.tokens import TokenCounter
 from harnessed.kernel import PluginScope
 from harnessed.models import PydanticAIModel
-
-if TYPE_CHECKING:
-    from harnessed.models.pydantic_ai import NativeModel
 
 _CONFIG = ConfigDict(strict=True, extra="forbid", allow_inf_nan=False, hide_input_in_errors=True)
 
@@ -56,7 +51,7 @@ def every_turns(every: int) -> Callable[[ContextState], bool]:
     return _EveryTurns(every)
 
 
-def _sync_trigger(value):
+def _sync_trigger(value: Callable[[ContextState], bool]) -> Callable[[ContextState], bool]:
     if inspect.iscoroutinefunction(value) or inspect.iscoroutinefunction(type(value).__call__):
         raise ValueError("Compaction triggers must be synchronous")
     return value
@@ -71,42 +66,62 @@ class CompactionConfig(CompactionSettings):
 
 
 class Compaction(Plugin[CompactionConfig], slot="compaction"):
-    """Choose when to summarize, what to retain and which model to use."""
+    """Summarize older history and retain complete steps across turn boundaries.
+
+    Trigger ratios include reserved output; target ratios measure input only.
+    Targets are best effort. max_summary_tokens is a strict text ceiling.
+    prompt replaces the complete system prompt; llm selects its language model.
+    A custom summarizer owns both and cannot be combined with either option.
+    """
 
     def __init__(
         self,
         *,
         trigger: Callable[[ContextState], bool] = _DEFAULT_TRIGGER,
-        summarizer: Summarizer | Model | str | NativeModel | None = None,
-        keep_turns: int = 2,
-        keep_steps: int = 2,
-        keep_first_turns: int = 0,
-        preserve_turns: Iterable[str] = (),
-        summary_tokens: int = 2048,
-        focus: str = "",
+        llm: Model | str | None = None,
+        prompt: CompactionPrompt | None = None,
+        summarizer: Summarizer | None = None,
+        keep_last_steps: int = 2,
+        target_ratio: float | None = None,
+        target_tokens: int | None = None,
+        max_summary_tokens: int | None = None,
     ) -> None:
+        if summarizer is not None:
+            if not isinstance(summarizer, Summarizer):
+                raise ConfigError("summarizer must implement Summarizer; select models with llm=")
+            if llm is not None or prompt is not None:
+                raise ConfigError("summarizer is mutually exclusive with llm and prompt")
+        if llm is not None and not isinstance(llm, str | Model):
+            raise ConfigError(
+                "llm must be a Harnessed Model or name; wrap native models with PydanticAIModel"
+            )
+        if (
+            prompt is not None
+            and not callable(prompt)
+            and (not isinstance(prompt, str) or not prompt.strip())
+        ):
+            raise ConfigError("Compaction prompt must be a non-empty string or factory")
         super().__init__(
             needs=[Model, TokenCounter],
             config=CompactionConfig(
                 trigger=trigger,
-                keep_turns=keep_turns,
-                keep_steps=keep_steps,
-                keep_first_turns=keep_first_turns,
-                preserve_turns=preserve_turns,
-                summary_tokens=summary_tokens,
-                focus=focus,
+                keep_last_steps=keep_last_steps,
+                target_ratio=target_ratio,
+                target_tokens=target_tokens,
+                max_summary_tokens=max_summary_tokens,
             ),
         )
         self.summarizer = summarizer
+        self.llm = llm
+        self.prompt = prompt
 
     async def setup(self, scope: PluginScope) -> None:
-        selected = self.summarizer
-        if selected is not None and not isinstance(selected, Summarizer):
-            backend = selected if isinstance(selected, Model) else PydanticAIModel(selected)
-            if isinstance(backend, AbstractAsyncContextManager):
-                await scope.enter(backend)
-            selected = ModelSummarizer(backend, focus=self.config.focus)
+        backend = PydanticAIModel(self.llm) if isinstance(self.llm, str) else self.llm
+        if isinstance(backend, AbstractAsyncContextManager):
+            await scope.enter(backend)
         scope.provide(
             CompactionPolicy,
-            CompactionPolicy(self.config, self.config.trigger, selected),
+            CompactionPolicy(
+                self.config, self.config.trigger, self.summarizer, backend, self.prompt
+            ),
         )

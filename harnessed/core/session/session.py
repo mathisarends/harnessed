@@ -151,6 +151,7 @@ class SessionLog:
                 state.compacted_through,
                 *(entry.position + 1 for entry in state.history),
                 *(turn.boundary for turn in state.turns),
+                *(step.boundary for step in state.steps),
             ]
             if state
             else [0]
@@ -339,6 +340,7 @@ class SessionLog:
             history=entries,
             plugin_instructions=self.plugin_instructions,
             turns=tuple(HistoryTurn(turn, boundary) for boundary, turn in self._turn_boundaries),
+            steps=tuple(self._history.completed_steps),
             turns_since_compaction=self._uncompacted_turns,
             compacted_through=self._compacted_through,
             preserved_turns=self._preserved_turns,
@@ -651,6 +653,7 @@ class SessionLog:
                 if not self._compacted_through < event.through <= seq or not event.summary.strip():
                     raise ValueError("Compaction must advance a completed context boundary")
                 boundaries = {boundary for boundary, _ in self._turn_boundaries}
+                boundaries.update(step.boundary for step in self._history.completed_steps)
                 boundaries.update(
                     self.event_offset + index + 1
                     for index, item in enumerate(self._events)

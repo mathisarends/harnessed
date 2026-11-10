@@ -1,5 +1,7 @@
 from harnessed.core.approvals import Approvals as Approvals
 from harnessed.core.approvals import ToolApprovalGuard as ToolApprovalGuard
+from harnessed.core.compaction import DEFAULT_COMPACTION_PROMPT as DEFAULT_COMPACTION_PROMPT
+from harnessed.core.compaction import CompactionPrompt as CompactionPrompt
 from harnessed.core.compaction import ContextState as ContextState
 from harnessed.core.limits import FinalStepPolicy as FinalStepPolicy
 from harnessed.core.messages import ApprovalAnswer as ApprovalAnswer
@@ -30,7 +32,9 @@ __all__ = [
     "Approvals",
     "BackgroundShell",
     "Compaction",
+    "CompactionPrompt",
     "ContextState",
+    "DEFAULT_COMPACTION_PROMPT",
     "Filesystem",
     "FilesystemTools",
     "FinalStepPolicy",

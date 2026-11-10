@@ -71,8 +71,8 @@ async def measure(count: int, chars: int, *, one_shots: bool) -> dict[str, int |
         plugins=[
             Compaction(
                 trigger=every_turns(4),
-                keep_turns=1,
-                summary_tokens=32,
+                keep_last_steps=1,
+                max_summary_tokens=32,
                 summarizer=ExtractiveSummarizer(),
             ),
         ],

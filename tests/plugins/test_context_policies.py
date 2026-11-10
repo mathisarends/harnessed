@@ -7,7 +7,7 @@ from harnessed import (
     Agent as Application,
 )
 from harnessed import Plugin, PolicyDecision, ToolCall, ToolResult, tool
-from harnessed.core.compaction import ModelSummarizer
+from harnessed.core.compaction import ContextState, ModelSummarizer
 from harnessed.core.events.compaction import CompactionAppliedEvent
 from harnessed.core.events.messages import SystemMessageEvent, UserMessageEvent
 from harnessed.core.events.model import ModelUsageRecordedEvent
@@ -19,11 +19,13 @@ from harnessed.core.model import ModelChunk, ModelUsage
 from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.core.session.files import SessionFiles
 from harnessed.core.session.session import SessionLog
+from harnessed.core.tokens import ApproximateTokenCounter
 from harnessed.core.tools.registry import ToolError
 from harnessed.kernel import hook
 from harnessed.plugins import AgentLoop, Approvals, Compaction, at_ratio, every_turns
 from harnessed.plugins.observations import LatestObservationOnly
 from harnessed.plugins.spill import Spill, SpillStore
+from harnessed.services import CompactionContext, CompactionRequest, Summary
 from harnessed.testing import ExtractiveSummarizer, ScriptedModel
 from tests._audit import Audit, AuditProjection
 
@@ -131,8 +133,8 @@ async def test_threshold_compaction_commits_once_and_replays_and_forks(tmp_path)
             Compaction(
                 trigger=at_ratio(0.5),
                 summarizer=ExtractiveSummarizer(),
-                keep_turns=0,
-                summary_tokens=24,
+                keep_last_steps=1,
+                max_summary_tokens=24,
             ),
         ],
     )
@@ -142,7 +144,7 @@ async def test_threshold_compaction_commits_once_and_replays_and_forks(tmp_path)
         await agent.run("current task\nTicket: preserve current context")
         applied = [e for e in agent_audit.events if isinstance(e, CompactionAppliedEvent)]
         assert len(applied) == 1
-        request = model.requests[1]
+        request = model.requests[2]
         texts = [m.text for m in request.messages]
         assert any(text.startswith("Conversation summary:") for text in texts)
         assert "current task\nTicket: preserve current context" in texts
@@ -162,43 +164,50 @@ async def test_compaction_preserves_base_prompt_recent_turns_and_replaces_previo
         await session.append(TurnStartedEvent(name))
         await session.append(UserMessageEvent(UserMessage(name)))
         await session.append(TurnEndedEvent(name))
-    await session.append(CompactionAppliedEvent(4, "first summary"))
+    await session.append(
+        CompactionAppliedEvent(4, "first summary", before_tokens=0, after_tokens=0)
+    )
     assert [m.text for m in session.messages] == [
         "permanent rules",
         "Conversation summary:\nfirst summary",
         "two",
     ]
-    await session.append(CompactionAppliedEvent(7, "combined summary"))
+    await session.append(
+        CompactionAppliedEvent(7, "combined summary", before_tokens=0, after_tokens=0)
+    )
     assert [m.text for m in session.messages] == [
         "permanent rules",
         "Conversation summary:\ncombined summary",
     ]
     with pytest.raises(ValueError, match="advance"):
-        await session.append(CompactionAppliedEvent(7, "duplicate"))
+        await session.append(
+            CompactionAppliedEvent(7, "duplicate", before_tokens=0, after_tokens=0)
+        )
     with pytest.raises(ValueError, match="completed context boundary"):
-        await session.append(CompactionAppliedEvent(2, "invalid"))
+        await session.append(CompactionAppliedEvent(2, "invalid", before_tokens=0, after_tokens=0))
 
 
 async def test_failed_or_cancelled_compactor_does_not_commit_partial_compaction():
     started = asyncio.Event()
 
     class BlockingCompactor:
-        async def summarize(self, messages, *, max_tokens):
+        async def summarize(self, request):
             started.set()
             await asyncio.Event().wait()
 
-    model = ScriptedModel(["first reply"])
+    model = ScriptedModel(["first reply", "kept"])
     harness = Application(
         model=model,
         plugins=[
             AgentLoop(context_window=500),
             Approvals(default=PolicyDecision.ALLOW),
-            Compaction(trigger=at_ratio(0.5), summarizer=BlockingCompactor(), keep_turns=0),
+            Compaction(trigger=at_ratio(0.5), summarizer=BlockingCompactor(), keep_last_steps=1),
         ],
     )
     async with harness.session() as agent:
         agent_audit = Audit(agent)
         await agent.run("x" * 1000)
+        await agent.run("kept")
         await agent.submit("next")
         await asyncio.wait_for(started.wait(), timeout=5)
         await agent.abort()
@@ -209,25 +218,26 @@ async def test_failed_or_cancelled_compactor_does_not_commit_partial_compaction(
 async def test_compactor_error_is_reported_and_history_is_intact():
 
     class Broken:
-        async def summarize(self, messages, *, max_tokens):
+        async def summarize(self, request):
             raise ValueError("summary failed")
 
-    model = ScriptedModel(["reply"])
+    model = ScriptedModel(["reply", "kept"])
     harness = Application(
         model=model,
         plugins=[
             AgentLoop(context_window=500),
             Approvals(default=PolicyDecision.ALLOW),
-            Compaction(trigger=at_ratio(0.5), summarizer=Broken(), keep_turns=0),
+            Compaction(trigger=at_ratio(0.5), summarizer=Broken(), keep_last_steps=1),
         ],
     )
     async with harness.session() as agent:
         agent_audit = Audit(agent)
         await agent.run("x" * 1000)
+        await agent.run("kept")
         with pytest.raises(ValueError, match="summary failed"):
             await agent.run("next")
         assert not any(isinstance(e, CompactionAppliedEvent) for e in agent_audit.events)
-        assert len(model.requests) == 1
+        assert len(model.requests) == 2
 
 
 async def test_keep_turns_retains_recent_work_and_later_compaction_merges_old_summary():
@@ -240,8 +250,8 @@ async def test_keep_turns_retains_recent_work_and_later_compaction_merges_old_su
             Compaction(
                 trigger=every_turns(1),
                 summarizer=ExtractiveSummarizer(),
-                keep_turns=1,
-                summary_tokens=16,
+                keep_last_steps=1,
+                max_summary_tokens=16,
             ),
         ],
     )
@@ -261,8 +271,8 @@ async def test_keep_turns_retains_recent_work_and_later_compaction_merges_old_su
 async def test_compaction_does_not_commit_a_summary_that_expands_the_request():
 
     class Verbose:
-        async def summarize(self, messages, *, max_tokens):
-            return "z" * 2000
+        async def summarize(self, request):
+            return Summary("z" * 2000)
 
     model = ScriptedModel(["reply", "reply"])
     harness = Application(
@@ -271,7 +281,10 @@ async def test_compaction_does_not_commit_a_summary_that_expands_the_request():
             AgentLoop(context_window=100),
             Approvals(default=PolicyDecision.ALLOW),
             Compaction(
-                trigger=at_ratio(0.5), summarizer=Verbose(), keep_turns=0, summary_tokens=2000
+                trigger=at_ratio(0.5),
+                summarizer=Verbose(),
+                keep_last_steps=1,
+                max_summary_tokens=2000,
             ),
         ],
     )
@@ -328,7 +341,14 @@ async def test_cache_usage_is_preserved_as_provider_reported_usage():
 
 async def test_model_summarizer_uses_explicit_model_without_tools_and_closes_stream():
     llm = ScriptedModel(["summary"])
-    summary = await ModelSummarizer(llm).summarize((UserMessage("history"),), max_tokens=32)
+    summary = await ModelSummarizer(llm, counter=ApproximateTokenCounter()).summarize(
+        CompactionRequest(
+            CompactionContext(
+                (UserMessage("history"),), (), (), ContextState(100, 0, 1000, 1), None
+            ),
+            32,
+        )
+    )
     assert summary.text == "summary"
     assert not llm.requests[0].tools and llm.requests[0].settings.max_tokens == 32
 
@@ -336,7 +356,11 @@ async def test_model_summarizer_uses_explicit_model_without_tools_and_closes_str
 async def test_model_summarizer_keeps_tool_names_and_arguments_in_summary_input():
     llm = ScriptedModel(["summary"])
     messages = (AssistantMessage(tool_calls=(ToolCall("bash", {"command": "pytest tests/auth"}),)),)
-    await ModelSummarizer(llm).summarize(messages, max_tokens=32)
+    await ModelSummarizer(llm, counter=ApproximateTokenCounter()).summarize(
+        CompactionRequest(
+            CompactionContext(messages, (), (), ContextState(100, 0, 1000, 1), None), 32
+        )
+    )
     transcript = llm.requests[0].messages[-1].text
     assert "bash" in transcript and "pytest tests/auth" in transcript
 
@@ -346,7 +370,9 @@ async def test_model_summarizer_keeps_tool_names_and_arguments_in_summary_input(
     [
         lambda: Compaction(trigger=at_ratio(0), summarizer=ExtractiveSummarizer()),
         lambda: Compaction(trigger=at_ratio(1.1), summarizer=ExtractiveSummarizer()),
-        lambda: Compaction(trigger=at_ratio(0.8), summarizer=ExtractiveSummarizer(), keep_turns=-1),
+        lambda: Compaction(
+            trigger=at_ratio(0.8), summarizer=ExtractiveSummarizer(), keep_last_steps=-1
+        ),
         lambda: Spill(threshold_tokens=0),
         lambda: ObservationPolicyAppliedEvent(0),
         lambda: ModelUsage(-1),

@@ -37,14 +37,14 @@ async def test_public_asset_access_preserves_storage_ownership_and_recorded_requ
 
 
 async def test_compaction_does_not_load_images_removed_from_the_request(tmp_path):
-    model = ScriptedModel(["first", "after compaction"])
+    model = ScriptedModel(["first", "kept", "after compaction"])
     app = Agent(
         model=model,
         plugins=[
             Compaction(
                 trigger=lambda _: False,
-                keep_turns=0,
-                summary_tokens=8,
+                keep_last_steps=1,
+                max_summary_tokens=8,
                 summarizer=ExtractiveSummarizer(),
             )
         ],
@@ -52,6 +52,7 @@ async def test_compaction_does_not_load_images_removed_from_the_request(tmp_path
     async with app.session() as session:
         session.observe(UserMessage((TextPart("state " * 500), inline(b"old"))), source="screen")
         await session.run("inspect")
+        await session.run("kept")
         old = session.last(ObservationRecordedEvent).message.content[1].asset
         # Cold-cache compaction must not load discarded images.
         session.log._images.clear()

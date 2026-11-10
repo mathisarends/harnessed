@@ -157,3 +157,17 @@ and [correlation identities](../guides/events.md#correlate-event-lifecycles).
 Serializable execution events are not automatically persisted. Use event hooks or
 subscriptions for an application-owned audit. Conversation continuation uses
 SessionState rather than replaying the audit stream.
+
+
+## Compaction measurements
+
+Started, applied and finished events capture `before_tokens`, `context_window`,
+`reserve_tokens` and resolved explicit `target_tokens`. Applied events require
+integer `after_tokens`; finished events report the committed count for `APPLIED`,
+the original count for `DISCARDED`, and `None` on failure/cancellation without a
+commit. An observer failure after commit still reports `APPLIED` and its count.
+
+`before_ratio` measures input/window. Applied and finished also expose
+`after_ratio`, `freed_tokens` and `target_reached`; unavailable inputs yield `None`.
+Ratios exclude output reserve and are not clamped. These whole-request token
+estimates are separate from billed summarizer usage.

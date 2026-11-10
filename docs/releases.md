@@ -4,6 +4,24 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
+## Unreleased
+
+The new Compaction API is implemented. `prompt` replaces the complete summary
+system prompt, `llm` selects its language model, and custom summarizers accept
+`CompactionRequest` and return `Summary`. `keep_last_steps=2` retains complete
+model/tool steps across turns. Summary budgets are derived automatically; optional
+`target_ratio`/`target_tokens` bound the whole input and `max_summary_tokens` caps
+summary text. Lifecycle events expose captured input sizes and occupancy ratios.
+
+Migrate `focus` to `prompt`, model-valued `summarizer` to `llm`, and intentional
+`summary_tokens` ceilings to `max_summary_tokens`. Replace turn-retention controls
+with `keep_last_steps`; old arguments have no aliases. Applied event constructors
+now require `before_tokens` and `after_tokens`. See the
+[compaction guide](guides/compaction.md) for the complete contracts.
+
+State format is **3**, audit envelopes **6**; checkpoints/JSON stores remain **3**
+and contain the new state format. Older values are rejected without migration.
+
 ## 0.15.1 (2026-11-10)
 
 This documentation-only patch release adds the

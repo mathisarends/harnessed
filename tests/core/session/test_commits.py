@@ -20,8 +20,9 @@ from harnessed.events import (
     UserMessageEvent,
 )
 from harnessed.hooks import SessionAppended
-from harnessed.models import Message, ModelChunk, ModelRequest, ToolCallDelta, UserMessage
+from harnessed.models import ModelChunk, ModelRequest, ToolCallDelta, UserMessage
 from harnessed.plugins import Compaction, every_turns
+from harnessed.services import CompactionRequest, Summary
 from harnessed.sessions import (
     CheckpointExtension,
     SessionChange,
@@ -54,8 +55,8 @@ class RecordingStore:
 
 
 class Brief:
-    async def summarize(self, messages: tuple[Message, ...], *, max_tokens: int) -> str:
-        return "Earlier conversation."
+    async def summarize(self, request: CompactionRequest) -> Summary:
+        return Summary("Earlier conversation.")
 
 
 @dataclass(frozen=True)
@@ -119,11 +120,11 @@ async def test_token_deltas_are_live_without_scheduling_or_entering_commits(monk
 
 async def test_commits_cover_each_live_event_once_even_after_compaction_and_reopening():
     store = RecordingStore()
-    model = ScriptedModel(["first reply", "second reply", "third reply"])
+    model = ScriptedModel(["first reply", "kept", "second reply", "third reply"])
     agent = Agent(
         model=model,
         store=store,
-        plugins=[Compaction(trigger=every_turns(1), keep_turns=0, summarizer=Brief())],
+        plugins=[Compaction(trigger=every_turns(1), keep_last_steps=1, summarizer=Brief())],
     )
     observed: list[tuple[int, DurableEvent]] = []
 
@@ -134,6 +135,7 @@ async def test_commits_cover_each_live_event_once_even_after_compaction_and_reop
     async with agent.session(id="archive") as session:
         session.on(SessionAppended, observe)
         await session.run(first_input)
+        await session.run("kept")
         await session.run("second input")
         assert any(isinstance(event, CompactionAppliedEvent) for _, event in observed)
         assert first_input not in [entry.message.text for entry in session.snapshot().history]

@@ -150,9 +150,8 @@ async def test_compaction_removes_old_images_in_the_same_request_and_keeps_five_
             Compaction(
                 trigger=lambda _state: next(fire),
                 summarizer=ExtractiveSummarizer(),
-                keep_turns=0,
-                keep_steps=5,
-                summary_tokens=8,
+                keep_last_steps=5,
+                max_summary_tokens=8,
             ),
         ],
     ).session() as session:
@@ -174,21 +173,22 @@ async def test_compaction_removes_old_images_in_the_same_request_and_keeps_five_
 
 
 async def test_compacted_observations_are_not_reported_as_included():
-    model = ScriptedModel(["first", "second"])
+    model = ScriptedModel(["kept", "first", "second"])
     async with Agent(
         model=model,
         plugins=[
             Compaction(
                 trigger=every_turns(1),
                 summarizer=ExtractiveSummarizer(),
-                keep_turns=0,
-                summary_tokens=8,
+                keep_last_steps=1,
+                max_summary_tokens=8,
             ),
         ],
     ).session() as session:
         session.observe(
             UserMessage("state " * 500, id="capture:186"), source="browser", refs=("old",)
         )
+        await session.run("old task " * 500)
         await session.run("large " * 500)
         await session.run("continue")
         assert session.last(CompactionAppliedEvent) is not None

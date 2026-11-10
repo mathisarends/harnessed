@@ -1,141 +1,165 @@
 # Compact long conversations
 
-Compaction applies a `CompactionAppliedEvent` transition and replaces retained
-working context with a summary and selected messages. The runtime releases
-discarded history and its indexes; current-turn result buffering may retain input
-until terminal delivery. Exported SessionState values contain the compacted
-conversation. Write a complete audit externally when historical records are needed.
+Compaction replaces older working history with a complete summary and retains
+the last complete model/tool steps unchanged. Exported `SessionState` values
+contain this compacted conversation. Store a complete audit externally when
+historical records are needed.
 
 ```python
 from harnessed import Agent
-from harnessed.plugins import Compaction, at_ratio, every_turns
+from harnessed.plugins import Compaction, DEFAULT_COMPACTION_PROMPT, at_ratio
 
 agent = Agent(
     model="deepseek:deepseek-chat",
     plugins=[
         Compaction(
             trigger=at_ratio(0.8),
-            keep_turns=2,
-            keep_steps=2,
-            keep_first_turns=1,
-            summary_tokens=2048,
-            focus="Keep file paths, decisions and unresolved failures.",
+            keep_last_steps=2,
+            target_ratio=0.4,
+            prompt=DEFAULT_COMPACTION_PROMPT + "\nPreserve relevant file paths.",
         ),
     ],
 )
 ```
 
-## Choose a trigger and retention
+## Triggers and retention
 
-`at_ratio(0.8)` counts estimated input plus reserved output against the model's
-context window. Unknown windows require an explicit `AgentLoop(context_window=...)`
-override. `every_turns(10)` counts newly completed turns since the previous
-compaction. `every_turns(1)` gives a sliding window with the configured retention.
-A custom synchronous trigger receives a frozen `ContextState` with `input_tokens`,
-`reserve_tokens`, `context_window`, `ratio` and `turns_since_compaction`; it must
-return a boolean. `ratio` is `None` when the window is unknown.
+`at_ratio(0.8)` is the default trigger. It measures estimated input **plus reserved
+output**, divided by the effective context window. Unknown windows require an
+explicit `AgentLoop(context_window=...)`. `every_turns(N)` counts newly completed
+turns since the last compaction. Custom synchronous triggers receive the frozen
+`ContextState(input_tokens, reserve_tokens, context_window, turns_since_compaction)`;
+its `ratio` property is `None` without a known window.
 
-The default estimate is UTF-8 bytes / 4, scaled by how far the previous request's
-estimate was from the input tokens the provider reported. The first request of a
-session uses the raw estimate; replace it with `Service(TokenCounter, counter)`
-when you have a provider tokenizer.
+`keep_last_steps` is a positive integer, defaulting to two. A step is one model
+invocation and its associated tool calls and results. Parallel tool calls count
+as one step; text-only responses also count. Retention spans turn boundaries,
+including while idle. With seven complete steps and `keep_last_steps=3`, steps
+1–4 become a summary and steps 5–7 remain verbatim. Fewer than N complete steps
+leave no eligible older prefix.
 
-`keep_turns` retains recent closed turns, `keep_first_turns` retains initial turns,
-and `preserve_turns` pins specific existing turn IDs. `keep_steps` retains at least
-one completed step in the active turn (default: two). Once more steps have finished,
-compaction can summarize their older prefix even in the very first turn. Only
-completed step boundaries are eligible; tool calls and their results stay together.
-Retained assistant messages keep their provider state unchanged.
+The active task's inputs, steering and context remain protected, along with
+inputs needed to interpret retained steps from earlier turns. An unfinished
+step and current observations remain protected in addition to the completed
+suffix. Original message identities, tool-call IDs, multimodal content and
+provider state are preserved, in order, once each. Completed tools never rerun.
+Old summaries become input to the next summary rather than accumulating.
 
-Observations in retained steps keep their complete text and image parts, message
-identities and order. For example, `keep_steps=5` keeps five completed steps plus
-the current observation in an active turn. Older observations and their images
-are removed together in the same compacted request. Between compactions, the
-history grows without rewriting previous observations. The default model
-summarizer reads textual parts and captions; it does not reanalyze image pixels.
-Include important image findings in text if they must survive summarization.
+Changing retention cannot recover discarded history. Snapshots retain their
+own messages and resource bytes. Completed-step boundaries survive snapshots
+and restarts independently of execution-event buffers.
 
-The active turn's task, steering messages and supplied context stay verbatim, as do
-fixed instructions and tool schemas. Pinning the active turn, including through
-`keep_first_turns`, protects its entire history. Recent closed turns remain verbatim
-while retained by `keep_turns`; this does not pin them permanently. Earlier summaries
-are input to the next summary, so old summaries do not accumulate.
+## Prompts and summarization models
 
-Automatic compaction runs after request hooks, before the provider call and its
-tool effects. An over-budget request forces an attempt even if its normal trigger
-is not due. If retained content still exceeds the budget, the request fails before
-calling the provider. A summary that does not reduce the estimated request size
-is discarded; automatic attempts back off for two more closed turns or two more
-finished steps in the same active turn. Over-budget and manual attempts bypass this
-backoff. Step retries require an advanced compaction boundary. Compaction cannot
-help if the protected inputs and retained steps alone
-exceed the budget.
+`prompt` replaces the summarizer's entire system prompt. Omission selects the
+public `DEFAULT_COMPACTION_PROMPT`. A string or sync/async factory may be used;
+empty prompts and empty factory results are rejected. A factory is evaluated
+once per summarization attempt and receives an immutable `CompactionContext`:
 
-If the provider raises `ContextLengthExceeded` before a visible partial response,
-an installed policy can force one smaller projection and retry in a new step.
-The failed step ends with `context_limit`; the next request has its own step and
-never re-executes completed tools. This retry is limited to one per turn and uses
-the normal step budget. A partial reply, exhausted step budget, absent policy or
-history that cannot be reduced propagates the error. The retry marker survives
-pause and restart.
+- `history_to_compact`: messages replaced by the summary, including a previous summary.
+- `retained_context`: non-instruction messages that remain verbatim.
+- `instructions`: effective agent system instructions from the captured request.
+- `state`: captured request sizes, output reserve, window and turn count.
+- `target_tokens`: resolved explicit whole-input target, or `None`.
+
+The built-in summarizer labels these as separate reference sections. Agent
+instructions and historical content remain reference data; only `prompt`
+occupies the summarizer's system role. Tools are disabled. Text and captions
+are included; images receive an omission marker and are not reanalyzed. Custom
+summarizers receive original typed content, including image references.
+
+Use `llm=some_model` or `llm="provider:model"` to select a separate summarization
+model. Omission uses the current session model captured for the request. Wrap
+native PydanticAI models in `PydanticAIModel` explicitly. Owned model resources
+close with the plugin. The built-in path budgets its complete reference request
+against the selected model's window and output limits before transport; it
+fails without changing history if required references do not fit.
+
+Custom implementations use the public service contracts:
+
+```python
+from harnessed.services import CompactionRequest, Summary
+
+
+class MySummarizer:
+    async def summarize(self, request: CompactionRequest) -> Summary:
+        # Read request.context and honor request.max_summary_tokens.
+        return Summary("A complete continuation handoff.")
+```
+
+Pass an implementation with `summarizer=MySummarizer()`. This is mutually
+exclusive with explicit `llm` and `prompt`. `Summary(text, usage=...)` reports
+incurred `ModelUsage`, including for rejected candidates. A plain string is not
+a valid result. `Summarizer` is exported by `harnessed.services`.
+
+## Budgets and targets
+
+Summary generation receives a finite budget derived from available request
+space, model output metadata/settings and optional `max_summary_tokens`. There
+is no fixed 2,048-token default. If no finite bound is available, `ConfigError`
+requests an explicit ceiling. Token measurements use the session counter and
+one calibration snapshot throughout an operation. The default counter estimates
+UTF-8 bytes / 4 and calibrates from reported provider usage. Supply a tokenizer
+through `Service(TokenCounter, counter)` when available.
+
+`target_ratio` or `target_tokens` optionally sets an upper bound for the **entire
+input request after compaction**, including fixed instructions and tool/output
+schemas. They are mutually exclusive. Ratios require a known effective window
+and exclude the output reserve; the hard input ceiling separately remains
+`window - reserve`. A target of 0.4 is an application choice, not a default.
+
+`max_summary_tokens` is an optional positive ceiling for summary text measured
+with the session counter. Generated text is never sliced to fit. Empty output,
+tool calls and provider-truncated output cannot be committed. At most one further
+summarization call can request a tighter summary or give a truncated response
+more generation room. All incurred usage is recorded. The smallest complete,
+valid candidate is retained; an explicit text ceiling remains mandatory.
+
+Targets are best effort. Protected content alone may exceed the target; in that
+case the runtime skips a futile target retry and attempts useful compaction
+within the hard budget. A smaller candidate may be committed with
+`target_reached=False`. The normal context guard still blocks an over-budget
+ordinary provider call. Protected inputs and steps are never truncated to fit.
+
+Automatic compaction runs after request hooks and before the provider call.
+Non-reducing attempts back off for two more closed turns or two more completed
+steps in the active turn. Forced and manual attempts bypass backoff. A provider
+`ContextLengthExceeded` before a visible partial response may trigger one smaller
+projection and a new step, within the normal step limit. This recovery never
+re-executes completed tools and remains limited to one per turn.
 
 ## Display compaction activity
 
-Automatic and manual attempts publish `CompactionStartedEvent`
-(`compaction.started`) before summarization and `CompactionFinishedEvent`
-(`compaction.finished`) after the attempt. Both are exported by `harnessed.events`
-and share `compaction_id`. A started attempt always closes, including on errors
-and cancellation. No lifecycle events are emitted for ineligible history or a
-backoff check that does not invoke the summarizer.
+`CompactionStartedEvent`, durable `CompactionAppliedEvent`, and
+`CompactionFinishedEvent` are exported by `harnessed.events`. Start/finish share
+`compaction_id`; a committed record uses the same `id`. Finished outcomes are
+`APPLIED`, `DISCARDED`, `FAILED` and `CANCELLED`. Errors and cancellation propagate.
+An observer failure after commit still reports `APPLIED` and committed sizes.
 
-The finish carries `CompactionOutcome.APPLIED`, `DISCARDED`, `FAILED` or
-`CANCELLED`. Discarded means the summary was not committed, for example because
-it did not reduce the request. Exceptions and cancellation still propagate.
-If an observer fails after commit, the outcome remains `APPLIED`.
+All three capture `before_tokens`, `context_window`, `reserve_tokens` and
+`target_tokens`. Applied records require integer `after_tokens`. A discarded
+finish reports the unchanged input count; failure/cancellation has no after
+count unless a projection was committed. Derived properties expose
+`before_ratio`, `after_ratio`, `freed_tokens` and `target_reached` wherever their
+inputs exist. Started events expose only `before_ratio`.
 
-On success the durable `CompactionAppliedEvent` arrives before the finish. Its
-`id` equals `compaction_id`; it contains the summary and estimated
-`before_tokens`/`after_tokens`. Start and finish are transient activity signals,
-not replayed history. `session.stream()` forwards all three events during a turn.
-Use `session.subscribe(transient=True)` for a session-wide indicator, including
-manual compaction while idle or paused.
+Occupancy ratios describe input only, are not clamped at one, and remain `None`
+without a window. They are request-counter estimates, separate from billed
+summarizer usage. For example, a 200,000-token window and input counts of
+172,000 → 72,000 produce ratios of 0.86 → 0.36 and `freed_tokens=100_000`.
 
-## Choose a summarizer
-
-Omitting `summarizer` uses the session's current `Model`. A model string, native
-PydanticAI model or Harnessed Model selects a separate summarization model. Model
-summaries receive a dedicated request with no tools and the configured output
-budget. Owned provider resources are released with the plugin.
-
-A custom object can instead implement the structural `Summarizer` protocol from
-`harnessed.core.compaction`: `async summarize(messages, *, max_tokens) -> str | Summary`.
-It receives the selected past messages; `focus` is a hint for model-based summaries.
-Summaries must be nonempty. Their text is bounded by `summary_tokens` before commit.
-
-`Summary(text, usage=...)` reports available `ModelUsage`. Model summarizers return
-this value automatically. Summary calls contribute to session and turn usage even
-when their result is invalid or does not reduce context. Their `ModelUsageRecordedEvent`
-events carry `UsagePurpose.COMPACTION` from `harnessed.events`.
+`session.stream()` forwards these events during a turn. Use
+`session.subscribe(transient=True)` for session-wide activity, including manual
+compaction while idle or paused. Start/finish are not persisted history.
 
 ## Compact manually
 
-```python
-async with agent.session() as session:
-    await session.run("Review the change.")
-    await session.pause()
-    applied = await session.compact()
-    await session.resume()
-```
-
-`compact()` returns the appended record, or `None` if there is no eligible history
-or no smaller projection. It works without the policy plugin, using the session
-model and retaining the latest two turns. With the plugin it uses its summarizer
-and retention. It preserves pause state. Pause a running turn first; queued input
-can arrive while summarizing, but its model step waits until compaction finishes.
+`await session.compact()` returns the committed record, or `None` when there is
+no eligible prefix or smaller valid projection. It works without a plugin,
+using the session model and retaining the latest two complete steps. With a
+plugin it uses that plugin's configuration. Pause a running turn first;
+compaction preserves pause state. Incoming queued input can arrive during
+summarization, but its model step waits until compaction finishes.
 
 Run the [offline policy comparison](examples.md) with
 `uv run python -m examples.16_compaction_policies`.
-
-Compaction can preserve only turns still present in the working context. Previously
-discarded turns cannot be restored by changing retention settings. Earlier exported
-snapshots remain independent owners of their messages and resource bytes.

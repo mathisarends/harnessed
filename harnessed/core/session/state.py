@@ -41,11 +41,21 @@ class HistoryEntry:
     lifetime: MessageLifetime = MessageLifetime.SESSION
     observation: IncludedObservation | None = None
     resources: tuple[SpillRef, ...] = ()
+    is_input: bool = False
 
 
 @dataclass(frozen=True, config=_CONFIG)
 class HistoryTurn:
     id: str
+    boundary: Annotated[int, Field(ge=1)]
+
+
+@dataclass(frozen=True, config=_CONFIG)
+class HistoryStep:
+    """A completed model/tool batch retained independently of execution buffers."""
+
+    turn_id: str
+    start: Annotated[int, Field(ge=0)]
     boundary: Annotated[int, Field(ge=1)]
 
 
@@ -69,12 +79,13 @@ class SessionState:
 
     __hash__ = None
 
-    version: Literal[2] = 2
+    version: Literal[3] = 3
     history: tuple[HistoryEntry, ...] = ()
     plugin_instructions: Annotated[Mapping[str, str], PlainSerializer(dict, when_used="json")] = (
         field(default_factory=dict)
     )
     turns: tuple[HistoryTurn, ...] = ()
+    steps: tuple[HistoryStep, ...] = ()
     turns_since_compaction: Annotated[int, Field(ge=0)] = 0
     compacted_through: Annotated[int, Field(ge=0)] = 0
     preserved_turns: tuple[str, ...] = ()
@@ -101,6 +112,13 @@ class SessionState:
             raise ValueError("A snapshot cannot contain turn-scoped messages")
         if len({turn.id for turn in self.turns}) != len(self.turns):
             raise ValueError("Retained turn identities must be unique")
+        previous = 0
+        for step in self.steps:
+            if not previous <= step.start < step.boundary:
+                raise ValueError("Retained steps must be ordered, disjoint completed batches")
+            if step.turn_id not in {turn.id for turn in self.turns}:
+                raise ValueError("Retained steps must belong to available turns")
+            previous = step.boundary
         if not set(self.preserved_turns) <= {turn.id for turn in self.turns}:
             raise ValueError("Pinned turns must be present in the snapshot")
         pending: set[str] = set()
