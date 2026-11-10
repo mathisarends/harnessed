@@ -63,5 +63,6 @@ nav:
       - Plugin recipe design: contributing/plugin-recipes.md
       - Plugin scope API and rationale: contributing/plugin-scope.md
       - Approval timeout decision: contributing/approval-timeouts.md
+      - Compaction API proposal: contributing/compaction-api.md
       - Implemented boundaries: contributing/structure-target.md
       - Roadmap: contributing/roadmap.md

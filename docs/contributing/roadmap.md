@@ -66,6 +66,17 @@ needed to resolve relative script and asset paths. These remain proposals.
 UI applications, RAG and evaluation systems are not part of the initial SDK scope.
 Concrete consumers should establish their requirements before adding framework APIs.
 
+## Compaction configuration and measurements
+
+The [compaction API proposal](compaction-api.md) describes a future breaking
+change: complete prompt replacement, separate LLM and summarizer selection,
+one `keep_last_steps` retention setting, typed task/retained reference context,
+automatic summary budgeting with optional
+whole-request targets, and before/after context measurements in lifecycle events.
+It includes the developer-facing API, rationale, migration and implementation
+acceptance criteria. It is a design handoff, not an implemented API contract.
+The [compaction guide](../guides/compaction.md) remains the current behavior.
+
 ## Instruction factory callbacks
 
 `Instructions.from_factory` requires an asynchronous callback returning text.
