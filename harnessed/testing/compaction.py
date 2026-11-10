@@ -1,7 +1,8 @@
 import json
 
 from harnessed.core.budget import truncate
-from harnessed.core.messages import Message, to_dict
+from harnessed.core.compaction import CompactionRequest, Summary
+from harnessed.core.messages import to_dict
 from harnessed.core.tokens import ApproximateTokenCounter, TokenCounter
 
 
@@ -11,9 +12,11 @@ class ExtractiveSummarizer:
     def __init__(self, counter: TokenCounter | None = None) -> None:
         self.counter = counter if counter is not None else ApproximateTokenCounter()
 
-    async def summarize(self, messages: tuple[Message, ...], *, max_tokens: int) -> str:
+    async def summarize(self, request: CompactionRequest) -> Summary:
+        messages = request.context.history_to_compact
+        max_tokens = request.max_summary_tokens
         if not messages:
-            return "No retained conversation content."
+            return Summary("No retained conversation content.")
         allowance = max(1, max_tokens // len(messages) - 8)
         excerpts = []
         for message in messages:
@@ -27,4 +30,4 @@ class ExtractiveSummarizer:
                 tail = truncate(body[::-1], allowance // 2, self.counter)[::-1]
                 body = f"{head}\n[...]\n{tail}"
             excerpts.append(f"{message.role}: {body}")
-        return truncate("\n\n".join(excerpts), max_tokens, self.counter)
+        return Summary(truncate("\n\n".join(excerpts), max_tokens, self.counter))

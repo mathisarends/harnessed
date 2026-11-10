@@ -29,6 +29,7 @@ from harnessed.core.model import (
 from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.core.tools.decorator import tool
 from harnessed.plugins import AgentLoop, Compaction, at_ratio, every_turns
+from harnessed.services import Summary
 from harnessed.testing import CallbackModel, ScriptedModel, reply
 from tests._audit import Audit, AuditProjection
 
@@ -37,9 +38,10 @@ class Brief:
     def __init__(self):
         self.sources = []
 
-    async def summarize(self, messages, *, max_tokens):
+    async def summarize(self, request):
+        messages = request.context.history_to_compact
         self.sources.append(messages)
-        return f"summary {len(self.sources)}"
+        return Summary(f"summary {len(self.sources)}")
 
 
 @pytest.mark.parametrize("context_window", [None, 2000])
@@ -68,7 +70,9 @@ async def test_compaction_window_uses_captured_model(context_window: int | None)
 
 
 async def test_default_summary_uses_captured_model_after_a_request_hook() -> None:
-    original = ScriptedModel(["first", "summary", "second"], info=ModelInfo("original"))
+    original = ScriptedModel(
+        ["first", "retained", "summary", "second"], info=ModelInfo("original", max_output=2048)
+    )
     replacement = ScriptedModel([], info=ModelInfo("replacement"))
 
     async def swap(
@@ -78,23 +82,27 @@ async def test_default_summary_uses_captured_model_after_a_request_hook() -> Non
         return await next_()
 
     async with Agent(
-        model=original, plugins=[Compaction(trigger=every_turns(1), keep_turns=0)]
+        model=original, plugins=[Compaction(trigger=every_turns(1), keep_last_steps=1)]
     ).session() as session:
         await session.run("x" * 4000)
+        await session.run("retained")
         session.on(PrepareRequest, swap)
         assert (await session.run("current")).text == "second"
         assert session.last(CompactionAppliedEvent).summary == "summary"
-        assert len(original.requests) == 3
+        assert len(original.requests) == 4
         assert replacement.requests == []
 
 
 async def test_manual_summary_uses_captured_model_before_start_observers() -> None:
-    original = ScriptedModel(["first", "summary"], info=ModelInfo("original"))
+    original = ScriptedModel(
+        ["first", "retained", "summary"], info=ModelInfo("original", max_output=2048)
+    )
     replacement = ScriptedModel([], info=ModelInfo("replacement"))
     async with Agent(
-        model=original, plugins=[Compaction(trigger=lambda state: False, keep_turns=0)]
+        model=original, plugins=[Compaction(trigger=lambda state: False, keep_last_steps=1)]
     ).session() as session:
         await session.run("x" * 4000)
+        await session.run("retained")
 
         def swap(event: CompactionStartedEvent) -> None:
             session.scope.provide(Model, replacement)
@@ -102,7 +110,7 @@ async def test_manual_summary_uses_captured_model_before_start_observers() -> No
         session.on(CompactionStartedEvent, swap)
         applied = await session.compact()
         assert applied is not None and applied.summary == "summary"
-        assert len(original.requests) == 2
+        assert len(original.requests) == 3
         assert replacement.requests == []
 
 
@@ -111,11 +119,11 @@ async def test_context_recovery_summary_uses_captured_model() -> None:
 
     async def chunks(request: ModelRequest) -> AsyncIterator[ModelChunk]:
         requests.append(request)
-        if len(requests) == 2:
+        if len(requests) == 3:
             raise ContextLengthExceeded("Too large")
         yield ModelChunk(text="first" if len(requests) == 1 else "summary")
 
-    original = CallbackModel(chunks, info=ModelInfo("original"))
+    original = CallbackModel(chunks, info=ModelInfo("original", max_output=2048))
     replacement = ScriptedModel(["continued"], info=ModelInfo("replacement"))
 
     async def swap(
@@ -125,33 +133,37 @@ async def test_context_recovery_summary_uses_captured_model() -> None:
         return await next_()
 
     async with Agent(
-        model=original, plugins=[Compaction(trigger=lambda state: False, keep_turns=0)]
+        model=original, plugins=[Compaction(trigger=lambda state: False, keep_last_steps=1)]
     ).session() as session:
         await session.run("x" * 4000)
+        await session.run("retained")
         session.on(PrepareRequest, swap)
         assert (await session.run("current")).text == "continued"
         assert session.last(CompactionAppliedEvent).summary == "summary"
-        assert len(original.requests) == 3
+        assert len(original.requests) == 4
         assert len(replacement.requests) == 1
         assert session.last(ModelRequestedEvent).model == replacement.info
 
 
 async def test_default_summarizer_uses_the_session_model_and_preserves_fixed_instructions():
-    model = ScriptedModel(["first", "summary", "second"])
+    model = ScriptedModel(["first", "retained", "summary", "second"])
     async with Agent(
         model=model,
         instructions="Fixed instructions.",
-        plugins=[Compaction(trigger=every_turns(1), keep_turns=0, focus="Keep paths.")],
+        plugins=[Compaction(trigger=every_turns(1), keep_last_steps=1, prompt="Keep paths.")],
     ).session() as session:
         session_audit = Audit(session)
         await session.run("x" * 4000)
+        await session.run("retained")
         await session.run("current")
-        summary_request = model.requests[1]
+        summary_request = model.requests[2]
         assert not summary_request.tools and "Keep paths." in summary_request.messages[0].text
-        assert summary_request.settings.max_tokens == 2048
-        assert [message.text for message in model.requests[2].messages] == [
+        assert summary_request.settings.max_tokens > 2048
+        assert [message.text for message in model.requests[3].messages] == [
             "Fixed instructions.",
             "Conversation summary:\nsummary",
+            "retained",
+            "retained",
             "current",
         ]
         assert await session.prompt.render() == "Fixed instructions."
@@ -167,14 +179,20 @@ async def test_compaction_usage_is_counted_and_replayed_even_when_no_summary_is_
 ):
     summary = "summary" if reduces_context else "y" * 8000
     model = ScriptedModel(
-        [reply("first", usage=ModelUsage(28, 4)), reply(summary, usage=ModelUsage(123, 12)), "next"]
+        [
+            reply("first", usage=ModelUsage(28, 4)),
+            "retained",
+            reply(summary, usage=ModelUsage(123, 12)),
+            "next",
+        ]
     )
     async with Agent(
         model=model,
-        plugins=[Compaction(trigger=every_turns(1), keep_turns=0)],
+        plugins=[Compaction(trigger=every_turns(1), keep_last_steps=1)],
     ).session() as session:
         session_audit = Audit(session)
         await session.run("x" * 4000)
+        await session.run("retained")
         result = await session.run("current")
         assert session.usage.input_tokens == 151 and session.usage.output_tokens == 16
         assert result.usage.input_tokens == 123 and result.usage.output_tokens == 12
@@ -195,13 +213,18 @@ async def test_compaction_usage_is_counted_and_replayed_even_when_no_summary_is_
 )
 async def test_invalid_summarizer_responses_still_contribute_their_usage(message):
     model = ScriptedModel(
-        [reply("first", usage=ModelUsage(28, 4)), ModelResponse(message, ModelUsage(123, 12))]
+        [
+            reply("first", usage=ModelUsage(28, 4)),
+            "retained",
+            ModelResponse(message, ModelUsage(123, 12)),
+        ]
     )
     async with Agent(
-        model=model, plugins=[Compaction(trigger=every_turns(1), keep_turns=0)]
+        model=model, plugins=[Compaction(trigger=every_turns(1), keep_last_steps=1)]
     ).session() as session:
         session_audit = Audit(session)
         await session.run("x" * 4000)
+        await session.run("retained")
         with pytest.raises(ValueError, match="Summarizer returned"):
             await session.run("current")
         assert session.usage.input_tokens == 151 and session.usage.output_tokens == 16
@@ -215,7 +238,7 @@ async def test_periodic_trigger_counts_new_closed_turns_and_reuses_the_previous_
     model = ScriptedModel(["answer"] * 6)
     async with Agent(
         model=model,
-        plugins=[Compaction(trigger=every_turns(2), summarizer=brief, keep_turns=1)],
+        plugins=[Compaction(trigger=every_turns(2), summarizer=brief, keep_last_steps=1)],
     ).session() as session:
         session_audit = Audit(session)
         counts = []
@@ -238,12 +261,13 @@ async def test_compaction_runs_after_request_hooks_and_preserves_their_extra_con
             return replace(request, messages=(*request.messages, SystemMessage("HOOK CONTEXT")))
 
     brief = Brief()
-    model = ScriptedModel(["first", "second"])
+    model = ScriptedModel(["first", "retained", "second"])
     async with Agent(
         model=model,
-        plugins=[Scope(), Compaction(trigger=every_turns(1), summarizer=brief, keep_turns=0)],
+        plugins=[Scope(), Compaction(trigger=every_turns(1), summarizer=brief, keep_last_steps=1)],
     ).session() as session:
         await session.run("x" * 4000)
+        await session.run("retained")
         await session.run("current")
         assert len(brief.sources) == 1
         assert model.requests[-1].messages[-1].text == "HOOK CONTEXT"
@@ -252,15 +276,16 @@ async def test_compaction_runs_after_request_hooks_and_preserves_their_extra_con
 
 async def test_budget_overflow_forces_compaction_even_when_the_trigger_is_not_due():
     brief = Brief()
-    model = ScriptedModel(["first", "second"])
+    model = ScriptedModel(["first", "retained", "second"])
     async with Agent(
         model=model,
         plugins=[
             AgentLoop(context_window=500),
-            Compaction(trigger=lambda state: False, summarizer=brief, keep_turns=0),
+            Compaction(trigger=lambda state: False, summarizer=brief, keep_last_steps=1),
         ],
     ).session() as session:
         await session.run("x" * 1000)
+        await session.run("retained")
         await session.run("y" * 1000)
         assert session.last(CompactionAppliedEvent) is not None and len(brief.sources) == 1
         assert not any(message.text == "x" * 1000 for message in model.requests[-1].messages)
@@ -307,10 +332,10 @@ async def test_new_model_calls_and_close_wait_for_manual_compaction(operation):
     started, release = asyncio.Event(), asyncio.Event()
 
     class Blocked:
-        async def summarize(self, messages, *, max_tokens):
+        async def summarize(self, request):
             started.set()
             await release.wait()
-            return "short summary"
+            return Summary("short summary")
 
     model = ScriptedModel(["first", "second", "third", "next"])
     async with Agent(
@@ -360,13 +385,13 @@ async def test_ratio_requires_known_metadata_or_a_loop_override():
         lambda: at_ratio(float("nan")),
         lambda: every_turns(True),
         lambda: every_turns(0),
-        lambda: Compaction(keep_turns=-1),
-        lambda: Compaction(keep_first_turns=True),
-        lambda: Compaction(summary_tokens=0),
-        lambda: Compaction(preserve_turns=[""]),
-        lambda: Compaction(preserve_turns="turn-id"),
-        lambda: Compaction(preserve_turns=[1]),
-        lambda: Compaction(focus=3),
+        lambda: Compaction(keep_last_steps=-1),
+        lambda: Compaction(keep_last_steps=True),
+        lambda: Compaction(max_summary_tokens=0),
+        lambda: Compaction(target_tokens=0),
+        lambda: Compaction(target_ratio=0),
+        lambda: Compaction(target_ratio=0.5, target_tokens=10),
+        lambda: Compaction(prompt=3),
     ],
 )
 def test_options_and_triggers_validate_at_configuration(create):
@@ -414,9 +439,9 @@ async def test_provider_context_error_compacts_once_then_retries_as_a_new_step()
     async def chunks(request):
         assert model is not None
         number = len(model.requests)
-        if number == 2:
-            raise ContextLengthExceeded("Provider window was exceeded")
         if number == 3:
+            raise ContextLengthExceeded("Provider window was exceeded")
+        if number == 4:
             yield ModelChunk(tool_call=ToolCall("work"))
         else:
             yield ModelChunk(text=f"answer {number}")
@@ -425,12 +450,16 @@ async def test_provider_context_error_compacts_once_then_retries_as_a_new_step()
     brief = Brief()
     async with Agent(
         model=model,
-        plugins=[Work(), Compaction(trigger=lambda state: False, summarizer=brief, keep_turns=0)],
+        plugins=[
+            Work(),
+            Compaction(trigger=lambda state: False, summarizer=brief, keep_last_steps=1),
+        ],
     ).session() as session:
         session_audit = Audit(session)
         await session.run("x" * 4000)
+        await session.run("retained")
         result = await session.run("current")
-        assert result.text == "answer 4" and effects == ["work"]
+        assert result.text == "answer 5" and effects == ["work"]
         assert len(brief.sources) == 1 and len(result.tool_calls) == 1
         assert [step.reason for step in session_audit.turns[-1].steps] == [
             "context_limit",
@@ -441,7 +470,7 @@ async def test_provider_context_error_compacts_once_then_retries_as_a_new_step()
             sum(isinstance(event, ModelRequestedEvent) for event in step.events) == 1
             for step in session_audit.turns[-1].steps
         )
-        assert not any(message.text == "x" * 4000 for message in model.requests[2].messages)
+        assert not any(message.text == "x" * 4000 for message in model.requests[3].messages)
         restored = [decode_event(encode_event(event)) for event in session_audit.events]
         assert AuditProjection(restored).turns == session_audit.turns
 
@@ -452,7 +481,7 @@ async def test_context_retry_is_bounded_and_requires_a_safe_smaller_request(case
 
     async def chunks(request):
         assert model is not None
-        if len(model.requests) == 1 and case != "no-history":
+        if len(model.requests) <= 2 and case != "no-history":
             yield ModelChunk(text="first")
             return
         if case == "partial":
@@ -464,7 +493,7 @@ async def test_context_retry_is_bounded_and_requires_a_safe_smaller_request(case
     plugins = (
         []
         if case == "no-policy"
-        else [Compaction(trigger=lambda state: False, summarizer=brief, keep_turns=0)]
+        else [Compaction(trigger=lambda state: False, summarizer=brief, keep_last_steps=1)]
     )
     if case == "step-limit":
         plugins.append(AgentLoop(max_steps=1))
@@ -472,10 +501,11 @@ async def test_context_retry_is_bounded_and_requires_a_safe_smaller_request(case
         session_audit = Audit(session)
         if case != "no-history":
             await session.run("x" * 4000)
+            await session.run("retained")
         with pytest.raises(ContextLengthExceeded, match="Still too large"):
             await session.run("current")
         assert session_audit.turns[-1].reason == TurnOutcome.ABORTED
         assert len(brief.sources) == (1 if case == "repeated" else 0)
         assert len(model.requests) == (
-            1 if case == "no-history" else 3 if case == "repeated" else 2
+            1 if case == "no-history" else 4 if case == "repeated" else 3
         )

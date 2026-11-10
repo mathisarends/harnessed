@@ -1,9 +1,9 @@
 # Compaction API proposal
 
-Status: **proposed**, 2026-11-10. This is a design handoff for a future breaking
-change, based on `origin/main` at `ac8de54`. None of the proposed signatures or
-exports below are implemented by this documentation change. The
-[compaction guide](../guides/compaction.md) describes the current behavior.
+Status: **implemented in the development version**, 2026-11-10. This document
+records the original design and rationale, based on `origin/main` at `ac8de54`.
+The runtime now implements these contracts. The [compaction guide](../guides/compaction.md)
+and [migration notes](../releases.md#unreleased) describe the current API.
 
 ## TL;DR
 
@@ -389,28 +389,28 @@ this change and must not be introduced as hidden compaction behavior.
 
 ## Implementation handoff and acceptance criteria
 
-- [ ] Implement the constructor validation, explicit facade exports and typed
+- [x] Implement the constructor validation, explicit facade exports and typed
   prompt/summarizer contracts; preserve the lazy SDK and standalone kernel.
-- [ ] Verify literal and sync/async factory prompts replace the default; task
+- [x] Verify literal and sync/async factory prompts replace the default; task
   inputs and agent instructions reach the summarizer in their reference roles.
-- [ ] Verify separate-model and custom-summarizer paths, contradictory argument
+- [x] Verify separate-model and custom-summarizer paths, contradictory argument
   errors, optional dependencies, resource ownership and incurred usage.
-- [ ] Test ratio/absolute targets, output reserve, unknown windows, retained-only
+- [x] Test ratio/absolute targets, output reserve, unknown windows, retained-only
   target overflow, different tokenizers and bounded retries with independent
   token-count expectations. Neither target nor ceiling may silently truncate.
-- [ ] Test event sizes and derived properties on applied, discarded, failed and
+- [x] Test event sizes and derived properties on applied, discarded, failed and
   cancelled attempts, including observer failure after commit and concurrent
   incoming context. Check the entire request, not summary text alone.
-- [ ] Preserve tool-call/result pairs, active task/steering inputs, retained
+- [x] Preserve tool-call/result pairs, active task/steering inputs, retained
   multimodal content, repeated compaction, manual/pause/restart behavior and
   context-limit recovery. No removed history may be reconstructed by retention.
-- [ ] Test `keep_last_steps` across turn boundaries and while idle, fewer than N
+- [x] Test `keep_last_steps` across turn boundaries and while idle, fewer than N
   steps, parallel calls within one step, text-only steps, an unfinished step,
   required task inputs and a retained suffix larger than the size target. Check
   original identities/order, one copy per message and no repeated tool effects.
-- [ ] Bump the state format as needed and update the guide, SDK/event reference,
+- [x] Bump the state format as needed and update the guide, SDK/event reference,
   consumer typing contracts and offline examples alongside implementation.
-- [ ] Run the repository's Smelt, Ruff, formatting, Pylint, ty, strict docs build
+- [x] Run the repository's Smelt, Ruff, formatting, Pylint, ty, strict docs build
   and relevant compaction/runtime tests. Measure quality, savings and latency on
   coding and browser workloads before choosing any automatic occupancy default.
 

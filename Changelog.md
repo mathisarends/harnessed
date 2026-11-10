@@ -5,6 +5,18 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## Unreleased
+
+- Implement the new Compaction API: complete prompt replacement and sync/async
+  prompt factories, separate `llm` selection, typed custom summarizer requests,
+  and `keep_last_steps` retention across turn boundaries and restarts.
+- Derive finite summary budgets automatically; support whole-input targets and
+  explicit text ceilings, with at most two attempts and no silent truncation.
+- Capture input sizes, window, reserve and target in compaction lifecycle events;
+  expose occupancy ratios, freed tokens and target outcomes.
+- Remove the old constructor controls without aliases. State format is now 3
+  and audit envelopes are version 6. See [migration notes](docs/releases.md#unreleased).
+
 ## 0.15.1 (2026-11-10)
 
 This documentation-only patch release records the Compaction API design handoff.

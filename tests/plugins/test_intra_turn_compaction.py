@@ -29,10 +29,12 @@ from harnessed.core.messages import (
 )
 from harnessed.core.model import ModelChunk, ModelRequest, ModelResponse
 from harnessed.core.session.session import SessionLog
+from harnessed.core.session.state import SessionState
 from harnessed.core.tokens import ApproximateTokenCounter, TokenCounter
 from harnessed.kernel import Scope
 from harnessed.models import ModelInfo, ProviderState
 from harnessed.plugins import AgentLoop, Compaction
+from harnessed.services import Summary
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit
 
@@ -41,9 +43,10 @@ class Brief:
     def __init__(self):
         self.sources = []
 
-    async def summarize(self, messages, *, max_tokens):
+    async def summarize(self, request):
+        messages = request.context.history_to_compact
         self.sources.append(messages)
-        return "prior work"
+        return Summary("prior work")
 
 
 def assert_pairs(messages: tuple[Message, ...]) -> None:
@@ -85,20 +88,8 @@ async def append_step(log: SessionLog, turn: str, number: int) -> None:
     await log.append(StepEndedEvent(turn, number))
 
 
-async def compact(
-    log: SessionLog,
-    *,
-    keep_turns: int = 1,
-    keep_first_turns: int = 0,
-    preserve_turns: tuple[str, ...] = (),
-    keep_steps: int = 1,
-) -> CompactionAppliedEvent | None:
-    settings = CompactionSettings(
-        keep_turns=keep_turns,
-        keep_first_turns=keep_first_turns,
-        preserve_turns=preserve_turns,
-        keep_steps=keep_steps,
-    )
+async def compact(log: SessionLog, *, keep_last_steps: int = 1) -> CompactionAppliedEvent | None:
+    settings = CompactionSettings(keep_last_steps=keep_last_steps)
     async with Scope() as scope:
         scope.provide(TokenCounter, ApproximateTokenCounter())
         scope.provide(CompactionPolicy, CompactionPolicy(settings, lambda _: True, Brief()))
@@ -135,7 +126,7 @@ async def test_repeated_compaction_retains_inputs_and_signatures_but_releases_re
     await log.append(UserMessageEvent(steering))
     await append_step(log, "active", 2)
     first = await apply_plan(log)
-    assert first.retained_turns == ("prior",)
+    assert first.retained_turns == ()
     assert first.preserve_turns == ()
     assert all(message in log.messages for message in (task, steering, context))
     assert persistent_context in log.messages
@@ -153,27 +144,20 @@ async def test_repeated_compaction_retains_inputs_and_signatures_but_releases_re
     await append_step(log, "next", 1)
     await append_step(log, "next", 2)
     third = await apply_plan(log)
-    assert third.retained_turns == ("active",)
+    assert third.retained_turns == ()
     assert not any(message.text == "prior task" for message in log.messages)
-    assert task in log.messages
+    assert task not in log.messages
 
 
-@pytest.mark.parametrize("pinned", ["explicit", "first"])
-async def test_pinning_an_open_turn_prevents_compacting_its_steps(pinned):
-    log = SessionLog("pinned")
+@pytest.mark.parametrize("keep_last_steps", [2, 3])
+async def test_fewer_than_retained_steps_leaves_history_unchanged(keep_last_steps):
+    log = SessionLog("short-history")
     await log.append(TurnStartedEvent("first"))
     await append_step(log, "first", 1)
     await append_step(log, "first", 2)
-    assert (
-        await compact(
-            log,
-            keep_turns=0,
-            keep_steps=1,
-            keep_first_turns=1 if pinned == "first" else 0,
-            preserve_turns=("first",) if pinned == "explicit" else (),
-        )
-        is None
-    )
+    original = log.messages
+    assert await compact(log, keep_last_steps=keep_last_steps) is None
+    assert log.messages == original
 
 
 async def test_a_completed_step_cannot_hide_an_unanswered_tool_call():
@@ -190,13 +174,15 @@ async def test_a_completed_step_cannot_hide_an_unanswered_tool_call():
     )
     await log.append(StepEndedEvent("t", 1))
     with pytest.raises(ValueError, match="unanswered tool calls"):
-        await log.append(CompactionAppliedEvent(len(log.events), "summary"))
+        await log.append(
+            CompactionAppliedEvent(len(log.events), "summary", before_tokens=0, after_tokens=0)
+        )
 
 
 @pytest.mark.parametrize("keep_steps", [0, -1, True])
 def test_keep_steps_requires_a_positive_integer(keep_steps):
     with pytest.raises(ValueError):
-        Compaction(keep_steps=keep_steps)
+        Compaction(keep_last_steps=keep_steps)
 
 
 @pytest.mark.parametrize("over_budget", [False, True])
@@ -233,7 +219,7 @@ async def test_first_turn_compacts_automatically_without_changing_retained_provi
         plugins=[
             Work(),
             AgentLoop(context_window=3000 if over_budget else 128_000),
-            Compaction(trigger=lambda state: not over_budget, summarizer=brief, keep_steps=2),
+            Compaction(trigger=lambda state: not over_budget, summarizer=brief, keep_last_steps=2),
         ],
     ).session() as session:
         session_audit = Audit(session)
@@ -256,9 +242,10 @@ async def test_first_turn_compacts_automatically_without_changing_retained_provi
 
 async def test_nonshrinking_summary_retries_after_two_more_steps_in_the_same_turn():
     class SometimesBrief(Brief):
-        async def summarize(self, messages, *, max_tokens):
+        async def summarize(self, request):
+            messages = request.context.history_to_compact
             self.sources.append(messages)
-            return "y" * 8000 if len(self.sources) == 1 else "prior work"
+            return Summary("y" * 8000 if len(self.sources) == 1 else "prior work")
 
     class Work(Plugin):
         @tool(readonly=True)
@@ -276,7 +263,7 @@ async def test_nonshrinking_summary_retries_after_two_more_steps_in_the_same_tur
         model=model,
         plugins=[
             Work(),
-            Compaction(trigger=lambda state: True, summarizer=brief, keep_steps=1),
+            Compaction(trigger=lambda state: True, summarizer=brief, keep_last_steps=1),
         ],
     ).session() as session:
         session_audit = Audit(session)
@@ -325,3 +312,51 @@ async def test_provider_context_error_can_compact_completed_steps_in_the_first_t
             "completed",
         ]
         assert_pairs(model.requests[-1].messages)
+
+
+async def test_step_suffix_spans_turns_and_preserves_required_task_inputs():
+    log = SessionLog("across-turns")
+    await log.append(TurnStartedEvent("prior"))
+    task = UserMessage("prior task")
+    await log.append(UserMessageEvent(task))
+    for number in range(1, 4):
+        await append_step(log, "prior", number)
+    await log.append(TurnEndedEvent("prior"))
+    await log.append(TurnStartedEvent("active"))
+    active = UserMessage("active task")
+    await log.append(UserMessageEvent(active))
+    await append_step(log, "active", 1)
+    await append_step(log, "active", 2)
+    original = log.messages
+    applied = await compact(log, keep_last_steps=3)
+    assert applied is not None
+    assert [call.id for message in log.messages for call in message.tool_calls] == [
+        "prior-3",
+        "active-1",
+        "active-2",
+    ]
+    assert task in log.messages and active in log.messages
+    assert sum(message is task for message in log.messages) == 1
+    retained = [message for message in original if message in log.messages]
+    assert retained == list(log.messages[1:])
+    assert all(left is right for left, right in zip(retained, log.messages[1:], strict=True))
+
+
+async def test_idle_retention_uses_persisted_step_boundaries_after_restart():
+    log = SessionLog("before-restart")
+    await log.append(TurnStartedEvent("prior"))
+    await log.append(UserMessageEvent(UserMessage("task")))
+    for number in range(1, 5):
+        await append_step(log, "prior", number)
+    await log.append(TurnEndedEvent("prior"))
+    state = SessionState.from_json(log.snapshot().to_json())
+    assert len(state.steps) == 4
+    restored = SessionLog("restored", state=state)
+    applied = await compact(restored, keep_last_steps=2)
+    assert applied is not None
+    assert [call.id for message in restored.messages for call in message.tool_calls] == [
+        "prior-3",
+        "prior-4",
+    ]
+    assert len(restored.snapshot().steps) == 2
+    assert await compact(restored, keep_last_steps=3) is None

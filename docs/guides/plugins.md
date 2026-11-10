@@ -66,7 +66,7 @@ def project_pack(root: str | Path = ".") -> PluginPack:
             Filesystem(root),
             Shell(root),
             AgentLoop(max_steps=30),
-            Compaction(keep_steps=4),
+            Compaction(keep_last_steps=4),
         ],
     )
 
@@ -78,7 +78,7 @@ agent = Agent(
     plugins=[
         project,
         AgentLoop(max_steps=10),
-        Compaction(keep_steps=8),
+        Compaction(keep_last_steps=8),
     ],
 )
 print(agent.describe())
@@ -100,10 +100,10 @@ that boundary supplies a direct recipe to decide it. Messages identify the slot
 and competing pack paths.
 
 ```python
-research = PluginPack("research", [project_pack(), Compaction(keep_steps=6)])
+research = PluginPack("research", [project_pack(), Compaction(keep_last_steps=6)])
 agent = Agent(
     model=model,
-    plugins=[research, Compaction(keep_steps=10)],
+    plugins=[research, Compaction(keep_last_steps=10)],
 )
 ```
 

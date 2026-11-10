@@ -51,9 +51,9 @@ async def main():
             spill,
             Compaction(
                 trigger=at_ratio(0.3),
-                summarizer=ScriptedModel(["The initial task was completed."]),
-                keep_turns=0,
-                summary_tokens=32,
+                llm=ScriptedModel(["The initial task was completed."]),
+                keep_last_steps=1,
+                max_summary_tokens=32,
             ),
         ],
     )

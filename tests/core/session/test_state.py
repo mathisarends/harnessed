@@ -103,16 +103,20 @@ async def test_images_survive_serialization_and_owner_cleanup_and_fail_integrity
 async def test_compaction_releases_discarded_objects_and_exports_only_active_context():
     model = ScriptedModel(["first", "second", "third"])
     compaction = Compaction(
-        trigger=lambda _: False, keep_turns=0, summarizer=ExtractiveSummarizer(), summary_tokens=8
+        trigger=lambda _: False,
+        keep_last_steps=1,
+        summarizer=ExtractiveSummarizer(),
+        max_summary_tokens=8,
     )
     async with Agent(model=model, plugins=[compaction]).session() as session:
         first = await session.run("old context " * 500)
         old = weakref.ref(first.state.history[0].message)
         frozen = first.state.to_json()
+        await session.run("kept")
         assert await session.compact() is not None
         compacted = session.snapshot()
-        assert len(compacted.history) == 1
-        assert not compacted.turns
+        assert len(compacted.history) == 3
+        assert len(compacted.turns) == 1
         assert first.state.to_json() == frozen
         first = None
         model.requests.clear()
@@ -140,9 +144,9 @@ async def test_spill_contents_survive_compaction_json_and_session_close():
             Spill(threshold_tokens=32),
             Compaction(
                 trigger=lambda _: False,
-                keep_turns=0,
+                keep_last_steps=1,
                 summarizer=ExtractiveSummarizer(),
-                summary_tokens=8,
+                max_summary_tokens=8,
             ),
         ],
     )
@@ -232,8 +236,8 @@ async def test_repeated_imports_compact_the_active_state_without_resurrecting_ol
         plugins=[
             Compaction(
                 trigger=every_turns(1),
-                keep_turns=1,
-                summary_tokens=8,
+                keep_last_steps=1,
+                max_summary_tokens=8,
                 summarizer=ExtractiveSummarizer(),
             ),
             LatestObservationOnly(),

@@ -337,7 +337,12 @@ async def test_loaded_instructions_survive_compaction_and_restart_from_the_log(t
     skill = Skill(name="testing", description="Run project tests.", instructions=original)
     policies = [
         Skills(skill),
-        Compaction(trigger=lambda state: False, keep_turns=0, summarizer=ExtractiveSummarizer()),
+        Compaction(
+            trigger=lambda state: False,
+            keep_last_steps=1,
+            summarizer=ExtractiveSummarizer(),
+            max_summary_tokens=32,
+        ),
     ]
     app = Agent(
         model=ScriptedModel([call("load_skill", name="testing"), "noise " * 1000]),
@@ -409,7 +414,10 @@ async def test_reloading_after_compaction_updates_the_retained_body_even_with_re
         plugins=[
             skills,
             Compaction(
-                trigger=lambda state: False, keep_turns=0, summarizer=ExtractiveSummarizer()
+                trigger=lambda state: False,
+                keep_last_steps=1,
+                summarizer=ExtractiveSummarizer(),
+                max_summary_tokens=32,
             ),
             Rules([when(tool="load_skill").note("Follow the complete instructions.")]),
         ],

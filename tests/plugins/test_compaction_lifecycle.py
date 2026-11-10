@@ -13,6 +13,7 @@ from harnessed.events import (
 )
 from harnessed.kernel import hook
 from harnessed.plugins import Compaction, every_turns
+from harnessed.services import Summary
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit
 
@@ -38,18 +39,18 @@ async def test_compaction_lifecycle_is_live_and_correlates_with_the_committed_pr
     outcome,
 ):
     class Summarizer:
-        async def summarize(self, messages, *, max_tokens):
-            return summary
+        async def summarize(self, request):
+            return Summary(summary)
 
     recorder = Recorder()
     async with Agent(
-        model=ScriptedModel(["first", "second"]),
+        model=ScriptedModel(["first", "retained", "second"]),
         plugins=[
             recorder,
             Compaction(
-                trigger=every_turns(1),
+                trigger=every_turns(2),
                 summarizer=Summarizer(),
-                keep_turns=0,
+                keep_last_steps=1,
             ),
         ],
     ).session() as session:
@@ -57,6 +58,7 @@ async def test_compaction_lifecycle_is_live_and_correlates_with_the_committed_pr
         assert await session.compact() is None
         assert not session.scope[Recorder].events
         await session.run("x" * 4000)
+        await session.run("retained")
         if automatic:
             async with session.stream("current") as run_stream:
                 stream = [event async for event in run_stream]
@@ -68,11 +70,17 @@ async def test_compaction_lifecycle_is_live_and_correlates_with_the_committed_pr
         assert len(started) == len(finished) == 1
         assert started[0].compaction_id == finished[0].compaction_id
         assert finished[0].outcome is outcome
+        assert finished[0].before_tokens == started[0].before_tokens
+        assert finished[0].context_window == started[0].context_window == 128_000
         applied = session.last(CompactionAppliedEvent)
         if outcome is CompactionOutcome.APPLIED:
             assert applied.id == started[0].compaction_id
+            assert finished[0].after_tokens == applied.after_tokens
+            assert finished[0].freed_tokens == applied.freed_tokens
         else:
             assert applied is None
+            assert finished[0].after_tokens == started[0].before_tokens
+            assert finished[0].freed_tokens == 0
         assert all(not isinstance(e, TransientEvent) for e in session_audit.events)
 
 
@@ -81,7 +89,7 @@ async def test_compaction_failure_and_cancellation_always_close_the_started_life
     entered = asyncio.Event()
 
     class Summarizer:
-        async def summarize(self, messages, *, max_tokens):
+        async def summarize(self, request):
             entered.set()
             if cancel:
                 await asyncio.Event().wait()
@@ -89,17 +97,18 @@ async def test_compaction_failure_and_cancellation_always_close_the_started_life
 
     recorder = Recorder()
     async with Agent(
-        model=ScriptedModel(["first"]),
+        model=ScriptedModel(["first", "retained"]),
         plugins=[
             recorder,
             Compaction(
-                trigger=every_turns(1),
+                trigger=every_turns(2),
                 summarizer=Summarizer(),
-                keep_turns=0,
+                keep_last_steps=1,
             ),
         ],
     ).session() as session:
         await session.run("x" * 4000)
+        await session.run("retained")
         before = session.messages
         task = asyncio.create_task(session.compact())
         await asyncio.wait_for(entered.wait(), 3)
@@ -120,6 +129,9 @@ async def test_compaction_failure_and_cancellation_always_close_the_started_life
         )
         assert session.messages == before
         assert session.last(CompactionAppliedEvent) is None
+        assert finished[0].before_tokens == started[0].before_tokens
+        assert finished[0].after_tokens is None
+        assert finished[0].freed_tokens is None
 
 
 async def test_failure_after_durable_apply_still_reports_applied():
@@ -130,10 +142,11 @@ async def test_failure_after_durable_apply_still_reports_applied():
 
     recorder = Recorder()
     async with Agent(
-        model=ScriptedModel(["first", "summary"]),
-        plugins=[recorder, FailingObserver(), Compaction(keep_turns=0)],
+        model=ScriptedModel(["first", "retained", "summary"]),
+        plugins=[recorder, FailingObserver(), Compaction(keep_last_steps=1)],
     ).session() as session:
         await session.run("x" * 4000)
+        await session.run("retained")
         with pytest.raises(ValueError, match="observer failed"):
             await session.compact()
         finished = [
@@ -141,3 +154,4 @@ async def test_failure_after_durable_apply_still_reports_applied():
         ]
         assert len(finished) == 1 and finished[0].outcome is CompactionOutcome.APPLIED
         assert session.last(CompactionAppliedEvent).id == finished[0].compaction_id
+        assert finished[0].after_tokens == session.last(CompactionAppliedEvent).after_tokens

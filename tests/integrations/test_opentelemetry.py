@@ -1265,14 +1265,15 @@ async def test_sessions_are_isolated_and_plugin_does_not_shutdown_provider(telem
 async def test_compaction_span_records_its_usage(telemetry):
     provider, exporter = telemetry
     agent = Agent(
-        model=ScriptedModel(["first", reply("summary", usage=ModelUsage(9, 2)), "second"]),
+        model=ScriptedModel(["first", "kept", reply("summary", usage=ModelUsage(9, 2)), "second"]),
         plugins=[
-            Compaction(trigger=every_turns(1), keep_turns=0),
+            Compaction(trigger=every_turns(1), keep_last_steps=1),
             OpenTelemetryTracer(tracer_provider=provider),
         ],
     )
     async with agent.session() as session:
         await session.run("long prompt " * 100)
+        await session.run("kept")
         await session.run("next")
     compact = next(s for s in exporter.get_finished_spans() if s.name == "harnessed.compaction")
     assert compact.attributes["llm.token_count.total"] == 11

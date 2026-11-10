@@ -7,7 +7,7 @@ from harnessed.core.session.checkpoint import (
 )
 from harnessed.core.session.commit import SessionChange, SessionCommit
 from harnessed.core.session.files import TextValue
-from harnessed.core.session.state import HistoryEntry, HistoryTurn, SessionState
+from harnessed.core.session.state import HistoryEntry, HistoryStep, HistoryTurn, SessionState
 from harnessed.core.session.store import SessionStore, StoredSession
 
 __all__ = [
@@ -16,6 +16,7 @@ __all__ = [
     "CheckpointExtension",
     "CheckpointSeed",
     "HistoryEntry",
+    "HistoryStep",
     "HistoryTurn",
     "SessionChange",
     "SessionCheckpoint",

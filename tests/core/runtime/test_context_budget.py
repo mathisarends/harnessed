@@ -23,6 +23,7 @@ from harnessed.core.plugin import Bundle, Service
 from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.models import GenerationSettings
 from harnessed.plugins import AgentLoop, Approvals, Compaction, at_ratio, every_turns
+from harnessed.services import Summary
 from harnessed.testing import CallbackModel, ExtractiveSummarizer, ScriptedModel
 from tests._audit import Audit, AuditProjection
 
@@ -31,9 +32,10 @@ class RecordingCompactor:
     def __init__(self):
         self.sources = []
 
-    async def summarize(self, messages, *, max_tokens):
+    async def summarize(self, request):
+        messages = request.context.history_to_compact
         self.sources.append(messages)
-        return f"summary {len(self.sources)}"
+        return Summary(f"summary {len(self.sources)}")
 
 
 async def test_sliding_window_preserves_recent_turns_first_turn_and_tool_pairs_verbatim():
@@ -57,15 +59,13 @@ async def test_sliding_window_preserves_recent_turns_first_turn_and_tool_pairs_v
             Compaction(
                 trigger=every_turns(1),
                 summarizer=summaries,
-                keep_turns=1,
-                keep_first_turns=1,
-                summary_tokens=32,
+                keep_last_steps=2,
+                max_summary_tokens=32,
             ),
         ],
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("FIRST GOAL " + "a" * 800)
-        first_turn = agent_audit.turns[0]
         first_messages = agent.log.messages
         prefix = agent_audit.events
         await agent.run("SECOND " + "b" * 800)
@@ -73,16 +73,16 @@ async def test_sliding_window_preserves_recent_turns_first_turn_and_tool_pairs_v
         await agent.run("CURRENT")
         events = agent_audit.events
         applied = [e for e in events if isinstance(e, CompactionAppliedEvent)]
-        assert len(applied) == 1 and applied[0].preserve_turns == (first_turn.id,)
+        assert len(applied) == 2 and applied[0].preserve_turns == ()
         assert applied[0].policy == "Compaction"
         assert applied[0].after_tokens < applied[0].before_tokens
         request = model.requests[-1]
-        assert all(message in request.messages for message in first_messages)
+        assert all(message not in request.messages for message in first_messages)
         assert any(m.text.startswith("THIRD ") for m in request.messages)
-        assert not any(m.text.startswith("SECOND ") for m in request.messages)
+        assert any(m.text.startswith("SECOND ") for m in request.messages)
         assert any(m.text == "CURRENT" for m in request.messages)
-        assert any(m.role == Role.TOOL and m.text == "exact result" for m in request.messages)
-        assert all(not m.text.startswith("FIRST GOAL") for m in summaries.sources[0])
+        assert not any(m.role == Role.TOOL for m in request.messages)
+        assert any(m.text.startswith("FIRST GOAL") for m in summaries.sources[1])
         replayed = tuple(decode_event(json.loads(json.dumps(encode_event(e)))) for e in events)
         assert AuditProjection(replayed).messages == agent.log.messages
         assert events[: len(prefix)] == prefix
@@ -96,7 +96,10 @@ async def test_periodic_compaction_counts_new_closed_turns_since_last_event():
         plugins=[
             Approvals(default=PolicyDecision.ALLOW),
             Compaction(
-                trigger=every_turns(2), summarizer=summaries, keep_turns=1, summary_tokens=32
+                trigger=every_turns(2),
+                summarizer=summaries,
+                keep_last_steps=1,
+                max_summary_tokens=32,
             ),
         ],
     ).session() as agent:
@@ -110,37 +113,29 @@ async def test_periodic_compaction_counts_new_closed_turns_since_last_event():
         assert sum(m.id.startswith("compaction:") for m in agent.log.messages) == 1
 
 
-async def test_explicit_turn_pins_are_preserved_and_excluded_from_summary_input():
+async def test_retention_can_only_preserve_currently_available_steps():
     summaries = RecordingCompactor()
     model = ScriptedModel(["answer"] * 4)
-    async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
-    ).session() as agent:
-        agent_audit = Audit(agent)
-        await agent.run("PINNED " + "a" * 400)
-        pinned = agent_audit.turns[0]
-        await agent.run("OLD " + "b" * 800)
-        await agent.scope.plugin(
-            Compaction(
-                trigger=every_turns(1),
-                summarizer=summaries,
-                keep_turns=0,
-                preserve_turns=[pinned.id],
-                summary_tokens=32,
-            )
+    async with Application(model=model).session() as agent:
+        await agent.run("OLDER " + "a" * 400)
+        await agent.run("RECENT " + "b" * 800)
+        await agent.mount(
+            Compaction(trigger=every_turns(1), summarizer=summaries, keep_last_steps=1)
         )
         await agent.run("current")
-        assert any(m.text.startswith("PINNED ") for m in model.requests[-1].messages)
-        assert not any(m.text.startswith("PINNED ") for m in summaries.sources[0])
+        assert not any(m.text.startswith("OLDER ") for m in model.requests[-1].messages)
+        assert any(m.text.startswith("RECENT ") for m in model.requests[-1].messages)
+        await agent.mount(
+            Compaction(trigger=every_turns(1), summarizer=summaries, keep_last_steps=3)
+        )
         await agent.run("next")
-        applied = [e for e in agent_audit.events if isinstance(e, CompactionAppliedEvent)]
-        assert all(pinned.id in event.preserve_turns for event in applied)
+        assert not any(m.text.startswith("OLDER ") for m in model.requests[-1].messages)
 
 
 async def test_compaction_preserves_request_hook_context_and_combines_triggers_once_per_step():
     extensions = Bundle("configured")
     summaries = RecordingCompactor()
-    model = ScriptedModel(["answer", "answer"])
+    model = ScriptedModel(["answer", "kept", "answer"])
     ratio, periodic = (at_ratio(0.1), every_turns(1))
     harness = Application(
         model=model,
@@ -150,8 +145,8 @@ async def test_compaction_preserves_request_hook_context_and_combines_triggers_o
             Compaction(
                 trigger=lambda state: ratio(state) or periodic(state),
                 summarizer=summaries,
-                keep_turns=0,
-                summary_tokens=32,
+                keep_last_steps=1,
+                max_summary_tokens=32,
             ),
             extensions,
         ],
@@ -165,6 +160,7 @@ async def test_compaction_preserves_request_hook_context_and_combines_triggers_o
     async with harness.session() as agent:
         agent_audit = Audit(agent)
         await agent.run("x" * 2000)
+        await agent.run("kept")
         await agent.run("current")
         assert len(summaries.sources) == 1
         assert sum(isinstance(e, CompactionAppliedEvent) for e in agent_audit.events) == 1
@@ -175,21 +171,22 @@ async def test_inbox_arrival_during_summary_does_not_change_the_summary_identity
     started, release = (asyncio.Event(), asyncio.Event())
 
     class BlockingCompactor:
-        async def summarize(self, messages, *, max_tokens):
+        async def summarize(self, request):
             started.set()
             await release.wait()
-            return "saved summary"
+            return Summary("saved summary")
 
-    model = ScriptedModel(["answer", "answer", "answer"])
+    model = ScriptedModel(["answer", "kept", "answer", "answer"])
     async with Application(
         model=model,
         plugins=[
             Approvals(default=PolicyDecision.ALLOW),
-            Compaction(trigger=every_turns(1), summarizer=BlockingCompactor(), keep_turns=0),
+            Compaction(trigger=every_turns(1), summarizer=BlockingCompactor(), keep_last_steps=1),
         ],
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("x" * 2000)
+        await agent.run("kept")
         await agent.submit("current")
         await asyncio.wait_for(started.wait(), timeout=5)
         await agent.steer("NEXT STEP CONTEXT")
@@ -231,20 +228,24 @@ async def test_budget_guard_blocks_oversized_requests_after_configure_hooks():
 
 async def test_threshold_uses_guard_limit_and_reserved_output_budget():
     summaries = RecordingCompactor()
-    model = ScriptedModel(["answer", "answer"])
+    model = ScriptedModel(["answer", "kept", "answer"])
     async with Application(
         model=model,
         plugins=[
             Approvals(default=PolicyDecision.ALLOW),
             Compaction(
-                trigger=at_ratio(0.8), summarizer=summaries, keep_turns=0, summary_tokens=32
+                trigger=at_ratio(0.8),
+                summarizer=summaries,
+                keep_last_steps=1,
+                max_summary_tokens=32,
             ),
             Service(ContextBudget, ContextBudget(limit=500, reserve_tokens=200)),
         ],
     ).session() as agent:
         await agent.run("x" * 1000)
+        await agent.run("kept")
         await agent.run("next")
-        assert len(summaries.sources) == 1 and len(model.requests) == 2
+        assert len(summaries.sources) == 1 and len(model.requests) == 3
 
 
 async def test_current_turn_and_tool_schemas_are_not_silently_discarded_to_fit_budget():
@@ -261,7 +262,9 @@ async def test_current_turn_and_tool_schemas_are_not_silently_discarded_to_fit_b
         plugins=[
             Approvals(default=PolicyDecision.ALLOW),
             tools,
-            Compaction(trigger=every_turns(1), summarizer=ExtractiveSummarizer(), keep_turns=0),
+            Compaction(
+                trigger=every_turns(1), summarizer=ExtractiveSummarizer(), keep_last_steps=1
+            ),
             Service(ContextBudget, ContextBudget(limit=100)),
         ],
     ).session() as agent:
@@ -273,23 +276,9 @@ async def test_current_turn_and_tool_schemas_are_not_silently_discarded_to_fit_b
         assert any(m.text == "current task" for m in agent.log.messages)
 
 
-async def test_unknown_turn_pins_are_reported_before_the_provider_call():
-    model = ScriptedModel([])
-    async with Application(
-        model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            Compaction(
-                trigger=every_turns(1),
-                summarizer=ExtractiveSummarizer(),
-                preserve_turns=["unknown"],
-                keep_turns=6,
-            ),
-        ],
-    ).session() as agent:
-        with pytest.raises(ValueError, match="existing turns"):
-            await agent.run("task")
-        assert model.requests == []
+async def test_removed_turn_pins_are_rejected_at_configuration():
+    with pytest.raises(TypeError, match="preserve_turns"):
+        Compaction(preserve_turns=["unknown"])
 
 
 async def test_budget_reserve_uses_maximum_and_keeps_the_stricter_window_limit():
@@ -316,7 +305,7 @@ async def test_budget_reserve_uses_maximum_and_keeps_the_stricter_window_limit()
 @pytest.mark.parametrize("default_steps,run_steps", [(1, 3), (3, 1)])
 async def test_context_overflow_retry_uses_the_effective_turn_step_limit(default_steps, run_steps):
     async def respond(request):
-        if len(model.requests) == 2:
+        if len(model.requests) == 3:
             raise ContextLengthExceeded("Provider context exceeded")
         yield ModelChunk(text="old answer " * 100 if len(model.requests) == 1 else "recovered")
 
@@ -326,27 +315,28 @@ async def test_context_overflow_retry_uses_the_effective_turn_step_limit(default
         model=model,
         plugins=[
             AgentLoop(max_steps=default_steps),
-            Compaction(trigger=lambda state: False, summarizer=summaries, keep_turns=0),
+            Compaction(trigger=lambda state: False, summarizer=summaries, keep_last_steps=1),
         ],
     ).session() as session:
         session_audit = Audit(session)
         await session.run("old question " * 100)
+        await session.run("retained")
         if run_steps == 1:
             with pytest.raises(ContextLengthExceeded):
                 await session.run("new question", max_steps=run_steps)
             assert not summaries.sources
-            assert len(model.requests) == 2
+            assert len(model.requests) == 3
         else:
             result = await session.run("new question", max_steps=run_steps)
             assert result.completed and result.text == "recovered"
             assert len(summaries.sources) == 1
-            assert len(model.requests) == 3
+            assert len(model.requests) == 4
         requests = [e for e in session_audit.events if isinstance(e, ModelRequestedEvent)]
         assert len({e.request_id for e in requests}) == len(model.requests)
         failure = next(
             e for e in reversed(session_audit.events) if isinstance(e, ModelRequestFailedEvent)
         )
-        assert failure.request_id == requests[1].request_id
+        assert failure.request_id == requests[2].request_id
         assert failure.outcome is ModelRequestOutcome.CONTEXT_EXCEEDED
         for request in requests:
             assert (
@@ -411,36 +401,35 @@ async def test_explicit_loop_window_still_wins_after_model_replacement():
 
 
 async def test_manual_compaction_uses_the_replacement_model():
-    original = ScriptedModel(["old answer " * 100], info=ModelInfo("original"))
-    replacement = ScriptedModel(["brief summary"], info=ModelInfo("replacement"))
+    original = ScriptedModel(["old answer " * 100, "kept"], info=ModelInfo("original"))
+    replacement = ScriptedModel(["brief summary"], info=ModelInfo("replacement", max_output=2048))
     async with Application(
         model=original,
-        plugins=[Compaction(trigger=lambda state: False, keep_turns=0)],
+        plugins=[Compaction(trigger=lambda state: False, keep_last_steps=1)],
     ).session() as session:
         await session.run("old question " * 100)
+        await session.run("retained")
         await session.mount(Service(Model, replacement))
         assert await session.compact() is not None
         assert len(replacement.requests) == 1
-        assert len(original.requests) == 1
+        assert len(original.requests) == 2
 
 
 @pytest.mark.parametrize(
     "factory",
     [
         lambda: Compaction(
-            trigger=every_turns(1), summarizer=ExtractiveSummarizer(), keep_turns=-1
+            trigger=every_turns(1), summarizer=ExtractiveSummarizer(), keep_last_steps=-1
         ),
         lambda: Compaction(
             trigger=every_turns(1),
             summarizer=ExtractiveSummarizer(),
-            keep_first_turns=True,
-            keep_turns=6,
+            keep_last_steps=True,
         ),
         lambda: Compaction(
             trigger=every_turns(1),
             summarizer=ExtractiveSummarizer(),
-            preserve_turns=[""],
-            keep_turns=6,
+            max_summary_tokens=0,
         ),
         lambda: Compaction(trigger=every_turns(0), summarizer=ExtractiveSummarizer()),
         lambda: Compaction(trigger=every_turns(True), summarizer=ExtractiveSummarizer()),

@@ -4,7 +4,6 @@ import asyncio
 
 from harnessed import (
     Agent,
-    Role,
     SessionState,
 )
 from harnessed.errors import ContextBudgetExceeded
@@ -26,16 +25,14 @@ async def compare(name, trigger):
             AgentLoop(context_window=2500),
             Compaction(
                 trigger=trigger,
-                summarizer=summaries,
-                keep_turns=1,
-                keep_first_turns=1,
-                summary_tokens=48,
+                llm=summaries,
+                keep_last_steps=1,
+                max_summary_tokens=48,
             ),
         ],
     )
     async with app.session() as session:
         await session.run("GOAL: keep the public API stable. " + "detail " * 240)
-        goal = next(message for message in session.messages if message.role == Role.USER)
         applied = []
         session.on(CompactionAppliedEvent, applied.append)
         for index in range(1, 6):
@@ -44,11 +41,11 @@ async def compare(name, trigger):
         for event in applied:
             print(
                 f"  {event.before_tokens} -> {event.after_tokens} estimated input tokens; "
-                f"{len(event.preserve_turns)} verbatim turn(s)"
+                f"freed {event.freed_tokens} tokens"
             )
-        assert applied and goal in model.requests[-1].messages
+        assert applied and event.after_tokens < event.before_tokens
         assert SessionState.from_json(session.snapshot().to_json()) == session.snapshot()
-        print("  Goal kept verbatim; compacted state round trip verified.")
+        print("  Recent steps retained; compacted state round trip verified.")
 
 
 async def main():

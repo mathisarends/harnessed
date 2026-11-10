@@ -181,7 +181,9 @@ async def test_feature_instruction_state_survives_compaction_without_creating_me
     await values.set("user", "old")
     await values.set("user", "current")
     await session.append(TurnEndedEvent("first"))
-    await session.append(CompactionAppliedEvent(len(session), "Earlier work."))
+    await session.append(
+        CompactionAppliedEvent(len(session), "Earlier work.", before_tokens=0, after_tokens=0)
+    )
     text = "\n".join(message.text for message in session.messages)
     assert "current" not in text and "old" not in text
     replay = SessionLog("context-replay", state=session.snapshot())

@@ -22,11 +22,17 @@ from harnessed.core.events.observations import (
     SpillExpiredEvent,
 )
 from harnessed.core.events.tools import ToolCallFinishedEvent
-from harnessed.core.events.turn import TurnEndedEvent, TurnStartedEvent
+from harnessed.core.events.turn import (
+    StepEndedEvent,
+    StepOutcome,
+    StepStartedEvent,
+    TurnEndedEvent,
+    TurnStartedEvent,
+)
 from harnessed.core.messages import Message, SpillRef, SystemMessage, ToolMessage
 from harnessed.core.model import ModelRequest
 
-from .state import HistoryEntry, SessionState
+from .state import HistoryEntry, HistoryStep, SessionState
 
 
 class WorkingHistory:
@@ -41,12 +47,19 @@ class WorkingHistory:
         )
         self._snapshot: tuple[Message, ...] | None = None
         self._turn: str | None = None
+        self._step_start = 0
+        self.completed_steps = list(state.steps) if state is not None else []
         self.max_observations = state.observation_limit if state is not None else None
 
     def apply(self, event: DurableEvent, seq: int) -> None:
         self._snapshot = None
         if isinstance(event, TurnStartedEvent):
             self._turn = event.turn_id
+        elif isinstance(event, StepStartedEvent):
+            self._step_start = seq
+        elif isinstance(event, StepEndedEvent):
+            if event.reason is StepOutcome.COMPLETED:
+                self.completed_steps.append(HistoryStep(event.turn_id, self._step_start, seq + 1))
         elif isinstance(event, TurnEndedEvent):
             self._items = {
                 pos: item
@@ -61,7 +74,7 @@ class WorkingHistory:
             if event.content:
                 self._put(seq, SystemMessage(event.content, id="system"))
         elif isinstance(event, UserMessageEvent | AssistantMessageEvent):
-            self._put(seq, event.message)
+            self._put(seq, event.message, is_input=isinstance(event, UserMessageEvent))
         elif isinstance(event, ToolCallFinishedEvent):
             self._put(
                 seq,
@@ -75,7 +88,7 @@ class WorkingHistory:
                 resources=(event.result.spill,) if event.result.spill is not None else (),
             )
         elif isinstance(event, MessageAppendedEvent):
-            self._put(seq, event.message, lifetime=event.lifetime)
+            self._put(seq, event.message, lifetime=event.lifetime, is_input=True)
         elif isinstance(event, PluginInstructionsChangedEvent):
             if event.value is None:
                 self.plugin_instructions.pop(event.name, None)
@@ -99,7 +112,10 @@ class WorkingHistory:
             self.max_observations = event.max_observations
             self._limit_observations()
         elif isinstance(event, CompactionAppliedEvent):
-            self._items = {item.position: item for item in self.compacted(event, seq)}
+            self._items = {item.position: item for item in self._compacted(event, seq)}
+            self.completed_steps = [
+                step for step in self.completed_steps if step.boundary > event.through
+            ]
         elif isinstance(event, SpillExpiredEvent):
             self._items = {
                 pos: replace(
@@ -108,32 +124,6 @@ class WorkingHistory:
                 )
                 for pos, item in self._items.items()
             }
-
-    def compacted(self, applied: CompactionAppliedEvent, seq: int) -> tuple[HistoryEntry, ...]:
-        preserved = (*applied.preserve_turns, *applied.retained_turns)
-        kept = [
-            item
-            for item in self.items()
-            if (
-                item.position >= applied.through
-                or item.message.id == "system"
-                or item.turn_id in preserved
-                or item.position in applied.preserve_inputs
-            )
-            and not item.message.id.startswith("compaction:")
-        ]
-        resources = tuple(dict.fromkeys(ref for item in self.items() for ref in item.resources))
-        kept.append(
-            HistoryEntry(
-                seq,
-                SystemMessage(
-                    f"Conversation summary:\n{applied.summary}",
-                    id=f"compaction:{applied.id or seq}",
-                ),
-                resources=resources,
-            )
-        )
-        return tuple(kept)
 
     def items(self) -> tuple[HistoryEntry, ...]:
         return tuple(
@@ -171,6 +161,32 @@ class WorkingHistory:
             if item.observation is not None and selected.get(item.message.id) == item.message
         )
 
+    def _compacted(self, applied: CompactionAppliedEvent, seq: int) -> tuple[HistoryEntry, ...]:
+        preserved = (*applied.preserve_turns, *applied.retained_turns)
+        kept = [
+            item
+            for item in self.items()
+            if (
+                item.position >= applied.through
+                or item.message.id == "system"
+                or item.turn_id in preserved
+                or item.position in applied.preserve_inputs
+            )
+            and not item.message.id.startswith("compaction:")
+        ]
+        resources = tuple(dict.fromkeys(ref for item in self.items() for ref in item.resources))
+        kept.append(
+            HistoryEntry(
+                seq,
+                SystemMessage(
+                    f"Conversation summary:\n{applied.summary}",
+                    id=f"compaction:{applied.id or seq}",
+                ),
+                resources=resources,
+            )
+        )
+        return tuple(kept)
+
     def _put(self, seq: int, message: Message, **metadata: Unpack[_EntryMetadata]) -> None:
         self._items[seq] = HistoryEntry(seq, message, self._turn, **metadata)
 
@@ -191,6 +207,7 @@ class _EntryMetadata(TypedDict, total=False):
     lifetime: MessageLifetime
     observation: IncludedObservation
     resources: tuple[SpillRef, ...]
+    is_input: bool
 
 
 def derive_requests(events: Iterable[DurableEvent]) -> tuple[ModelRequest, ...]:

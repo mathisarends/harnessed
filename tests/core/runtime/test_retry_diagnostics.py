@@ -232,7 +232,7 @@ async def test_context_recovery_links_new_requests_without_counting_normal_steps
     async def chunks(request):
         nonlocal count
         count += 1
-        if count == 2:
+        if count == 3:
             raise ContextLengthExceeded("too big")
         yield ModelChunk(text="answer")
 
@@ -242,13 +242,14 @@ async def test_context_recovery_links_new_requests_without_counting_normal_steps
             Compaction(
                 trigger=lambda state: False,
                 summarizer=ExtractiveSummarizer(),
-                keep_turns=0,
-                summary_tokens=16,
+                keep_last_steps=1,
+                max_summary_tokens=16,
             )
         ],
     ).session() as session:
         session_audit = Audit(session)
         await session.run("x" * 4000)
+        await session.run("retained")
         async with session.stream("next") as run_stream:
             notifications = [e async for e in run_stream]
         scheduled = [e for e in notifications if isinstance(e, ModelRetryScheduledEvent)]
