@@ -5,6 +5,28 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## 0.15.1 (unreleased)
+
+This documentation-only patch release records the Compaction API design handoff.
+Runtime APIs, dependencies and persisted formats are unchanged from 0.15.0.
+
+### Documentation
+
+- Add the [Compaction API proposal](docs/contributing/compaction-api.md) with
+  developer-facing examples, rationale, migration planning and implementation
+  acceptance criteria. Link it from the contributor roadmap and documentation
+  navigation.
+- Describe proposed `llm`, replaceable `prompt`, `keep_last_steps`, whole-request
+  context targets and before/after event measurements as future work. These
+  settings and event additions are not implemented in this release; the
+  [compaction guide](docs/guides/compaction.md) remains the current API contract.
+
+### Upgrade from 0.15.0
+
+Existing applications require no changes. No application or persistence migration
+is required. Conversation state remains format **2**, checkpoints and JSON stores
+format **3**, and standalone audit envelopes version **5**.
+
 ## 0.15.0 (2026-11-10)
 
 This release adds declarative method registrations and scoped output decisions,

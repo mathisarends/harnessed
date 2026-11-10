@@ -4,6 +4,18 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
+## 0.15.1 (unreleased)
+
+This documentation-only patch release adds the
+[Compaction API proposal](contributing/compaction-api.md), its rationale and
+implementation checklist. The proposed `llm`, `prompt`, `keep_last_steps`, context
+targets and event additions are future work, not newly available SDK features.
+Use the [compaction guide](guides/compaction.md) for the implemented API.
+
+Runtime APIs, dependencies and persisted formats are unchanged from 0.15.0;
+existing applications require no changes. State remains format **2**,
+checkpoints/JSON stores **3**, and audit envelopes **5**. Publication is pending.
+
 ## 0.15.0 (2026-11-10)
 
 This release adds declarative method registrations and scoped output decisions,
