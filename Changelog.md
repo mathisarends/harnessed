@@ -5,7 +5,7 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
-## 0.15.1 (unreleased)
+## 0.15.1 (2026-11-10)
 
 This documentation-only patch release records the Compaction API design handoff.
 Runtime APIs, dependencies and persisted formats are unchanged from 0.15.0.
