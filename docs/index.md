@@ -12,6 +12,10 @@ See [0.15.0](releases.md#0150-2026-11-10) for declarative registrations,
 phased output contracts and skill parsing fixes. Earlier upgrade checklists are
 linked from the [release overview](releases.md#earlier-releases).
 
+The upcoming [0.15.1 documentation release](releases.md#0151-unreleased) records
+the [Compaction API proposal](contributing/compaction-api.md); its proposed API
+is not implemented yet.
+
 | I want to... | Read |
 | --- | --- |
 | Understand the application API | [SDK reference](reference/sdk.md) |
