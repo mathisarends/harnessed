@@ -19,7 +19,7 @@ uv run python scripts/check_wheel.py
 uv run twine check --strict dist/*
 ```
 
-`uv.lock` pins development tools, including Smelt CLI 0.4.0, and optional provider
+`uv.lock` pins development tools, including Smelt CLI 0.8.0, and optional provider
 dependencies. Install the commit hooks with `uv run prek install`.
 Existing pre-commit users should run
 `uv run prek install --force` once to replace the installed Git hooks.
