@@ -122,7 +122,7 @@ class ToolExecutor:
         try:
             await self.log.append(ToolExecutionStartedEvent(call.id))
             returned = await self.scope.dispatch(
-                ExecuteTool(call, self.context, tool=plan.tool),
+                ExecuteTool(call, self.context, tool=plan.tool, envelope=plan.envelope),
                 default=lambda: self.scope[ToolRegistry].execute(
                     call,
                     scope=self.scope,
@@ -220,7 +220,7 @@ class ToolExecutor:
                 return unavailable
             previous = self.log.latest_approval(call.id)
             decision = await self.scope.dispatch(
-                ToolPolicy(call, self.context, tool=plan.tool),
+                ToolPolicy(call, self.context, tool=plan.tool, envelope=plan.envelope),
                 default=lambda: PolicyDecision.ALLOW,
             )
             if not isinstance(decision, PolicyDecision):
@@ -260,7 +260,12 @@ class ToolExecutor:
         try:
             result = await self.scope.dispatch(
                 ReviewToolResult(
-                    plan.call, result, self.context, output_limit=plan.output_limit, tool=plan.tool
+                    plan.call,
+                    result,
+                    self.context,
+                    output_limit=plan.output_limit,
+                    tool=plan.tool,
+                    envelope=plan.envelope,
                 ),
                 default=lambda: result,
             )

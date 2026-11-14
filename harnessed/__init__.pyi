@@ -35,6 +35,7 @@ from harnessed.core.tools.context import ToolContext as ToolContext
 from harnessed.core.tools.decorator import tool as tool
 from harnessed.core.tools.info import ToolAnnotations as ToolAnnotations
 from harnessed.core.tools.info import ToolChain as ToolChain
+from harnessed.core.tools.info import ToolEnvelope as ToolEnvelope
 from harnessed.core.tools.info import ToolIcon as ToolIcon
 from harnessed.core.tools.info import ToolInfo as ToolInfo
 from harnessed.core.tools.info import ToolMetadata as ToolMetadata
@@ -86,6 +87,7 @@ __all__ = [
     "ToolChain",
     "ToolContext",
     "ToolError",
+    "ToolEnvelope",
     "ToolInfo",
     "ToolMetadata",
     "ToolResult",

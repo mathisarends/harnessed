@@ -35,6 +35,7 @@ def tool[F: Callable[..., Any]](
     params: type[BaseModel] | None = None,
     metadata: tuple[object, ...] = (),
     chain: ToolChain = ToolChain.CONTINUE,
+    envelope: tuple[type[BaseModel], ...] = (),
 ) -> Callable[[F], F]: ...
 
 
@@ -57,8 +58,13 @@ def tool(
     params: type[BaseModel] | None = None,
     metadata: tuple[object, ...] = (),
     chain: ToolChain = ToolChain.CONTINUE,
+    envelope: tuple[type[BaseModel], ...] = (),
 ):
-    """Declare a tool, optionally binding its arguments to a Pydantic params model."""
+    """Declare a tool, optionally binding its arguments to a Pydantic params model.
+
+    ``envelope`` adds call-level Pydantic models whose fields the model supplies
+    alongside the tool's arguments; the method never receives them.
+    """
 
     resources = resource_spec(resources)
 
@@ -79,6 +85,7 @@ def tool(
             params=params,
             metadata=metadata,
             chain=chain,
+            envelope=envelope,
         )
         vars(callback)["_harnessed_tool"] = spec
         return registration(spec)(callback)

@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import logging
 from collections.abc import Awaitable, Callable, Iterable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from functools import partial
 from types import MethodType
 from typing import Annotated, Any, overload
@@ -22,6 +22,7 @@ from harnessed.core.tools.enabled import (
     bind_enabled,
     validate_enabled,
 )
+from harnessed.core.tools.envelope import EnvelopeLayout, envelope_models
 from harnessed.core.tools.execution import ToolExecutionBudget
 from harnessed.core.tools.info import (
     ToolChain,
@@ -87,6 +88,7 @@ class ToolSpec:
     metadata: tuple[object, ...] = ()
     chain: ToolChain = ToolChain.CONTINUE
     presentation: ToolPresentation = ToolPresentation()
+    envelope: tuple[type[BaseModel], ...] = ()
 
     def __post_init__(self) -> None:
         if type(self.confirm) is not bool:
@@ -96,6 +98,7 @@ class ToolSpec:
         if not isinstance(self.presentation, ToolPresentation):
             raise TypeError("Tool presentation must be a ToolPresentation")
         object.__setattr__(self, "metadata", ToolMetadata(self.metadata).values)
+        object.__setattr__(self, "envelope", envelope_models(self.envelope))
         object.__setattr__(self, "chain", ToolChain(self.chain))
         if self.parallel and self.chain is ToolChain.STOP_AFTER:
             raise ValueError("STOP_AFTER tools must run sequentially")
@@ -156,6 +159,7 @@ class _RegisteredTool:
     spec: ToolSpec
     timeout_seconds: float | None
     enabled: BoundToolEnabled
+    layout: EnvelopeLayout = field(kw_only=True)
 
 
 @dataclass(eq=False)
@@ -271,6 +275,7 @@ class ToolRegistry:
         params: type[BaseModel] | None = None,
         metadata: tuple[object, ...] = (),
         chain: ToolChain = ToolChain.CONTINUE,
+        envelope: tuple[type[BaseModel], ...] = (),
     ) -> Callable[[F], F]: ...
 
     def tool(
@@ -293,6 +298,7 @@ class ToolRegistry:
         params: type[BaseModel] | None = None,
         metadata: tuple[object, ...] = (),
         chain: ToolChain = ToolChain.CONTINUE,
+        envelope: tuple[type[BaseModel], ...] = (),
     ):
         def register(callback):
             self.register(
@@ -312,6 +318,7 @@ class ToolRegistry:
                 params=params,
                 metadata=metadata,
                 chain=chain,
+                envelope=envelope,
             )
             return callback
 
@@ -338,6 +345,7 @@ class ToolRegistry:
         params: type[BaseModel] | None = None,
         metadata: tuple[object, ...] = (),
         chain: ToolChain = ToolChain.CONTINUE,
+        envelope: tuple[type[BaseModel], ...] = (),
     ) -> Disposer:
         spec = spec or ToolSpec(
             name=name,
@@ -354,6 +362,7 @@ class ToolRegistry:
             params=params,
             metadata=metadata,
             chain=chain,
+            envelope=envelope,
         )
         name, parallel = spec.name, spec.parallel
         resources, readonly, override = spec.resources, spec.readonly, spec.override
@@ -383,6 +392,8 @@ class ToolRegistry:
             spec.description if spec.description is not None else inspect.getdoc(callback) or "",
             arguments.schema,
         )
+        layout = EnvelopeLayout.build(definition, spec.envelope)
+        definition = layout.definition
 
         def install(registration: RegistrationState):
             check_enabled = bind_enabled(spec.enabled, callback, registration)
@@ -396,6 +407,7 @@ class ToolRegistry:
                 check_enabled,
                 plan,
                 arguments,
+                layout=layout,
             )
             entries = self._tools.setdefault(definition.name, [])
             entries.append(entry)
@@ -435,6 +447,8 @@ class ToolRegistry:
         existing = self._tools.get(definition.name, ())
         if existing and not spec.override:
             raise ToolNameConflict(f"Tool {definition.name!r} is already registered")
+        layout = EnvelopeLayout.build(definition, spec.envelope)
+        definition = layout.definition
 
         def install(registration: RegistrationState) -> Callable[[], None]:
             check_enabled = bind_enabled(spec.enabled, handler, registration)
@@ -447,6 +461,7 @@ class ToolRegistry:
                 timeout_seconds,
                 check_enabled,
                 handler,
+                layout=layout,
             )
             entries = self._tools.setdefault(definition.name, [])
             entries.append(entry)
@@ -550,6 +565,7 @@ class ToolRegistry:
             raise TypeError("Resource resolvers must return resource names, not an awaitable")
         if isinstance(keys, str) or not isinstance(keys, Iterable):
             raise TypeError("Resource resolvers must return an iterable of resource names")
+        envelope, _ = tool.layout.split(call.arguments)
         return PreparedToolCall(
             call,
             ToolScheduling(tool.spec.parallel, tuple(keys)),
@@ -563,7 +579,9 @@ class ToolRegistry:
                 tool.spec.chain,
                 tool.spec.presentation,
                 confirm=tool.spec.confirm,
+                envelope=tool.spec.envelope,
             ),
+            envelope=envelope,
         )
 
     async def execute(
@@ -606,11 +624,12 @@ class ToolRegistry:
                 async with ToolExecutionBudget(
                     tool.timeout_seconds if tool.timeout_seconds is not None else default_timeout
                 ):
+                    _, own_arguments = tool.layout.split(call.arguments)
                     if isinstance(tool, _ExternalTool):
                         if call_context is None:
                             raise TypeError("External tools require a ToolContext")
-                        return await tool.handler(call.arguments, call_context)
-                    arguments = tool.arguments.parse(call.arguments)
+                        return await tool.handler(own_arguments, call_context)
+                    arguments = tool.arguments.parse(own_arguments)
                     extra: dict[type, Any] = (
                         {ToolContext: call_context} if call_context is not None else {}
                     )

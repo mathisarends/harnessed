@@ -60,6 +60,7 @@ _EXPORTS = {
     "ToolChain": ("harnessed.core.tools.info", "ToolChain"),
     "ToolInfo": ("harnessed.core.tools.info", "ToolInfo"),
     "ToolMetadata": ("harnessed.core.tools.info", "ToolMetadata"),
+    "ToolEnvelope": ("harnessed.core.tools.info", "ToolEnvelope"),
     "ToolStatus": ("harnessed.core.messages", "ToolStatus"),
     "events": ("harnessed.events", None),
     "hook": ("harnessed.kernel", "hook"),
