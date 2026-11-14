@@ -24,7 +24,6 @@ from harnessed.kernel import (
     ServiceKey,
     as_plugin_spec,
     binding_plan,
-    hook,
 )
 from harnessed.kernel import PluginBase as KernelPlugin
 
@@ -261,15 +260,3 @@ class Service[T](Plugin):
         if self.key is Model and isinstance(self.value, AbstractAsyncContextManager):
             await scope.enter(self.value)
         scope.provide(self.key, self.value)
-
-
-__all__ = [
-    "Bundle",
-    "Plugin",
-    "PluginConfig",
-    "PluginLike",
-    "Service",
-    "hook",
-    "plugin_contribution",
-    "plugin_events",
-]

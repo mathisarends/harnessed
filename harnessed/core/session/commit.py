@@ -52,6 +52,3 @@ class SessionCommit:
     def next_sequence(self) -> int:
         """The first log position not represented by this checkpoint."""
         return self.checkpoint.offset + len(self.checkpoint.events)
-
-
-__all__ = ["SessionChange", "SessionCommit"]

@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Any, Concatenate, overload
 from .declarations import Bundle, PluginBase
 from .di import bind_injected
 from .events import PluginActivated, PluginFailed
-from .events import on as hook
 from .keys import MissingService, ServiceKey
 from .spec import PluginSpec
 
@@ -368,15 +367,3 @@ def as_plugin_spec(value: PluginLike) -> PluginSpec:
     if callable(value) and getattr(value, "_harnessed_plugin", False):
         return value()
     raise TypeError(f"Expected a configured plugin, Bundle or Plugin, got {type(value).__name__}")
-
-
-__all__ = [
-    "Bundle",
-    "PluginBase",
-    "PluginHandle",
-    "PluginLike",
-    "PluginSpec",
-    "as_plugin_spec",
-    "hook",
-    "plugin",
-]

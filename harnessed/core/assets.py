@@ -78,6 +78,3 @@ class MemoryAssets:
 
     def _clear(self) -> None:
         self._values.clear()
-
-
-__all__ = ["AssetRef", "AssetStore"]

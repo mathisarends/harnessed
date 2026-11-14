@@ -105,6 +105,3 @@ class SessionContext:
         """Admit a declared execution event or publish a transient notification."""
         self._control.check_open()
         await self.log.emit(event)
-
-
-__all__ = ["PendingObservations", "SessionContext"]
