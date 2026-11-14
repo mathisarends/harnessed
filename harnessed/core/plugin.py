@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict
 from harnessed.core.events.base import DurableEvent, TransientEvent
 from harnessed.core.prompt.values import PromptContribution, SystemPrompt
 from harnessed.core.tools import ToolSpec
-from harnessed.core.tools.decorator import _activation_tool
+from harnessed.core.tools.decorator import activation_tool
 from harnessed.kernel import Bundle as KernelBundle
 from harnessed.kernel import (
     HookEntry,
@@ -119,7 +119,7 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
             if callable(member) and isinstance(getattr(member, "_harnessed_tool", None), ToolSpec):
                 if name == "instructions":
                     raise TypeError("instructions() is reserved for prompt content, not a tool")
-                setattr(cls, name, _activation_tool(member))
+                setattr(cls, name, activation_tool(member))
 
     def __setattr__(self, name: str, value: Any) -> None:
         if name == "config" and "config" in vars(self):

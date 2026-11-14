@@ -93,7 +93,7 @@ def tool(
     return decorate(fn) if fn is not None else decorate
 
 
-def _activation_tool(callback: Callable[..., Any]) -> Callable[..., Any]:
+def activation_tool(callback: Callable[..., Any]) -> Callable[..., Any]:
     parameters = tuple(inspect.signature(callback).parameters)
 
     def check_recipe(args: tuple[Any, ...], kwargs: dict[str, Any]) -> None:

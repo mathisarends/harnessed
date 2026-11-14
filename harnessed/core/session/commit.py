@@ -5,7 +5,7 @@ from pydantic import ConfigDict, Field
 from pydantic.dataclasses import dataclass
 
 from .checkpoint import CheckpointEntry, CheckpointExtension, SessionCheckpoint
-from .codec import _validate_event
+from .codec import validate_event
 
 _CONFIG = ConfigDict(strict=True, extra="forbid", allow_inf_nan=False, hide_input_in_errors=True)
 
@@ -21,7 +21,7 @@ class SessionChange:
 
     def __post_init__(self) -> None:
         if not isinstance(self.event, CheckpointExtension):
-            _validate_event(self.event)
+            validate_event(self.event)
 
 
 @dataclass(frozen=True, config=_CONFIG)

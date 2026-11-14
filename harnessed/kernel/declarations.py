@@ -6,7 +6,7 @@ from functools import wraps
 from typing import TYPE_CHECKING, Any, Protocol, Self
 
 from .dependencies import DependencyField
-from .di import Dependency, _dependency, bind_injected, injections
+from .di import Dependency, annotation_dependency, bind_injected, injections
 from .effects import resolve
 from .events import Event
 from .keys import Key, ServiceKey
@@ -169,7 +169,7 @@ class PluginBase:
                 isinstance(annotation, str)
                 and "Inject[" in annotation
                 or not isinstance(annotation, str)
-                and _dependency(annotation) is not None
+                and annotation_dependency(annotation) is not None
             ):
                 raise TypeError(
                     "Class-level Inject fields were removed; use needs(key) or observes(key)"

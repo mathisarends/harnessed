@@ -5,7 +5,7 @@ from functools import partial
 from typing import cast
 
 from harnessed.core.approvals import Approval, ApprovalState, approval_transition
-from harnessed.core.assets import AssetStore, _MemoryAssets
+from harnessed.core.assets import AssetStore, MemoryAssets
 from harnessed.core.buffering import EventBuffer
 from harnessed.core.errors import RunUnavailable, SessionFormatError, SessionStateError
 from harnessed.core.events.approvals import ApprovalResolvedEvent, ApprovalStatus
@@ -81,7 +81,7 @@ from harnessed.core.session.history import (
 )
 from harnessed.core.session.history import derive_messages as derive_messages
 from harnessed.core.session.history import derive_requests as derive_requests
-from harnessed.core.session.images import _SessionImages
+from harnessed.core.session.images import SessionImages
 from harnessed.core.session.inbox import Inbox
 from harnessed.core.session.state import HistoryTurn, SessionState, image_refs
 from harnessed.core.session.store import SessionPersistence
@@ -100,7 +100,7 @@ class SessionLog:
         state: SessionState | None = None,
         files: MemoryFiles | None = None,
         registry: EventRegistry | None = None,
-        assets: _MemoryAssets | None = None,
+        assets: MemoryAssets | None = None,
         persistence: SessionPersistence | None = None,
     ) -> None:
         if registry is None:
@@ -116,10 +116,8 @@ class SessionLog:
         self._snapshot: tuple[DurableEvent, ...] | None = None
         self._last: dict[type[DurableEvent], tuple[int, DurableEvent]] = {}
         self._files = files if files is not None else MemoryFiles(state.files if state else ())
-        self._assets = (
-            assets if assets is not None else _MemoryAssets(state.assets if state else ())
-        )
-        self._images = _SessionImages(self._assets)
+        self._assets = assets if assets is not None else MemoryAssets(state.assets if state else ())
+        self._images = SessionImages(self._assets)
         self._usage: ModelUsage | None = None
         self._observers: dict[EventBuffer[DurableEvent | TransientEvent | None], bool] = {}
         self._subscriptions_closed = False

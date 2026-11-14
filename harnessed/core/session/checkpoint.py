@@ -16,7 +16,7 @@ from harnessed.core.events.turn import TurnEndedEvent, TurnStartedEvent
 from harnessed.core.events.unions import SESSION_EVENT_TYPES, LogEvent
 from harnessed.core.messages import JSONMapping, freeze, to_dict
 
-from .codec import CURRENT_VERSION, _validate_event
+from .codec import CURRENT_VERSION, validate_event
 from .files import TextValue
 from .state import SessionState
 
@@ -110,7 +110,7 @@ class SessionCheckpoint:
             raise ValueError("A checkpoint suffix must describe one open turn")
         for event in (*self.seed, *self.events, self.control):
             if not isinstance(event, CheckpointExtension):
-                _validate_event(event)
+                validate_event(event)
 
     def to_json(self) -> str:
         """Serialize the canonical versioned document in memory, without I/O."""

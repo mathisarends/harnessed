@@ -13,7 +13,7 @@ from .events import Event, EventBus
 from .hooks import HookFactory, ListenerFactory
 from .keys import Key as Key
 from .keys import MissingService, ServiceKey
-from .plugin import PluginHandle, PluginLike, PluginStatus, _Runtime, as_plugin_spec
+from .plugin import PluginHandle, PluginLike, PluginRuntime, PluginStatus, as_plugin_spec
 from .spec import PluginDependencyIssue, PluginSpec
 
 _current: ContextVar[Scope | None] = ContextVar("harnessed_scope", default=None)
@@ -34,7 +34,7 @@ class _Scope:
     parent: _Scope | None = None
     services: dict[ServiceKey[Any], list[_Binding]] = field(default_factory=dict)
     event_bus: EventBus = field(default_factory=EventBus)
-    runtime: _Runtime = field(default_factory=_Runtime)
+    runtime: PluginRuntime = field(default_factory=PluginRuntime)
 
 
 class RegistrationState:

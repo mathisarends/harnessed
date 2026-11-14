@@ -255,7 +255,7 @@ class PluginHandle:
                 self._mount._scope.runtime.changed()
 
 
-class _Runtime:
+class PluginRuntime:
     def __init__(self) -> None:
         self.handles: list[PluginHandle] = []
         self.task: asyncio.Task | None = None

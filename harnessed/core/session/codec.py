@@ -24,7 +24,7 @@ from harnessed.core.events.base import TransientEvent
 CURRENT_VERSION = 6
 
 
-def _validate_event(
+def validate_event(
     event: DurableEvent | TransientEvent,
     kinds: Mapping[str, type] | None = None,
 ) -> None:
@@ -75,7 +75,7 @@ def encode_event(event: DurableEvent, *, registry: EventRegistry | None = None) 
     """Encode a canonical dotted tag and the current version without mutable state."""
     if not isinstance(event, DurableEvent):
         raise TypeError("Only durable events can be persisted")
-    registry.validate(event) if registry is not None else _validate_event(event)
+    registry.validate(event) if registry is not None else validate_event(event)
     data = to_dict(event)
     data.pop("type")
     return {"version": CURRENT_VERSION, "type": event.type, "data": data}
@@ -110,5 +110,5 @@ def decode_event(record: dict[str, Any], *, registry: EventRegistry | None = Non
         )
     except ValidationError as error:
         raise SessionFormatError(f"Invalid {tag} record payload") from error
-    registry.validate(event) if registry is not None else _validate_event(event)
+    registry.validate(event) if registry is not None else validate_event(event)
     return event

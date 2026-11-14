@@ -44,11 +44,11 @@ class Dependency:
         return scope[self.key]
 
 
-def _dependency(annotation) -> Dependency | None:
+def annotation_dependency(annotation) -> Dependency | None:
     if get_origin(annotation) is Inject:
         return _marked(get_args(annotation)[0], InjectMarker())
     if isinstance(annotation, TypeAliasType):
-        return _dependency(annotation.__value__)
+        return annotation_dependency(annotation.__value__)
     if get_origin(annotation) is Annotated:
         base, *metadata = get_args(annotation)
         for marker in metadata:
@@ -107,7 +107,7 @@ def binding_plan(callback: Callable) -> BindingPlan:
     dependencies = {
         name: dependency
         for name, annotation in hints.items()
-        if name != "return" and (dependency := _dependency(annotation)) is not None
+        if name != "return" and (dependency := annotation_dependency(annotation)) is not None
     }
     plan = BindingPlan(
         inspect.signature(callback), MappingProxyType(hints), MappingProxyType(dependencies)

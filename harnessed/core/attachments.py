@@ -52,7 +52,7 @@ class Image:
 type Attachment = File | Image
 
 
-async def _prepare_input(
+async def prepare_input(
     content: str | UserMessage,
     *,
     attachments: Iterable[Attachment] = (),

@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 
-from harnessed.core.attachments import Attachment, _prepare_input
+from harnessed.core.attachments import Attachment, prepare_input
 from harnessed.core.events.inbox import (
     InboxAddedEvent,
     InboxMode,
@@ -77,7 +77,7 @@ class InboxWriter:
     ) -> InboxItem:
         async with self._sending():
             self.control.check_open()
-            message = await _prepare_input(content, attachments=attachments, assets=self.log.assets)
+            message = await prepare_input(content, attachments=attachments, assets=self.log.assets)
             self.control.check_open()
             message = await self.log._images.retain_message(message)
             self.control.check_open()
