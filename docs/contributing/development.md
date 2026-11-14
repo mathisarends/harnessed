@@ -70,7 +70,7 @@ reviewed exceptions and analysis limits.
 
 The README contains the core SDK and links. Put explanations under `docs/guides/`,
 value/runtime contracts under `docs/concepts/`, API summaries under `docs/reference/`
-and contributor material here. Add a navigation entry in `mkdocs.yml` for each new
+and contributor material here. Add a navigation entry in `mkdocs.yaml` for each new
 page. Keep all public documentation and examples in English.
 
 Preview with `uv run mkdocs serve`. The [MkDocs CLI](https://www.mkdocs.org/user-guide/cli/)
