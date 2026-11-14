@@ -69,6 +69,8 @@ architecture:
 
 structure:
   forbidden_names: [utils, helpers]
+  file_naming:
+    yaml_extension: yaml
   contracts:
     conventions:
       match: harnessed
@@ -76,6 +78,9 @@ structure:
       ordering:
         module: [docstring, future-imports, imports, type-vars, public, private, dunder-assignments, main-guard]
         fix: safe-only
+    keyword-arguments:
+      match: harnessed
+      max_positional_parameters: 3
     kernel-api:
       match: harnessed.kernel
       public: ['.']
@@ -85,31 +90,64 @@ tests:
   max_patches_per_test: 3
 
 ignore:
+  - rule: package-only-dunder-all
+    paths:
+      - harnessed/errors.py
+      - harnessed/hooks.py
+      - harnessed/services.py
+      - harnessed/sessions.py
+      - harnessed/tracing.py
+      - harnessed/integrations/bubblewrap.py
+      - harnessed/integrations/json.py
+      - harnessed/integrations/opentelemetry.py
+      - harnessed/plugins/mcp.py
+      - harnessed/plugins/subagents.py
+    reason: Single-module public facades are documented import paths; optional-extra modules cannot be re-exported eagerly from their package initializer.
+  - rule: yaml-file-extension
+    paths: [.github/workflows/release.yml]
+    reason: PyPI trusted publishing is registered for this exact workflow filename.
   - rule: private-test-access
     paths: [tests/core/session/test_image_cache.py]
     reason: Cache unit tests measure private byte/entry bounds and eviction; SDK behavior is tested separately in test_image_assets.py.
 
 # Adopted conventions fail checks; design review suggestions remain hints.
 rules:
+  # Source structure
   import-cycle: error
   public-definitions-first: error
   bundled-instance-assignment: error
-  redundant-str-enum-value: error
   prefer-package-import: error
-  internal-public-member: error
   internal-static-helper: error
-  internal-public-module-symbol: error
   unnecessary-future-annotations: error
   prefer-match-type-dispatch: error
   implicit-optional-default: error
-  deep-object-navigation: hint
+  package-only-dunder-all: error
+  private-symbol-import: error
+  private-class-constant: error
+  await-in-call-argument: error
+  deprecated-async-contextmanager-return: error
+  redundant-module-name: error
+  redundant-private-delegate: error
+  redundant-name-alias: error
+  prefer-deferred-annotations: error
+  # Naming and types
   no-base-class-prefix: error
+  no-base-class-suffix: error
+  redundant-str-enum-value: error
+  str-enum-explicit-values: error
+  prefer-str-enum-discriminator: error
+  duplicate-literal-type: error
+  anonymous-tuple-type: error
+  # Public API surface, including APIs exposed only for tests (SMT316/320/335/429/430)
+  information-hiding: error
+  # Tests
   private-test-access: error
   string-patch-target: error
-  test-only-public-function: error
-  test-only-public-attribute: error
   test-without-outcome-check: error
   test-only-checks-possibly-empty-data: error
   unbounded-test-wait: error
   async-mock-without-await-check: error
+  nondeterministic-test-data: error
+  # Design reviews
+  deep-object-navigation: hint
   independent-test-case-loop: hint

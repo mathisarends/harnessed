@@ -17,6 +17,16 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   `ToolInfo.envelope` lists the merged models. `ToolCall.arguments` keeps the raw
   arguments. Conflicting field names raise `ValueError` at registration.
 
+### Changed
+
+- Upgrade the locked Smelt CLI to 0.8.0 and adopt its stricter source policy:
+  information hiding (including internal data attributes), private-symbol imports,
+  package-only `__all__`, keyword-only parameters after the third positional one,
+  named tuple records, `StrEnum` discriminators with explicit values, awaited call
+  arguments and canonical `.yaml` filenames. `harnessed.core.prompt.system_prompt`
+  is now `harnessed.core.prompt.system`; the CI workflow is `tests.yaml` and the
+  MkDocs configuration `mkdocs.yaml`. Public SDK imports are unchanged.
+
 ## 0.16.0 (2026-11-10)
 
 This release implements the Compaction API designed in 0.15.1. It changes the
