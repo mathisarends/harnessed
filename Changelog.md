@@ -5,7 +5,7 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
-## Unreleased
+## 0.17.0 (unreleased)
 
 ### Added
 
@@ -25,12 +25,41 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   named tuple records, `StrEnum` discriminators with explicit values, awaited call
   arguments and canonical `.yaml` filenames. `harnessed.core.prompt.system_prompt`
   is now `harnessed.core.prompt.system`; the CI workflow is `tests.yaml` and the
-  MkDocs configuration `mkdocs.yaml`. Public SDK imports are unchanged.
+  MkDocs configuration `mkdocs.yaml`. Public SDK import paths are unchanged;
+  see the upgrade notes below.
 - Split the two largest runtime modules into typed components without changing
   behavior. `SessionLog` delegates its inbox, approval and request indexes,
   observer fan-out and interruption repair planning to dedicated session
   components. `Session` delegates run submissions and live stream fan-out to the
   new `RunSubmissions` and `TurnStreams` components.
+
+### Upgrade from 0.16.0
+
+- Existing tools need no changes unless you opt into `envelope=`. When adopting
+  envelopes, include required fields in scripted calls; callbacks still receive
+  only tool parameters. Read parsed values through `event.envelope.get(Model)`
+  in policy/execution/review hooks. Raw arguments still contain envelope fields.
+  See [tool call envelopes](docs/guides/tools.md#tool-call-envelopes).
+- Direct calls to the built-in `Rules.review` and `Spill.spill` hooks must pass
+  injected services by keyword; ordinary framework dispatch already does this.
+- Code importing the implementation helper `harnessed.kernel.di.bind_injected`
+  must pass its fourth argument as `kwargs=...`. Prefer the public
+  `harnessed.kernel.binding_plan(callback).bind(...)` operation.
+- Internal implementation attributes are now private. Use public SDK operations
+  instead of accessing runtime internals. For prompt omission diagnostics, use
+  `print(agent.prompt)`. Imports from `harnessed.core.prompt.system_prompt` must
+  move to the public facade (`SystemPrompt` from `harnessed`).
+- Update automation referencing `tests.yml` or `mkdocs.yml` to `tests.yaml` or
+  `mkdocs.yaml`. The Trusted Publishing workflow remains `release.yml`; its PyPI
+  publisher identity does not change. The obsolete repository `tickets/` folder
+  is removed; track work in GitHub issues.
+
+No persistence migration is required from 0.16.0: conversation state remains
+format **3**, checkpoints and JSON stores format **3**, and standalone audit
+envelopes version **6**. Upgrading from an earlier release still requires the
+intervening checklists below; legacy state/audit formats have no automatic
+converter. Back up stored data and retain an old application environment if it
+must remain readable.
 
 ## 0.16.0 (2026-11-10)
 
