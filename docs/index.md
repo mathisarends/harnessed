@@ -8,7 +8,7 @@ Harnessed 0.x is alpha software. Read the
 [release notes and compatibility policy](releases.md) before depending on its
 public APIs or persisted session formats.
 
-The upcoming [0.17.0 release](releases.md#0170-unreleased) adds tool call
+The [0.17.0 release](releases.md#0170-2026-11-14) adds tool call
 envelopes and records upgrade steps for the runtime refactoring. Upgrading from
 before 0.16.0 also requires the
 [Compaction API migration](releases.md#0160-2026-11-10). Earlier checklists are

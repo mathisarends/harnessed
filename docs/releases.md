@@ -4,7 +4,7 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
-## 0.17.0 (unreleased)
+## 0.17.0 (2026-11-14)
 
 Tool call envelopes add validated model-supplied call metadata to policy,
 execution and result-review hooks while keeping it out of tool callbacks.
