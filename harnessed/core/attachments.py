@@ -44,7 +44,8 @@ class Image:
             raise ValueError("Images must be PNG, JPEG, GIF or WebP")
         data = await asyncio.to_thread(path.read_bytes)
         if assets is not None:
-            return (ImageReference(await assets.put(data, media_type=mime), self.detail),)
+            asset = await assets.put(data, media_type=mime)
+            return (ImageReference(asset, self.detail),)
         encoded = base64.b64encode(data).decode("ascii")
         return (ImagePart(f"data:{mime};base64,{encoded}", self.detail),)
 

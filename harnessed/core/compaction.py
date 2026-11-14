@@ -322,8 +322,9 @@ class CompactionManager:
         self, request: ModelRequest, model: Model, counter: TokenCounter
     ) -> ContextState:
         budget = self.scope[ContextBudget] if ContextBudget in self.scope else ContextBudget()
+        input_tokens = await count_request(counter, request)
         return ContextState(
-            await count_request(counter, request),
+            input_tokens,
             budget.output_reserve(request),
             budget.window_limit(
                 self.context_window

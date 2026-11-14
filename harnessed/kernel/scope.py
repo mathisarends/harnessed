@@ -387,7 +387,8 @@ class Scope:
             raise RuntimeError(f"Unresolved plugin dependencies (missing or cyclic): {missing}")
         try:
             for spec in pending:
-                mounted.append(await self.plugin(spec))
+                handle = await self.plugin(spec)
+                mounted.append(handle)
             if settle:
                 await self.settle()
         except BaseException:
@@ -436,7 +437,8 @@ class Scope:
                 progress = False
                 for spec in tuple(pending):
                     if all(key in self for key in spec.needs):
-                        mounted.append(await self.plugin(spec))
+                        handle = await self.plugin(spec)
+                        mounted.append(handle)
                         pending.remove(spec)
                         progress = True
                 if not progress:

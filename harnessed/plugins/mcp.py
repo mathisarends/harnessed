@@ -74,10 +74,12 @@ async def _check_http_response(response: httpx2.Response) -> None:
     request = response.request
     if request.headers.get("content-type", "").partition(";")[0] != "application/json":
         return
-    sent = json.loads(await request.aread())
+    request_body = await request.aread()
+    sent = json.loads(request_body)
     if not isinstance(sent, dict) or "id" not in sent:
         return
-    received = json.loads(await response.aread())
+    response_body = await response.aread()
+    received = json.loads(response_body)
     if (
         isinstance(received, dict)
         and received.get("jsonrpc") == "2.0"
