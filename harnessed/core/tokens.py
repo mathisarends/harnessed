@@ -68,22 +68,23 @@ class CalibratedTokenCounter:
     off. It starts at 1.0 and is clamped so one odd report cannot distort budgets.
     """
 
-    MIN_RATIO = 0.25
-    MAX_RATIO = 4.0
-
     def __init__(self, estimator: ApproximateTokenCounter | None = None) -> None:
-        self.estimator = estimator if estimator is not None else ApproximateTokenCounter()
+        self._estimator = estimator if estimator is not None else ApproximateTokenCounter()
         self.ratio = 1.0
 
     def calibrate(self, request: ModelRequest, input_tokens: int) -> None:
         """Record a provider's input count for a request; ignore empty reports."""
-        estimated = self.estimator.count_request(request)
+        estimated = self._estimator.count_request(request)
         if input_tokens < 1 or estimated < 1:
             return
-        self.ratio = min(max(input_tokens / estimated, self.MIN_RATIO), self.MAX_RATIO)
+        self.ratio = min(max(input_tokens / estimated, _MIN_RATIO), _MAX_RATIO)
 
     def count_text(self, text: str) -> int:
-        return math.ceil(self.estimator.count_text(text) * self.ratio)
+        return math.ceil(self._estimator.count_text(text) * self.ratio)
 
     def count_request(self, request: ModelRequest) -> int:
-        return math.ceil(self.estimator.count_request(request) * self.ratio)
+        return math.ceil(self._estimator.count_request(request) * self.ratio)
+
+
+_MIN_RATIO = 0.25
+_MAX_RATIO = 4.0

@@ -184,8 +184,8 @@ class PromptComposition:
         self.format = document.format
         contributions = tuple(contributions)
         providers = tuple(item for item in contributions if item.instructions is not None)
-        self.omitted = () if document.collects_plugins else tuple(item.name for item in providers)
-        if self.omitted:
+        self._omitted = () if document.collects_plugins else tuple(item.name for item in providers)
+        if self._omitted:
             providers = ()
         entries: list[PromptEntry] = []
 
@@ -218,9 +218,9 @@ class PromptComposition:
         lines = [f"System prompt ({self.format.value}, {len(self.entries)} sections)"]
         for index, entry in enumerate(self.entries, 1):
             lines.append(f"  {index}. {entry.origin}: {entry.section.preview!r}")
-        if self.omitted:
+        if self._omitted:
             lines.append("Plugin instructions omitted by the explicit prompt")
-            lines.extend(f"  - {name}" for name in self.omitted)
+            lines.extend(f"  - {name}" for name in self._omitted)
         return "\n".join(lines)
 
     async def render(self, scope: Scope | PluginScope | None = None) -> str:

@@ -265,13 +265,13 @@ class _Capture:
     def __init__(self, limit: int, name: str, *, tail: bool = False) -> None:
         self.limit = limit
         self.name = name
-        self.tail = tail
+        self._tail = tail
         self.data = bytearray()
-        self.total = 0
+        self._total = 0
 
     def feed(self, chunk: bytes) -> None:
-        self.total += len(chunk)
-        if self.tail:
+        self._total += len(chunk)
+        if self._tail:
             self.data.extend(chunk[-self.limit :])
             del self.data[: max(0, len(self.data) - self.limit)]
         else:
@@ -279,10 +279,11 @@ class _Capture:
 
     def text(self) -> str:
         content = self.data.decode(errors="replace")
-        if self.total > len(self.data):
-            position = "latest " if self.tail else ""
+        if self._total > len(self.data):
+            position = "latest " if self._tail else ""
+            kept = len(self.data)
             content += (
-                f"\n[{self.name} truncated: kept {position}{len(self.data)} of {self.total} bytes. "
+                f"\n[{self.name} truncated: kept {position}{kept} of {self._total} bytes. "
                 "Filter output or use a smaller range.]"
             )
         return content

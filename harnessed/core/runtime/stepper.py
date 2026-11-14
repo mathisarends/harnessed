@@ -70,13 +70,13 @@ class StepRunner:
         self.log = log
         self.options = options
         self.control = control
-        self.compaction = compaction
+        self._compaction = compaction
         self.outputs = outputs
         self.tools = tools
-        self.responder = responder
+        self._responder = responder
         self.context = context
         self.observations = observations
-        self.retries = RequestRetries(log, options)
+        self._retries = RequestRetries(log, options)
 
     async def run(
         self,
@@ -158,7 +158,7 @@ class StepRunner:
             )
         request = resolve_request_settings(request, model.settings)
         request = await self.log._images.retain_request(request)
-        request = await self.compaction.prepare(request, model=model)
+        request = await self._compaction.prepare(request, model=model)
         if final:
             request = replace(request, tools=(), output_schema=None)
         if ContextBudget in self.scope:
@@ -168,7 +168,7 @@ class StepRunner:
                 counter=self.scope[TokenCounter],
             )
         request_id = uuid4().hex
-        record = self.retries.request(request, request_id, model.info)
+        record = self._retries.request(request, request_id, model.info)
         try:
             response = await self._request(record, model)
         except ContextLengthExceeded:
@@ -181,12 +181,12 @@ class StepRunner:
                     isinstance(event, AssistantMessageEvent) for event in current.steps[-1].events
                 )
             ):
-                await self.retries.finished(record, ModelAttemptOutcome.EXHAUSTED)
+                await self._retries.finished(record, ModelAttemptOutcome.EXHAUSTED)
                 raise
             try:
-                applied, _ = await self.compaction.compact(request, model=model)
+                applied, _ = await self._compaction.compact(request, model=model)
             except BaseException as error:
-                await self.retries.finished(
+                await self._retries.finished(
                     record,
                     ModelAttemptOutcome.CANCELLED
                     if isinstance(error, asyncio.CancelledError)
@@ -194,17 +194,17 @@ class StepRunner:
                 )
                 raise
             if applied is None:
-                await self.retries.finished(record, ModelAttemptOutcome.FAILED)
+                await self._retries.finished(record, ModelAttemptOutcome.FAILED)
                 raise
             # A retry is a new model step. Completed tools and visible partial replies
             # are never replayed by retrying an in-progress step.
             await self.log.append(StepEndedEvent(turn, step, StepOutcome.CONTEXT_LIMIT))
             if record.retry_kind == RetryKind.OUTPUT_CORRECTION:
-                await self.retries.finished(record, ModelAttemptOutcome.FAILED)
-            await self.retries.scheduled(record, RetryKind.CONTEXT_RECOVERY)
+                await self._retries.finished(record, ModelAttemptOutcome.FAILED)
+            await self._retries.scheduled(record, RetryKind.CONTEXT_RECOVERY)
             return True
         except BaseException as error:
-            await self.retries.finished(
+            await self._retries.finished(
                 record,
                 ModelAttemptOutcome.CANCELLED
                 if isinstance(error, asyncio.CancelledError)
@@ -215,7 +215,7 @@ class StepRunner:
             results, failure = await self.outputs.validate(response, request.output_schema)
             await self.tools.run(response.tool_calls, results=results, allow_execution=not final)
         except BaseException as error:
-            await self.retries.finished(
+            await self._retries.finished(
                 record,
                 ModelAttemptOutcome.CANCELLED
                 if isinstance(error, asyncio.CancelledError)
@@ -249,10 +249,10 @@ class StepRunner:
         )
         if can_retry:
             if record.retry_kind == RetryKind.CONTEXT_RECOVERY:
-                await self.retries.finished(record, ModelAttemptOutcome.SUCCEEDED)
-            await self.retries.scheduled(record, RetryKind.OUTPUT_CORRECTION)
+                await self._retries.finished(record, ModelAttemptOutcome.SUCCEEDED)
+            await self._retries.scheduled(record, RetryKind.OUTPUT_CORRECTION)
         else:
-            await self.retries.finished(
+            await self._retries.finished(
                 record,
                 ModelAttemptOutcome.EXHAUSTED if invalid else ModelAttemptOutcome.SUCCEEDED,
                 kind=RetryKind.OUTPUT_CORRECTION if invalid else None,
@@ -268,8 +268,8 @@ class StepRunner:
             included = self.log.included_observations(request)
             await self.log.append(record)
             await self.log.append(ObservationsIncludedEvent(request_id, included))
-            await self.retries.started(record)
-            return await self.responder.respond(request, model=model, request_id=request_id)
+            await self._retries.started(record)
+            return await self._responder.respond(request, model=model, request_id=request_id)
         except BaseException as error:
             if self.log.request(request_id) is not None and not self.log.request_finished(
                 request_id

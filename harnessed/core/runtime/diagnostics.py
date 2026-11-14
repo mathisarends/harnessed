@@ -26,10 +26,10 @@ class RequestDiagnostics:
         self.attempt: int | None = None
         self.max_retries: int | None = None
         self.open = False
-        self.observed = False
+        self._observed = False
         self.closed = False
         self.partial = False
-        self.retry_pending = False
+        self._retry_pending = False
 
     async def receive(self, diagnostic: ModelDiagnostic) -> None:
         if self.closed:
@@ -45,8 +45,8 @@ class RequestDiagnostics:
             self.attempt = diagnostic.attempt
             self.max_retries = diagnostic.max_retries
             self.open = True
-            self.observed = True
-            self.retry_pending = False
+            self._observed = True
+            self._retry_pending = False
             await self.log.publish(
                 ModelAttemptStartedEvent(
                     self.request_id,
@@ -58,7 +58,7 @@ class RequestDiagnostics:
         elif isinstance(diagnostic, ModelRetryScheduled):
             if self.partial:
                 raise ValueError("Provider retries cannot replay visible response parts")
-            if diagnostic.attempt != self.attempt or not self.observed or self.retry_pending:
+            if diagnostic.attempt != self.attempt or not self._observed or self._retry_pending:
                 raise ValueError("Retry decisions must reference an observed attempt")
             if self.open:
                 await self.finish(
@@ -66,7 +66,7 @@ class RequestDiagnostics:
                     reason=diagnostic.reason,
                     status_code=diagnostic.status_code,
                 )
-            self.retry_pending = True
+            self._retry_pending = True
             await self.log.publish(
                 ModelRetryScheduledEvent(
                     self.request_id,
@@ -102,7 +102,7 @@ class RequestDiagnostics:
         reason: RetryReason = RetryReason.UNKNOWN,
         status_code: int | None = None,
     ) -> None:
-        if self.observed and not self.open:
+        if self._observed and not self.open:
             return
         self.open = False
         await self.log.publish(
