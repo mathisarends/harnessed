@@ -129,8 +129,8 @@ def bind_injected(
     callback: Callable,
     scope,
     args: tuple = (),
-    kwargs: Mapping[str, Any] | None = None,
     *,
+    kwargs: Mapping[str, Any] | None = None,
     extra: Mapping[ServiceKey[Any], Any] | None = None,
 ) -> inspect.BoundArguments:
     return binding_plan(callback).bind(scope, args, kwargs, extra=extra)

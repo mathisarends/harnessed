@@ -383,8 +383,8 @@ class ToolRegistry:
             tool_name,
             plan.signature,
             plan.hints,
-            plan.dependencies,
-            parameter_fields,
+            injected=plan.dependencies,
+            parameter_fields=parameter_fields,
             params=spec.params,
         )
         definition = ToolDefinition(

@@ -178,6 +178,7 @@ class Spill(Plugin[SpillConfig], slot="spill", needs=(TokenCounter,)):
         self,
         event: ReviewToolResult,
         next_: Next[ToolResult],
+        *,
         counter: Inject[TokenCounter],
         session: Inject[SessionLog],
     ) -> ToolResult:

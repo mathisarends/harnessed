@@ -181,7 +181,9 @@ class PluginHandle:
             try:
                 with child.activate():
                     spec = self.spec
-                    bound = bind_injected(spec.factory, child, (child, *spec.args), spec.kwargs)
+                    bound = bind_injected(
+                        spec.factory, child, (child, *spec.args), kwargs=spec.kwargs
+                    )
                     generator = spec.factory(*bound.args, **bound.kwargs)
                     if not inspect.isasyncgen(generator):
                         raise TypeError(
