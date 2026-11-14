@@ -4,6 +4,21 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
+## 0.17.0 (2026-11-14)
+
+Tool call envelopes add validated model-supplied call metadata to policy,
+execution and result-review hooks while keeping it out of tool callbacks.
+See [envelopes](guides/tools.md#tool-call-envelopes) for declarations and examples.
+Runtime components have been split and the repository now uses Smelt 0.8.0.
+
+**Upgrade:** direct calls to built-in rule/spill hooks now use keyword arguments
+for injected services. Update automation for `tests.yaml` and `mkdocs.yaml`.
+Public SDK import paths remain stable; some implementation attributes are now
+private. The
+[changelog upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0160)
+covers direct hook calls and internal imports. No storage migration is required
+from 0.16.0: state/checkpoints/JSON stores remain **3**, audit envelopes **6**.
+
 ## 0.16.0 (2026-11-10)
 
 This release implements the Compaction API designed in 0.15.1: replaceable
@@ -60,9 +75,9 @@ contract alone does not keep a turn running. Persistence versions remain state
   notes identify these changes and any required upgrade steps.
 - Patch releases within a minor line are intended for compatible fixes. Pin the
   exact package version for reproducible deployments and persisted workflows.
-- Current conversation snapshots use state format **2**. Execution checkpoints
+- Current conversation snapshots use state format **3**. Execution checkpoints
   and JSON-store envelopes use format **3**; standalone audit-event envelopes
-  use version **5**. Unsupported versions fail explicitly without automatic
+  use version **6**. Unsupported versions fail explicitly without automatic
   migration. The changelog records formats used by earlier releases. Former JSONL
   session archives are not conversation snapshots.
 - Back up application-owned state and older archives before upgrading.

@@ -274,7 +274,7 @@ pending structured work with
 `agent.session(id="...", restore_outputs=[YourOutputTypeOrContract])`. Restoration
 matches validator identity and schema; stored JSON never imports Python code.
 
-Execution checkpoints have format **2** and contain a conversation snapshot plus
+Execution checkpoints have format **3** and contain a conversation snapshot plus
 the current execution suffix, queue, grants and resources. They are distinct from
 `SessionState` JSON and old JSONL archives; formats are not automatically migrated.
 Supplying both `state=` and an existing stored ID fails instead of overwriting it.
