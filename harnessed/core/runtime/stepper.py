@@ -38,7 +38,7 @@ from harnessed.core.hooks import (
 from harnessed.core.limits import FinalStepPolicy
 from harnessed.core.messages import AssistantMessage, Role, SystemMessage, UserMessage
 from harnessed.core.model import GenerationSettings, Model, ModelRequest, resolve_request_settings
-from harnessed.core.prompt.system_prompt import SystemPromptStore
+from harnessed.core.prompt.system import SystemPromptStore
 from harnessed.core.runtime.context import PendingObservations, SessionContext
 from harnessed.core.runtime.control import SessionControl
 from harnessed.core.runtime.executor import ToolExecutor

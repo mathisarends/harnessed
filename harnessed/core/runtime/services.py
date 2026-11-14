@@ -4,7 +4,7 @@ from harnessed.core.events.model import ModelRequestedEvent, ModelUsageRecordedE
 from harnessed.core.hooks import SessionAppended
 from harnessed.core.model import UsagePurpose
 from harnessed.core.plugin import Plugin
-from harnessed.core.prompt.system_prompt import SystemPromptStore
+from harnessed.core.prompt.system import SystemPromptStore
 from harnessed.core.tokens import CalibratedTokenCounter, TokenCounter
 from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import PluginScope

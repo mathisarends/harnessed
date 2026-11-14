@@ -1,5 +1,5 @@
 from harnessed.core.plugin import Plugin
-from harnessed.core.prompt.system_prompt import SystemPromptStore
+from harnessed.core.prompt.system import SystemPromptStore
 from harnessed.core.prompt.values import PromptComposition, SystemPrompt
 from harnessed.kernel import PluginScope
 
