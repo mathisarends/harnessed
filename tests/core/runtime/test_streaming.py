@@ -226,7 +226,7 @@ async def test_slow_stream_overflows_without_blocking_the_run_or_losing_the_dura
                     await anext(stream)
                 assert error.value.capacity == 16
                 assert session.messages[-1].text == "x" * 100
-                assert not session._subscribers
+                assert not session._streams
                 assert (await session.run("continue")).text == "after"
             finally:
                 await stream.aclose()
