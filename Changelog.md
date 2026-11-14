@@ -26,6 +26,11 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   arguments and canonical `.yaml` filenames. `harnessed.core.prompt.system_prompt`
   is now `harnessed.core.prompt.system`; the CI workflow is `tests.yaml` and the
   MkDocs configuration `mkdocs.yaml`. Public SDK imports are unchanged.
+- Split the two largest runtime modules into typed components without changing
+  behavior. `SessionLog` delegates its inbox, approval and request indexes,
+  observer fan-out and interruption repair planning to dedicated session
+  components. `Session` delegates run submissions and live stream fan-out to the
+  new `RunSubmissions` and `TurnStreams` components.
 
 ## 0.16.0 (2026-11-10)
 
