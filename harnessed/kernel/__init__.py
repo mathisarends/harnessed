@@ -16,9 +16,10 @@ from .events import (
     Waterfall,
     on,
 )
+from .events import on as hook
 from .hooks import HookFactory, ListenerFactory, Next
 from .keys import ServiceKey
-from .plugin import PluginHandle, PluginLike, PluginSpec, PluginStatus, as_plugin_spec, hook, plugin
+from .plugin import PluginHandle, PluginLike, PluginSpec, PluginStatus, as_plugin_spec, plugin
 from .scope import Key, MissingService, PluginScope, RegistrationState, Scope, ScopeClosed
 from .spec import PluginDependencyIssue
 from .state import PluginState

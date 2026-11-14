@@ -1,6 +1,6 @@
 # Smelt policy and adoption feedback
 
-Harnessed pins [`smelt-cli` 0.4.0](https://github.com/mathisarends/smelt)
+Harnessed pins [`smelt-cli` 0.8.0](https://github.com/mathisarends/smelt)
 in the development group. The executable policy is
 [`smelt.yaml`](https://github.com/mathisarends/harnessed/blob/main/smelt.yaml).
 It complements Ruff, ty, runtime tests and the architecture suite.
@@ -42,10 +42,12 @@ The requested checks are explicit in the config:
 
 | Severity | Rules |
 | --- | --- |
-| Error | `import-cycle`, `public-definitions-first`, `bundled-instance-assignment`, `redundant-str-enum-value`, `prefer-package-import`, `internal-public-member`, `internal-static-helper`, `internal-public-module-symbol` |
-| Error | `unnecessary-future-annotations`, `prefer-match-type-dispatch`, `implicit-optional-default`, `no-base-class-prefix` |
-| Error | `private-test-access`, `string-patch-target`, `test-only-public-function`, `test-only-public-attribute`; at most three patches per test |
-| Error | `test-without-outcome-check`, `test-only-checks-possibly-empty-data`, `unbounded-test-wait`, `async-mock-without-await-check` |
+| Error | `import-cycle`, `public-definitions-first`, `bundled-instance-assignment`, `prefer-package-import`, `internal-static-helper`, `unnecessary-future-annotations`, `prefer-match-type-dispatch`, `implicit-optional-default` |
+| Error | `package-only-dunder-all`, `private-symbol-import`, `private-class-constant`, `await-in-call-argument`, `deprecated-async-contextmanager-return`, `redundant-module-name`, `redundant-private-delegate`, `redundant-name-alias`, `prefer-deferred-annotations` |
+| Error | `no-base-class-prefix`, `no-base-class-suffix`, `redundant-str-enum-value`, `str-enum-explicit-values`, `prefer-str-enum-discriminator`, `duplicate-literal-type`, `anonymous-tuple-type` |
+| Error | `information-hiding` group: `internal-public-member`, `internal-public-module-symbol`, `internal-public-attribute`, `test-only-public-function`, `test-only-public-attribute` |
+| Error | `private-test-access`, `string-patch-target`, `test-without-outcome-check`, `test-only-checks-possibly-empty-data`, `unbounded-test-wait`, `async-mock-without-await-check`, `nondeterministic-test-data`; at most three patches per test |
+| Error (policy) | `max_positional_parameters: 3` (`excess-positional-parameters`), `yaml_extension: yaml` (`yaml-file-extension`) |
 | Hint | `independent-test-case-loop`, `deep-object-navigation` |
 
 Hooks and CI use `--fail-on warning`, so metadata warnings such as unused
@@ -54,8 +56,11 @@ intentional empty-value behavior must be explicit. Future annotations remain
 necessary for deferred names under the supported Python 3.12 minimum.
 
 Public definitions precede implementation helpers. Module dunder assignments
-follow those definitions, preserving the repository's `__all__`-at-the-bottom
-convention. Class initializers and dunders precede public/private methods.
+follow those definitions. Only package initializers declare `__all__`; the
+single-module public facades (`errors`, `hooks`, `services`, `sessions`,
+`tracing`, the optional integrations, `plugins.mcp` and `plugins.subagents`)
+have a reasoned config exception because their module path is the documented
+import, and optional extras cannot be re-exported eagerly from a package. Class initializers and dunders precede public/private methods.
 Ordering fixes use `safe-only`; reflection-sensitive sections require manual
 review and behavioral verification. Production names such as `utils` and
 `helpers` are forbidden in favor of responsibilities with concrete names.
@@ -66,6 +71,15 @@ for tests wherever practical. Independent reference folds belong in test support
 they are useful oracles, not production API. Async coordination gets local
 deadlines even when a test intentionally blocks work until cancellation.
 
+Parameters after the third positional one are keyword-only, including injected
+hook dependencies; dunder, `@overload` and `@override` signatures are exempt.
+Fixed-shape tuples with three or more or repeated fields become `NamedTuple` or
+dataclass records. The public `HookEntry` alias keeps its tuple form with an inline
+reason because callers pass plain `(event, callback[, priority])` literals.
+`StrEnum` values stay explicit strings so a member rename cannot silently change
+a wire value. YAML files use `.yaml`; `.github/workflows/release.yml` keeps its
+name because PyPI trusted publishing is registered for it.
+
 The configuration deliberately leaves these optional policies unselected:
 
 - Blanket private-module or module-docstring bans would conflict with intentional
@@ -75,12 +89,20 @@ The configuration deliberately leaves these optional policies unselected:
   the ban on parent-relative imports; cross-package imports remain absolute.
 - Import-count/export-gap thresholds can suggest a design review, but frequency
   alone does not justify extending the SDK. Existing exports already drive the
-  stricter `prefer-package-import` rule.
+  stricter `prefer-package-import` rule. A trial produced 162 hints that mostly
+  contradict the canonical `core.messages` / `core.model` module imports.
+- `caller-before-callee` would reorder 78 methods away from their lifecycle and
+  protocol grouping; `public-definitions-first` already fixes the outer order.
+- `prefer-callable-instance` reports protocol implementations such as approvers,
+  summarizers and responders whose named method is the contract.
+- `str-enum-auto-values` contradicts the explicit wire-value convention, and
+  `secret-settings-field` / `redundant-dishka-provider` target frameworks this
+  repository does not use.
 
 ## Reviewed exceptions
 
-There is no debt baseline. The full check covers 118 governed modules with no
-errors or warnings. Nine individual inline findings are suppressed with reasons. One config exception permits private access only in
+There is no debt baseline. The full check covers 153 governed modules with no
+errors or warnings. Twelve individual inline findings are suppressed with reasons. One config exception permits private access only in
 `tests/core/session/test_image_cache.py`, whose purpose is to measure byte and
 entry limits, eviction and reuse. Public asset behavior remains in separate tests.
 
@@ -119,6 +141,21 @@ installing/updating Smelt:
 ```bash
 uv run smelt config schema > .smelt.schema.json
 ```
+
+## Review after the 0.8.0 upgrade
+
+Smelt 0.5.0 to 0.8.0 added opt-in reviews; the adopted ones run as errors.
+The upgrade made shared private helpers module-public (`validate_event`,
+`activation_tool`, `prepare_input`, `MemoryAssets`, `SessionImages`,
+`annotation_dependency`, `PluginRuntime`), removed `__all__` from internal modules,
+privatized 17 internal data attributes, named awaited results and anonymous tuple
+records, made excess positional parameters keyword-only and renamed
+`core.prompt.system_prompt` to `core.prompt.system`. The checkpoint extension
+discriminator uses `CheckpointRecordKind.EXTENSION` with an unchanged wire value.
+
+Three exceptions remain inline: `PluginBase` keeps its suffix as a stable kernel
+facade export that core `Plugin` extends, `Agent.plugin_validation` is a public
+setting checked by the typing contract, and `HookEntry` keeps its tuple literal.
 
 ## Feedback from this adoption
 

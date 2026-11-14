@@ -1,5 +1,6 @@
 from collections.abc import Mapping
 from dataclasses import field
+from enum import StrEnum
 from typing import Annotated, Literal, Self
 
 from pydantic import ConfigDict, Field, TypeAdapter, ValidationError
@@ -16,7 +17,7 @@ from harnessed.core.events.turn import TurnEndedEvent, TurnStartedEvent
 from harnessed.core.events.unions import SESSION_EVENT_TYPES, LogEvent
 from harnessed.core.messages import JSONMapping, freeze, to_dict
 
-from .codec import CURRENT_VERSION, _validate_event
+from .codec import CURRENT_VERSION, validate_event
 from .files import TextValue
 from .state import SessionState
 
@@ -28,6 +29,12 @@ _CONFIG = ConfigDict(
     val_json_bytes="base64",
     hide_input_in_errors=True,
 )
+
+
+class CheckpointRecordKind(StrEnum):
+    """Checkpoint-only record tags that sit beside built-in log events."""
+
+    EXTENSION = "checkpoint.extension"
 
 
 @dataclass(frozen=True, config=_CONFIG)
@@ -43,7 +50,9 @@ class CheckpointExtension:
 
     tag: str
     data: JSONMapping
-    type: Literal["checkpoint.extension"] = field(default="checkpoint.extension", kw_only=True)
+    type: Literal[CheckpointRecordKind.EXTENSION] = field(
+        default=CheckpointRecordKind.EXTENSION, kw_only=True
+    )
 
     def __post_init__(self) -> None:
         if (
@@ -110,7 +119,7 @@ class SessionCheckpoint:
             raise ValueError("A checkpoint suffix must describe one open turn")
         for event in (*self.seed, *self.events, self.control):
             if not isinstance(event, CheckpointExtension):
-                _validate_event(event)
+                validate_event(event)
 
     def to_json(self) -> str:
         """Serialize the canonical versioned document in memory, without I/O."""
@@ -126,5 +135,3 @@ class SessionCheckpoint:
 
 
 _CHECKPOINT = TypeAdapter(SessionCheckpoint)
-
-__all__ = ["CheckpointEntry", "CheckpointExtension", "CheckpointSeed", "SessionCheckpoint"]

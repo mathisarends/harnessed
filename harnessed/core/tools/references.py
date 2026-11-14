@@ -63,7 +63,11 @@ def call_arguments(reference: ToolReference, arguments: dict) -> dict:
     if spec is None:
         raise TypeError("Tool references must point to a @tool method")
     form = ToolArguments.from_signature(
-        reference.name, plan.signature, plan.hints, plan.dependencies, params=spec.params
+        reference.name,
+        plan.signature,
+        plan.hints,
+        injected=plan.dependencies,
+        params=spec.params,
     )
     parsed = form.parse(arguments)
     # A scripted response carries wire arguments, not the Python parameter object.

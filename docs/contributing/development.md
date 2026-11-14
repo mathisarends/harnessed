@@ -19,7 +19,7 @@ uv run python scripts/check_wheel.py
 uv run twine check --strict dist/*
 ```
 
-`uv.lock` pins development tools, including Smelt CLI 0.4.0, and optional provider
+`uv.lock` pins development tools, including Smelt CLI 0.8.0, and optional provider
 dependencies. Install the commit hooks with `uv run prek install`.
 Existing pre-commit users should run
 `uv run prek install --force` once to replace the installed Git hooks.
@@ -70,7 +70,7 @@ reviewed exceptions and analysis limits.
 
 The README contains the core SDK and links. Put explanations under `docs/guides/`,
 value/runtime contracts under `docs/concepts/`, API summaries under `docs/reference/`
-and contributor material here. Add a navigation entry in `mkdocs.yml` for each new
+and contributor material here. Add a navigation entry in `mkdocs.yaml` for each new
 page. Keep all public documentation and examples in English.
 
 Preview with `uv run mkdocs serve`. The [MkDocs CLI](https://www.mkdocs.org/user-guide/cli/)

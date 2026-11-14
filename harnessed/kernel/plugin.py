@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Any, Concatenate, overload
 from .declarations import Bundle, PluginBase
 from .di import bind_injected
 from .events import PluginActivated, PluginFailed
-from .events import on as hook
 from .keys import MissingService, ServiceKey
 from .spec import PluginSpec
 
@@ -182,7 +181,9 @@ class PluginHandle:
             try:
                 with child.activate():
                     spec = self.spec
-                    bound = bind_injected(spec.factory, child, (child, *spec.args), spec.kwargs)
+                    bound = bind_injected(
+                        spec.factory, child, (child, *spec.args), kwargs=spec.kwargs
+                    )
                     generator = spec.factory(*bound.args, **bound.kwargs)
                     if not inspect.isasyncgen(generator):
                         raise TypeError(
@@ -255,7 +256,7 @@ class PluginHandle:
                 self._mount._scope.runtime.changed()
 
 
-class _Runtime:
+class PluginRuntime:
     def __init__(self) -> None:
         self.handles: list[PluginHandle] = []
         self.task: asyncio.Task | None = None
@@ -368,15 +369,3 @@ def as_plugin_spec(value: PluginLike) -> PluginSpec:
     if callable(value) and getattr(value, "_harnessed_plugin", False):
         return value()
     raise TypeError(f"Expected a configured plugin, Bundle or Plugin, got {type(value).__name__}")
-
-
-__all__ = [
-    "Bundle",
-    "PluginBase",
-    "PluginHandle",
-    "PluginLike",
-    "PluginSpec",
-    "as_plugin_spec",
-    "hook",
-    "plugin",
-]

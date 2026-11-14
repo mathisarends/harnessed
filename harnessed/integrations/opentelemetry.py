@@ -297,20 +297,20 @@ class _Span:
         *,
         tool_name: str | None,
     ) -> None:
-        self.native = native
+        self._native = native
         self.config = config
         self.content_filter = content_filter
         self.tool_name = tool_name
-        self.capture_policy = capture_policy
+        self._capture_policy = capture_policy
 
     def set_attribute(self, name: str, value: Any) -> None:
-        if not self.native.is_recording():
+        if not self._native.is_recording():
             return
         if isinstance(value, ModelRequest):
             if value.settings.max_tokens is not None:
-                self.native.set_attribute("gen_ai.request.max_tokens", value.settings.max_tokens)
+                self._native.set_attribute("gen_ai.request.max_tokens", value.settings.max_tokens)
             if value.settings.temperature is not None:
-                self.native.set_attribute("gen_ai.request.temperature", value.settings.temperature)
+                self._native.set_attribute("gen_ai.request.temperature", value.settings.temperature)
             if self.config.capture_content:
                 self.content(
                     "input",
@@ -336,26 +336,26 @@ class _Span:
             if self.config.capture_content:
                 self.content("input", TraceContentKind.TOOL_ARGUMENTS, value.arguments)
         elif isinstance(value, ToolResult):
-            self.native.set_attribute("harnessed.tool.status", value.status.value)
-            self.native.set_attribute("harnessed.tool.is_error", value.is_error)
+            self._native.set_attribute("harnessed.tool.status", value.status.value)
+            self._native.set_attribute("harnessed.tool.is_error", value.is_error)
             if value.exit_code is not None:
-                self.native.set_attribute("harnessed.tool.exit_code", value.exit_code)
+                self._native.set_attribute("harnessed.tool.exit_code", value.exit_code)
             if value.is_error:
                 description = (
                     "nonzero_exit_code" if value.status == ToolStatus.OK else value.status.value
                 )
-                self.native.set_status(trace.StatusCode.ERROR, description)
+                self._native.set_status(trace.StatusCode.ERROR, description)
             if self.config.capture_content:
                 self.content("output", TraceContentKind.TOOL_RESULT, value.content)
         elif isinstance(value, str | bool | int | float):
-            self.native.set_attribute(name if "." in name else f"harnessed.{name}", value)
+            self._native.set_attribute(name if "." in name else f"harnessed.{name}", value)
             if name == "session_id":
-                self.native.set_attribute("session.id", value)
+                self._native.set_attribute("session.id", value)
             elif name == "model":
-                self.native.set_attribute("llm.model_name", value)
-                self.native.set_attribute("gen_ai.request.model", value)
+                self._native.set_attribute("llm.model_name", value)
+                self._native.set_attribute("gen_ai.request.model", value)
             elif name == "tool":
-                self.native.set_attribute("tool.name", value)
+                self._native.set_attribute("tool.name", value)
 
     def usage(self, usage: ModelUsage) -> None:
         attributes = {
@@ -372,7 +372,7 @@ class _Span:
         }
         for key, value in attributes.items():
             if value is not None:
-                self.native.set_attribute(key, value)
+                self._native.set_attribute(key, value)
 
     def content(self, direction: str, kind: TraceContentKind, value: Any) -> None:
         captured = self._capture(kind, value, field=direction)
@@ -386,33 +386,33 @@ class _Span:
             if truncated:
                 serialized, omitted = _limit_json(captured.value, self.config.max_content_length)
         except (TypeError, ValueError, RecursionError):
-            self.native.set_attribute(f"harnessed.{direction}.serialization_error", True)
+            self._native.set_attribute(f"harnessed.{direction}.serialization_error", True)
             return
-        self.native.set_attribute(f"{direction}.value", serialized)
-        self.native.set_attribute(f"{direction}.mime_type", "application/json")
+        self._native.set_attribute(f"{direction}.value", serialized)
+        self._native.set_attribute(f"{direction}.mime_type", "application/json")
         if truncated:
-            self.native.set_attribute(f"harnessed.{direction}.truncated", True)
-            self.native.set_attribute(f"harnessed.{direction}.original_length", original_length)
-            self.native.set_attribute(f"harnessed.{direction}.omitted_items", omitted)
+            self._native.set_attribute(f"harnessed.{direction}.truncated", True)
+            self._native.set_attribute(f"harnessed.{direction}.original_length", original_length)
+            self._native.set_attribute(f"harnessed.{direction}.omitted_items", omitted)
 
     def error(self, error: BaseException) -> None:
-        if not self.native.is_recording():
+        if not self._native.is_recording():
             return
-        self.native.set_status(trace.StatusCode.ERROR, type(error).__name__)
+        self._native.set_status(trace.StatusCode.ERROR, type(error).__name__)
         attributes = {"exception.type": f"{type(error).__module__}.{type(error).__qualname__}"}
         if self.config.capture_content and (
-            self.capture_policy is None or self.capture_policy.include_exception_messages
+            self._capture_policy is None or self._capture_policy.include_exception_messages
         ):
             captured = self._capture(
                 TraceContentKind.EXCEPTION_MESSAGE, str(error), field="exception"
             )
             if captured is not None and isinstance(captured.value, str) and captured.value:
                 attributes["exception.message"] = captured.value[: self.config.max_content_length]
-        self.native.add_event("exception", attributes)
+        self._native.add_event("exception", attributes)
 
     def _turn(self, turn: Turn) -> None:
         if turn.reason is not None:
-            self.native.set_attribute("harnessed.outcome", turn.reason.value)
+            self._native.set_attribute("harnessed.outcome", turn.reason.value)
         if not self.config.capture_content:
             return
         self.content(
@@ -441,7 +441,7 @@ class _Span:
         )
         if proof is not None:
             output["validated_output"] = proof.data
-        self.native.set_attribute(
+        self._native.set_attribute(
             "harnessed.output.partial",
             final.interrupted
             or turn.reason != TurnOutcome.COMPLETED
@@ -451,14 +451,14 @@ class _Span:
             ),
         )
         if final.stop_reason is not None:
-            self.native.set_attribute("harnessed.output.stop_reason", final.stop_reason.value)
+            self._native.set_attribute("harnessed.output.stop_reason", final.stop_reason.value)
         self.content("output", TraceContentKind.TURN_OUTPUT, output)
 
     def _capture(self, kind: TraceContentKind, value: Any, *, field: str) -> TraceContent | None:
         try:
             captured = TraceContent(kind, _trace_value(value), self.tool_name)
         except (TypeError, ValueError, RecursionError):
-            self.native.set_attribute(f"harnessed.{field}.serialization_error", True)
+            self._native.set_attribute(f"harnessed.{field}.serialization_error", True)
             return None
         try:
             filtered = captured if self.content_filter is None else self.content_filter(captured)
@@ -471,13 +471,13 @@ class _Span:
                     filtered.value, str
                 ):
                     raise TypeError("Filtered exception messages must be strings")
-                if self.capture_policy is not None:
-                    filtered = replace(filtered, value=self.capture_policy._redact(filtered.value))
+                if self._capture_policy is not None:
+                    filtered = replace(filtered, value=self._capture_policy._redact(filtered.value))
             return filtered
         except Exception:
             # A redaction failure must never fall back to exporting the original
             # value or leak the filter's own exception message.
-            self.native.set_attribute(f"harnessed.{field}.filter_error", True)
+            self._native.set_attribute(f"harnessed.{field}.filter_error", True)
             return None
 
 

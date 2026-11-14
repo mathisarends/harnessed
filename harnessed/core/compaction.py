@@ -214,7 +214,7 @@ class CompactionManager:
         self, scope: Scope, session_log: SessionLog, *, context_window: int | None
     ) -> None:
         self.scope = scope
-        self.session_log = session_log
+        self._session_log = session_log
         self.context_window = context_window
         self._lock = asyncio.Lock()
         self._retry_after_turns = 0
@@ -248,11 +248,11 @@ class CompactionManager:
         async with self._lock:
             policy = self.scope[CompactionPolicy] if CompactionPolicy in self.scope else None
             settings = policy.settings if policy is not None else CompactionSettings()
-            plan = _plan_compaction(self.session_log, settings.keep_last_steps)
+            plan = _plan_compaction(self._session_log, settings.keep_last_steps)
             if plan is None:
                 return None, request
-            current = self.session_log.open_turn
-            if not force and self.session_log.closed_turn_count < self._retry_after_turns:
+            current = self._session_log.open_turn
+            if not force and self._session_log.closed_turn_count < self._retry_after_turns:
                 if (
                     self._retry_after_step is None
                     or current is None
@@ -270,7 +270,7 @@ class CompactionManager:
             outcome = CompactionOutcome.FAILED
             after = None
             try:
-                await self.session_log.publish(
+                await self._session_log.publish(
                     CompactionStartedEvent(
                         compaction_id,
                         before_tokens=state.input_tokens,
@@ -283,7 +283,7 @@ class CompactionManager:
                     request,
                     plan,
                     settings,
-                    compaction_id,
+                    compaction_id=compaction_id,
                     model=model,
                     counter=counter,
                     state=state,
@@ -302,11 +302,11 @@ class CompactionManager:
                 raise
             finally:
                 # Commit ownership survives observers raising or cancelling after append.
-                committed = self.session_log.last(CompactionAppliedEvent)
+                committed = self._session_log.last(CompactionAppliedEvent)
                 if committed is not None and committed.id == compaction_id:
                     outcome = CompactionOutcome.APPLIED
                     after = committed.after_tokens
-                await self.session_log.publish(
+                await self._session_log.publish(
                     CompactionFinishedEvent(
                         compaction_id,
                         outcome,
@@ -322,15 +322,16 @@ class CompactionManager:
         self, request: ModelRequest, model: Model, counter: TokenCounter
     ) -> ContextState:
         budget = self.scope[ContextBudget] if ContextBudget in self.scope else ContextBudget()
+        input_tokens = await count_request(counter, request)
         return ContextState(
-            await count_request(counter, request),
+            input_tokens,
             budget.output_reserve(request),
             budget.window_limit(
                 self.context_window
                 if self.context_window is not None
                 else model.info.context_window
             ),
-            self.session_log.uncompacted_turn_count,
+            self._session_log.uncompacted_turn_count,
         )
 
     async def _apply(
@@ -338,8 +339,8 @@ class CompactionManager:
         request: ModelRequest,
         plan: _CompactionPlan,
         settings: CompactionSettings,
-        compaction_id: str,
         *,
+        compaction_id: str,
         model: Model,
         counter: TokenCounter,
         state: ContextState,
@@ -422,7 +423,7 @@ class CompactionManager:
         with span(
             "harnessed.compaction",
             scope=self.scope,
-            session_id=self.session_log.id,
+            session_id=self._session_log.id,
             through=plan.through,
         ) as trace:
             for attempt in range(2):
@@ -431,7 +432,7 @@ class CompactionManager:
                 except SummaryError as error:
                     usage = error.usage if usage is None else sum_usage((usage, error.usage))
                     trace.set_attribute("usage", usage)
-                    await self.session_log.append(
+                    await self._session_log.append(
                         ModelUsageRecordedEvent(error.usage, purpose=UsagePurpose.COMPACTION)
                     )
                     if not error.truncated:
@@ -452,7 +453,7 @@ class CompactionManager:
                 if summary.usage is not None:
                     usage = summary.usage if usage is None else sum_usage((usage, summary.usage))
                     trace.set_attribute("usage", usage)
-                    await self.session_log.append(
+                    await self._session_log.append(
                         ModelUsageRecordedEvent(summary.usage, purpose=UsagePurpose.COMPACTION)
                     )
                 if not isinstance(summary.text, str) or not summary.text.strip():
@@ -489,17 +490,17 @@ class CompactionManager:
                         1,
                     )
                     ceiling = max(1, min(ceiling - 1, size - excess))
-        if self.session_log.last(CompactionAppliedEvent) is not previous:
+        if self._session_log.last(CompactionAppliedEvent) is not previous:
             return None, request
         if best is None:
             self._backoff(plan)
             return None, request
-        await self.session_log.append(best[0])
+        await self._session_log.append(best[0])
         return best
 
     def _backoff(self, plan: _CompactionPlan) -> None:
-        current = self.session_log.open_turn
-        self._retry_after_turns = self.session_log.closed_turn_count + 2
+        current = self._session_log.open_turn
+        self._retry_after_turns = self._session_log.closed_turn_count + 2
         self._retry_through = plan.through
         self._retry_after_step = (
             (current.id, sum(step.closed for step in current.steps) + 2)

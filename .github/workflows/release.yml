@@ -54,7 +54,7 @@ jobs:
   checks:
     name: Release checks
     needs: validate
-    uses: ./.github/workflows/tests.yml
+    uses: ./.github/workflows/tests.yaml
 
   build:
     name: Build and verify distributions

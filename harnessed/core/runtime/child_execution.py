@@ -96,22 +96,22 @@ class ChildParent:
 class ParentApprover:
     def __init__(self, parent: ChildParent, child_id: str, agent: str) -> None:
         self.parent = parent
-        self.child_id = child_id
+        self._child_id = child_id
         self.agent = agent
 
     async def ask(self, request: ApprovalRequestedEvent) -> ApprovalAnswer:
         call = ToolCall(
             request.call.name,
             request.call.arguments,
-            id=f"{self.child_id}-{request.request_id}",
+            id=f"{self._child_id}-{request.request_id}",
         )
         await self.parent.log.append(
-            SubagentApprovalRequestedEvent(self.child_id, request.request_id, call.id)
+            SubagentApprovalRequestedEvent(self._child_id, request.request_id, call.id)
         )
         decision = await self.parent.approvals.request(
             call,
-            f"Subagent {self.agent} ({self.child_id}): {request.reason}",
-            scope=f"subagent:{self.child_id}:{request.scope}",
+            f"Subagent {self.agent} ({self._child_id}): {request.reason}",
+            scope=f"subagent:{self._child_id}:{request.scope}",
         )
         # Grants remain parent-owned so revocation takes effect on the next request.
         return ApprovalAnswer.ALLOW if decision is ApprovalAnswer.ALWAYS else decision

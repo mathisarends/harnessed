@@ -159,9 +159,9 @@ class Rules(Plugin, needs=(SessionLog, TokenCounter, SessionInbox)):
         index: int,
         rule: Rule,
         call: ToolCall,
+        *,
         result: ToolResult,
         counter: TokenCounter,
-        *,
         matched: bool | None = None,
     ) -> tuple[tuple[int, str] | None, int]:
         if rule.tools and call.name not in rule.tools:
@@ -179,6 +179,7 @@ class Rules(Plugin, needs=(SessionLog, TokenCounter, SessionInbox)):
         self,
         event: ReviewToolResult,
         next_: Next[ToolResult],
+        *,
         session: Inject[SessionLog],
         context: Inject[PluginInstructions],
         inbox: Inject[SessionInbox],
@@ -187,7 +188,7 @@ class Rules(Plugin, needs=(SessionLog, TokenCounter, SessionInbox)):
         result = await next_()
         matches = list(result.rule_matches)
         for index, rule in enumerate(self.rules):
-            key, count = self._count(index, rule, event.call, event.result, counter)
+            key, count = self._count(index, rule, event.call, result=event.result, counter=counter)
             if key is not None:
                 rule_id = f"{self.name}:{index}"
                 if any(name == rule_id for name, _ in matches):

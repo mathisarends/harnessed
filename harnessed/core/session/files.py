@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from time import time_ns
-from typing import Annotated, Protocol
+from typing import Annotated, NamedTuple, Protocol
 
 from pydantic import AfterValidator, ConfigDict, Field, StringConstraints, TypeAdapter
 
@@ -28,12 +28,17 @@ _KEY = TypeAdapter(FileKey, config=_CONFIG)
 _RANGE = TypeAdapter(tuple[FileOffset, ReadLimit], config=_CONFIG)
 
 
+class _FileRange(NamedTuple):
+    offset: int
+    limit: int
+
+
 def _validate_file_key(key: str) -> str:
     return _KEY.validate_python(key)
 
 
-def _validate_file_range(offset: int, limit: int) -> tuple[int, int]:
-    return _RANGE.validate_python((offset, limit))
+def _validate_file_range(offset: int, limit: int) -> _FileRange:
+    return _FileRange(*_RANGE.validate_python((offset, limit)))
 
 
 @dataclass(frozen=True, slots=True)

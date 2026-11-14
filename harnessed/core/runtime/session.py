@@ -40,7 +40,7 @@ from harnessed.core.model import (
 from harnessed.core.outputs import OutputContract, OutputTypes, OutputValues
 from harnessed.core.plugin import plugin_contribution, plugin_events
 from harnessed.core.prompt.delivery import runtime_sections
-from harnessed.core.prompt.system_prompt import SystemPromptStore
+from harnessed.core.prompt.system import SystemPromptStore
 from harnessed.core.prompt.values import SectionDelivery
 from harnessed.core.result import RunResult, RunResults
 from harnessed.core.runtime.approvals import LiveApprovals, SessionApprovals

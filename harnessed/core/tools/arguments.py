@@ -37,9 +37,9 @@ class ToolArguments:
         name: str,
         signature: inspect.Signature,
         hints: Mapping[str, Any],
+        *,
         injected: Mapping[str, Dependency],
         parameter_fields: Mapping[str, FieldInfo] | None = None,
-        *,
         params: type[BaseModel] | None = None,
     ) -> Self:
         if params is not None and parameter_fields is not None:

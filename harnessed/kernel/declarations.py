@@ -6,7 +6,7 @@ from functools import wraps
 from typing import TYPE_CHECKING, Any, Protocol, Self
 
 from .dependencies import DependencyField
-from .di import Dependency, _dependency, bind_injected, injections
+from .di import Dependency, annotation_dependency, bind_injected, injections
 from .effects import resolve
 from .events import Event
 from .keys import Key, ServiceKey
@@ -16,7 +16,9 @@ from .state import PluginState
 if TYPE_CHECKING:
     from .scope import Scope
 
-type HookEntry = tuple[type[Event], Callable] | tuple[type[Event], Callable, int]
+type HookEntry = (  # smelt: ignore[SMT347] -- Callers pass plain hook tuples.
+    tuple[type[Event], Callable] | tuple[type[Event], Callable, int]
+)
 
 
 def _hooks(entries: Iterable[HookEntry]):
@@ -94,7 +96,7 @@ class Bundle:
         return PluginSpec(self.name, mount, tuple(dict.fromkeys(needs)), (), {})
 
 
-class PluginBase:
+class PluginBase:  # smelt: ignore[SMT326] -- Stable kernel facade name; core Plugin extends it.
     """Reusable recipe reconstructed from explicit constructor inputs per activation.
 
     Constructors must only describe configuration and capabilities. Inputs retain
@@ -169,7 +171,7 @@ class PluginBase:
                 isinstance(annotation, str)
                 and "Inject[" in annotation
                 or not isinstance(annotation, str)
-                and _dependency(annotation) is not None
+                and annotation_dependency(annotation) is not None
             ):
                 raise TypeError(
                     "Class-level Inject fields were removed; use needs(key) or observes(key)"

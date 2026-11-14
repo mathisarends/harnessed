@@ -46,7 +46,7 @@ class AssetValue:
         self.ref.verify(self.data)
 
 
-class _MemoryAssets:
+class MemoryAssets:
     def __init__(self, values: tuple[AssetValue, ...] = ()) -> None:
         self._values: dict[str, AssetValue] = {value.ref.sha256: value for value in values}
 
@@ -78,6 +78,3 @@ class _MemoryAssets:
 
     def _clear(self) -> None:
         self._values.clear()
-
-
-__all__ = ["AssetRef", "AssetStore"]

@@ -21,7 +21,7 @@ class StreamApprovals:
     def __init__(self, scope: Scope, log: SessionLog, live: LiveApprovals) -> None:
         self.scope = scope
         self.log = log
-        self.live = live
+        self._live = live
         self.input_id: str | None = None
         self.pending: dict[str, LiveApproval] = {}
 
@@ -36,7 +36,7 @@ class StreamApprovals:
         await self._remove_answer()
         await self._remove_ack()
         for request in self.pending.values():
-            self.live.close(
+            self._live.close(
                 request.request_id, ApprovalUnavailable("The approval stream was closed")
             )
         self.pending.clear()
@@ -54,7 +54,7 @@ class StreamApprovals:
             or start.input_id != self.input_id
         ):
             return None
-        request = self.live.open(event.request)
+        request = self._live.open(event.request)
         self.pending[request.request_id] = request
         try:
             await self.log.publish(
@@ -62,7 +62,7 @@ class StreamApprovals:
             )
             return await request.decision()
         except BaseException:
-            self.live.close(
+            self._live.close(
                 request.request_id,
                 ApprovalUnavailable("The approval wait ended before acknowledgement"),
             )
@@ -74,7 +74,7 @@ class StreamApprovals:
         record = event.event
         request = self.pending.pop(record.request_id, None)
         if request is not None:
-            self.live.close(
+            self._live.close(
                 request.request_id,
                 None
                 if record.status == ApprovalStatus.ANSWERED

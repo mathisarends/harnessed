@@ -64,7 +64,7 @@ class CompactionAppliedEvent(DurableEvent):
             raise ValueError("Retained turn ids must be unique non-empty strings")
         object.__setattr__(self, "retained_turns", retained)
         _validate_metrics(
-            self.before_tokens, self.context_window, self.reserve_tokens, self.target_tokens
+            self.before_tokens, self.context_window, self.reserve_tokens, target=self.target_tokens
         )
         if type(self.after_tokens) is not int or self.after_tokens < 0:
             raise ValueError("Compaction token counts must be non-negative integers")
@@ -105,7 +105,7 @@ class CompactionStartedEvent(TransientEvent):
 
     def __post_init__(self) -> None:
         _validate_metrics(
-            self.before_tokens, self.context_window, self.reserve_tokens, self.target_tokens
+            self.before_tokens, self.context_window, self.reserve_tokens, target=self.target_tokens
         )
 
     @property
@@ -134,7 +134,7 @@ class CompactionFinishedEvent(TransientEvent):
     def __post_init__(self) -> None:
         object.__setattr__(self, "outcome", CompactionOutcome(self.outcome))
         _validate_metrics(
-            self.before_tokens, self.context_window, self.reserve_tokens, self.target_tokens
+            self.before_tokens, self.context_window, self.reserve_tokens, target=self.target_tokens
         )
         if self.after_tokens is not None and (
             type(self.after_tokens) is not int or self.after_tokens < 0
@@ -162,7 +162,7 @@ class CompactionFinishedEvent(TransientEvent):
         return self.after_tokens <= self.target_tokens
 
 
-def _validate_metrics(before: int, window: int | None, reserve: int, target: int | None) -> None:
+def _validate_metrics(before: int, window: int | None, reserve: int, *, target: int | None) -> None:
     if any(type(value) is not int or value < 0 for value in (before, reserve)):
         raise ValueError("Compaction token counts must be non-negative integers")
     if window is not None and (type(window) is not int or window < 1):

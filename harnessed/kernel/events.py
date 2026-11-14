@@ -230,7 +230,8 @@ class EventBus:
 
                 return await invoke(listeners[index], event, next_)
 
-            return cast(R, await chain(0))
+            result = await chain(0)
+            return cast(R, result)
         if isinstance(event, Parallel):
             async with asyncio.TaskGroup() as group:
                 for listener in listeners:

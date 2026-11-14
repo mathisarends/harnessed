@@ -14,7 +14,7 @@ from harnessed.core.events.base import (
 from harnessed.core.events.stream import STREAM_EVENT_TYPES
 from harnessed.core.events.unions import SESSION_EVENT_TYPES
 from harnessed.core.messages import to_dict
-from harnessed.core.session.codec import _validate_event, decode_event, encode_event
+from harnessed.core.session.codec import decode_event, encode_event, validate_event
 
 
 class EventRegistry:
@@ -79,7 +79,7 @@ class EventRegistry:
         # Application data still crosses the full immutable/schema boundary.
         if isinstance(event, TransientEvent) and adapter is None:
             return
-        _validate_event(event, self._types)
+        validate_event(event, self._types)
         if adapter is not None:
             adapter.validate_json(json.dumps(to_dict(event), allow_nan=False), strict=True)
 

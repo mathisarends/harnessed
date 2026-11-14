@@ -82,9 +82,18 @@ The filesystem backend protocol is `FileSystemBackend`, its local implementation
 is `LocalFileSystem`, and the application plugin remains `Filesystem`.
 
 Use `logger = logging.getLogger(__name__)` in modules that log. Write independent
-attribute assignments on separate lines. Put `__all__` at the bottom of modules
-that define it. Single-dot sibling imports remain preferred within a package;
+attribute assignments on separate lines. Only package initializers and the
+single-module public facades listed in `smelt.yaml` declare `__all__`, at the
+bottom. Single-dot sibling imports remain preferred within a package;
 cross-package imports stay absolute.
+
+Give a helper shared across modules a public name instead of importing a private
+`_name`; keep it out of facades when it is internal. Parameters beyond the third
+positional one are keyword-only. Name fixed-shape records with a `NamedTuple` or
+dataclass instead of `tuple[...]` types with three or more or repeated fields.
+Bind awaited results to a local before passing them to another call. `StrEnum`
+values are explicit strings, and private literal class constants live at module
+scope.
 
 Keep lifecycle ownership behind public kernel operations. Higher layers must not
 call private Scope lifecycle checks or inspect private registration state.
@@ -113,7 +122,7 @@ workflows and bump the key when Python validation behavior changes.
 
 ## Architecture and convention checks
 
-`smelt.yaml` is the executable policy; `uv.lock` pins Smelt CLI 0.4.0.
+`smelt.yaml` is the executable policy; `uv.lock` pins Smelt CLI 0.8.0.
 Before editing, run `uv run smelt context <module-or-path>` to inspect its role.
 After editing, run `uv run smelt check --changed --base origin/main --format json`.
 Before finishing, run `uv run smelt check --show-hints --fail-on warning`,

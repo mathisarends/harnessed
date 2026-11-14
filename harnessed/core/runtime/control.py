@@ -42,7 +42,7 @@ class SessionControl:
         self.task: asyncio.Task[None] | None = None
         self.error: Exception | None = None
         self.ready = False
-        self.finishing = False
+        self._finishing = False
         self.closing = False
         self.suspending = False
         self._changed = asyncio.Event()
@@ -96,7 +96,7 @@ class SessionControl:
             target = SessionStatus.STOPPING
         elif state == ControlState.PAUSED:
             target = SessionStatus.PAUSED
-        elif self.task is not None and not self.task.done() and not self.finishing:
+        elif self.task is not None and not self.task.done() and not self._finishing:
             target = SessionStatus.RUNNING
         else:
             target = SessionStatus.IDLE
@@ -116,11 +116,11 @@ class SessionControl:
         if not (self.log.has_wakeup or self.log.open_turn is not None):
             return
         if self.task is not None and not self.task.done():
-            if self.finishing:
+            if self._finishing:
                 self.task.add_done_callback(lambda _: self.wake())
             return
         self.error = None
-        self.finishing = False
+        self._finishing = False
         self.task = asyncio.create_task(self._drive(), name=f"harnessed:{self.log.id}")
         self.task.add_done_callback(lambda _: self.notify())
         self.synchronize()
@@ -132,7 +132,7 @@ class SessionControl:
             if self.log.control.state in (ControlState.STOPPING, ControlState.ABORTING):
                 return
             if not self.log.control.paused:
-                running = self.task is not None and not self.task.done() and not self.finishing
+                running = self.task is not None and not self.task.done() and not self._finishing
                 await self.log.append(
                     SessionControlChangedEvent(
                         ControlState.PAUSING if running else ControlState.PAUSED
@@ -203,14 +203,14 @@ class SessionControl:
         self.wake()
 
     async def finish_termination(self) -> None:
-        self.finishing = True
+        self._finishing = True
         if self.log.control.state not in (ControlState.STOPPING, ControlState.STOPPED):
             await self._abort_owned_work()
         await self.log.repair_interrupted(children=False)
         self.notify()
 
     async def finish_driver(self) -> None:
-        self.finishing = True
+        self._finishing = True
         if self.log.control.stopped:
             await self.finish_termination()
         if self.log.control.state == ControlState.PAUSING:
@@ -276,7 +276,7 @@ class SessionControl:
             if immediate and turn_id is None:
                 await self._abort_owned_work()
             task = self.task
-            if task is not None and (task.done() or self.finishing):
+            if task is not None and (task.done() or self._finishing):
                 task = None
             busy = task is not None
             if not busy and self.log.open_turn is None and not self.log.inbox.pending:

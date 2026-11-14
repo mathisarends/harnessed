@@ -5,7 +5,7 @@ from harnessed import (
     Instructions,
     SystemPrompt,
 )
-from harnessed.core.prompt.system_prompt import SystemPromptStore
+from harnessed.core.prompt.system import SystemPromptStore
 from harnessed.kernel import PluginScope, Scope, plugin
 from harnessed.testing import ScriptedModel
 

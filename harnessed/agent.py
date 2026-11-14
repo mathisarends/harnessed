@@ -49,7 +49,9 @@ class Agent:
         plugin_validation: PluginValidation = PluginValidation.ERROR,
         store: SessionStore | None = None,
     ) -> None:
-        self.plugin_validation = PluginValidation(plugin_validation)
+        self.plugin_validation = (  # smelt: ignore[SMT335] -- Public Agent setting.
+            PluginValidation(plugin_validation)
+        )
         self.store = store
         supplied: list[PluginInput] = [value for value in plugins if value is not None]
         if prompt is not None:

@@ -22,7 +22,7 @@ from harnessed.core.model import ModelRequest
 from harnessed.kernel import run_sync
 
 
-class _SessionImages:
+class SessionImages:
     """Keep binary data out of history and resolve only selected request images.
 
     The LRU holds at most cache_bytes of ASCII data URLs, not an unbounded count

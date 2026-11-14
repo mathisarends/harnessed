@@ -1,13 +1,13 @@
 from dataclasses import replace
 
-from harnessed.core.assets import _MemoryAssets
+from harnessed.core.assets import MemoryAssets
 from harnessed.core.messages import ImageDetail, ImagePart, ImageReference, UserMessage
 from harnessed.core.model import ModelRequest
-from harnessed.core.session.images import _SessionImages
+from harnessed.core.session.images import SessionImages
 from tests._images import inline
 
 
-class CountingAssets(_MemoryAssets):
+class CountingAssets(MemoryAssets):
     def __init__(self):
         super().__init__()
         self.reads = 0
@@ -19,7 +19,7 @@ class CountingAssets(_MemoryAssets):
 
 async def test_cache_is_byte_bounded_reuses_active_images_and_bypasses_large_images():
     store = CountingAssets()
-    images = _SessionImages(store, cache_bytes=100)
+    images = SessionImages(store, cache_bytes=100)
     first = await images._retain_content((inline(b"a" * 30),))
     request = ModelRequest((UserMessage(first),))
     await images.resolve(request)
@@ -39,7 +39,7 @@ async def test_cache_is_byte_bounded_reuses_active_images_and_bypasses_large_ima
 
 async def test_small_cache_does_not_reread_warm_tail_or_repeated_oversized_image():
     store = CountingAssets()
-    images = _SessionImages(store, cache_bytes=100)
+    images = SessionImages(store, cache_bytes=100)
     first = await images._retain_content((inline(b"a" * 30),))
     second = await images._retain_content((inline(b"b" * 30),))
     await images.resolve(ModelRequest((UserMessage((*first, *second)),)))
@@ -51,7 +51,7 @@ async def test_small_cache_does_not_reread_warm_tail_or_repeated_oversized_image
 
 
 async def test_tiny_images_also_have_a_bounded_cache_entry_count():
-    images = _SessionImages(_MemoryAssets())
+    images = SessionImages(MemoryAssets())
     for index in range(300):
         await images._retain_content((inline(index.to_bytes(2)),))
     assert len(images._cache) == 256
@@ -59,7 +59,7 @@ async def test_tiny_images_also_have_a_bounded_cache_entry_count():
 
 async def test_text_requests_preserve_identity_without_storage_access():
     store = CountingAssets()
-    images = _SessionImages(store)
+    images = SessionImages(store)
     request = ModelRequest((UserMessage("text"),))
     assert await images.retain_request(request) is request
     assert await images.resolve(request) is request
@@ -69,8 +69,8 @@ async def test_text_requests_preserve_identity_without_storage_access():
 async def test_external_urls_remain_external_and_reference_detail_does_not_duplicate_bytes(
     tmp_path,
 ):
-    store = _MemoryAssets()
-    images = _SessionImages(store)
+    store = MemoryAssets()
+    images = SessionImages(store)
     remote = (ImagePart("https://example.test/frame.png"),)
     assert await images._retain_content(remote) is remote
     ref = await store.put(b"pixels", media_type="image/png")

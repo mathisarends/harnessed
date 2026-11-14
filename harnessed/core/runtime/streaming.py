@@ -113,7 +113,8 @@ async def project_stream_events(
                     if status != previous_status:
                         previous_status = status
                         yield SessionStatusChangedEvent(status)
-        yield TurnResultEvent(await completion())
+        result = await completion()
+        yield TurnResultEvent(result)
     finally:
         await raw.aclose()
 
