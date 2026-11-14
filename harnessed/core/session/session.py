@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 from collections.abc import AsyncIterator, Callable
 from functools import partial
-from typing import cast
+from typing import NamedTuple, cast
 
 from harnessed.core.approvals import Approval, ApprovalState, approval_transition
 from harnessed.core.assets import AssetStore, MemoryAssets
@@ -129,7 +129,7 @@ class SessionLog:
         self._approvals: ApprovalState | None = ApprovalState(())
         self._approval_records: dict[str, Approval] = {}
         self._approvals_by_call: dict[str, dict[str, Approval]] = {}
-        self._grants: dict[tuple[str, str], dict[str, Approval]] = {}
+        self._grants: dict[_GrantKey, dict[str, Approval]] = {}
         self._control = RunControl(())
         self._requests: list[ModelRequest] = []
         self._requests_by_id: dict[str, ModelRequest] = {}
@@ -517,14 +517,14 @@ class SessionLog:
         return self._approval_records.get(request_id)
 
     def approval_grant(self, tool: str, *, scope: str) -> Approval | None:
-        grants = self._grants.get((scope, tool), {})
+        grants = self._grants.get(_GrantKey(scope, tool), {})
         return next(reversed(grants.values()), None)
 
     def latest_approval(self, call_id: str) -> Approval | None:
         return next(reversed(self._approvals_by_call.get(call_id, {}).values()), None)
 
     def _index_grant(self, record: Approval) -> None:
-        key = (record.request.scope, record.request.call.name)
+        key = _GrantKey(record.request.scope, record.request.call.name)
         grants = self._grants.setdefault(key, {})
         if record.is_grant:
             grants.clear()
@@ -895,3 +895,8 @@ class SessionLog:
                 await self.append(InboxRemovedEvent(item.message.id, InboxRemovalReason.DISCARDED))
         if control.stopped:
             await self.append(SessionControlChangedEvent(ControlState.ACTIVE))
+
+
+class _GrantKey(NamedTuple):
+    scope: str
+    tool: str

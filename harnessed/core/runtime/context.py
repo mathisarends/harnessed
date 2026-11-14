@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from harnessed.core.events.base import DurableEvent, TransientEvent
 from harnessed.core.events.messages import MessageAppendedEvent
@@ -15,11 +15,17 @@ if TYPE_CHECKING:
     from harnessed.core.runtime.approvals import SessionApprovals
 
 
+class PendingObservation(NamedTuple):
+    source: str
+    message: UserMessage
+    refs: tuple[str, ...]
+
+
 class PendingObservations:
     """The latest unrecorded observation per source, drained by the next step."""
 
     def __init__(self) -> None:
-        self._items: dict[str, tuple[UserMessage, tuple[str, ...]]] = {}
+        self._items: dict[str, PendingObservation] = {}
 
     def add(self, message: UserMessage, *, source: str, refs: Iterable[str]) -> None:
         if not isinstance(message, UserMessage):
@@ -29,10 +35,10 @@ class PendingObservations:
         references = tuple(refs)
         if any(not isinstance(ref, str) for ref in references):
             raise TypeError("Observation refs must be strings")
-        self._items[source] = (message, references)
+        self._items[source] = PendingObservation(source, message, references)
 
-    def drain(self) -> tuple[tuple[str, UserMessage, tuple[str, ...]], ...]:
-        items = tuple((source, message, refs) for source, (message, refs) in self._items.items())
+    def drain(self) -> tuple[PendingObservation, ...]:
+        items = tuple(self._items.values())
         self._items.clear()
         return items
 
