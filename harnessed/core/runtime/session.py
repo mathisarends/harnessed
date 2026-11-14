@@ -229,6 +229,7 @@ class Session:
         try:
             await self.scope.settle()
             self.scope[ToolRegistry].validate_references()
+            self.scope[ToolRegistry].validate_envelopes()
         except BaseException:
             await handle.aclose()
             raise

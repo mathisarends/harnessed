@@ -400,6 +400,105 @@ Schema-defined integrations use `register_external(..., spec=ToolSpec(metadata=.
 and receive the same captured descriptions, without introducing provider metadata
 into the model-facing `ToolDefinition`.
 
+## Tool call envelopes
+
+An envelope is a Pydantic model whose fields the model supplies with a call,
+next to the tool's own arguments. Envelope fields describe the call rather than
+the tool's input, for example a user-facing label for a UI that narrates what the
+agent is doing. Callbacks never receive them:
+
+```python
+from typing import Annotated
+
+from pydantic import BaseModel, Field
+
+from harnessed import Plugin, ToolResult, tool
+from harnessed.hooks import ExecuteTool, Next
+from harnessed.kernel import hook
+
+
+class ActionLabel(BaseModel):
+    action_label: Annotated[str, Field(description="Short user-facing summary of this action.")]
+
+
+class Browser(Plugin):
+    @tool(envelope=(ActionLabel,))
+    async def click(self, element: int) -> str:
+        return f"Clicked {element}"
+
+    @hook(ExecuteTool)
+    async def narrate(self, event: ExecuteTool, next_: Next[ToolResult]) -> ToolResult:
+        if (label := event.envelope.get(ActionLabel)) is not None:
+            print(label.action_label)
+        return await next_()
+```
+
+The model sees one `click` schema with `action_label` and `element`; `click`
+receives only `element`. For each call Harnessed:
+
+1. merges the envelope fields into the tool's model-facing JSON schema as its first
+   properties, so streamed arguments carry them before the tool's own input;
+2. validates each envelope model separately and strictly, then removes its fields
+   before `ToolArguments` validation, a `params=` model or an external handler;
+3. exposes the validated values as `event.envelope: ToolEnvelope` on `ToolPolicy`,
+   `ExecuteTool` and `ReviewToolResult`. `ToolEnvelope.get(T)` returns `T | None`
+   by exact type, like `ToolMetadata`.
+
+`envelope=` takes a tuple of distinct `BaseModel` subclasses with at least one
+field; `RootModel` is rejected. It is available on `@tool`, `ToolRegistry.tool()`,
+`ToolRegistry.register()` and `ToolSpec`, so schema-defined tools registered with
+`register_external(..., spec=ToolSpec(envelope=...))` support it too.
+
+### Envelopes for groups of tools
+
+`ToolRegistry.envelope(model, *, select=None, owner=None)` adds an envelope to every
+tool, or to the tools a selector chooses, for the owner's lifetime. It also covers
+tools registered later and MCP tools, which a decorator cannot reach:
+
+```python
+from harnessed import Plugin
+from harnessed.kernel import PluginScope
+from harnessed.services import ToolRegistry
+
+
+class Narration(Plugin):
+    async def setup(self, scope: PluginScope) -> None:
+        scope[ToolRegistry].envelope(
+            ActionLabel,
+            select=lambda info: "browser" in info.presentation.tags,
+            owner=scope,
+        )
+```
+
+The selector receives the registration's own `ToolInfo`, before envelopes are
+merged in, and must synchronously return a `bool`. Leave out `select` to apply the
+envelope to every tool. An envelope declared both on a tool and for the registry
+is merged once. The captured `ToolInfo` passed to hooks reports the merged
+definition and its envelope models in `ToolInfo.envelope`.
+
+### Validation and conflicts
+
+A missing or invalid envelope field fails the call like any other invalid argument.
+The model receives a `ValidationError` result, and the tool does not run. Give a
+field a default to make it optional.
+
+Envelope field names must not collide with a tool parameter or another envelope's
+field, and identically named `$defs` must agree. A conflict raises `ValueError`
+when a session opens or a plugin mounts. Envelopes require an object parameter
+schema.
+
+### What stays raw
+
+`ToolCall.arguments` keeps everything the model sent, including envelope fields.
+`ToolCallRequestedEvent`, `ToolArgumentsDeltaEvent`, `ToolCallFinishedEvent`, the
+model history and `ToolContext.call` therefore show the label as soon as it streams.
+Parsed envelopes are process-local hook data and are not persisted separately.
+Tests that execute scripted calls must include required envelope fields, e.g.
+`call("click", element=3, action_label="Open pricing")`.
+
+Envelopes are not injected into callbacks. A tool that needs a value should declare
+it as an ordinary parameter.
+
 ## End an action chain
 
 One model response may contain several calls. A context-changing tool can stop

@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable, Iterable, Iterator
 from dataclasses import dataclass
 
 from harnessed.core.messages import ToolCall, ToolResult
-from harnessed.core.tools.info import ToolInfo
+from harnessed.core.tools.info import ToolEnvelope, ToolInfo
 from harnessed.core.tools.policy import OutputLimit, OutputLimitSetting
 
 type ResourceSpec = tuple[str, ...] | Callable[[ToolCall], Iterable[str]]
@@ -42,6 +42,7 @@ class PreparedToolCall:
     binding: object | None = None
     output_limit: OutputLimitSetting = OutputLimit.INHERIT
     tool: ToolInfo | None = None
+    envelope: ToolEnvelope = ToolEnvelope()
 
 
 class ToolScheduler:

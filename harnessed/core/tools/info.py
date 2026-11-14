@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal, cast
 
-from pydantic import ConfigDict
+from pydantic import BaseModel, ConfigDict
 from pydantic.dataclasses import dataclass as validated_dataclass
 
 from harnessed.core.messages import JSONMapping, freeze
@@ -101,6 +101,34 @@ class ToolMetadata:
 
 
 @dataclass(frozen=True)
+class ToolEnvelope:
+    """Validated envelope values the model supplied for one call, keyed by exact type.
+
+    Envelope fields describe the call rather than the tool's input: they are merged
+    into the tool's model-facing schema, validated separately and removed before the
+    tool callback or external handler runs.
+    """
+
+    values: tuple[BaseModel, ...] = ()
+
+    def __post_init__(self) -> None:
+        values = tuple(self.values)
+        if any(not isinstance(value, BaseModel) for value in values):
+            raise TypeError("Tool envelope values must be Pydantic models")
+        kinds = [type(value) for value in values]
+        if len(set(kinds)) != len(kinds):
+            raise ValueError("Tool envelopes require one value per exact type")
+        object.__setattr__(self, "values", values)
+
+    def get[T: BaseModel](self, kind: type[T]) -> T | None:
+        for value in self.values:
+            if type(value) is kind:
+                # Exact-type lookup is the heterogeneous collection's typed boundary.
+                return cast(T, value)
+        return None
+
+
+@dataclass(frozen=True)
 class ToolInfo:
     """Public description of the registration captured for a scheduled call."""
 
@@ -111,3 +139,4 @@ class ToolInfo:
     chain: ToolChain
     presentation: ToolPresentation = ToolPresentation()
     confirm: bool = field(default=False, kw_only=True)
+    envelope: tuple[type[BaseModel], ...] = field(default=(), kw_only=True)

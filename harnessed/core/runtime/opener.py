@@ -97,6 +97,7 @@ async def open_session(
     await scope.settle()
     validate_plugins(scope, plugin_validation)
     scope[ToolRegistry].validate_references()
+    scope[ToolRegistry].validate_envelopes()
     runtime.start()
     return runtime
 
