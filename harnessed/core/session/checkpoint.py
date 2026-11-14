@@ -1,5 +1,6 @@
 from collections.abc import Mapping
 from dataclasses import field
+from enum import StrEnum
 from typing import Annotated, Literal, Self
 
 from pydantic import ConfigDict, Field, TypeAdapter, ValidationError
@@ -30,6 +31,12 @@ _CONFIG = ConfigDict(
 )
 
 
+class CheckpointRecordKind(StrEnum):
+    """Checkpoint-only record tags that sit beside built-in log events."""
+
+    EXTENSION = "checkpoint.extension"
+
+
 @dataclass(frozen=True, config=_CONFIG)
 class CheckpointExtension:
     """Lossless application-event data, independent of a store's plugin catalog.
@@ -43,7 +50,9 @@ class CheckpointExtension:
 
     tag: str
     data: JSONMapping
-    type: Literal["checkpoint.extension"] = field(default="checkpoint.extension", kw_only=True)
+    type: Literal[CheckpointRecordKind.EXTENSION] = field(
+        default=CheckpointRecordKind.EXTENSION, kw_only=True
+    )
 
     def __post_init__(self) -> None:
         if (
