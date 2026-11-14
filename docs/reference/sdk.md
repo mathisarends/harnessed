@@ -608,9 +608,8 @@ See [parameter objects](../guides/tools.md#pydantic-parameter-objects),
 `ToolInfo | None` as `event.tool`; `event.tool.metadata.get(T)` returns `T | None`.
 `ToolChain`, `ToolInfo` and `ToolMetadata` are exported by `harnessed`.
 The same hooks expose per-call `event.envelope: ToolEnvelope`. `@tool(envelope=(M,))`
-and `ToolRegistry.envelope(M, select=...)` merge Pydantic model fields into a tool's
-schema, validate them and remove them before the callback; `ToolEnvelope.get(M)`
-returns `M | None`. See [tool call envelopes](../guides/tools.md#tool-call-envelopes).
+merges Pydantic model fields into a tool's schema, validates them and removes them
+before the callback; `ToolEnvelope.get(M)` returns `M | None`. See [tool call envelopes](../guides/tools.md#tool-call-envelopes).
 Skipped calls have `ToolStatus.SKIPPED` and retain their model-history pairing.
 `PreStep.max_steps` is the effective turn limit; `remaining_steps` includes the
 current step, `is_last_step` indicates one remaining step, and `is_final_step`

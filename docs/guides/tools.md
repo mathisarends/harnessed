@@ -447,34 +447,9 @@ receives only `element`. For each call Harnessed:
 `envelope=` takes a tuple of distinct `BaseModel` subclasses with at least one
 field; `RootModel` is rejected. It is available on `@tool`, `ToolRegistry.tool()`,
 `ToolRegistry.register()` and `ToolSpec`, so schema-defined tools registered with
-`register_external(..., spec=ToolSpec(envelope=...))` support it too.
-
-### Envelopes for groups of tools
-
-`ToolRegistry.envelope(model, *, select=None, owner=None)` adds an envelope to every
-tool, or to the tools a selector chooses, for the owner's lifetime. It also covers
-tools registered later and MCP tools, which a decorator cannot reach:
-
-```python
-from harnessed import Plugin
-from harnessed.kernel import PluginScope
-from harnessed.services import ToolRegistry
-
-
-class Narration(Plugin):
-    async def setup(self, scope: PluginScope) -> None:
-        scope[ToolRegistry].envelope(
-            ActionLabel,
-            select=lambda info: "browser" in info.presentation.tags,
-            owner=scope,
-        )
-```
-
-The selector receives the registration's own `ToolInfo`, before envelopes are
-merged in, and must synchronously return a `bool`. Leave out `select` to apply the
-envelope to every tool. An envelope declared both on a tool and for the registry
-is merged once. The captured `ToolInfo` passed to hooks reports the merged
-definition and its envelope models in `ToolInfo.envelope`.
+`register_external(..., spec=ToolSpec(envelope=...))` support it too. The captured
+`ToolInfo` passed to hooks reports the merged definition and lists the envelope
+models in `ToolInfo.envelope`.
 
 ### Validation and conflicts
 
@@ -484,8 +459,8 @@ field a default to make it optional.
 
 Envelope field names must not collide with a tool parameter or another envelope's
 field, and identically named `$defs` must agree. A conflict raises `ValueError`
-when a session opens or a plugin mounts. Envelopes require an object parameter
-schema.
+when the tool is registered, so a plugin with a conflicting tool fails to mount.
+Envelopes require an object parameter schema.
 
 ### What stays raw
 

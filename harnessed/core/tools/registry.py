@@ -22,12 +22,7 @@ from harnessed.core.tools.enabled import (
     bind_enabled,
     validate_enabled,
 )
-from harnessed.core.tools.envelope import (
-    EnvelopeLayout,
-    EnvelopeSelector,
-    envelope_models,
-    validate_envelope_model,
-)
+from harnessed.core.tools.envelope import EnvelopeLayout, envelope_models
 from harnessed.core.tools.execution import ToolExecutionBudget
 from harnessed.core.tools.info import (
     ToolChain,
@@ -164,23 +159,7 @@ class _RegisteredTool:
     spec: ToolSpec
     timeout_seconds: float | None
     enabled: BoundToolEnabled
-    layouts: dict[tuple[type[BaseModel], ...], EnvelopeLayout] = field(
-        init=False, default_factory=dict
-    )
-
-    @property
-    def info(self) -> ToolInfo:
-        """The registration's own description, before envelopes are merged in."""
-        return ToolInfo(
-            self.definition,
-            ToolMetadata(self.spec.metadata),
-            self.spec.readonly,
-            self.spec.parallel,
-            self.spec.chain,
-            self.spec.presentation,
-            confirm=self.spec.confirm,
-            envelope=self.spec.envelope,
-        )
+    layout: EnvelopeLayout = field(kw_only=True)
 
 
 @dataclass(eq=False)
@@ -206,20 +185,12 @@ class _Converter:
     registration: RegistrationState
 
 
-@dataclass(eq=False)
-class _Envelope:
-    model: type[BaseModel]
-    select: EnvelopeSelector | None
-    registration: RegistrationState
-
-
 class ToolRegistry:
     def __init__(self, scope: Scope | PluginScope) -> None:
         self._ctx = scope
         self._tools: dict[str, list[_Tool]] = {}
         self._converters: dict[type, list[_Converter]] = {}
         self._references: list[ToolReference] = []
-        self._envelopes: list[_Envelope] = []
 
     def reference(
         self, selector: ToolSelector, *, owner: Scope | PluginScope
@@ -272,55 +243,6 @@ class ToolRegistry:
             return remove
 
         return owner.register(install)
-
-    def envelope(
-        self,
-        model: type[BaseModel],
-        *,
-        select: EnvelopeSelector | None = None,
-        owner: Scope | PluginScope | None = None,
-    ) -> Disposer:
-        """Add an envelope to every tool, or to tools whose own description is selected.
-
-        The selector receives each registration's envelope-free ToolInfo and must be
-        a synchronous, side-effect-free predicate. The envelope applies for the owner's
-        lifetime, including to tools registered later.
-        """
-        validate_envelope_model(model)
-        if select is not None and (not callable(select) or inspect.iscoroutinefunction(select)):
-            raise TypeError("Envelope selectors must be synchronous callables")
-        owner = owner if owner is not None else Scope.current() or self._ctx
-
-        def install(registration: RegistrationState):
-            entry = _Envelope(model, select, registration)
-            self._envelopes.append(entry)
-            return lambda: self._envelopes.remove(entry)
-
-        return owner.register(install)
-
-    def validate_envelopes(self) -> None:
-        """Resolve every visible tool's envelopes, raising on conflicting fields."""
-        for entries in self._tools.values():
-            if (tool := self._visible(entries)) is not None:
-                self._layout(tool)
-
-    def _layout(self, tool: _Tool) -> EnvelopeLayout:
-        models = list(tool.spec.envelope)
-        if self._envelopes:
-            info = tool.info
-            for entry in self._envelopes:
-                if not entry.registration.active or entry.model in models:
-                    continue
-                selected = True if entry.select is None else entry.select(info)
-                if type(selected) is not bool:
-                    raise TypeError("Envelope selectors must return a bool")
-                if selected:
-                    models.append(entry.model)
-        key = tuple(models)
-        layout = tool.layouts.get(key)
-        if layout is None:
-            layout = tool.layouts[key] = EnvelopeLayout.build(tool.definition, key)
-        return layout
 
     def _result(self, value: Any) -> ToolResult:
         if isinstance(value, ToolResult):
@@ -470,6 +392,8 @@ class ToolRegistry:
             spec.description if spec.description is not None else inspect.getdoc(callback) or "",
             arguments.schema,
         )
+        layout = EnvelopeLayout.build(definition, spec.envelope)
+        definition = layout.definition
 
         def install(registration: RegistrationState):
             check_enabled = bind_enabled(spec.enabled, callback, registration)
@@ -483,6 +407,7 @@ class ToolRegistry:
                 check_enabled,
                 plan,
                 arguments,
+                layout=layout,
             )
             entries = self._tools.setdefault(definition.name, [])
             entries.append(entry)
@@ -522,6 +447,8 @@ class ToolRegistry:
         existing = self._tools.get(definition.name, ())
         if existing and not spec.override:
             raise ToolNameConflict(f"Tool {definition.name!r} is already registered")
+        layout = EnvelopeLayout.build(definition, spec.envelope)
+        definition = layout.definition
 
         def install(registration: RegistrationState) -> Callable[[], None]:
             check_enabled = bind_enabled(spec.enabled, handler, registration)
@@ -534,6 +461,7 @@ class ToolRegistry:
                 timeout_seconds,
                 check_enabled,
                 handler,
+                layout=layout,
             )
             entries = self._tools.setdefault(definition.name, [])
             entries.append(entry)
@@ -556,14 +484,15 @@ class ToolRegistry:
         tool = self._visible(self._tools.get(name, []))
         if tool is None:
             return ToolExplanation(name, ToolAvailability.NOT_REGISTERED)
-        definition = self._layout(tool).definition
         missing = self._missing_services(tool, scope)
         if missing:
-            return ToolExplanation(name, ToolAvailability.MISSING_SERVICES, definition, missing)
+            return ToolExplanation(
+                name, ToolAvailability.MISSING_SERVICES, tool.definition, missing
+            )
         availability = (
             ToolAvailability.AVAILABLE if tool.enabled(scope) else ToolAvailability.DISABLED
         )
-        return ToolExplanation(name, availability, definition)
+        return ToolExplanation(name, availability, tool.definition)
 
     @property
     def definitions(self) -> tuple[ToolDefinition, ...]:
@@ -595,7 +524,7 @@ class ToolRegistry:
 
     def visible_definitions(self, scope: Scope | PluginScope) -> tuple[ToolDefinition, ...]:
         return tuple(
-            self._layout(tool).definition
+            tool.definition
             for entries in self._tools.values()
             if (tool := self._visible(entries)) is not None
             and self._available(tool, scope)
@@ -636,14 +565,22 @@ class ToolRegistry:
             raise TypeError("Resource resolvers must return resource names, not an awaitable")
         if isinstance(keys, str) or not isinstance(keys, Iterable):
             raise TypeError("Resource resolvers must return an iterable of resource names")
-        layout = self._layout(tool)
-        envelope, _ = layout.split(call.arguments)
+        envelope, _ = tool.layout.split(call.arguments)
         return PreparedToolCall(
             call,
             ToolScheduling(tool.spec.parallel, tuple(keys)),
             binding=tool,
             output_limit=tool.spec.output_limit,
-            tool=replace(tool.info, definition=layout.definition, envelope=layout.models),
+            tool=ToolInfo(
+                tool.definition,
+                ToolMetadata(tool.spec.metadata),
+                tool.spec.readonly,
+                tool.spec.parallel,
+                tool.spec.chain,
+                tool.spec.presentation,
+                confirm=tool.spec.confirm,
+                envelope=tool.spec.envelope,
+            ),
             envelope=envelope,
         )
 
@@ -687,7 +624,7 @@ class ToolRegistry:
                 async with ToolExecutionBudget(
                     tool.timeout_seconds if tool.timeout_seconds is not None else default_timeout
                 ):
-                    _, own_arguments = self._layout(tool).split(call.arguments)
+                    _, own_arguments = tool.layout.split(call.arguments)
                     if isinstance(tool, _ExternalTool):
                         if call_context is None:
                             raise TypeError("External tools require a ToolContext")

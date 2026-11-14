@@ -1,5 +1,5 @@
 import json
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from functools import cache
 from types import MappingProxyType
@@ -10,10 +10,7 @@ from pydantic import BaseModel, RootModel
 from harnessed.core.messages import to_dict
 from harnessed.core.model import ToolDefinition
 
-from .info import ToolEnvelope, ToolInfo
-
-# Selectors see each tool's own description, before any envelope is merged in.
-type EnvelopeSelector = Callable[[ToolInfo], bool]
+from .info import ToolEnvelope
 
 
 def envelope_models(models: Iterable[type[BaseModel]]) -> tuple[type[BaseModel], ...]:
@@ -22,13 +19,13 @@ def envelope_models(models: Iterable[type[BaseModel]]) -> tuple[type[BaseModel],
         raise TypeError("envelope must be a tuple of Pydantic models")
     resolved = tuple(models)
     for model in resolved:
-        validate_envelope_model(model)
+        _validate_envelope_model(model)
     if len(set(resolved)) != len(resolved):
         raise ValueError("Tool envelope models must be distinct")
     return resolved
 
 
-def validate_envelope_model(model: object) -> None:
+def _validate_envelope_model(model: object) -> None:
     if (
         not isinstance(model, type)
         or not issubclass(model, BaseModel)

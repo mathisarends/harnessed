@@ -95,42 +95,6 @@ async def test_missing_or_invalid_envelopes_fail_like_invalid_arguments(argument
     assert seen == []
 
 
-async def test_registry_envelopes_follow_selectors_owner_lifetime_and_later_tools():
-    async def first(value: int) -> str:
-        return str(value)
-
-    async def plain() -> str:
-        return "plain"
-
-    async def later(value: int) -> str:
-        return str(value)
-
-    async with Agent(model=ScriptedModel(["unused"])).session() as session:
-        registry = session.scope[ToolRegistry]
-        registry.register(first)
-        registry.register(plain)
-        dispose = registry.envelope(
-            ActionLabel, select=lambda info: "value" in info.definition.parameters["properties"]
-        )
-        registry.register(later)
-        names = {
-            definition.name: tuple(definition.parameters.get("properties", {}))
-            for definition in registry.definitions
-        }
-        assert names == {
-            "first": ("action_label", "value"),
-            "plain": (),
-            "later": ("action_label", "value"),
-        }
-        labelled = ToolCall("later", {"action_label": "Count", "value": 2})
-        plan = registry.plan(labelled)
-        assert plan.envelope.get(ActionLabel) == ActionLabel(action_label="Count")
-        assert (await registry.execute(labelled, _expected=plan.binding)).text == "2"
-        await dispose()
-        assert tuple(session.tools["later"].parameters["properties"]) == ("value",)
-        assert registry.plan(ToolCall("later", {"value": 2})).envelope == ToolEnvelope()
-
-
 async def test_envelopes_apply_to_parameter_models_and_external_tools():
     received: list[Mapping[str, object]] = []
 
@@ -178,47 +142,31 @@ async def test_envelopes_apply_to_parameter_models_and_external_tools():
     assert plan.envelope.get(ActionLabel) == ActionLabel(action_label="Read")
 
 
-async def test_an_envelope_declared_twice_for_one_tool_is_merged_once():
-    async def work(value: int) -> str:
-        return str(value)
-
-    async with Agent(model=ScriptedModel(["unused"])).session() as session:
-        registry = session.scope[ToolRegistry]
-        registry.register(work, envelope=(ActionLabel,))
-        registry.envelope(ActionLabel)
-        parameters = session.tools["work"].parameters
-
-    assert tuple(parameters["properties"]) == ("action_label", "value")
-    assert parameters["required"] == ("action_label", "value")
-
-
-class Labelled(Plugin):
-    @tool(readonly=True)
-    async def rename(self, action_label: str) -> str:
-        return action_label
-
-
 class OtherLabel(BaseModel):
     action_label: str
 
 
 async def test_envelope_fields_conflicting_with_tool_parameters_reject_the_mount():
+    class Labelled(Plugin):
+        @tool(readonly=True, envelope=(ActionLabel,))
+        async def rename(self, action_label: str) -> str:
+            return action_label
+
     async with Agent(model=ScriptedModel(["unused"])).session() as session:
-        session.scope[ToolRegistry].envelope(ActionLabel)
         with pytest.raises(ValueError, match="conflicts with a parameter of tool 'rename'"):
             await session.mount(Labelled())
         assert "rename" not in session.tools
 
 
-async def test_envelope_fields_conflicting_with_each_other_are_rejected():
+async def test_envelope_fields_conflicting_with_each_other_are_rejected_at_registration():
     async def work(value: int) -> str:
         return str(value)
 
     async with Agent(model=ScriptedModel(["unused"])).session() as session:
         registry = session.scope[ToolRegistry]
-        registry.register(work, envelope=(ActionLabel, OtherLabel))
         with pytest.raises(ValueError, match="conflicts with another envelope of tool 'work'"):
-            registry.validate_envelopes()
+            registry.register(work, envelope=(ActionLabel, OtherLabel))
+        assert "work" not in session.tools
 
 
 class Empty(BaseModel):
@@ -237,15 +185,3 @@ class Empty(BaseModel):
 def test_envelope_declarations_require_distinct_field_models(envelope, error):
     with pytest.raises(error):
         ToolSpec(envelope=envelope)
-
-
-async def test_selectors_must_return_a_bool():
-    async def work() -> str:
-        return "work"
-
-    async with Agent(model=ScriptedModel(["unused"])).session() as session:
-        registry = session.scope[ToolRegistry]
-        registry.register(work)
-        registry.envelope(ActionLabel, select=lambda info: info.definition.name)
-        with pytest.raises(TypeError, match="must return a bool"):
-            _ = registry.definitions

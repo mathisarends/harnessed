@@ -10,13 +10,12 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 ### Added
 
 - Tool call envelopes: Pydantic models whose fields the model supplies with a call
-  but the tool callback never receives. Declare them with `@tool(envelope=(...,))`,
-  `ToolSpec(envelope=...)` (including external and MCP tools) or registry-wide with
-  `ToolRegistry.envelope(model, select=...)`. Envelope fields lead the tool schema,
-  are validated separately and are exposed to `ToolPolicy`, `ExecuteTool` and
-  `ReviewToolResult` as `event.envelope: ToolEnvelope`. `ToolInfo.envelope` lists
-  the merged models. `ToolCall.arguments` keeps the raw arguments. Conflicting
-  field names raise `ValueError` when a session opens or a plugin mounts.
+  but the tool callback never receives. Declare them with `@tool(envelope=(...,))`
+  or `ToolSpec(envelope=...)`, including for external tools. Envelope fields lead
+  the tool schema, are validated separately and are exposed to `ToolPolicy`,
+  `ExecuteTool` and `ReviewToolResult` as `event.envelope: ToolEnvelope`.
+  `ToolInfo.envelope` lists the merged models. `ToolCall.arguments` keeps the raw
+  arguments. Conflicting field names raise `ValueError` at registration.
 
 ## 0.16.0 (2026-11-10)
 
