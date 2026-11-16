@@ -5,19 +5,20 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
-## Unreleased
+## 0.18.0 (2026-11-16)
 
 ### Added
 
-- Registry-wide call envelopes. `CallEnvelope(Model, select=..., on_invalid=...)`
-  from `harnessed.plugins` adds an envelope to every selected tool, including tools
-  of other plugins, MCP servers and `register_external`, registered before or after
-  it, without changing those tools. It builds on the new
+- Registry-wide call envelopes. `CallEnvelope(Model, select=..., on_invalid=...,
+  position=...)` from `harnessed.plugins` adds an envelope to every selected tool,
+  including tools of other plugins, MCP servers and `register_external`, registered
+  before or after it, without changing those tools. It builds on the new
   `ToolRegistry.envelope(...)`, which returns a `Disposer` like
   `result_converter`. Each tool's envelope layout is now resolved lazily and cached
   per set of active envelopes; `ToolInfo.envelope` and `event.envelope` report the
   combined set, registry-wide envelopes first.
-- `InvalidEnvelope.DROP` lets a call with missing or invalid envelope fields run
+- `InvalidEnvelope.DROP` (exported with `EnvelopePosition` from
+  `harnessed.plugins`) lets a call with missing or invalid envelope fields run
   without the envelope value; it is the default for registry-wide envelopes.
   Per-tool `@tool(envelope=...)` keeps failing the call.
 - `EnvelopePosition.LEADING` / `TRAILING` places a registry-wide envelope's fields
@@ -29,6 +30,16 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 - A registry-wide envelope that conflicts with a Python tool raises `ValueError`
   for whichever of the two mounts second. On external and MCP tools, a conflicting
   registry-wide envelope is skipped for that tool with a logged warning.
+
+### Upgrade from 0.17.0
+
+- No code changes are required. Per-tool `@tool(envelope=...)` declarations keep
+  their behavior and still fail calls with missing or invalid envelope fields.
+  When adding `CallEnvelope`, expect `ToolInfo.envelope` and `event.envelope` to
+  list registry-wide envelopes before a tool's own ones.
+- No persistence migration is required: conversation state remains format **3**,
+  checkpoints and JSON stores format **3**, and standalone audit envelopes
+  version **6**.
 
 ## 0.17.0 (2026-11-14)
 

@@ -4,6 +4,18 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
+## 0.18.0 (2026-11-16)
+
+Registry-wide call envelopes extend tool call envelopes to every selected tool,
+including other plugins', MCP and external tools, without changing them. Mount
+`CallEnvelope` from `harnessed.plugins`; invalid fields are dropped by default
+and `EnvelopePosition.TRAILING` places fields after the tool's parameters.
+`envelope_value(call, Model)` reads envelope values for UIs and other event
+consumers. See [envelopes for every tool](guides/tools.md#envelopes-for-every-tool).
+
+**Upgrade:** no code changes or storage migration are required from 0.17.0:
+state/checkpoints/JSON stores remain **3**, audit envelopes **6**.
+
 ## 0.17.0 (2026-11-14)
 
 Tool call envelopes add validated model-supplied call metadata to policy,
