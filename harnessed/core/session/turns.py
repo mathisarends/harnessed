@@ -95,28 +95,20 @@ class TurnProjection:
 
     def validate(self, event: DurableEvent) -> None:
         if isinstance(event, OutputValidatedEvent | OutputValidationFailedEvent):
-            start = self._events[0] if self._events else None
-            answer = next(
-                (e for e in reversed(self._step or ()) if isinstance(e, AssistantMessageEvent)),
-                None,
-            )
-            if (
-                not isinstance(start, TurnStartedEvent)
-                or start.output_schema is None
-                or event.turn_id != self._turn
-                or event.schema_id != start.output_schema.id
-                or answer is None
-                or event.message_id != answer.message.id
-                or (
-                    event.call_id is not None
-                    and not any(call.id == event.call_id for call in answer.message.tool_calls)
-                )
-            ):
-                raise ValueError("An output verdict must match the current structured answer")
-        if isinstance(event, TurnStartedEvent):
+            self._validate_output_verdict(event)
+        if isinstance(event, StepStartedEvent | StepEndedEvent):
+            self._validate_step(event)
+        elif isinstance(event, TurnStartedEvent):
             if self._turn is not None:
                 raise ValueError("A turn cannot start inside an open turn")
-        elif isinstance(event, StepStartedEvent):
+        elif isinstance(event, TurnEndedEvent):
+            if self._turn is None or event.turn_id != self._turn or self._step is not None:
+                raise ValueError("TurnEndedEvent must close the current turn after its last step")
+        elif isinstance(event, ModelRequestedEvent) and self._step is not None and self._requests:
+            raise ValueError("A completed step must contain exactly one model request")
+
+    def _validate_step(self, event: StepStartedEvent | StepEndedEvent) -> None:
+        if isinstance(event, StepStartedEvent):
             if self._turn is None or event.turn_id != self._turn or self._step is not None:
                 raise ValueError("A step must start inside its turn, after the previous step")
             if type(event.step) is not int or event.step != len(self._steps) + 1:
@@ -132,11 +124,28 @@ class TurnProjection:
                 and self._requests != 1
             ):
                 raise ValueError("A completed step must contain exactly one model request")
-        elif isinstance(event, TurnEndedEvent):
-            if self._turn is None or event.turn_id != self._turn or self._step is not None:
-                raise ValueError("TurnEndedEvent must close the current turn after its last step")
-        elif isinstance(event, ModelRequestedEvent) and self._step is not None and self._requests:
-            raise ValueError("A completed step must contain exactly one model request")
+
+    def _validate_output_verdict(
+        self, event: OutputValidatedEvent | OutputValidationFailedEvent
+    ) -> None:
+        start = self._events[0] if self._events else None
+        answer = next(
+            (e for e in reversed(self._step or ()) if isinstance(e, AssistantMessageEvent)),
+            None,
+        )
+        if (
+            not isinstance(start, TurnStartedEvent)
+            or start.output_schema is None
+            or event.turn_id != self._turn
+            or event.schema_id != start.output_schema.id
+            or answer is None
+            or event.message_id != answer.message.id
+            or (
+                event.call_id is not None
+                and not any(call.id == event.call_id for call in answer.message.tool_calls)
+            )
+        ):
+            raise ValueError("An output verdict must match the current structured answer")
 
     def apply(self, event: DurableEvent) -> None:
         if isinstance(event, TurnStartedEvent):
