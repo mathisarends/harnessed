@@ -44,7 +44,11 @@ through a core factory protocol. MCP and OTel are explicit optional integrations
 with their own dependency extras.
 Do not restore `seams`,
 `adapters`, `app`, `llms` or `presets`, or add native provider clients. Prefer
-canonical `core.messages` / `core.model` imports inside the library. Applications
+canonical `core.messages` / `core.model` imports inside the library. Outside
+`core.events`, `core.runtime` and `core.tools`, import their exported names
+through the package facade. A facade re-exports only members whose eager import
+adds no runtime cycle; the remaining modules and the cyclic `core.session` and
+`core.prompt` packages keep canonical submodule imports. Applications
 use the small root SDK, `harnessed.plugins`, `harnessed.models`, `harnessed.errors`
 and `harnessed.hooks`. Plugin service types are explicitly exported by
 `harnessed.services`; application tool inspection uses `session.tools`.
@@ -52,6 +56,13 @@ and `harnessed.hooks`. Plugin service types are explicitly exported by
 Ruff enforces the parent-relative import rule with `TID252` and
 `ban-relative-imports = "parents"`. Run `uv run ruff check .` before committing;
 the same rule also runs through prek and CI.
+
+Keep functions within Ruff's complexity limits (`C90` at 12, `PLR0911`,
+`PLR0912`, `PLR0915`). Split long orchestration into named steps on its owner
+instead of raising a limit or adding a suppression. Pass boolean options by
+keyword (`FBT`), remove unused parameters unless a protocol or `@override`
+requires them (`ARG`), and reach another object's private state only through
+its public operations (`SLF001`); the kernel's cooperating classes are exempt.
 
 Keep production imports at module scope. Ruff enforces `PLC0415`; the explicit
 exceptions are `models/pydantic_ai.py` (optional SDK) and `plugins/skills.py`

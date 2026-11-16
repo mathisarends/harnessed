@@ -60,7 +60,7 @@ def worker_files(tmp_path, monkeypatch):
             self.closed = False
             self.calls = []
 
-        async def _request(self, payload, *, timeout, max_output_bytes):
+        async def exchange(self, payload, *, timeout, max_output_bytes):
             self.calls.append(payload)
             reply = worker.response(payload.decode()).encode()
             return ProcessOutput(0, reply, b"")
@@ -239,7 +239,7 @@ async def test_shell_client_uses_requested_deadline_without_extra_transport_grac
     class WaitingTransport:
         closed = False
 
-        async def _request(self, payload, *, timeout, max_output_bytes):
+        async def exchange(self, payload, *, timeout, max_output_bytes):
             async with asyncio.timeout(timeout):
                 await asyncio.Event().wait()
 
@@ -248,7 +248,7 @@ async def test_shell_client_uses_requested_deadline_without_extra_transport_grac
 
     transport = WaitingTransport()
     client = WorkerClient(transport, SandboxConfig(workspace=Workspace.mount(tmp_path)))
-    pending = asyncio.create_task(client.run(["wait"], cwd=Path("."), timeout=0.02))
+    pending = asyncio.create_task(client.run(["wait"], cwd=Path(), timeout=0.02))
     try:
         done, _ = await asyncio.wait([pending], timeout=0.5)
         assert pending in done, "Command received an extra transport timeout allowance"

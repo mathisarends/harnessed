@@ -7,7 +7,7 @@ import pytest
 
 from harnessed import Agent, ApprovalAnswer, Plugin, ToolCall
 from harnessed.core.model import ModelChunk
-from harnessed.core.tools.decorator import tool
+from harnessed.core.tools import tool
 from harnessed.core.tracing import Tracer
 from harnessed.hooks import PreStep, SessionClosing, StepDecision
 from harnessed.kernel import Next, PluginScope, Scope, hook
@@ -84,18 +84,20 @@ async def test_explicit_tracing_owner_overrides_ambient_context_and_restores_aft
     previous = current()
     async with Scope() as owner, Scope() as untraced:
         owner.provide(Tracer, outer)
-        with pytest.raises(RuntimeError, match="source failure"):
-            with span("library.outer", scope=owner):
+        with (
+            pytest.raises(RuntimeError, match="source failure"),
+            span("library.outer", scope=owner),
+        ):
+            assert current() is outer
+            owner.provide(Tracer, replacement)
+            with span("library.child"):
                 assert current() is outer
-                owner.provide(Tracer, replacement)
-                with span("library.child"):
-                    assert current() is outer
-                with span("library.suppressed", scope=untraced):
-                    assert current() is not outer
-                    with span("library.also_suppressed"):
-                        pass
-                assert current() is outer
-                raise RuntimeError("source failure")
+            with span("library.suppressed", scope=untraced):
+                assert current() is not outer
+                with span("library.also_suppressed"):
+                    pass
+            assert current() is outer
+            raise RuntimeError("source failure")
         assert current() is previous
         with span("library.replacement", scope=owner):
             assert current() is replacement

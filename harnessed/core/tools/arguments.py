@@ -44,79 +44,22 @@ class ToolArguments:
     ) -> Self:
         if params is not None and parameter_fields is not None:
             raise ValueError("params cannot be combined with parameter_fields; use model fields")
-        for parameter in signature.parameters.values():
-            annotation = hints.get(parameter.name, parameter.annotation)
-            while isinstance(annotation, TypeAliasType) or get_origin(annotation) is Annotated:
-                annotation = (
-                    annotation.__value__
-                    if isinstance(annotation, TypeAliasType)
-                    else get_args(annotation)[0]
-                )
-            if annotation is ToolContext and parameter.name not in injected:
-                raise TypeError(
-                    f"Tool parameter {parameter.name!r} must use Inject[ToolContext] "
-                    "to mark framework-provided arguments"
-                )
+        _reject_uninjected_context(signature, hints, injected=injected)
         parameter_fields = parameter_fields or {}
         unknown = parameter_fields.keys() - (signature.parameters.keys() - injected.keys())
         if unknown:
             raise ValueError(f"Unknown model parameters in parameter_fields: {sorted(unknown)}")
-        parameters: list[inspect.Parameter] = []
-        for parameter in signature.parameters.values():
-            if parameter.kind not in (
-                inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                inspect.Parameter.KEYWORD_ONLY,
-            ):
-                raise TypeError(
-                    "Tools must have named parameters (no *args, **kwargs or positional-only)"
-                )
-            if parameter.name in injected:
-                continue
-            parameters.append(parameter)
+        parameters = _model_parameters(signature, injected=injected)
         if params is not None:
-            if len(parameters) != 1:
-                raise TypeError("params requires exactly one non-injected tool parameter")
-            parameter = parameters[0]
-            annotation = hints.get(parameter.name, parameter.annotation)
-            while isinstance(annotation, TypeAliasType) or get_origin(annotation) is Annotated:
-                annotation = (
-                    annotation.__value__
-                    if isinstance(annotation, TypeAliasType)
-                    else get_args(annotation)[0]
-                )
-            if annotation is not params:
-                raise TypeError(f"Tool parameter {parameter.name!r} must be annotated with params")
-            if parameter.default is not inspect.Parameter.empty:
-                raise TypeError("The params parameter must not have a default; use model fields")
-            arguments = cls(params, {}, parameter.name)
-            _ = arguments.schema  # Reject models without an object JSON schema at registration.
-            return arguments
+            return cls._from_params(params, parameters, hints)
         # Pydantic accepts runtime type expressions as field definitions.
         fields: dict[str, Any] = {}
         names: dict[str, str] = {}
         for parameter in parameters:
-            annotation = hints.get(parameter.name, parameter.annotation)
-            if annotation is inspect.Parameter.empty:
-                raise TypeError(f"Tool parameter {parameter.name} requires a type annotation")
-            if get_origin(annotation) is Annotated:
-                base, *metadata = get_args(annotation)
-                descriptions = [item for item in metadata if isinstance(item, str)]
-                if descriptions:
-                    annotation = Annotated[base, *metadata, Field(description=descriptions[0])]
-            if parameter.name in parameter_fields:
-                annotation = Annotated[annotation, parameter_fields[parameter.name]]
-            default = parameter.default
-            if isinstance(default, FieldInfo):
-                field = copy(default)
-                field.alias = field.validation_alias = field.serialization_alias = parameter.name
-            else:
-                field = Field(
-                    default=... if default is inspect.Parameter.empty else default,
-                    alias=parameter.name,
-                )
             # Aliases preserve Python parameter names, including BaseModel's reserved names.
             internal = f"argument_{len(fields)}"
-            fields[internal], names[internal] = (annotation, field), parameter.name
+            fields[internal] = _field_definition(parameter, hints, parameter_fields)
+            names[internal] = parameter.name
         model = create_model(f"{name}Arguments", __config__=_CONFIG, **fields)
         model.model_json_schema()  # Reject annotations without a JSON schema at registration.
         return cls(model, names)
@@ -144,8 +87,94 @@ class ToolArguments:
             return {self.model_parameter: parsed}
         return {name: getattr(parsed, internal) for internal, name in self.names.items()}
 
+    @classmethod
+    def _from_params(
+        cls,
+        params: type[BaseModel],
+        parameters: list[inspect.Parameter],
+        hints: Mapping[str, Any],
+    ) -> Self:
+        if len(parameters) != 1:
+            raise TypeError("params requires exactly one non-injected tool parameter")
+        parameter = parameters[0]
+        if _unwrap(hints.get(parameter.name, parameter.annotation)) is not params:
+            raise TypeError(f"Tool parameter {parameter.name!r} must be annotated with params")
+        if parameter.default is not inspect.Parameter.empty:
+            raise TypeError("The params parameter must not have a default; use model fields")
+        arguments = cls(params, {}, parameter.name)
+        _ = arguments.schema  # Reject models without an object JSON schema at registration.
+        return arguments
+
 
 def tool_result_content(value: Any) -> str:
     if isinstance(value, str):
         return value
     return result_content(_SERIALIZER.dump_python(value, mode="json"))
+
+
+def _unwrap(annotation: Any) -> Any:
+    """Strip type aliases and Annotated metadata down to the underlying type expression."""
+    while isinstance(annotation, TypeAliasType) or get_origin(annotation) is Annotated:
+        if isinstance(annotation, TypeAliasType):
+            annotation = annotation.__value__
+        else:
+            annotation = get_args(annotation)[0]
+    return annotation
+
+
+def _reject_uninjected_context(
+    signature: inspect.Signature, hints: Mapping[str, Any], *, injected: Mapping[str, Dependency]
+) -> None:
+    for parameter in signature.parameters.values():
+        annotation = _unwrap(hints.get(parameter.name, parameter.annotation))
+        if annotation is ToolContext and parameter.name not in injected:
+            raise TypeError(
+                f"Tool parameter {parameter.name!r} must use Inject[ToolContext] "
+                "to mark framework-provided arguments"
+            )
+
+
+def _model_parameters(
+    signature: inspect.Signature, *, injected: Mapping[str, Dependency]
+) -> list[inspect.Parameter]:
+    """The named parameters the model supplies, excluding framework injections."""
+    parameters: list[inspect.Parameter] = []
+    for parameter in signature.parameters.values():
+        if parameter.kind not in (
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        ):
+            raise TypeError(
+                "Tools must have named parameters (no *args, **kwargs or positional-only)"
+            )
+        if parameter.name not in injected:
+            parameters.append(parameter)
+    return parameters
+
+
+def _field_definition(
+    parameter: inspect.Parameter,
+    hints: Mapping[str, Any],
+    parameter_fields: Mapping[str, FieldInfo],
+) -> tuple[Any, FieldInfo]:
+    """Build the Pydantic annotation and aliased field for one model parameter."""
+    annotation = hints.get(parameter.name, parameter.annotation)
+    if annotation is inspect.Parameter.empty:
+        raise TypeError(f"Tool parameter {parameter.name} requires a type annotation")
+    if get_origin(annotation) is Annotated:
+        base, *metadata = get_args(annotation)
+        descriptions = [item for item in metadata if isinstance(item, str)]
+        if descriptions:
+            annotation = Annotated[base, *metadata, Field(description=descriptions[0])]
+    if parameter.name in parameter_fields:
+        annotation = Annotated[annotation, parameter_fields[parameter.name]]
+    default = parameter.default
+    if isinstance(default, FieldInfo):
+        field = copy(default)
+        field.alias = field.validation_alias = field.serialization_alias = parameter.name
+    else:
+        field = Field(
+            default=... if default is inspect.Parameter.empty else default,
+            alias=parameter.name,
+        )
+    return annotation, field

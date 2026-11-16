@@ -81,5 +81,6 @@ class MemoryAssets:
         ref.verify(data)
         return data
 
-    def _clear(self) -> None:
+    def clear(self) -> None:
+        """Release every stored asset when the owning session closes."""
         self._values.clear()

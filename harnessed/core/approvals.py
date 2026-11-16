@@ -5,13 +5,13 @@ from typing import Annotated, Protocol, Self, runtime_checkable
 
 from pydantic import ConfigDict, Field, TypeAdapter
 
-from harnessed.core.events.approvals import (
+from harnessed.core.events import (
     ApprovalRequestedEvent,
     ApprovalResolvedEvent,
     ApprovalRevokedEvent,
     ApprovalStatus,
+    DurableEvent,
 )
-from harnessed.core.events.base import DurableEvent
 from harnessed.core.hooks import ToolPolicy
 from harnessed.core.messages import ApprovalAnswer, PolicyDecision
 from harnessed.core.plugin import Plugin, PluginConfig
@@ -30,7 +30,7 @@ class Approver(Protocol):
 
 
 type ApprovalCallback = Callable[
-    [ApprovalRequestedEvent], ApprovalAnswer | bool | None | Awaitable[ApprovalAnswer | bool | None]
+    [ApprovalRequestedEvent], ApprovalAnswer | bool | Awaitable[ApprovalAnswer | bool | None] | None
 ]
 
 

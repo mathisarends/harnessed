@@ -21,8 +21,7 @@ class ToolReference:
         return declaration is self.declaration and (
             self.owner is None
             or self.owner is owner
-            or isinstance(owner, PluginBase)
-            and owner.recipe is self.owner
+            or (isinstance(owner, PluginBase) and owner.recipe is self.owner)
         )
 
 

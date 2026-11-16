@@ -16,7 +16,7 @@ BackgroundShell(timeout=60, max_background_commands=4)
 
 
 async def inspect_backend() -> None:
-    process = await backend.start(["example"], cwd=Path("."), timeout=10)
+    process = await backend.start(["example"], cwd=Path(), timeout=10)
     assert_type(process, ShellProcess)
     assert_type(process.snapshot(), ProcessSnapshot)
     assert_type(process.snapshot().state, ProcessState)

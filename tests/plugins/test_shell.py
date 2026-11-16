@@ -8,7 +8,7 @@ from harnessed import (
     Agent,
     ToolCall,
 )
-from harnessed.core.tools.registry import ToolRegistry
+from harnessed.core.tools import ToolRegistry
 from harnessed.plugins import AgentLoop
 from harnessed.plugins.shell import LocalShell, ProcResult, Shell, ShellBackend, ShellTools
 from harnessed.testing import ScriptedModel

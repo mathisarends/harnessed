@@ -91,7 +91,7 @@ async def test_docker_configuration_and_partial_startup_cleanup(tmp_path, monkey
     await backend.aclose()
     assert sum("rm" in call for call, _ in calls) == 1
     with pytest.raises(SandboxError, match="closed"):
-        await backend.shell.run(["test"], cwd=Path("."), timeout=1)
+        await backend.shell.run(["test"], cwd=Path(), timeout=1)
 
 
 async def test_failed_docker_setup_removes_named_container(tmp_path, monkeypatch):
@@ -132,7 +132,7 @@ async def test_docker_rejects_missing_limits_and_automatic_volumes(tmp_path, mon
 
     monkeypatch.setattr(docker, "run_process", run)
     sandbox = docker.DockerSandbox(image="test", workspace=Workspace.copy_from(tmp_path))
-    with pytest.raises(SandboxError, match="limits|volumes"):
+    with pytest.raises(SandboxError, match=r"limits|volumes"):
         async with Agent(model=ScriptedModel([]), plugins=[sandbox]).session():
             pytest.fail("Unsafe runtime should not start")
     assert not any("create" in argv for argv in calls)
@@ -194,7 +194,7 @@ async def test_docker_typed_services_handle_connection_loss_without_replaying(
     shell = backend.shell
     file_system = backend.file_system
     with pytest.raises(SandboxError):
-        await shell.run(["possibly-mutating-command"], cwd=Path("."), timeout=1)
+        await shell.run(["possibly-mutating-command"], cwd=Path(), timeout=1)
     assert sum("exec" in argv for argv in calls) == 2  # Initialization and exactly one command.
     assert sum("rm" in argv for argv in calls) == 1
     with pytest.raises(SandboxError, match="closed"):
@@ -382,7 +382,7 @@ async def test_live_docker_batched_search_and_transfer_failures(tmp_path, monkey
                 "Path('large.txt').write_text('x' * 20000)\n"
                 "Path('binary.bin').write_bytes(b'\\xff')\n",
             ],
-            cwd=Path("."),
+            cwd=Path(),
             timeout=10,
         )
         assert created.returncode == 0
@@ -441,7 +441,7 @@ async def exercise_live_sandbox(sandbox, tmp_path):
                 "from pathlib import Path; print(Path('input.txt').read_text()); "
                 "Path('output.bin').write_bytes(b'\\x00\\xff')",
             ],
-            cwd=Path("."),
+            cwd=Path(),
             timeout=5,
         )
         assert result.returncode == 0 and result.stdout.strip() == "source"
@@ -458,7 +458,7 @@ async def exercise_live_sandbox(sandbox, tmp_path):
             await files.read(Path("../outside"))
         result = await shell.run(
             ["python3", "-c", "import socket; socket.create_connection(('1.1.1.1', 443), .5)"],
-            cwd=Path("."),
+            cwd=Path(),
             timeout=3,
         )
         assert result.returncode != 0

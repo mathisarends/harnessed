@@ -35,11 +35,11 @@ from harnessed.core.errors import (
     ProviderUnavailable,
     RateLimited,
 )
-from harnessed.core.events.model import ModelUsageRecordedEvent
+from harnessed.core.events import ModelUsageRecordedEvent
 from harnessed.core.messages import ImagePart, TextPart
 from harnessed.core.model import ModelRequest, StopReason, ToolArgumentsMode
 from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.tools.decorator import tool
+from harnessed.core.tools import tool
 from harnessed.models import PydanticAIModel
 from harnessed.plugins import AgentLoop
 
@@ -570,13 +570,7 @@ async def test_sessions_enter_native_model_contexts_and_support_reuse(monkeypatc
         "infer_model",
         lambda value, *a, **kw: model if isinstance(value, str) else original(value, *a, **kw),
     )
-    configured = (
-        "test:resource"
-        if model_input == "string"
-        else PydanticAIModel(model)
-        if model_input == "native"
-        else PydanticAIModel(model)
-    )
+    configured = "test:resource" if model_input == "string" else PydanticAIModel(model)
     app = Agent(model=configured)
     async with app.session() as one:
         assert depth[0] == 1
@@ -836,47 +830,43 @@ async def test_real_sdk_retries_are_counted_only_when_public_http_hooks_report_t
             headers={"content-type": "text/event-stream"},
         )
 
-    async with httpx2.AsyncClient(
-        transport=httpx2.MockTransport(respond),
-        event_hooks={"request": [on_request]} if instrumented else {},
-    ) as http:
-        async with AsyncOpenAI(api_key="test", max_retries=2, http_client=http) as client:
-            model = OpenAIChatModel("fixture", provider=OpenAIProvider(openai_client=client))
-            notifications = []
-            async with Agent(model=PydanticAIModel(model)).session() as session:
+    async with (
+        httpx2.AsyncClient(
+            transport=httpx2.MockTransport(respond),
+            event_hooks={"request": [on_request]} if instrumented else {},
+        ) as http,
+        AsyncOpenAI(api_key="test", max_retries=2, http_client=http) as client,
+    ):
+        model = OpenAIChatModel("fixture", provider=OpenAIProvider(openai_client=client))
+        notifications = []
+        async with Agent(model=PydanticAIModel(model)).session() as session:
 
-                async def consume():
-                    async with session.stream("work") as run_stream:
-                        async for event in run_stream:
-                            notifications.append(event)
+            async def consume():
+                async with session.stream("work") as run_stream:
+                    async for event in run_stream:
+                        notifications.append(event)
 
-                if exhausted:
-                    with pytest.raises(RateLimited):
-                        await consume()
-                else:
+            if exhausted:
+                with pytest.raises(RateLimited):
                     await consume()
-                assert requests == 3
-                starts = [
-                    e for e in notifications if isinstance(e, events.ModelAttemptStartedEvent)
-                ]
-                finished = [
-                    e for e in notifications if isinstance(e, events.ModelAttemptFinishedEvent)
-                ]
-                if instrumented:
-                    assert [e.attempt for e in starts] == [1, 2, 3]
-                    assert finished[-1].retry_count == 2 and finished[-1].max_retries == 2
-                else:
-                    assert not starts and len(finished) == 1
-                    assert finished[0].attempt is finished[0].retry_count is None
-                assert finished[-1].outcome is (
-                    events.ModelAttemptOutcome.FAILED
-                    if exhausted
-                    else events.ModelAttemptOutcome.SUCCEEDED
-                )
-                # A transport callback observes actual starts, not SDK retry decisions/delays.
-                assert not any(
-                    isinstance(e, events.ModelRetryScheduledEvent) for e in notifications
-                )
+            else:
+                await consume()
+            assert requests == 3
+            starts = [e for e in notifications if isinstance(e, events.ModelAttemptStartedEvent)]
+            finished = [e for e in notifications if isinstance(e, events.ModelAttemptFinishedEvent)]
+            if instrumented:
+                assert [e.attempt for e in starts] == [1, 2, 3]
+                assert finished[-1].retry_count == 2 and finished[-1].max_retries == 2
+            else:
+                assert not starts and len(finished) == 1
+                assert finished[0].attempt is finished[0].retry_count is None
+            assert finished[-1].outcome is (
+                events.ModelAttemptOutcome.FAILED
+                if exhausted
+                else events.ModelAttemptOutcome.SUCCEEDED
+            )
+            # A transport callback observes actual starts, not SDK retry decisions/delays.
+            assert not any(isinstance(e, events.ModelRetryScheduledEvent) for e in notifications)
 
 
 def _anthropic_sse(*, tool_call):

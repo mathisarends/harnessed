@@ -53,7 +53,7 @@ class WorkerRuntime(ABC):
         ...
 
     @abstractmethod
-    async def _request(
+    async def exchange(
         self, payload: bytes, *, timeout: float, max_output_bytes: int
     ) -> ProcessOutput:
         """Run one worker exchange within the timeout in seconds and output byte limit."""

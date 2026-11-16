@@ -90,10 +90,9 @@ def coalesce_deltas[E](previous: E, event: E) -> E | None:
     same call concatenate and keep the newer name and call ID; a REPLACE snapshot
     supersedes any earlier fragment of its call. Everything else stays separate.
     """
-    if isinstance(previous, TextDeltaEvent) and isinstance(event, TextDeltaEvent):
-        if previous.message_id == event.message_id:
-            return replace(event, text=previous.text + event.text)
-    elif isinstance(previous, ReasoningDeltaEvent) and isinstance(event, ReasoningDeltaEvent):
+    if (isinstance(previous, TextDeltaEvent) and isinstance(event, TextDeltaEvent)) or (
+        isinstance(previous, ReasoningDeltaEvent) and isinstance(event, ReasoningDeltaEvent)
+    ):
         if previous.message_id == event.message_id:
             return replace(event, text=previous.text + event.text)
     elif isinstance(previous, ToolArgumentsDeltaEvent) and isinstance(

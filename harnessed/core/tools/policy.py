@@ -10,7 +10,7 @@ class OutputLimit(Enum):
     INHERIT = "inherit"
 
 
-type OutputLimitSetting = Annotated[int, Field(ge=256)] | None | OutputLimit
+type OutputLimitSetting = Annotated[int, Field(ge=256)] | OutputLimit | None
 _LIMIT = TypeAdapter(OutputLimitSetting, config=ConfigDict(strict=True, hide_input_in_errors=True))
 
 

@@ -16,9 +16,12 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.util.types import AttributeValue
 from pydantic import Field, JsonValue, SecretBytes
 
-from harnessed.core.events.messages import AssistantMessageEvent, UserMessageEvent
-from harnessed.core.events.output import OutputValidatedEvent
-from harnessed.core.events.turn import TurnOutcome
+from harnessed.core.events import (
+    AssistantMessageEvent,
+    OutputValidatedEvent,
+    TurnOutcome,
+    UserMessageEvent,
+)
 from harnessed.core.messages import (
     AssistantMessage,
     Message,
@@ -28,7 +31,7 @@ from harnessed.core.messages import (
 )
 from harnessed.core.model import ModelRequest, ModelUsage, StopReason
 from harnessed.core.plugin import Plugin, PluginConfig
-from harnessed.core.runtime.control import StopAtBoundary
+from harnessed.core.runtime import StopAtBoundary
 from harnessed.core.session.turns import Turn
 from harnessed.core.tracing import HookTracing, Span, Tracer
 from harnessed.kernel import HookInstrumentation, PluginScope
@@ -308,56 +311,23 @@ class _Span:
     def set_attribute(self, name: str, value: Any) -> None:
         if not self._native.is_recording():
             return
-        if isinstance(value, ModelRequest):
-            if value.settings.max_tokens is not None:
-                self._native.set_attribute("gen_ai.request.max_tokens", value.settings.max_tokens)
-            if value.settings.temperature is not None:
-                self._native.set_attribute("gen_ai.request.temperature", value.settings.temperature)
-            if self.config.capture_content:
-                self.content(
-                    "input",
-                    TraceContentKind.MODEL_INPUT,
-                    [_message(message) for message in value.messages],
-                )
-                self.content("request.tools", TraceContentKind.MODEL_TOOLS, value.tools)
-                self.content("request.settings", TraceContentKind.MODEL_SETTINGS, value.settings)
-                if value.output_schema is not None:
-                    self.content(
-                        "request.output_schema",
-                        TraceContentKind.MODEL_OUTPUT_SCHEMA,
-                        value.output_schema,
-                    )
-        elif isinstance(value, Turn):
-            self._turn(value)
-        elif isinstance(value, ModelUsage):
-            self.usage(value)
-        elif isinstance(value, AssistantMessage):
-            if self.config.capture_content:
-                self.content("output", TraceContentKind.MODEL_OUTPUT, _message(value))
-        elif isinstance(value, ToolCall):
-            if self.config.capture_content:
-                self.content("input", TraceContentKind.TOOL_ARGUMENTS, value.arguments)
-        elif isinstance(value, ToolResult):
-            self._native.set_attribute("harnessed.tool.status", value.status.value)
-            self._native.set_attribute("harnessed.tool.is_error", value.is_error)
-            if value.exit_code is not None:
-                self._native.set_attribute("harnessed.tool.exit_code", value.exit_code)
-            if value.is_error:
-                description = (
-                    "nonzero_exit_code" if value.status == ToolStatus.OK else value.status.value
-                )
-                self._native.set_status(trace.StatusCode.ERROR, description)
-            if self.config.capture_content:
-                self.content("output", TraceContentKind.TOOL_RESULT, value.content)
-        elif isinstance(value, str | bool | int | float):
-            self._native.set_attribute(name if "." in name else f"harnessed.{name}", value)
-            if name == "session_id":
-                self._native.set_attribute("session.id", value)
-            elif name == "model":
-                self._native.set_attribute("llm.model_name", value)
-                self._native.set_attribute("gen_ai.request.model", value)
-            elif name == "tool":
-                self._native.set_attribute("tool.name", value)
+        match value:
+            case ModelRequest():
+                self._request(value)
+            case Turn():
+                self._turn(value)
+            case ModelUsage():
+                self.usage(value)
+            case AssistantMessage():
+                if self.config.capture_content:
+                    self.content("output", TraceContentKind.MODEL_OUTPUT, _message(value))
+            case ToolCall():
+                if self.config.capture_content:
+                    self.content("input", TraceContentKind.TOOL_ARGUMENTS, value.arguments)
+            case ToolResult():
+                self._tool_result(value)
+            case str() | bool() | int() | float():
+                self._scalar(name, value)
 
     def usage(self, usage: ModelUsage) -> None:
         attributes = {
@@ -411,6 +381,51 @@ class _Span:
             if captured is not None and isinstance(captured.value, str) and captured.value:
                 attributes["exception.message"] = captured.value[: self.config.max_content_length]
         self._native.add_event("exception", attributes)
+
+    def _request(self, request: ModelRequest) -> None:
+        if request.settings.max_tokens is not None:
+            self._native.set_attribute("gen_ai.request.max_tokens", request.settings.max_tokens)
+        if request.settings.temperature is not None:
+            self._native.set_attribute("gen_ai.request.temperature", request.settings.temperature)
+        if not self.config.capture_content:
+            return
+        self.content(
+            "input",
+            TraceContentKind.MODEL_INPUT,
+            [_message(message) for message in request.messages],
+        )
+        self.content("request.tools", TraceContentKind.MODEL_TOOLS, request.tools)
+        self.content("request.settings", TraceContentKind.MODEL_SETTINGS, request.settings)
+        if request.output_schema is not None:
+            self.content(
+                "request.output_schema",
+                TraceContentKind.MODEL_OUTPUT_SCHEMA,
+                request.output_schema,
+            )
+
+    def _tool_result(self, result: ToolResult) -> None:
+        self._native.set_attribute("harnessed.tool.status", result.status.value)
+        self._native.set_attribute("harnessed.tool.is_error", result.is_error)
+        if result.exit_code is not None:
+            self._native.set_attribute("harnessed.tool.exit_code", result.exit_code)
+        if result.is_error:
+            description = (
+                "nonzero_exit_code" if result.status == ToolStatus.OK else result.status.value
+            )
+            self._native.set_status(trace.StatusCode.ERROR, description)
+        if self.config.capture_content:
+            self.content("output", TraceContentKind.TOOL_RESULT, result.content)
+
+    def _scalar(self, name: str, value: AttributeValue) -> None:
+        """Record a scalar under its harnessed name and the conventional aliases."""
+        self._native.set_attribute(name if "." in name else f"harnessed.{name}", value)
+        if name == "session_id":
+            self._native.set_attribute("session.id", value)
+        elif name == "model":
+            self._native.set_attribute("llm.model_name", value)
+            self._native.set_attribute("gen_ai.request.model", value)
+        elif name == "tool":
+            self._native.set_attribute("tool.name", value)
 
     def _turn(self, turn: Turn) -> None:
         if turn.reason is not None:
@@ -474,7 +489,9 @@ class _Span:
                 ):
                     raise TypeError("Filtered exception messages must be strings")
                 if self._capture_policy is not None:
-                    filtered = replace(filtered, value=self._capture_policy._redact(filtered.value))
+                    # The capture policy is defined in this module; redaction is not public API.
+                    redacted = self._capture_policy._redact(filtered.value)  # noqa: SLF001
+                    filtered = replace(filtered, value=redacted)
             return filtered
         except Exception:
             # A redaction failure must never fall back to exporting the original
@@ -520,61 +537,76 @@ def _limit_json(value: JsonValue, budget: int) -> tuple[str, int]:
         return "0", len(value) if isinstance(value, list | dict) else 0
     match value:
         case str():
-            low = 0
-            high = min(len(value), budget - 2)
-            while low < high:
-                middle = (low + high + 1) // 2
-                if len(json.dumps(value[:middle], ensure_ascii=False)) <= budget:
-                    low = middle
-                else:
-                    high = middle - 1
-            return json.dumps(value[:low], ensure_ascii=False), 0
+            return _limit_string(value, budget), 0
         case list():
-            selected: list[JsonValue] = []
-            available = budget - 2
-            for item in reversed(value):
-                minimum = min(len(json.dumps(item, ensure_ascii=False, allow_nan=False)), 64)
-                cost = minimum + (2 if selected else 0)
-                if cost > available:
-                    break
-                selected.append(item)
-                available -= cost
-            if not selected:
-                return "[]", len(value)
-            selected.reverse()
-            count = len(selected)
-            available = budget - 2 - 2 * (count - 1)
-            fragments: list[str] = []
-            omitted = len(value) - count
-            for index, item in enumerate(selected):
-                share = available // (count - index)
-                fragment, dropped = _limit_json(item, share)
-                fragments.append(fragment)
-                omitted += dropped
-                available -= len(fragment)
-            return "[" + ", ".join(fragments) + "]", omitted
+            return _limit_list(value, budget)
         case dict():
-            entries: list[tuple[str, JsonValue]] = []
-            available = budget - 2
-            for key, item in value.items():
-                if not isinstance(key, str):
-                    raise TypeError("Trace object keys must be strings")
-                encoded = json.dumps(key, ensure_ascii=False)
-                minimum = len(encoded) + 3 + (2 if entries else 0)
-                if minimum <= available:
-                    entries.append((encoded, item))
-                    available -= minimum
-            fragments = []
-            omitted = len(value) - len(entries)
-            for index, (encoded, item) in enumerate(entries):
-                share = 1 + available // (len(entries) - index)
-                fragment, dropped = _limit_json(item, share)
-                fragments.append(encoded + ": " + fragment)
-                omitted += dropped
-                available -= len(fragment) - 1
-            return "{" + ", ".join(fragments) + "}", omitted
+            return _limit_object(value, budget)
         case _:
             return "0", 0
+
+
+def _limit_string(value: str, budget: int) -> str:
+    """The longest JSON string prefix that fits the budget."""
+    low = 0
+    high = min(len(value), budget - 2)
+    while low < high:
+        middle = (low + high + 1) // 2
+        if len(json.dumps(value[:middle], ensure_ascii=False)) <= budget:
+            low = middle
+        else:
+            high = middle - 1
+    return json.dumps(value[:low], ensure_ascii=False)
+
+
+def _limit_list(value: list[JsonValue], budget: int) -> tuple[str, int]:
+    """Keep the latest items that fit and share the remaining budget between them."""
+    selected: list[JsonValue] = []
+    available = budget - 2
+    for item in reversed(value):
+        minimum = min(len(json.dumps(item, ensure_ascii=False, allow_nan=False)), 64)
+        cost = minimum + (2 if selected else 0)
+        if cost > available:
+            break
+        selected.append(item)
+        available -= cost
+    if not selected:
+        return "[]", len(value)
+    selected.reverse()
+    count = len(selected)
+    available = budget - 2 - 2 * (count - 1)
+    fragments: list[str] = []
+    omitted = len(value) - count
+    for index, item in enumerate(selected):
+        share = available // (count - index)
+        fragment, dropped = _limit_json(item, share)
+        fragments.append(fragment)
+        omitted += dropped
+        available -= len(fragment)
+    return "[" + ", ".join(fragments) + "]", omitted
+
+
+def _limit_object(value: dict[str, JsonValue], budget: int) -> tuple[str, int]:
+    """Keep the keys that fit and share the remaining budget between their values."""
+    entries: list[tuple[str, JsonValue]] = []
+    available = budget - 2
+    for key, item in value.items():
+        if not isinstance(key, str):
+            raise TypeError("Trace object keys must be strings")
+        encoded = json.dumps(key, ensure_ascii=False)
+        minimum = len(encoded) + 3 + (2 if entries else 0)
+        if minimum <= available:
+            entries.append((encoded, item))
+            available -= minimum
+    fragments: list[str] = []
+    omitted = len(value) - len(entries)
+    for index, (encoded, item) in enumerate(entries):
+        share = 1 + available // (len(entries) - index)
+        fragment, dropped = _limit_json(item, share)
+        fragments.append(encoded + ": " + fragment)
+        omitted += dropped
+        available -= len(fragment) - 1
+    return "{" + ", ".join(fragments) + "}", omitted
 
 
 __all__ = [

@@ -3,7 +3,7 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, Self
 
-from harnessed.core.events.inbox import InboxAddedEvent
+from harnessed.core.events import InboxAddedEvent
 from harnessed.core.events.stream import StreamItem
 from harnessed.core.model import OutputSchema
 from harnessed.core.result import RunResult

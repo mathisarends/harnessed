@@ -2,6 +2,7 @@
 
 import asyncio
 from pathlib import Path
+from typing import override
 
 from harnessed import Agent, PluginValidation, PolicyDecision, ToolCall
 from harnessed.kernel import Scope, plugin
@@ -12,10 +13,11 @@ from harnessed.plugins.shell import ShellBackend as Shell
 from harnessed.testing import ScriptedModel
 
 
-class DemoShell:
+class DemoShell(Shell):
     def __init__(self, name: str):
         self.name = name
 
+    @override
     async def run(self, argv: list[str], *, cwd: Path, timeout: float) -> ProcResult:
         return ProcResult(0, f"{self.name}: {' '.join(argv)}", "")
 

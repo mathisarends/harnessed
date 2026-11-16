@@ -2,10 +2,11 @@ from dataclasses import replace
 from uuid import uuid4
 
 from harnessed.core.errors import OutputTokenLimit
-from harnessed.core.events.messages import AssistantMessageEvent
-from harnessed.core.events.model import ModelUsageRecordedEvent
-from harnessed.core.events.output import OutputValidatedEvent, OutputValidationFailedEvent
-from harnessed.core.events.turn import (
+from harnessed.core.events import (
+    AssistantMessageEvent,
+    ModelUsageRecordedEvent,
+    OutputValidatedEvent,
+    OutputValidationFailedEvent,
     StepOutcome,
     TurnEndedEvent,
     TurnLimits,
@@ -83,15 +84,7 @@ class TurnRunner:
             await self.log.append(start)
         else:
             start = previous.start
-            if (
-                previous.steps
-                and start.final_step is FinalStepPolicy.SUMMARIZE
-                and previous.steps[-1].number >= (start.limits.max_steps or self.options.max_steps)
-            ):
-                await self.log.append(TurnEndedEvent(turn, TurnOutcome.MAX_STEPS))
-                return True
-            if previous.steps and not await self._continue_from(previous.steps[-1]):
-                await self.log.append(TurnEndedEvent(turn))
+            if await self._end_resumed(turn, previous):
                 return True
         settings = start.settings
         max_steps = start.limits.max_steps or self.options.max_steps
@@ -116,6 +109,21 @@ class TurnRunner:
             return True
         await self.log.append(TurnEndedEvent(turn, TurnOutcome.MAX_STEPS))
         return True
+
+    async def _end_resumed(self, turn: str, previous: Turn) -> bool:
+        """End a resumed turn whose last step already exhausted or finished it."""
+        if not previous.steps:
+            return False
+        start = previous.start
+        if start.final_step is FinalStepPolicy.SUMMARIZE and previous.steps[-1].number >= (
+            start.limits.max_steps or self.options.max_steps
+        ):
+            await self.log.append(TurnEndedEvent(turn, TurnOutcome.MAX_STEPS))
+            return True
+        if not await self._continue_from(previous.steps[-1]):
+            await self.log.append(TurnEndedEvent(turn))
+            return True
+        return False
 
     def _spent_tokens(self) -> int:
         """Input and output tokens billed so far in the open turn, compaction included."""

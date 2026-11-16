@@ -4,6 +4,7 @@ import asyncio
 import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import override
 
 from harnessed import Agent, Plugin, PolicyDecision, Role, ToolCall, tool
 from harnessed.events import ToolCallFinishedEvent
@@ -18,6 +19,7 @@ async def independent_calls():
     completion_order = []
 
     class LookupsTools(Plugin):
+        @override
         async def setup(self, scope: PluginScope) -> None:
             self.together = asyncio.Barrier(3)
             self.finished = [asyncio.Event() for _ in range(3)]

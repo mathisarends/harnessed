@@ -70,6 +70,10 @@ class EventRegistry:
         self._custom = validators
         self._adapter = None
 
+    def kind(self, tag: str) -> type | None:
+        """Return the event class registered for ``tag``, if any."""
+        return self._types.get(tag)
+
     def validate(self, event: DurableEvent | TransientEvent) -> None:
         kind = type(event)
         if self._types.get(getattr(event, "type", None)) is not kind:

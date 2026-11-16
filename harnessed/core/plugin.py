@@ -8,10 +8,9 @@ from typing import Any, ClassVar, Self, TypeVar, cast, get_args, get_origin, ove
 
 from pydantic import BaseModel, ConfigDict
 
-from harnessed.core.events.base import DurableEvent, TransientEvent
+from harnessed.core.events import DurableEvent, TransientEvent
 from harnessed.core.prompt.values import PromptContribution, SystemPrompt
-from harnessed.core.tools import ToolSpec
-from harnessed.core.tools.decorator import activation_tool
+from harnessed.core.tools import ToolSpec, activation_tool
 from harnessed.kernel import Bundle as KernelBundle
 from harnessed.kernel import (
     HookEntry,
@@ -86,7 +85,7 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         registrations: Iterable[tuple[Registration, Callable]] = (),
     ) -> None:
         super().__init__(name=name, hooks=hooks, needs=needs, registrations=registrations)
-        schema = type(self)._configuration_type
+        schema = self._configuration_type
         if config is None:
             if schema is not None and schema is not PluginConfig:
                 raise TypeError(f"{type(self).__name__} requires config={schema.__name__}(...)")
@@ -160,40 +159,7 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
     @classmethod
     def _configuration_schema(cls) -> type[BaseModel] | None:
         """Resolve model parameters through generic bases without evaluating annotations."""
-
-        def resolve(value: object, substitutions: dict[TypeVar, object]) -> object:
-            while isinstance(value, TypeVar) and value in substitutions:
-                replacement = substitutions[value]
-                if replacement is value:
-                    break
-                value = replacement
-            if isinstance(value, TypeVar):
-                return value.__bound__
-            return value
-
-        def visit(base: object, substitutions: dict[TypeVar, object]) -> list[type[BaseModel]]:
-            origin = get_origin(base) or base
-            if not isinstance(origin, type) or not issubclass(origin, KernelPlugin):
-                return []
-            arguments = get_args(base)
-            if origin is Plugin:
-                if not arguments:
-                    return []
-                model = resolve(arguments[0], substitutions)
-                if model is BaseModel:
-                    return []
-                if not isinstance(model, type) or not issubclass(model, BaseModel):
-                    raise TypeError("Plugin[...] requires a Pydantic configuration model")
-                return [model]
-            bindings = dict(substitutions)
-            parameters = vars(origin).get("__parameters__", ())
-            for parameter, argument in zip(parameters, arguments, strict=bool(arguments)):
-                bindings[parameter] = resolve(argument, substitutions)
-            return [
-                model for parent in get_original_bases(origin) for model in visit(parent, bindings)
-            ]
-
-        models = tuple(dict.fromkeys(visit(cls, {})))
+        models = tuple(dict.fromkeys(Plugin._configuration_models(cls, {})))
         if not models:
             return None
         selected = next(
@@ -202,6 +168,46 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         if selected is None:
             raise TypeError("Plugin bases declare incompatible configuration models")
         return selected
+
+    # Subclass creation in this module resolves configuration before module helpers exist.
+    @staticmethod
+    def _configuration_models(
+        base: object, substitutions: dict[TypeVar, object]
+    ) -> list[type[BaseModel]]:
+        """Configuration models declared by Plugin[...] along a plugin's generic bases."""
+        origin = get_origin(base) or base
+        if not isinstance(origin, type) or not issubclass(origin, KernelPlugin):
+            return []
+        arguments = get_args(base)
+        if origin is Plugin:
+            if not arguments:
+                return []
+            model = Plugin._resolve_type_argument(arguments[0], substitutions)
+            if model is BaseModel:
+                return []
+            if not isinstance(model, type) or not issubclass(model, BaseModel):
+                raise TypeError("Plugin[...] requires a Pydantic configuration model")
+            return [model]
+        bindings = dict(substitutions)
+        parameters = vars(origin).get("__parameters__", ())
+        for parameter, argument in zip(parameters, arguments, strict=bool(arguments)):
+            bindings[parameter] = Plugin._resolve_type_argument(argument, substitutions)
+        return [
+            model
+            for parent in get_original_bases(origin)
+            for model in Plugin._configuration_models(parent, bindings)
+        ]
+
+    @staticmethod
+    def _resolve_type_argument(value: object, substitutions: dict[TypeVar, object]) -> object:
+        while isinstance(value, TypeVar) and value in substitutions:
+            replacement = substitutions[value]
+            if replacement is value:
+                break
+            value = replacement
+        if isinstance(value, TypeVar):
+            return value.__bound__
+        return value
 
     def _as_plugin_spec(self) -> PluginSpec:
         for name, callback in (("setup", self.setup), ("teardown", self.teardown)):

@@ -4,9 +4,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Self
 
-from harnessed.core.events.approvals import ApprovalRequestedEvent
-from harnessed.core.events.base import DurableEvent
-from harnessed.core.events.messages import UserMessageEvent
+from harnessed.core.events import ApprovalRequestedEvent, DurableEvent, UserMessageEvent
 from harnessed.core.messages import (
     ApprovalAnswer,
     Message,
@@ -16,13 +14,12 @@ from harnessed.core.messages import (
     ToolResult,
 )
 from harnessed.core.model import ModelRequest, OutputSchema
-from harnessed.core.tools import ToolEnvelope, ToolInfo
-from harnessed.core.tools.policy import OutputLimit, OutputLimitSetting
+from harnessed.core.tools import OutputLimit, OutputLimitSetting, ToolEnvelope, ToolInfo
 from harnessed.kernel import Bail, Emit, Waterfall
 from harnessed.kernel import Next as Next
 
 if TYPE_CHECKING:
-    from harnessed.core.runtime.context import SessionContext
+    from harnessed.core.runtime import SessionContext
     from harnessed.core.session.session import SessionLog
 
 

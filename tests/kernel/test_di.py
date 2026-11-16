@@ -156,3 +156,20 @@ def test_plugin_config_keywords_are_immutable_and_detached():
     spec = configured(value=1)
     with pytest.raises(TypeError):
         spec.kwargs["value"] = 2
+
+
+async def test_scope_get_returns_provided_service_or_default():
+    seen: list[object] = []
+
+    @plugin
+    async def reader(scope):
+        seen.extend([scope.get(str), scope.get(int), scope.get(int, 7)])
+        yield
+
+    async with Scope() as scope:
+        assert scope.get(str) is None
+        scope.provide(str, "configured")
+        await scope.install([reader()])
+
+        assert (scope.get(str), scope.get(int, 7)) == ("configured", 7)
+    assert seen == ["configured", None, 7]

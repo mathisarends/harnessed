@@ -1,7 +1,7 @@
 import pytest
 
 from harnessed import Agent, Plugin, PolicyDecision, ToolCall, tool
-from harnessed.core.tools.registry import ToolRegistry
+from harnessed.core.tools import ToolRegistry
 from harnessed.events import PolicySource, ToolPolicyAppliedEvent
 from harnessed.hooks import ToolPolicy
 from harnessed.plugins import Approvals

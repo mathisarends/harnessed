@@ -4,12 +4,16 @@ from dataclasses import replace
 from functools import partial
 
 from harnessed.core.assets import AssetRef, AssetStore
-from harnessed.core.events.base import DurableEvent
-from harnessed.core.events.inbox import InboxAddedEvent
-from harnessed.core.events.messages import MessageAppendedEvent, UserMessageEvent
-from harnessed.core.events.model import ModelRequestedEvent
-from harnessed.core.events.observations import ObservationRecordedEvent
-from harnessed.core.events.tools import ToolCallFinishedEvent, ToolExecutionFinishedEvent
+from harnessed.core.events import (
+    DurableEvent,
+    InboxAddedEvent,
+    MessageAppendedEvent,
+    ModelRequestedEvent,
+    ObservationRecordedEvent,
+    ToolCallFinishedEvent,
+    ToolExecutionFinishedEvent,
+    UserMessageEvent,
+)
 from harnessed.core.messages import (
     ContentPart,
     ImagePart,

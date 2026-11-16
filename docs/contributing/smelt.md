@@ -24,6 +24,22 @@ has a facade-only package contract: higher layers import its exported operations
 including DI binding plans and plugin-spec normalization, through
 `harnessed.kernel`. Kernel implementations retain sibling imports.
 
+`harnessed.core.events`, `harnessed.core.runtime` and `harnessed.core.tools`
+have package facades (`event-facade`, `runtime-facade`, `tool-facade`). A module
+outside such a package that imports three or more of its modules raises
+`package-import-fanout` as a warning, and `prefer-package-import` then requires
+the facade for every fully re-exported name. A submodule import initializes its
+package first, so an eager facade would join every runtime cycle that passes
+through one of its members. The facades therefore re-export only members whose
+import adds no runtime cycle. `events.completion`, `events.registry` and
+`events.stream` would cycle through `core.result` and `session.codec`, and
+`tools.arguments`, `enabled`, `output_limit`, `references` and `view` through
+`core.plugin`; they keep canonical imports. `facade-export-gap` stays a hint
+because it reports these deliberately excluded names. `core.session` and
+`core.prompt` have no facade: almost all of their members take part in such
+cycles. Two reasoned config entries accept fan-out for `harnessed.events` and
+`core.runtime.streaming`, which need the excluded event modules.
+
 The architecture tests additionally enforce relationships that the layer map
 does not express: plugin independence and the individual modules permitted to
 import provider SDKs, YAML, MCP clients and telemetry. The root SDK remains lazy
@@ -88,10 +104,11 @@ The configuration deliberately leaves these optional policies unselected:
 - Relative-import enforcement can prefer one-dot imports of *child packages*;
   that does not express this repository's sibling-only preference. Ruff enforces
   the ban on parent-relative imports; cross-package imports remain absolute.
-- Import-count/export-gap thresholds can suggest a design review, but frequency
-  alone does not justify extending the SDK. Existing exports already drive the
-  stricter `prefer-package-import` rule. A trial produced 162 hints that mostly
-  contradict the canonical `core.messages` / `core.model` module imports.
+- Import-count/export-gap thresholds are not applied to the root SDK or to
+  `core` as a whole: frequency alone does not justify extending the SDK, and a
+  trial produced 162 hints that mostly contradicted the canonical
+  `core.messages` / `core.model` module imports. They apply only to the scoped
+  core package facades described below.
 - `caller-before-callee` would reorder 78 methods away from their lifecycle and
   protocol grouping; `public-definitions-first` already fixes the outer order.
 - `prefer-callable-instance` reports protocol implementations such as approvers,
@@ -103,7 +120,7 @@ The configuration deliberately leaves these optional policies unselected:
 ## Reviewed exceptions
 
 There is no debt baseline. The full check covers 159 modules with no
-errors or warnings. Twelve individual inline findings are suppressed with reasons. One config exception permits private access only in
+errors or warnings. Twelve individual inline findings are suppressed with reasons. The import fan-out exception is described under the architecture policy. Another config exception permits private access only in
 `tests/core/session/test_image_cache.py`, whose purpose is to measure byte and
 entry limits, eviction and reuse. Public asset behavior remains in separate tests.
 

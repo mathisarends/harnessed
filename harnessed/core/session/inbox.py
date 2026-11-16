@@ -2,9 +2,14 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Self
 
-from harnessed.core.events.base import DurableEvent
-from harnessed.core.events.inbox import InboxAddedEvent, InboxRemovedEvent, InboxTarget
-from harnessed.core.events.messages import MessageAppendedEvent, UserMessageEvent
+from harnessed.core.events import (
+    DurableEvent,
+    InboxAddedEvent,
+    InboxRemovedEvent,
+    InboxTarget,
+    MessageAppendedEvent,
+    UserMessageEvent,
+)
 
 
 @dataclass(frozen=True, init=False)

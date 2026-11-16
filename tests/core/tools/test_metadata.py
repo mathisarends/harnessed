@@ -6,7 +6,7 @@ import pytest
 from harnessed import Agent, Plugin, ToolCall, ToolContext, ToolInfo, ToolMetadata, ToolResult, tool
 from harnessed.core.model import ToolDefinition
 from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.tools.registry import ToolRegistry, ToolSpec
+from harnessed.core.tools import ToolRegistry, ToolSpec
 from harnessed.hooks import ExecuteTool, ReviewToolResult, ToolPolicy
 from harnessed.kernel import hook
 from harnessed.testing import ScriptedModel, call

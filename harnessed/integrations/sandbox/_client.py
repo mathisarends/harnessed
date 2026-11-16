@@ -21,7 +21,7 @@ class WorkerTransport(Protocol):
         """Release the transport and owned processes, including partial startup."""
         ...
 
-    async def _request(
+    async def exchange(
         self, payload: bytes, *, timeout: float, max_output_bytes: int
     ) -> ProcessOutput:
         """Exchange one payload within a timeout in seconds and a byte capture limit."""
@@ -51,7 +51,7 @@ class WorkerClient:
     async def initialize(self, seed: bytes | None) -> None:
         if seed is None:
             request = self._file_request(
-                Operation.STAT, Path("."), timeout=self.config.startup_timeout
+                Operation.STAT, Path(), timeout=self.config.startup_timeout
             )
             info = await self.request(request, TypeAdapter(FileStat))
             if not info.is_dir:
@@ -72,7 +72,7 @@ class WorkerClient:
             6 * max(self.config.limits.max_transfer_bytes, self.config.max_output_bytes) + 65_536
         )
         try:
-            output = await self.transport._request(
+            output = await self.transport.exchange(
                 payload, timeout=request.timeout, max_output_bytes=limit
             )
             if output.returncode:

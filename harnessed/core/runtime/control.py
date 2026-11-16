@@ -3,8 +3,8 @@ from collections.abc import AsyncGenerator, Callable, Coroutine
 from contextlib import asynccontextmanager
 
 from harnessed.core.errors import RunUnavailable, SessionClosed, SessionStateError
-from harnessed.core.events.session import ControlState, SessionControlChangedEvent
-from harnessed.core.events.session import SessionStatus as SessionStatus
+from harnessed.core.events import ControlState, SessionControlChangedEvent
+from harnessed.core.events import SessionStatus as SessionStatus
 from harnessed.core.hooks import SessionAborting
 from harnessed.core.session.session import SessionLog
 
@@ -269,49 +269,75 @@ class SessionControl:
         async with self._request():
             if not during_close:
                 self.check_open()
-            if turn_id is not None:
-                turn = self.log.open_turn
-                if turn is None or turn.id != turn_id:
-                    return
+            if turn_id is not None and not self._turn_is_open(turn_id):
+                return
             if immediate and turn_id is None:
                 await self._abort_owned_work()
-            task = self.task
-            if task is not None and (task.done() or self._finishing):
-                task = None
-            busy = task is not None
-            if not busy and self.log.open_turn is None and not self.log.inbox.pending:
+            task = self._running_task()
+            if task is None and self.log.open_turn is None and not self.log.inbox.pending:
                 if self.log.control.state != ControlState.ACTIVE:
                     await self.log.append(SessionControlChangedEvent(ControlState.ACTIVE))
                 return
-            state = self.log.control.state
-            requested = ControlState.ABORTING if immediate else ControlState.STOPPING
-            if state not in (requested, ControlState.ABORTING):
-                try:
-                    await self.log.append(
-                        SessionControlChangedEvent(requested, keep_inbox), expected_turn=turn_id
-                    )
-                    if immediate and turn_id is not None:
-                        await self._abort_owned_work()
-                except RunUnavailable:
-                    return
-                finally:
-                    if (
-                        immediate
-                        and task is not None
-                        and self.log.control.state == ControlState.ABORTING
-                    ):
-                        if not task.cancelling():
-                            task.cancel()
-            if not busy:
+            entered = await self._enter_termination(
+                task, immediate=immediate, keep_inbox=keep_inbox, turn_id=turn_id
+            )
+            if not entered:
+                return
+            if task is None:
                 await self.finish_termination()
         if task is not None:
-            try:
-                await asyncio.shield(task)
-            except asyncio.CancelledError:
-                if not task.cancelled():
-                    raise
-                await self.finish_termination()
+            await self._join_terminated(task)
         self.synchronize()
+
+    def _turn_is_open(self, turn_id: str) -> bool:
+        turn = self.log.open_turn
+        return turn is not None and turn.id == turn_id
+
+    def _running_task(self) -> asyncio.Task[None] | None:
+        """The run task that termination must still wait for, if any."""
+        task = self.task
+        if task is not None and (task.done() or self._finishing):
+            return None
+        return task
+
+    async def _enter_termination(
+        self,
+        task: asyncio.Task[None] | None,
+        *,
+        immediate: bool,
+        keep_inbox: bool,
+        turn_id: str | None,
+    ) -> bool:
+        """Record the stop or abort request; False when the target turn already ended."""
+        state = self.log.control.state
+        requested = ControlState.ABORTING if immediate else ControlState.STOPPING
+        if state in (requested, ControlState.ABORTING):
+            return True
+        try:
+            await self.log.append(
+                SessionControlChangedEvent(requested, keep_inbox), expected_turn=turn_id
+            )
+            if immediate and turn_id is not None:
+                await self._abort_owned_work()
+        except RunUnavailable:
+            return False
+        finally:
+            if (
+                immediate
+                and task is not None
+                and self.log.control.state == ControlState.ABORTING
+                and not task.cancelling()
+            ):
+                task.cancel()
+        return True
+
+    async def _join_terminated(self, task: asyncio.Task[None]) -> None:
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            if not task.cancelled():
+                raise
+            await self.finish_termination()
 
     async def _abort_owned_work(self) -> None:
         if self.log.scope is not None:

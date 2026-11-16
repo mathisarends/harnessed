@@ -39,7 +39,7 @@ async def exercise(sandbox: Sandbox, directory: Path) -> None:
         services = sandbox.services(session)
         shell = services.shell
         file_system = services.file_system
-        version = await shell.run(["python3", "--version"], cwd=Path("."), timeout=5)
+        version = await shell.run(["python3", "--version"], cwd=Path(), timeout=5)
         print(version.stdout.strip())
         print(await file_system.read(Path("result.txt")))
         print(await file_system.grep("Created", pattern="*.txt"))

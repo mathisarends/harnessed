@@ -47,7 +47,8 @@ class SimulatedCommandsTools(Plugin):
     @tool
     async def run_command(self, argv: list[str]) -> ToolResult:
         """Run the simulated test command."""
-        return ToolResult("FAILED tests/test_auth.py::test_login", ToolStatus.ERROR, exit_code=1)
+        output = f"$ {' '.join(argv)}\nFAILED tests/test_auth.py::test_login"
+        return ToolResult(output, ToolStatus.ERROR, exit_code=1)
 
 
 commands = SimulatedCommandsTools()

@@ -1,12 +1,13 @@
 from dataclasses import replace
 
 from harnessed.core.errors import ConfigError, SessionStateError
-from harnessed.core.events.messages import (
+from harnessed.core.events import (
     AssistantMessageEvent,
     MessageAppendedEvent,
     MessageLifetime,
+    OutputValidatedEvent,
+    OutputValidationFailedEvent,
 )
-from harnessed.core.events.output import OutputValidatedEvent, OutputValidationFailedEvent
 from harnessed.core.messages import AssistantMessage, ToolResult, UserMessage
 from harnessed.core.model import (
     Model,
@@ -78,8 +79,10 @@ class OutputHandler:
             raise SessionStateError("Output validation requires a recorded assistant message")
         if not outputs and (
             answer.stop_reason in (StopReason.CONTENT_FILTER, StopReason.ERROR)
-            or answer.stop_reason == StopReason.MAX_TOKENS
-            and self.options.on_max_tokens != TokenLimitBehavior.CONTINUE
+            or (
+                answer.stop_reason == StopReason.MAX_TOKENS
+                and self.options.on_max_tokens != TokenLimitBehavior.CONTINUE
+            )
         ):
             return {}, None
         compiled = self.scope[OutputTypes].resolve(schema)

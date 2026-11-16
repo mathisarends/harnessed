@@ -4,8 +4,8 @@ from pydantic import TypeAdapter, ValidationError
 from harnessed.core.approvals import ToolApprovalGuard
 from harnessed.core.budget import ContextBudget
 from harnessed.core.model import ModelInfo, ModelRequest, ModelUsage
-from harnessed.core.runtime.options import AgentLoopConfig
-from harnessed.core.tools.registry import ToolRegistry
+from harnessed.core.runtime import AgentLoopConfig
+from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import Scope
 from harnessed.models import GenerationSettings
 

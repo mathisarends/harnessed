@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from enum import IntEnum
+from functools import partial
 from typing import TYPE_CHECKING, Any, Generic, Protocol, Self, TypeVar, cast, overload
 
 from .di import BindingPlan, binding_plan
@@ -36,7 +37,7 @@ class Event(Generic[_Result]):  # noqa: UP046 -- Invariance keeps the result con
 
     @classmethod
     def _hook(cls, owner=None, *, prepend=False, priority=0) -> Any:
-        return ObserverHook(cls, owner, prepend, priority)
+        return ObserverHook(cls, owner, prepend=prepend, priority=priority)
 
 
 class Priority(IntEnum):
@@ -56,7 +57,7 @@ class Emit(Event[None]):
 
     @classmethod
     def _hook(cls, owner=None, *, prepend=False, priority=0) -> ObserverHook[Self, None]:
-        return ObserverHook(cls, owner, prepend, priority)
+        return ObserverHook(cls, owner, prepend=prepend, priority=priority)
 
 
 @dataclass(frozen=True)
@@ -85,7 +86,7 @@ class Bail[R](Event[R | None]):
 
     @classmethod
     def _hook(cls, owner=None, *, prepend=False, priority=0) -> ObserverHook[Self, R | None]:
-        return ObserverHook(cls, owner, prepend, priority)
+        return ObserverHook(cls, owner, prepend=prepend, priority=priority)
 
 
 class Waterfall[R](Event[R]):
@@ -97,7 +98,7 @@ class Waterfall[R](Event[R]):
 
     @classmethod
     def _hook(cls, owner=None, *, prepend=False, priority=0) -> WaterfallHook[Self, R]:
-        return WaterfallHook(cls, owner, prepend, priority)
+        return WaterfallHook(cls, owner, prepend=prepend, priority=priority)
 
 
 class Parallel(Event[None]):
@@ -109,7 +110,7 @@ class Parallel(Event[None]):
 
     @classmethod
     def _hook(cls, owner=None, *, prepend=False, priority=0) -> ObserverHook[Self, None]:
-        return ObserverHook(cls, owner, prepend, priority)
+        return ObserverHook(cls, owner, prepend=prepend, priority=priority)
 
 
 @dataclass(frozen=True)
@@ -189,50 +190,11 @@ class EventBus:
         default: Callable[[], R | Awaitable[R]] | None = None,
     ) -> R:
         listeners = self.matching(event)
-        instrumentation = scope[HookInstrumentation] if HookInstrumentation in scope else None
-
-        async def invoke(listener, *args):
-            if not listener.active or not listener.owner._registrations_active():
-                return None
-            with listener.owner.activate():
-                if instrumentation is None:
-                    bound = listener.plan.bind(scope, args)
-                    return await resolve(listener.callback(*bound.args, **bound.kwargs))
-                invocation = HookInvocation(
-                    type(event),
-                    listener.event,
-                    listener.callback,
-                    listener.owner.owner_name,
-                    listener.priority,
-                )
-                with instrumentation.invoke(scope, invocation):
-                    bound = listener.plan.bind(scope, args)
-                    return await resolve(listener.callback(*bound.args, **bound.kwargs))
-
+        invoke = partial(
+            _invoke, scope=scope, instrumentation=scope.get(HookInstrumentation), kind=type(event)
+        )
         if isinstance(event, Waterfall):
-
-            async def chain(index):
-                while index < len(listeners) and (
-                    not listeners[index].active
-                    or not listeners[index].owner._registrations_active()
-                ):
-                    index += 1
-                if index == len(listeners):
-                    if default is None:
-                        raise RuntimeError(f"No terminal handler for {type(event).__name__}")
-                    return await resolve(default())
-                called = False
-
-                async def next_():
-                    nonlocal called
-                    if called:
-                        raise RuntimeError("A waterfall continuation can only be called once")
-                    called = True
-                    return await chain(index + 1)
-
-                return await invoke(listeners[index], event, next_)
-
-            result = await chain(0)
+            result = await _waterfall(listeners, event, invoke, default=default)
             return cast(R, result)
         if isinstance(event, Parallel):
             async with asyncio.TaskGroup() as group:
@@ -244,6 +206,65 @@ class EventBus:
             if isinstance(event, Bail) and result is not None:
                 return cast(R, result)
         return cast(R, None)
+
+
+def _listening(listener: _Listener) -> bool:
+    return listener.active and listener.owner._registrations_active()
+
+
+async def _invoke(
+    listener: _Listener,
+    *args: Any,
+    scope: Scope,
+    instrumentation: HookInstrumentation | None,
+    kind: type[Event[Any]],
+) -> Any:
+    if not _listening(listener):
+        return None
+    with listener.owner.activate():
+        if instrumentation is None:
+            bound = listener.plan.bind(scope, args)
+            return await resolve(listener.callback(*bound.args, **bound.kwargs))
+        invocation = HookInvocation(
+            kind,
+            listener.event,
+            listener.callback,
+            listener.owner.owner_name,
+            listener.priority,
+        )
+        with instrumentation.invoke(scope, invocation):
+            bound = listener.plan.bind(scope, args)
+            return await resolve(listener.callback(*bound.args, **bound.kwargs))
+
+
+async def _waterfall(
+    listeners: list[_Listener],
+    event: Event[Any],
+    invoke: Callable[..., Awaitable[Any]],
+    *,
+    default: Callable[[], Any] | None,
+) -> Any:
+    """Run each live listener with a single-use continuation to the next one."""
+
+    async def chain(index: int) -> Any:
+        while index < len(listeners) and not _listening(listeners[index]):
+            index += 1
+        if index == len(listeners):
+            if default is None:
+                raise RuntimeError(f"No terminal handler for {type(event).__name__}")
+            return await resolve(default())
+        called = False
+
+        async def next_() -> Any:
+            nonlocal called
+            if called:
+                raise RuntimeError("A waterfall continuation can only be called once")
+            called = True
+            return await chain(index + 1)
+
+        return await invoke(listeners[index], event, next_)
+
+    return await chain(0)
 
 
 @overload

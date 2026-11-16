@@ -2,8 +2,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 
 from harnessed.core.child_status import ChildActivity, ChildReportState, ChildRuntimeState
-from harnessed.core.events.base import DurableEvent
-from harnessed.core.events.subagents import (
+from harnessed.core.events import (
+    DurableEvent,
     SubagentApprovalRequestedEvent,
     SubagentFinishedEvent,
     SubagentLinkedEvent,

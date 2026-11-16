@@ -1,5 +1,6 @@
-from collections.abc import AsyncGenerator, Iterable
+from collections.abc import AsyncGenerator, Iterable, Sequence
 from contextlib import asynccontextmanager
+from itertools import chain
 from typing import Any, Unpack, overload
 
 from harnessed.core.approvals import Approvals
@@ -19,11 +20,7 @@ from harnessed.core.plugin import Service, plugin_contribution, plugin_events
 from harnessed.core.prompt.instructions import PromptRenderer
 from harnessed.core.prompt.values import PromptComposition, SystemPrompt
 from harnessed.core.result import RunResult
-from harnessed.core.runtime.agent_loop import AgentLoop
-from harnessed.core.runtime.opener import open_session
-from harnessed.core.runtime.options import RunOptions
-from harnessed.core.runtime.services import RuntimeServices
-from harnessed.core.runtime.session import Session
+from harnessed.core.runtime import AgentLoop, RunOptions, RuntimeServices, Session, open_session
 from harnessed.core.session.state import SessionState
 from harnessed.core.session.store import SessionStore
 from harnessed.core.tools.output_limit import ToolOutputLimit
@@ -53,51 +50,15 @@ class Agent:
             PluginValidation(plugin_validation)
         )
         self.store = store
-        supplied: list[PluginInput] = [value for value in plugins if value is not None]
-        if prompt is not None:
-            supplied.insert(0, PromptRenderer(prompt))
-        if model is not None:
-            supplied.insert(0, Service(Model, model))
         composition = compose_plugins(
-            supplied,
-            defaults=[
-                RuntimeServices(),
-                AgentLoop(),
-                ToolOutputLimit(),
-                Approvals(),
-                NoopTracer(),
-                PromptRenderer(),
-            ],
+            _configured_plugins(plugins, model=model, prompt=prompt),
+            defaults=_default_plugins(),
         )
         self._description = composition.description
-        normalized: list[PluginLike] = []
-        for value in composition.plugins:
-            if isinstance(value, Service) and value.key is Model:
-                implementation = value.value
-                if isinstance(implementation, str):
-                    implementation = PydanticAIModel(implementation)
-                elif not isinstance(implementation, Model):
-                    raise ConfigError(
-                        "model must implement harnessed.models.Model; wrap native "
-                        "PydanticAI models with PydanticAIModel(model)"
-                    )
-                value = Service(Model, implementation)
-            normalized.append(value)
-        declared = next((value for value in normalized if isinstance(value, PromptRenderer)), None)
-        self.prompt = PromptComposition(
-            declared.values if declared is not None else None,
-            (plugin_contribution(value) for value in normalized),
-            instructions=instructions,
-        )
-        self.plugins = tuple(
-            PromptRenderer(self.prompt.document, composition=self.prompt)
-            if isinstance(value, PromptRenderer)
-            else value
-            for value in normalized
-        )
-        self._events = EventRegistry(
-            kind for plugin in self.plugins for kind in plugin_events(plugin)
-        )
+        resolved = [_resolve_model(value) for value in composition.plugins]
+        self.prompt = _compose_prompt(resolved, instructions=instructions)
+        self.plugins = tuple(_bind_prompt(value, self.prompt) for value in resolved)
+        self._events = EventRegistry(chain.from_iterable(map(plugin_events, self.plugins)))
 
     def describe(self) -> CompositionDescription:
         """Inspect configured order, origins, replacements and exclusions without mounting."""
@@ -177,3 +138,67 @@ class Agent:
         """Run one task in a new session."""
         async with self.session(state=state) as session:
             return await session.run(content, output=output, **options)
+
+
+def _configured_plugins(
+    plugins: Iterable[PluginInput | None],
+    *,
+    model: Model | str | None,
+    prompt: SystemPrompt | None,
+) -> list[PluginInput]:
+    """Place the explicit model and prompt arguments before the supplied plugins."""
+    leading: list[PluginInput] = []
+    if model is not None:
+        leading.append(Service(Model, model))
+    if prompt is not None:
+        leading.append(PromptRenderer(prompt))
+    return [*leading, *(value for value in plugins if value is not None)]
+
+
+def _default_plugins() -> list[PluginLike]:
+    """Create the default runtime plugins that fill unclaimed slots."""
+    return [
+        RuntimeServices(),
+        AgentLoop(),
+        ToolOutputLimit(),
+        Approvals(),
+        NoopTracer(),
+        PromptRenderer(),
+    ]
+
+
+def _resolve_model(value: PluginLike) -> PluginLike:
+    """Replace a configured model name or object with a validated model service."""
+    if not isinstance(value, Service) or value.key is not Model:
+        return value
+    implementation = value.value
+    if isinstance(implementation, str):
+        return Service(Model, PydanticAIModel(implementation))
+    if isinstance(implementation, Model):
+        return Service(Model, implementation)
+    raise ConfigError(
+        "model must implement harnessed.models.Model; wrap native "
+        "PydanticAI models with PydanticAIModel(model)"
+    )
+
+
+def _compose_prompt(
+    plugins: Sequence[PluginLike], *, instructions: str | None
+) -> PromptComposition:
+    """Compose the declared system prompt with every plugin's prompt contribution."""
+    declared = next((value for value in plugins if isinstance(value, PromptRenderer)), None)
+    values = None
+    if declared is not None:
+        values = declared.values
+    return PromptComposition(
+        values,
+        (plugin_contribution(value) for value in plugins),
+        instructions=instructions,
+    )
+
+
+def _bind_prompt(value: PluginLike, prompt: PromptComposition) -> PluginLike:
+    """Bind the prompt renderer to the composed prompt; keep other plugins unchanged."""
+    if isinstance(value, PromptRenderer):
+        return PromptRenderer(prompt.document, composition=prompt)
+    return value

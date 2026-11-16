@@ -49,7 +49,7 @@ async def listener_and_priorities():
             return "Artifact published by the offline example."
 
         @hook(ToolPolicy, priority=0)
-        async def timing(self, event, next_):
+        async def timing(self, _event, next_):
             order.append("timer")
             start = perf_counter()
             result = await next_()
@@ -57,13 +57,13 @@ async def listener_and_priorities():
             return result
 
         @hook(ToolPolicy, priority=100)
-        async def check(self, event, next_):
+        async def check(self, _event, next_):
             order.append("policy")
             await asyncio.sleep(0.005)
             return await next_()
 
         @hook(RequestApproval)
-        async def answer(self, event):
+        async def answer(self, _event):
             order.append("approval")
             start = perf_counter()
             await asyncio.sleep(0.025)
@@ -96,7 +96,7 @@ async def response_timeout():
     ).session() as session:
 
         @session.on(RequestApproval)
-        async def disconnected(event):
+        async def disconnected(_event):
             try:
                 await asyncio.Event().wait()
             finally:

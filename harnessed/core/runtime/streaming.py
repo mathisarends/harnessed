@@ -3,51 +3,47 @@ from typing import Any
 
 from harnessed.core.buffering import EventBuffer
 from harnessed.core.errors import SessionClosed
-from harnessed.core.events.approvals import (
+from harnessed.core.events import (
+    SESSION_EVENT_TYPES,
     ApprovalNeededEvent,
-)
-from harnessed.core.events.base import DurableEvent, TransientEvent
-from harnessed.core.events.compaction import (
     CompactionAppliedEvent,
     CompactionFinishedEvent,
     CompactionStartedEvent,
-)
-from harnessed.core.events.completion import TurnResultEvent
-from harnessed.core.events.inbox import InboxAddedEvent, InboxRemovedEvent
-from harnessed.core.events.messages import ReasoningDeltaEvent, TextDeltaEvent
-from harnessed.core.events.model import (
+    ControlState,
+    DurableEvent,
+    InboxAddedEvent,
+    InboxRemovedEvent,
     ModelAttemptFinishedEvent,
     ModelAttemptStartedEvent,
     ModelRequestedEvent,
     ModelRequestFailedEvent,
     ModelRetryScheduledEvent,
-)
-from harnessed.core.events.observations import SpillCreatedEvent, SpillExpiredEvent
-from harnessed.core.events.output import OutputValidatedEvent, OutputValidationFailedEvent
-from harnessed.core.events.session import (
-    ControlState,
+    OutputValidatedEvent,
+    OutputValidationFailedEvent,
+    ReasoningDeltaEvent,
     SessionControlChangedEvent,
     SessionStatusChangedEvent,
-)
-from harnessed.core.events.stream import STREAM_EVENT_TYPES, StreamItem, coalesce_deltas
-from harnessed.core.events.subagents import (
+    SpillCreatedEvent,
+    SpillExpiredEvent,
     SubagentApprovalRequestedEvent,
     SubagentFinishedEvent,
     SubagentLinkedEvent,
     SubagentMessageSentEvent,
     SubagentStartedEvent,
     SubagentUpdatedEvent,
-)
-from harnessed.core.events.tools import (
+    TextDeltaEvent,
     ToolArgumentsDeltaEvent,
     ToolCallFinishedEvent,
     ToolCallGenerationStartedEvent,
     ToolCallRequestedEvent,
     ToolExecutionStartedEvent,
     ToolProgressEvent,
+    TransientEvent,
+    TurnEndedEvent,
+    TurnStartedEvent,
 )
-from harnessed.core.events.turn import TurnEndedEvent, TurnStartedEvent
-from harnessed.core.events.unions import SESSION_EVENT_TYPES
+from harnessed.core.events.completion import TurnResultEvent
+from harnessed.core.events.stream import STREAM_EVENT_TYPES, StreamItem, coalesce_deltas
 from harnessed.core.result import RunResult
 from harnessed.core.runtime.control import SessionControl, SessionStatus
 from harnessed.core.runtime.inbox import SessionInbox
@@ -84,9 +80,10 @@ async def project_stream_events(
                     | ModelRetryScheduledEvent()
                     | ModelRequestedEvent()
                     | ModelRequestFailedEvent()
+                    | CompactionAppliedEvent()
+                    | SpillCreatedEvent()
+                    | SpillExpiredEvent()
                 ):
-                    yield event
-                case CompactionAppliedEvent() | SpillCreatedEvent() | SpillExpiredEvent():
                     yield event
                 case DurableEvent() | TransientEvent() if (
                     event.type not in SESSION_EVENT_TYPES and event.type not in STREAM_EVENT_TYPES
@@ -173,9 +170,8 @@ class TurnStreams:
                         self._control.wake()
                         continue
                     return
-                if isinstance(event, TurnStartedEvent):
-                    if event.input_id == input_id:
-                        turn_id = event.turn_id
+                if isinstance(event, TurnStartedEvent) and event.input_id == input_id:
+                    turn_id = event.turn_id
                 if turn_id is None:
                     if isinstance(event, InboxAddedEvent) and event.message.id == input_id:
                         yield event

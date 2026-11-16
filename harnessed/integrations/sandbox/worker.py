@@ -11,8 +11,8 @@ import sys
 import tarfile
 import time
 import uuid
-from collections.abc import Generator
-from contextlib import contextmanager
+from collections.abc import Callable, Generator
+from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from pathlib import PurePosixPath
@@ -74,10 +74,8 @@ def parent(path: str, *, create: bool = False) -> Generator[tuple[int, str]]:
     try:
         for name in components[:-1]:
             if create:
-                try:
+                with suppress(FileExistsError):
                     os.mkdir(name, dir_fd=fd)
-                except FileExistsError:
-                    pass
             child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
             os.close(fd)
             fd = child
@@ -156,10 +154,8 @@ def write_bytes(path: str, data: bytes, maximum: int) -> None:
                 stream.write(data)
             os.replace(temporary, name, src_dir_fd=fd, dst_dir_fd=fd)
         finally:
-            try:
+            with suppress(FileNotFoundError):
                 os.unlink(temporary, dir_fd=fd)
-            except FileNotFoundError:
-                pass
 
 
 def _match_path(path: tuple[str, ...], pattern: tuple[str, ...]) -> bool:
@@ -267,10 +263,8 @@ def command(request: Request) -> CommandResult:
     timed_out = False
 
     def kill() -> None:
-        try:
+        with suppress(ProcessLookupError):
             os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
 
     try:
         with selectors.DefaultSelector() as selector:
@@ -339,84 +333,116 @@ def _dispatch(request: Request) -> object:
         raise RuntimeError("The sandbox worker must execute inside a POSIX sandbox")
     if request.version != 1:
         raise ValueError("Unsupported sandbox protocol version")
-    match request.operation:
-        case Operation.RUN:
-            return asdict(command(request))
-        case Operation.READ:
-            return read(request)
-        case Operation.WRITE:
-            write(request.path, request.text, request.max_transfer_bytes)
-        case Operation.REPLACE:
-            if not request.old:
-                raise ValueError("The text to replace must not be empty")
-            text = read(request)
-            count = text.count(request.old)
-            if count != 1:
-                raise ValueError(f"Expected one match; found {count}")
-            write(
-                request.path, text.replace(request.old, request.new, 1), request.max_transfer_bytes
-            )
-        case Operation.DELETE:
-            with parent(request.path) as (fd, name):
-                os.unlink(name, dir_fd=fd)
-        case Operation.EXISTS:
-            try:
-                metadata(request.path)
-            except FileNotFoundError:
-                return False
-            return True
-        case Operation.STAT:
-            return metadata(request.path)
-        case Operation.LIST:
-            with opened(request.path, directory=True) as fd:
-                names = os.listdir(fd)
-            if len(names) > 1000:
-                raise ValueError("Directory exceeds 1000 entries; use glob")
-            return [metadata(str(PurePosixPath(request.path, name))) for name in sorted(names)]
-        case Operation.GLOB:
-            return _matches(request.path, request.limit if request.limit is not None else 1000)
-        case Operation.GREP:
-            return grep(request)
-        case Operation.READ_BYTES:
-            if request.limit is not None and request.limit < 0:
-                raise ValueError("File ranges must be non-negative")
-            maximum = request.max_transfer_bytes + 1
-            if request.limit is not None:
-                maximum = min(maximum, request.limit)
-            with opened(request.path) as fd, os.fdopen(os.dup(fd), "rb") as stream:
-                data = stream.read(maximum)
-            if len(data) > request.max_transfer_bytes:
-                raise ValueError("Export exceeds max_transfer_bytes")
-            return base64.b64encode(data).decode("ascii")
-        case Operation.IMPORT:
-            with opened(".", directory=True):
-                pass
-            data = base64.b64decode(request.text, validate=True)
-            if len(data) > request.max_transfer_bytes:
-                raise ValueError("Workspace import exceeds max_transfer_bytes")
-            with tarfile.open(fileobj=io.BytesIO(data), mode="r:") as archive:
-                total = 0
-                for member in archive:
-                    parts(member.name)
-                    if member.isdir():
-                        with parent(member.name + "/.seed", create=True):
-                            pass
-                        continue
-                    if not member.isfile():
-                        raise ValueError("Workspace archives may contain only regular files")
-                    total += member.size
-                    if total > request.max_transfer_bytes:
-                        raise ValueError("Workspace import exceeds max_transfer_bytes")
-                    stream = archive.extractfile(member)
-                    assert stream is not None
-                    with stream:
-                        write_bytes(member.name, stream.read(), request.max_transfer_bytes)
-                    with opened(member.name) as fd:
-                        os.fchmod(fd, member.mode & 0o777)
-        case _:
-            raise ValueError("Unknown sandbox operation")
-    return None
+    handler = _HANDLERS.get(request.operation)
+    if handler is None:
+        raise ValueError("Unknown sandbox operation")
+    return handler(request)
 
+
+def _run(request: Request) -> dict[str, object]:
+    return asdict(command(request))
+
+
+def _write(request: Request) -> None:
+    write(request.path, request.text, request.max_transfer_bytes)
+
+
+def _replace(request: Request) -> None:
+    if not request.old:
+        raise ValueError("The text to replace must not be empty")
+    text = read(request)
+    count = text.count(request.old)
+    if count != 1:
+        raise ValueError(f"Expected one match; found {count}")
+    write(request.path, text.replace(request.old, request.new, 1), request.max_transfer_bytes)
+
+
+def _delete(request: Request) -> None:
+    with parent(request.path) as (fd, name):
+        os.unlink(name, dir_fd=fd)
+
+
+def _exists(request: Request) -> bool:
+    try:
+        metadata(request.path)
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def _stat(request: Request) -> dict[str, str | int | float | bool]:
+    return metadata(request.path)
+
+
+def _list(request: Request) -> list[dict[str, str | int | float | bool]]:
+    with opened(request.path, directory=True) as fd:
+        # Path.iterdir() cannot list an already opened, confined directory descriptor.
+        names = os.listdir(fd)  # noqa: PTH208
+    if len(names) > 1000:
+        raise ValueError("Directory exceeds 1000 entries; use glob")
+    return [metadata(str(PurePosixPath(request.path, name))) for name in sorted(names)]
+
+
+def _glob(request: Request) -> list[str]:
+    return _matches(request.path, request.limit if request.limit is not None else 1000)
+
+
+def _read_bytes(request: Request) -> str:
+    if request.limit is not None and request.limit < 0:
+        raise ValueError("File ranges must be non-negative")
+    maximum = request.max_transfer_bytes + 1
+    if request.limit is not None:
+        maximum = min(maximum, request.limit)
+    with opened(request.path) as fd, os.fdopen(os.dup(fd), "rb") as stream:
+        data = stream.read(maximum)
+    if len(data) > request.max_transfer_bytes:
+        raise ValueError("Export exceeds max_transfer_bytes")
+    return base64.b64encode(data).decode("ascii")
+
+
+def _import(request: Request) -> None:
+    if sys.platform == "win32":
+        raise RuntimeError("The sandbox worker must execute inside a POSIX sandbox")
+    with opened(".", directory=True):
+        pass
+    data = base64.b64decode(request.text, validate=True)
+    if len(data) > request.max_transfer_bytes:
+        raise ValueError("Workspace import exceeds max_transfer_bytes")
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:") as archive:
+        total = 0
+        for member in archive:
+            parts(member.name)
+            if member.isdir():
+                with parent(member.name + "/.seed", create=True):
+                    pass
+                continue
+            if not member.isfile():
+                raise ValueError("Workspace archives may contain only regular files")
+            total += member.size
+            if total > request.max_transfer_bytes:
+                raise ValueError("Workspace import exceeds max_transfer_bytes")
+            stream = archive.extractfile(member)
+            assert stream is not None
+            with stream:
+                write_bytes(member.name, stream.read(), request.max_transfer_bytes)
+            with opened(member.name) as fd:
+                os.fchmod(fd, member.mode & 0o777)
+
+
+_HANDLERS: dict[Operation, Callable[[Request], object]] = {
+    Operation.RUN: _run,
+    Operation.READ: read,
+    Operation.WRITE: _write,
+    Operation.REPLACE: _replace,
+    Operation.DELETE: _delete,
+    Operation.EXISTS: _exists,
+    Operation.STAT: _stat,
+    Operation.LIST: _list,
+    Operation.GLOB: _glob,
+    Operation.GREP: grep,
+    Operation.READ_BYTES: _read_bytes,
+    Operation.IMPORT: _import,
+}
 
 if __name__ == "__main__":
     main()

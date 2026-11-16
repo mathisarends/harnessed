@@ -1,7 +1,7 @@
 from typing import NamedTuple
 
 from harnessed.core.approvals import Approval, ApprovalState, approval_transition
-from harnessed.core.events.base import DurableEvent
+from harnessed.core.events import DurableEvent
 
 
 class ApprovalProjection:

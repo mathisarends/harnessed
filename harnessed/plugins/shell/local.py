@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import signal
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, override
 
 from pydantic import Field
 
@@ -94,15 +95,11 @@ class LocalShell:
             if job is not None:
                 job.close()
             elif process is not None:
-                try:
+                with contextlib.suppress(ProcessLookupError):
                     os.killpg(process.get_pid(), signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
             if process is not None and process.get_returncode() is None:
-                try:
+                with contextlib.suppress(ProcessLookupError):
                     process.kill()
-                except ProcessLookupError:
-                    pass
 
         spawning = asyncio.create_task(
             asyncio.get_running_loop().subprocess_exec(
@@ -219,7 +216,8 @@ class _LocalProcess:
         self.started.set()
         state = ProcessState.EXITED
         try:
-            result = await backend._execute(self)
+            # LocalShell owns and runs the processes defined beside it in this module.
+            result = await backend._execute(self)  # noqa: SLF001
             self.returncode = result.returncode
         except asyncio.CancelledError:
             state = ProcessState.CANCELLED
@@ -257,6 +255,7 @@ class _ProcessProtocol(asyncio.SubprocessProtocol):
     def resume_writing(self) -> None:
         self.writable.set()
 
+    @override
     def connection_lost(self, exc: Exception | None) -> None:
         self.writable.set()
         self.closed.set()

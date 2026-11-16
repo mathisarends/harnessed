@@ -12,7 +12,7 @@ from harnessed.core.approvals import (
 )
 from harnessed.core.children import ChildSessionRequest
 from harnessed.core.errors import ApprovalUnavailable
-from harnessed.core.events.approvals import (
+from harnessed.core.events import (
     ApprovalRequestedEvent,
     ApprovalResolvedEvent,
     ApprovalRevokedEvent,
@@ -23,7 +23,7 @@ from harnessed.core.messages import ApprovalAnswer, ToolCall
 from harnessed.core.runtime.context import SessionContext
 from harnessed.core.runtime.control import SessionControl
 from harnessed.core.session.session import SessionLog
-from harnessed.core.tools.execution import suspend_tool_execution
+from harnessed.core.tools import suspend_tool_execution
 from harnessed.core.tracing import span
 from harnessed.kernel import Scope
 
@@ -229,7 +229,7 @@ class SessionApprovals:
                     elif approver is not None:
                         selected = approver
                     else:
-                        selected = self.scope[Approver] if Approver in self.scope else None
+                        selected = self.scope.get(Approver)
                     if selected is not None:
                         decision = await selected.ask(request)
                     else:

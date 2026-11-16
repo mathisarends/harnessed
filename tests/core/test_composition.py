@@ -54,7 +54,7 @@ def test_sibling_pack_conflicts_do_not_depend_on_internal_depth(wrapped):
     second = PluginPack("second", [Choice(name="two")])
     if wrapped:
         first = PluginPack("wrapper", [first])
-    with pytest.raises(PluginConflict, match="example.choice") as failure:
+    with pytest.raises(PluginConflict, match=r"example.choice") as failure:
         compose_plugins([first, second])
     assert "first / one" in str(failure.value)
     assert "second / two" in str(failure.value)
@@ -69,7 +69,7 @@ def test_duplicate_direct_slots_are_errors_even_if_the_parent_supplies_an_overri
     inputs = [Choice(name="one"), Choice(name="two")]
     if nested:
         inputs = [PluginPack("invalid", inputs), Choice(name="parent")]
-    with pytest.raises(PluginConflict, match="one, .*two"):
+    with pytest.raises(PluginConflict, match=r"one, .*two"):
         compose_plugins(inputs)
 
 
@@ -166,7 +166,7 @@ def test_function_factories_are_configured_once_and_kernel_bundles_remain_recipe
     bundle = Bundle("hooks")
     configured = factory()
     inputs: list[PluginLike] = [bundle, factory, configured]
-    with pytest.raises(PluginConflict, match="example.function"):
+    with pytest.raises(PluginConflict, match=r"example.function"):
         compose_plugins(inputs)
     resolved = compose_plugins([PluginPack("library", [factory, bundle]), configured])
     assert resolved.plugins == (configured, bundle)

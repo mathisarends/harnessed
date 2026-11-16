@@ -4,13 +4,11 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
-from harnessed.core.events.base import DurableEvent, TransientEvent
-from harnessed.core.events.tools import ToolProgressEvent
+from harnessed.core.events import DurableEvent, ToolProgressEvent, TransientEvent
 from harnessed.core.messages import ApprovalAnswer, ToolCall
 
 if TYPE_CHECKING:
-    from harnessed.core.runtime.approvals import SessionApprovals
-    from harnessed.core.runtime.inbox import SessionInbox
+    from harnessed.core.runtime import SessionApprovals, SessionInbox
     from harnessed.core.session.session import SessionLog
 
 

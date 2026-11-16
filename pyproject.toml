@@ -79,16 +79,41 @@ target-version = "py312"
 line-length = 100
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "ASYNC", "TID252", "PLC0415"]
+select = [
+    "E", "F", "I", "UP", "B", "ASYNC", "TID252", "PLC0415",
+    # Readability: bounded complexity and simpler, canonical expressions.
+    "C90", "PLR0911", "PLR0912", "PLR0915", "SIM", "C4", "RUF", "PTH",
+    # Interface hygiene: unused parameters, boolean flags and private access.
+    "ARG", "FBT", "SLF001",
+]
 # Shell's public timeout parameter is implemented with asyncio.timeout internally.
-ignore = ["ASYNC109"]
+# Smelt SMT350 owns broad-except reasons, so BLE001 is not selected.
+# Architecture tests require plain sorted `__all__`; RUF022 uses isort-style order.
+# FBT001/FBT002 guard our signatures; FBT003 would only flag external positional APIs
+# such as OpenTelemetry attributes and Win32 calls.
+ignore = ["ASYNC109", "RUF022", "FBT003"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 12
 
 [tool.ruff.lint.per-file-ignores]
 # Provider SDKs are optional; importing the core must not require an extra.
 "harnessed/models/pydantic_ai.py" = ["PLC0415"]
 "harnessed/plugins/skills.py" = ["PLC0415"]
+# Classes of the standalone kernel cooperate through private state by design;
+# ownership-aware checking is proposed upstream (mathisarends/smelt#170).
+"harnessed/kernel/**/*.py" = ["SLF001"]
 # Tests import optional integrations and patch import failures in their own scope.
-"tests/**/*.py" = ["PLC0415"]
+# Fakes implement protocols with unused parameters; Smelt SMT420 owns private access.
+# Tests include intentionally ambiguous Unicode inputs.
+"tests/**/*.py" = ["PLC0415", "ARG", "FBT", "SLF001", "C90", "PLR09", "RUF001"]
+
+[tool.ruff.lint.flake8-bugbear]
+# Frozen value objects are safe shared dataclass defaults.
+extend-immutable-calls = [
+    "harnessed.core.tools.info.ToolEnvelope",
+    "harnessed.core.tools.info.ToolPresentation",
+]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "parents"

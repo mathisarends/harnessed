@@ -8,11 +8,16 @@ from harnessed import (
 )
 from harnessed import Plugin, PolicyDecision, ToolCall, ToolResult, tool
 from harnessed.core.compaction import ContextState, ModelSummarizer
-from harnessed.core.events.compaction import CompactionAppliedEvent
-from harnessed.core.events.messages import SystemMessageEvent, UserMessageEvent
-from harnessed.core.events.model import ModelUsageRecordedEvent
-from harnessed.core.events.observations import ObservationPolicyAppliedEvent, SpillCreatedEvent
-from harnessed.core.events.turn import TurnEndedEvent, TurnStartedEvent
+from harnessed.core.events import (
+    CompactionAppliedEvent,
+    ModelUsageRecordedEvent,
+    ObservationPolicyAppliedEvent,
+    SpillCreatedEvent,
+    SystemMessageEvent,
+    TurnEndedEvent,
+    TurnStartedEvent,
+    UserMessageEvent,
+)
 from harnessed.core.hooks import PreStep
 from harnessed.core.messages import AssistantMessage, ToolStatus, UserMessage
 from harnessed.core.model import ModelChunk, ModelUsage
@@ -20,7 +25,7 @@ from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.core.session.files import SessionFiles
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import ApproximateTokenCounter
-from harnessed.core.tools.registry import ToolError
+from harnessed.core.tools import ToolError
 from harnessed.kernel import hook
 from harnessed.plugins import AgentLoop, Approvals, Compaction, at_ratio, every_turns
 from harnessed.plugins.observations import LatestObservationOnly

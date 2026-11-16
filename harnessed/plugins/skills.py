@@ -4,7 +4,7 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
-from typing import Annotated, Any, Protocol
+from typing import Annotated, Any, ClassVar, Protocol, override
 from unicodedata import normalize
 from xml.sax.saxutils import escape, quoteattr
 
@@ -19,7 +19,7 @@ from pydantic import (
 )
 
 from harnessed.core.errors import ConfigError
-from harnessed.core.events.tools import ToolCallFinishedEvent, ToolCallRequestedEvent
+from harnessed.core.events import ToolCallFinishedEvent, ToolCallRequestedEvent
 from harnessed.core.hooks import PrepareRequest, SessionAppended
 from harnessed.core.messages import (
     AssistantMessage,
@@ -141,8 +141,9 @@ def _metadata(text: str) -> dict:
     class UniqueLoader(yaml.SafeLoader):
         # Skill frontmatter scalars are strings, including names such as `on` and `123`.
         # Keep this local so ordinary SafeLoader users retain their YAML type resolution.
-        yaml_implicit_resolvers = {}
+        yaml_implicit_resolvers: ClassVar[dict[str, list[object]]] = {}
 
+        @override
         def construct_mapping(self, node, deep=False):
             self.flatten_mapping(node)
             result = {}
@@ -360,7 +361,8 @@ class Skills(Plugin, slot="skills"):
                 self._calls.discard(message.tool_call_id)
 
     async def _catalog(self, scope: PluginScope) -> _Catalog:
-        key = self.recipe._key
+        # Every session mount of one recipe shares the recipe's private catalog key.
+        key = self.recipe._key  # noqa: SLF001
         if key not in scope:
             try:
                 catalog = await asyncio.to_thread(_discover, self.sources)
@@ -421,7 +423,7 @@ class Skills(Plugin, slot="skills"):
             await self._retain()
 
     @hook(PrepareRequest)
-    async def enrich(self, event: PrepareRequest, next_: Next[ModelRequest]) -> ModelRequest:
+    async def enrich(self, _event: PrepareRequest, next_: Next[ModelRequest]) -> ModelRequest:
         request = await next_()
         for name, instructions in self._loaded.items():
             request = request.append_message(

@@ -3,7 +3,7 @@ import pytest
 from harnessed.core.errors import ToolNameConflict
 from harnessed.core.messages import ToolCall
 from harnessed.core.prompt.system import SystemPromptStore
-from harnessed.core.tools.registry import ToolError, ToolRegistry
+from harnessed.core.tools import ToolError, ToolRegistry
 from harnessed.kernel import Scope
 
 

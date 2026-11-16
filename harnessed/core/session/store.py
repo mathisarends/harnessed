@@ -1,25 +1,25 @@
 import asyncio
+import contextlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Protocol
 
 from harnessed.core.errors import SessionStateError
-from harnessed.core.events.approvals import (
+from harnessed.core.events import (
     ApprovalRequestedEvent,
     ApprovalResolvedEvent,
     ApprovalRevokedEvent,
-)
-from harnessed.core.events.compaction import CompactionAppliedEvent
-from harnessed.core.events.inbox import InboxAddedEvent, InboxRemovedEvent
-from harnessed.core.events.messages import PluginInstructionsChangedEvent
-from harnessed.core.events.model import ModelRequestedEvent
-from harnessed.core.events.session import SessionControlChangedEvent
-from harnessed.core.events.tools import (
+    CompactionAppliedEvent,
+    InboxAddedEvent,
+    InboxRemovedEvent,
+    ModelRequestedEvent,
+    PluginInstructionsChangedEvent,
+    SessionControlChangedEvent,
     ToolCallFinishedEvent,
     ToolExecutionFinishedEvent,
     ToolExecutionStartedEvent,
+    TurnEndedEvent,
 )
-from harnessed.core.events.turn import TurnEndedEvent
 
 from .checkpoint import CheckpointExtension, SessionCheckpoint
 from .commit import SessionChange, SessionCommit
@@ -176,10 +176,8 @@ class SessionPersistence:
 
     async def _deferred(self) -> None:
         try:
-            try:
+            with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._wake.wait(), timeout=_CHECKPOINT_INTERVAL)
-            except TimeoutError:
-                pass
             flush = self._flush
             if flush is not None:
                 await flush()

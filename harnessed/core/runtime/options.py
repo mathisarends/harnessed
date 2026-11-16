@@ -8,8 +8,8 @@ from harnessed.core.attachments import Attachment
 from harnessed.core.limits import FinalStepPolicy
 from harnessed.core.model import GenerationSettings, TokenLimitBehavior
 from harnessed.core.plugin import PluginConfig
+from harnessed.core.tools import ErrorFormatter
 from harnessed.core.tools.output_limit import ToolOutputLimit
-from harnessed.core.tools.registry import ErrorFormatter
 
 
 class RunOptions(TypedDict, total=False):

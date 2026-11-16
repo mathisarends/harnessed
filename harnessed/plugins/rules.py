@@ -7,18 +7,18 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass as event_dataclass
 from dataclasses import field, replace
 from enum import StrEnum
-from typing import Annotated, Literal, Self
+from typing import Annotated, Literal, Self, override
 
 from pydantic import AfterValidator, ConfigDict, Field, StringConstraints, TypeAdapter
 from pydantic.dataclasses import dataclass
 
-from harnessed.core.events.base import DurableEvent, Identifier
+from harnessed.core.events import DurableEvent, Identifier
 from harnessed.core.hooks import PrepareRequest, ReviewToolResult
 from harnessed.core.messages import ToolCall, ToolResult, UserMessage, to_dict, user
 from harnessed.core.model import ModelRequest
 from harnessed.core.plugin import Plugin
 from harnessed.core.prompt.plugin_instructions import PluginInstructions
-from harnessed.core.runtime.inbox import SessionInbox
+from harnessed.core.runtime import SessionInbox
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import TokenCounter, count_content
 from harnessed.kernel import Inject, Next, PluginScope, PluginState, hook, needs
@@ -224,6 +224,7 @@ class Rules(Plugin, needs=(SessionLog, TokenCounter, SessionInbox)):
                     await inbox.steer(user(text))
         return replace(result, rule_matches=tuple(matches))
 
+    @override
     async def teardown(self, scope: PluginScope) -> None:
         for index, rule in enumerate(self.rules):
             if any(kind is RuleAction.CONTEXT for kind, _ in rule.actions):
@@ -232,7 +233,7 @@ class Rules(Plugin, needs=(SessionLog, TokenCounter, SessionInbox)):
     @hook(PrepareRequest)
     async def enrich(
         self,
-        event: PrepareRequest,
+        _event: PrepareRequest,
         next_: Next[ModelRequest],
         context: Inject[PluginInstructions],
     ) -> ModelRequest:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 from dataclasses import dataclass, replace
@@ -16,9 +17,12 @@ from harnessed.core.child_status import (
 )
 from harnessed.core.children import ChildLimits, ChildSessionFactory, ChildSessionRequest
 from harnessed.core.errors import SessionStateError
-from harnessed.core.events.approvals import ApprovalRequestedEvent, ApprovalResolvedEvent
-from harnessed.core.events.model import ModelRequestedEvent
-from harnessed.core.events.subagents import (
+from harnessed.core.events import (
+    ApprovalRequestedEvent,
+    ApprovalResolvedEvent,
+    DurableEvent,
+    ModelRequestedEvent,
+    StepEndedEvent,
     SubagentApprovalRequestedEvent,
     SubagentFinishedEvent,
     SubagentLinkedEvent,
@@ -26,15 +30,13 @@ from harnessed.core.events.subagents import (
     SubagentStartedEvent,
     SubagentStatus,
     SubagentUpdatedEvent,
-)
-from harnessed.core.events.tools import (
     ToolCallFinishedEvent,
     ToolCallRequestedEvent,
     ToolExecutionFinishedEvent,
     ToolExecutionStartedEvent,
     ToolProgressEvent,
+    TurnEndedEvent,
 )
-from harnessed.core.events.turn import StepEndedEvent, TurnEndedEvent
 from harnessed.core.hooks import SessionAppended
 from harnessed.core.messages import ApprovalAnswer, ToolCall, UserMessage, to_dict
 from harnessed.core.model import ModelUsage
@@ -42,7 +44,7 @@ from harnessed.core.tools import ToolError
 from harnessed.core.tools.output_limit import ToolOutputLimit
 
 if TYPE_CHECKING:
-    from harnessed.core.events.subagents import SubagentLinkedEvent
+    from harnessed.core.events import SubagentLinkedEvent
     from harnessed.core.session.children import ChildSession
     from harnessed.kernel import PluginScope, Scope
 
@@ -163,60 +165,12 @@ class ChildExecution:
 
     async def run(self) -> None:
         self._running = True
-        log = self.parent.log
         status = SubagentStatus.FAILED
         text = "Child session failed to start"
-        child: Session | None = None
         try:
-            await log.append(self.started)
-            await log.flush()
-            await self._update(self.runtime)
-            self.admitted.set_result(None)
-            if self._cancelled:
-                raise asyncio.CancelledError
+            await self._admit()
             async with asyncio.timeout(self.limits.timeout), self.slots:
-                request = ChildSessionRequest(
-                    self.started.child_session_id,
-                    SubagentLinkedEvent(
-                        self.parent.id,
-                        self.started.turn_id,
-                        self.started.call_id,
-                        self.started.agent,
-                        self.started.depth,
-                        self.depth_limit,
-                    ),
-                    ParentApprover(self.parent, self.started.child_session_id, self.started.agent),
-                    self,
-                )
-                async with self.factory.child_session(request) as child:
-                    self.child = child
-                    remove = child.scope.on(SessionAppended, self._observe)
-                    try:
-                        await self._update(replace(self.runtime, activity=ChildActivity.IDLE))
-                        handle = await child.submit(
-                            self.started.task,
-                            max_steps=self.limits.max_steps,
-                            token_budget=self.limits.token_budget,
-                        )
-                        self._run_id = handle.id
-                        self._ready = True
-                        if self._accepting:
-                            for message in self._messages:
-                                try:
-                                    await self._deliver(message)
-                                except ToolError:
-                                    break
-                        self._messages.clear()
-                        result = await handle.result()
-                        status = (
-                            SubagentStatus.COMPLETED if result.completed else SubagentStatus.LIMITED
-                        )
-                        text = result.text
-                    finally:
-                        self._accepting = False
-                        await remove()
-                        # Cancelling a result waiter alone does not stop the child driver.
-                        await child.abort()
+                status, text = await self._execute()
         except asyncio.CancelledError:
             status = SubagentStatus.CANCELLED
             text = "Delegation cancelled"
@@ -231,12 +185,10 @@ class ChildExecution:
         finally:
             self._accepting = False
             # Receipt persistence is owned work too; cancellation must not strand its waiters.
-            finishing = asyncio.create_task(self._finish(status, text, child))
+            finishing = asyncio.create_task(self._finish(status, text, self.child))
             while not finishing.done():
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await asyncio.shield(finishing)
-                except asyncio.CancelledError:
-                    pass
             finishing.result()
 
     async def cancel(self, *, notify: bool = True) -> None:
@@ -374,10 +326,88 @@ class ChildExecution:
         self.runtime = runtime
         await self.parent.log.append(SubagentUpdatedEvent(self.started.child_session_id, runtime))
 
+    async def _admit(self) -> None:
+        """Record the start receipt and release the caller waiting for admission."""
+        log = self.parent.log
+        await log.append(self.started)
+        await log.flush()
+        await self._update(self.runtime)
+        self.admitted.set_result(None)
+        if self._cancelled:
+            raise asyncio.CancelledError
+
+    async def _execute(self) -> tuple[SubagentStatus, str]:
+        request = ChildSessionRequest(
+            self.started.child_session_id,
+            SubagentLinkedEvent(
+                self.parent.id,
+                self.started.turn_id,
+                self.started.call_id,
+                self.started.agent,
+                self.started.depth,
+                self.depth_limit,
+            ),
+            ParentApprover(self.parent, self.started.child_session_id, self.started.agent),
+            self,
+        )
+        async with self.factory.child_session(request) as child:
+            self.child = child
+            remove = child.scope.on(SessionAppended, self._observe)
+            try:
+                return await self._delegate(child)
+            finally:
+                self._accepting = False
+                await remove()
+                # Cancelling a result waiter alone does not stop the child driver.
+                await child.abort()
+
+    async def _delegate(self, child: Session) -> tuple[SubagentStatus, str]:
+        await self._update(replace(self.runtime, activity=ChildActivity.IDLE))
+        handle = await child.submit(
+            self.started.task,
+            max_steps=self.limits.max_steps,
+            token_budget=self.limits.token_budget,
+        )
+        self._run_id = handle.id
+        self._ready = True
+        await self._deliver_queued()
+        result = await handle.result()
+        status = SubagentStatus.COMPLETED if result.completed else SubagentStatus.LIMITED
+        return status, result.text
+
+    async def _deliver_queued(self) -> None:
+        """Steer messages sent before the child run existed, stopping at the first rejection."""
+        if self._accepting:
+            for message in self._messages:
+                try:
+                    await self._deliver(message)
+                except ToolError:
+                    break
+        self._messages.clear()
+
     async def _observe(self, event: SessionAppended) -> None:
         if self.child is None or event.log is not self.child.log:
             return
         record = event.event
+        if isinstance(record, ToolProgressEvent):
+            await self.parent.log.append(
+                ToolProgressEvent(
+                    self.started.call_id,
+                    f"[{self.started.agent} {self.started.child_session_id}] {record.text}",
+                )
+            )
+        state = self._advance(record)
+        if state is None:
+            return
+        if self._approvals:
+            state = replace(state, activity=ChildActivity.WAITING_APPROVAL)
+        elif self._tools:
+            state = replace(state, activity=ChildActivity.TOOL)
+        state = replace(state, active_tools=tuple(self._tools.values()))
+        await self._update(state)
+
+    def _advance(self, record: DurableEvent) -> ChildRuntimeState | None:
+        """Track a child record; None when it does not change the observed runtime."""
         state = self.runtime
         match record:
             case ModelRequestedEvent():
@@ -408,22 +438,11 @@ class ChildExecution:
                 state = replace(state, activity=ChildActivity.IDLE)
             case ToolProgressEvent(text=text):
                 state = replace(state, last_progress=text[:4096], progress_at=time())
-                await self.parent.log.append(
-                    ToolProgressEvent(
-                        self.started.call_id,
-                        f"[{self.started.agent} {self.started.child_session_id}] {text}",
-                    )
-                )
             case TurnEndedEvent():
                 self._accepting = False
             case _:
-                return
-        if self._approvals:
-            state = replace(state, activity=ChildActivity.WAITING_APPROVAL)
-        elif self._tools:
-            state = replace(state, activity=ChildActivity.TOOL)
-        state = replace(state, active_tools=tuple(self._tools.values()))
-        await self._update(state)
+                return None
+        return state
 
     async def _notify_parent(self, kind: str, payload: dict[str, object]) -> None:
         control = self.parent.control

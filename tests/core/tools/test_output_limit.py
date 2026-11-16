@@ -13,14 +13,14 @@ from harnessed import (
     ToolResult,
     tool,
 )
-from harnessed.core.events.tools import ToolCallFinishedEvent, ToolExecutionFinishedEvent
+from harnessed.core.events import ToolCallFinishedEvent, ToolExecutionFinishedEvent
 from harnessed.core.hooks import ReviewToolResult
 from harnessed.core.messages import ToolStatus
 from harnessed.core.model import ModelChunk
 from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.core.session.files import SessionFiles
+from harnessed.core.tools import ToolError, ToolRegistry
 from harnessed.core.tools.output_limit import ToolOutputLimit
-from harnessed.core.tools.registry import ToolError, ToolRegistry
 from harnessed.kernel import hook
 from harnessed.plugins import Approvals, Service
 from harnessed.plugins.filesystem import FileSystemBackend, FilesystemTools, LocalFileSystem

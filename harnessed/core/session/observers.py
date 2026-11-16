@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator
 
 from harnessed.core.buffering import EventBuffer
-from harnessed.core.events.base import DurableEvent, TransientEvent
+from harnessed.core.events import DurableEvent, TransientEvent
 from harnessed.core.events.stream import coalesce_deltas
 
 
@@ -36,9 +36,8 @@ class LogObservers:
 
     def notify(self, event: DurableEvent | TransientEvent) -> None:
         for queue, transient in tuple(self._queues.items()):
-            if isinstance(event, DurableEvent) or transient:
-                if not queue.put(event):
-                    self._queues.pop(queue, None)
+            if (isinstance(event, DurableEvent) or transient) and not queue.put(event):
+                self._queues.pop(queue, None)
 
     def finish(self) -> None:
         self._finished = True

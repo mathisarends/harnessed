@@ -12,9 +12,8 @@ from harnessed.core.hooks import SessionClosing
 from harnessed.core.messages import ToolResult, ToolStatus, result_content, to_dict
 from harnessed.core.plugin import Plugin, PluginConfig
 from harnessed.core.prompt.values import Instructions, SystemPrompt
-from harnessed.core.runtime.inbox import SessionInbox
-from harnessed.core.tools.decorator import tool
-from harnessed.core.tools.registry import ToolError, ToolRegistry
+from harnessed.core.runtime import SessionInbox
+from harnessed.core.tools import ToolError, ToolRegistry, tool
 from harnessed.kernel import Inject, PluginScope
 
 from .background import BackgroundCommands, command_result
@@ -39,7 +38,7 @@ def proc_result(value: ProcResult) -> ToolResult:
 
 
 class ShellToolsConfig(PluginConfig):
-    cwd: Path = Path(".")
+    cwd: Path = Path()
     timeout: Annotated[float, Field(gt=0, le=600)] = 30.0
     max_timeout: Annotated[float, Field(gt=0, le=600)] = 600.0
 
@@ -188,7 +187,7 @@ class BackgroundShell(
         scope.on(SessionClosing, self._close_commands)
         scope[ToolRegistry].result_converter(CommandResult, command_result, owner=scope)
 
-    async def _close_commands(self, event: SessionClosing) -> None:
+    async def _close_commands(self, _event: SessionClosing) -> None:
         await self._commands.close()
 
     def _command_fields(self) -> Mapping[str, FieldInfo]:
@@ -239,6 +238,7 @@ class BackgroundShell(
         self,
         command_id: str,
         text: Annotated[str, Field(max_length=65536)] = "",
+        *,
         eof: bool = False,
     ) -> CommandResult:
         """Write UTF-8 text to background stdin; eof=True closes stdin after this input.
@@ -272,9 +272,9 @@ __all__ = [
     "CommandInfo",
     "CommandResult",
     "LocalShell",
+    "ProcResult",
     "ProcessSnapshot",
     "ProcessState",
-    "ProcResult",
     "Shell",
     "ShellBackend",
     "ShellConfig",

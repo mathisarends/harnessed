@@ -5,8 +5,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 
 from harnessed.core.errors import ApprovalUnavailable
-from harnessed.core.events.approvals import PolicySource
-from harnessed.core.events.tools import (
+from harnessed.core.events import (
+    PolicySource,
     ToolCallFinishedEvent,
     ToolCallRequestedEvent,
     ToolExecutionFinishedEvent,
@@ -30,12 +30,17 @@ from harnessed.core.runtime.approvals import SessionApprovals
 from harnessed.core.runtime.context import SessionContext
 from harnessed.core.runtime.options import AgentOptions
 from harnessed.core.session.session import SessionLog
-from harnessed.core.tools import ToolChain
-from harnessed.core.tools.context import ToolContexts
+from harnessed.core.tools import (
+    OutputLimit,
+    PreparedToolCall,
+    ToolChain,
+    ToolContexts,
+    ToolRegistry,
+    ToolScheduler,
+    ToolScheduling,
+    format_tool_error,
+)
 from harnessed.core.tools.output_limit import ToolOutputLimit
-from harnessed.core.tools.policy import OutputLimit
-from harnessed.core.tools.registry import ToolRegistry, format_tool_error
-from harnessed.core.tools.scheduling import PreparedToolCall, ToolScheduler, ToolScheduling
 from harnessed.core.tracing import span
 from harnessed.kernel import Scope
 
@@ -151,13 +156,7 @@ class ToolExecutor:
                 if result.break_chain:
                     batch.broken = True
             if result is not None and self.log.execution_pending(call.id):
-                match plan.output_limit:
-                    case None:
-                        limit = None
-                    case OutputLimit():
-                        limit = self.options.tool_output_limit
-                    case _:
-                        limit = ToolOutputLimit(plan.output_limit)
+                limit = self._output_limit(plan)
                 receipt = limit.apply(result) if limit is not None else result
                 await self.log.append(ToolExecutionFinishedEvent(call.id, receipt))
         assert result is not None
@@ -170,31 +169,9 @@ class ToolExecutor:
 
         async def worker(index: int, plan: PreparedToolCall) -> None:
             try:
-                match plan.output_limit:
-                    case None:
-                        limit = None
-                    case OutputLimit():
-                        limit = self.options.tool_output_limit
-                    case _:
-                        limit = ToolOutputLimit(plan.output_limit)
-                reviewable = False
+                limit = self._output_limit(plan)
                 async with scheduler.slots:
-                    if batch.broken:
-                        result = ToolResult(
-                            "Skipped because an earlier tool ended this action chain",
-                            ToolStatus.SKIPPED,
-                        )
-                    else:
-                        result = await self._authorize(plan)
-                        if result is None:
-                            # Approval can yield while another worker breaks the chain.
-                            if batch.broken:
-                                result = ToolResult(
-                                    "Skipped because an earlier tool ended this action chain",
-                                    ToolStatus.SKIPPED,
-                                )
-                            else:
-                                result, reviewable = await self.invoke(plan, batch)
+                    result, reviewable = await self._attempt(plan, batch)
                 if index:
                     await reviewed[index - 1].wait()
                 if reviewable:
@@ -212,6 +189,27 @@ class ToolExecutor:
 
         await scheduler.run(plans, worker)
 
+    def _output_limit(self, plan: PreparedToolCall) -> ToolOutputLimit | None:
+        match plan.output_limit:
+            case None:
+                return None
+            case OutputLimit():
+                return self.options.tool_output_limit
+            case _:
+                return ToolOutputLimit(plan.output_limit)
+
+    async def _attempt(self, plan: PreparedToolCall, batch: ToolBatch) -> tuple[ToolResult, bool]:
+        """Authorize and invoke one call unless an earlier tool broke the action chain."""
+        if batch.broken:
+            return ToolResult(_CHAIN_BROKEN, ToolStatus.SKIPPED), False
+        result = await self._authorize(plan)
+        if result is not None:
+            return result, False
+        # Approval can yield while another worker breaks the chain.
+        if batch.broken:
+            return ToolResult(_CHAIN_BROKEN, ToolStatus.SKIPPED), False
+        return await self.invoke(plan, batch)
+
     async def _authorize(self, plan: PreparedToolCall) -> ToolResult | None:
         call = plan.call
         try:
@@ -220,32 +218,7 @@ class ToolExecutor:
             unavailable = self.scope[ToolRegistry].check_enabled(plan, scope=self.scope)
             if unavailable is not None:
                 return unavailable
-            previous = self.log.latest_approval(call.id)
-            decision = await self.scope.dispatch(
-                ToolPolicy(call, self.context, tool=plan.tool, envelope=plan.envelope),
-                default=lambda: PolicyDecision.ALLOW,
-            )
-            if not isinstance(decision, PolicyDecision):
-                raise TypeError("ToolPolicy hooks must return PolicyDecision")
-            if decision is PolicyDecision.ASK:
-                answer = await self.approvals.request(call, "Tool policy requested approval")
-                decision = (
-                    PolicyDecision.DENY if answer is ApprovalAnswer.DENY else PolicyDecision.ALLOW
-                )
-            record = self.log.latest_approval(call.id)
-            answered = record is not None and record is not previous
-            source = (
-                PolicySource.APPROVAL
-                if answered
-                and (decision is PolicyDecision.ALLOW or record.decision is ApprovalAnswer.DENY)
-                else PolicySource.POLICY
-            )
-            await self.log.append(ToolPolicyAppliedEvent(call.id, decision, source))
-            if decision is PolicyDecision.DENY:
-                if answered and record.decision is ApprovalAnswer.DENY:
-                    return ToolResult.denied("User declined this action", source=DenialSource.USER)
-                return ToolResult.denied("Denied by policy", source=DenialSource.POLICY)
-            return None
+            return await self._apply_policy(plan)
         except ApprovalUnavailable as exc:
             await self.log.append(
                 ToolPolicyAppliedEvent(call.id, PolicyDecision.DENY, PolicySource.UNAVAILABLE)
@@ -254,6 +227,36 @@ class ToolExecutor:
         except Exception as exc:
             # Policy hooks are user code; report their failures through the tool result boundary.
             return ToolResult.error(format_tool_error(call, exc, self.options.error_formatter))
+
+    async def _apply_policy(self, plan: PreparedToolCall) -> ToolResult | None:
+        """Record the policy decision; a denial result, or None when the call may run."""
+        call = plan.call
+        previous = self.log.latest_approval(call.id)
+        decision = await self.scope.dispatch(
+            ToolPolicy(call, self.context, tool=plan.tool, envelope=plan.envelope),
+            default=lambda: PolicyDecision.ALLOW,
+        )
+        if not isinstance(decision, PolicyDecision):
+            raise TypeError("ToolPolicy hooks must return PolicyDecision")
+        if decision is PolicyDecision.ASK:
+            answer = await self.approvals.request(call, "Tool policy requested approval")
+            decision = (
+                PolicyDecision.DENY if answer is ApprovalAnswer.DENY else PolicyDecision.ALLOW
+            )
+        record = self.log.latest_approval(call.id)
+        answered = record is not None and record is not previous
+        source = (
+            PolicySource.APPROVAL
+            if answered
+            and (decision is PolicyDecision.ALLOW or record.decision is ApprovalAnswer.DENY)
+            else PolicySource.POLICY
+        )
+        await self.log.append(ToolPolicyAppliedEvent(call.id, decision, source))
+        if decision is not PolicyDecision.DENY:
+            return None
+        if answered and record.decision is ApprovalAnswer.DENY:
+            return ToolResult.denied("User declined this action", source=DenialSource.USER)
+        return ToolResult.denied("Denied by policy", source=DenialSource.POLICY)
 
     async def _review(
         self,
@@ -278,3 +281,6 @@ class ToolExecutor:
         except Exception as exc:
             # Review hooks are user code; convert any failure into the reviewed call's error result.
             return ToolResult.error(format_tool_error(plan.call, exc, self.options.error_formatter))
+
+
+_CHAIN_BROKEN = "Skipped because an earlier tool ended this action chain"

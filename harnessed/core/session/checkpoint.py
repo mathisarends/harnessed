@@ -8,13 +8,18 @@ from pydantic.dataclasses import dataclass
 
 from harnessed.core.assets import AssetValue
 from harnessed.core.errors import SessionFormatError
-from harnessed.core.events.approvals import ApprovalRequestedEvent, ApprovalResolvedEvent
-from harnessed.core.events.base import DurableEvent
-from harnessed.core.events.inbox import InboxAddedEvent
+from harnessed.core.events import (
+    SESSION_EVENT_TYPES,
+    ApprovalRequestedEvent,
+    ApprovalResolvedEvent,
+    DurableEvent,
+    InboxAddedEvent,
+    LogEvent,
+    SessionControlChangedEvent,
+    TurnEndedEvent,
+    TurnStartedEvent,
+)
 from harnessed.core.events.registry import EventRegistry
-from harnessed.core.events.session import SessionControlChangedEvent
-from harnessed.core.events.turn import TurnEndedEvent, TurnStartedEvent
-from harnessed.core.events.unions import SESSION_EVENT_TYPES, LogEvent
 from harnessed.core.messages import JSONMapping, freeze, to_dict
 
 from .codec import CURRENT_VERSION, validate_event

@@ -4,7 +4,7 @@ from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Any, Protocol, cast
+from typing import Any, Protocol, cast, override
 
 from harnessed.core.plugin import Plugin
 from harnessed.kernel import HookInvocation, PluginScope, Scope
@@ -158,9 +158,10 @@ class HookTracing:
                 yield
 
 
-class NoopTracer(Plugin, slot="tracer"):
+class NoopTracer(Plugin, Tracer, slot="tracer"):
     """Default tracing implementation with no exporter or third-party imports."""
 
+    @override
     def span(self, name: str, **attributes: Any) -> AbstractContextManager[Span]:
         return nullcontext(_NoopSpan())
 
@@ -173,17 +174,19 @@ class _NoopSpan:
         pass
 
 
-class _NoopTracer:
+class _NoopTracer(Tracer):
+    @override
     def span(self, name: str, **attributes: Any) -> AbstractContextManager[Span]:
         return nullcontext(_NoopSpan())
 
 
 def _select(scope: Scope | PluginScope) -> Tracer:
-    return scope[Tracer] if Tracer in scope else _NOOP
+    return scope.get(Tracer, _NOOP)
 
 
 def _session(scope: Scope | PluginScope) -> str | None:
-    return scope[TraceSession].session_id if TraceSession in scope else None
+    session = scope.get(TraceSession)
+    return session.session_id if session is not None else None
 
 
 @contextmanager

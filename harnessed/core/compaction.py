@@ -8,20 +8,20 @@ import math
 from collections.abc import Awaitable, Callable
 from copy import copy
 from dataclasses import dataclass, replace
-from typing import Annotated, Protocol, runtime_checkable
+from typing import Annotated, NamedTuple, Protocol, runtime_checkable
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 from harnessed.core.budget import ContextBudget
 from harnessed.core.errors import ConfigError, ContextBudgetExceeded
-from harnessed.core.events.compaction import (
+from harnessed.core.events import (
     CompactionAppliedEvent,
     CompactionFinishedEvent,
     CompactionOutcome,
     CompactionStartedEvent,
+    ModelUsageRecordedEvent,
 )
-from harnessed.core.events.model import ModelUsageRecordedEvent
 from harnessed.core.messages import (
     ImagePart,
     ImageReference,
@@ -41,7 +41,7 @@ from harnessed.core.model import (
 )
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import CalibratedTokenCounter, TokenCounter, count_request
-from harnessed.core.tracing import span
+from harnessed.core.tracing import Span, span
 from harnessed.kernel import Scope
 
 logger = logging.getLogger(__name__)
@@ -248,21 +248,13 @@ class CompactionManager:
         self, request: ModelRequest, *, model: Model, force: bool = True
     ) -> tuple[CompactionAppliedEvent | None, ModelRequest]:
         async with self._lock:
-            policy = self.scope[CompactionPolicy] if CompactionPolicy in self.scope else None
+            policy = self.scope.get(CompactionPolicy)
             settings = policy.settings if policy is not None else CompactionSettings()
             plan = _plan_compaction(self._session_log, settings.keep_last_steps)
             if plan is None:
                 return None, request
-            current = self._session_log.open_turn
-            if not force and self._session_log.closed_turn_count < self._retry_after_turns:
-                if (
-                    self._retry_after_step is None
-                    or current is None
-                    or current.id != self._retry_after_step[0]
-                    or sum(step.closed for step in current.steps) < self._retry_after_step[1]
-                    or plan.through <= self._retry_through
-                ):
-                    return None, request
+            if not force and self._backing_off(plan):
+                return None, request
             counter = self.scope[TokenCounter]
             if isinstance(counter, CalibratedTokenCounter):
                 counter = copy(counter)
@@ -323,7 +315,7 @@ class CompactionManager:
     async def _state(
         self, request: ModelRequest, model: Model, counter: TokenCounter
     ) -> ContextState:
-        budget = self.scope[ContextBudget] if ContextBudget in self.scope else ContextBudget()
+        budget = self.scope.get(ContextBudget, ContextBudget())
         input_tokens = await count_request(counter, request)
         return ContextState(
             input_tokens,
@@ -372,51 +364,10 @@ class CompactionManager:
         selected = policy.llm if policy is not None and policy.llm is not None else model
         summarizer = policy.summarizer if policy is not None else None
         if summarizer is None:
-            summarizer = ModelSummarizer(
-                selected, prompt=policy.prompt if policy is not None else None, counter=counter
-            )
-        context = CompactionContext(
-            tuple(message for message in request.messages if message.id in plan.message_ids),
-            tuple(
-                message
-                for message in base.messages
-                if not isinstance(message, SystemMessage)
-                and not message.id.startswith("compaction:")
-            ),
-            tuple(
-                message
-                for message in request.messages
-                if isinstance(message, SystemMessage) and not message.id.startswith("compaction:")
-            ),
-            state,
-            target,
-        )
-        hard_room = (
-            state.context_window - state.reserve_tokens - base_tokens
-            if state.context_window is not None
-            else None
-        )
-        limits = [
-            value
-            for value in (
-                settings.max_summary_tokens,
-                selected.info.max_output,
-                selected.settings.max_tokens,
-                hard_room,
-                selected.info.context_window if hard_room is None else None,
-            )
-            if value is not None
-        ]
-        feasible_target = target is not None and target > base_tokens
-        if feasible_target:
-            limits.append(target - base_tokens)
-        elif not limits and target is not None:
-            limits.append(target)
-        if not limits:
-            raise ConfigError(
-                "Compaction needs a finite budget; configure max_summary_tokens or a context window"
-            )
-        ceiling = min(limits)
+            summarizer = _model_summarizer(selected, policy, counter)
+        context = _compaction_context(request, base, plan, state=state, target=target)
+        budget = _summary_budget(settings, selected, state, base_tokens=base_tokens, target=target)
+        ceiling = budget.ceiling
         if ceiling < 1:
             self._backoff(plan)
             return None, request
@@ -429,50 +380,18 @@ class CompactionManager:
             through=plan.through,
         ) as trace:
             for attempt in range(2):
-                try:
-                    summary = await summarizer.summarize(CompactionRequest(context, ceiling))
-                except SummaryError as error:
-                    usage = error.usage if usage is None else sum_usage((usage, error.usage))
-                    trace.set_attribute("usage", usage)
-                    await self._session_log.append(
-                        ModelUsageRecordedEvent(error.usage, purpose=UsagePurpose.COMPACTION)
-                    )
-                    if not error.truncated:
-                        raise
-                    if attempt == 0:
-                        # Reasoning may consume the first generation allowance.
-                        if isinstance(summarizer, ModelSummarizer):
-                            summarizer = ModelSummarizer(
-                                selected,
-                                prompt=policy.prompt if policy is not None else None,
-                                counter=counter,
-                                generation_allowance=ceiling * 2,
-                            )
-                        continue
-                    break
-                if not isinstance(summary, Summary):
-                    raise TypeError("Summarizer must return Summary")
-                if summary.usage is not None:
-                    usage = summary.usage if usage is None else sum_usage((usage, summary.usage))
-                    trace.set_attribute("usage", usage)
-                    await self._session_log.append(
-                        ModelUsageRecordedEvent(summary.usage, purpose=UsagePurpose.COMPACTION)
-                    )
-                if not isinstance(summary.text, str) or not summary.text.strip():
-                    raise ValueError("Summarizer returned an empty summary")
-                applied = replace(template, summary=summary.text.strip())
-                candidate = replace(
-                    base,
-                    messages=tuple(
-                        SystemMessage(
-                            f"Conversation summary:\n{applied.summary}",
-                            id=f"compaction:{compaction_id}",
-                        )
-                        if message.id == f"compaction:{compaction_id}"
-                        else message
-                        for message in base.messages
-                    ),
+                text, usage = await self._summarize(
+                    summarizer, CompactionRequest(context, ceiling), trace=trace, usage=usage
                 )
+                if text is None:
+                    # Reasoning may consume the first generation allowance.
+                    if attempt == 0 and isinstance(summarizer, ModelSummarizer):
+                        summarizer = _model_summarizer(
+                            selected, policy, counter, generation_allowance=ceiling * 2
+                        )
+                    continue
+                applied = replace(template, summary=text)
+                candidate = _with_summary(base, applied)
                 after = await count_request(counter, candidate)
                 size = counter.count_text(applied.summary)
                 valid = settings.max_summary_tokens is None or size <= settings.max_summary_tokens
@@ -482,7 +401,7 @@ class CompactionManager:
                     and (best is None or after < best[0].after_tokens)
                 ):
                     best = replace(applied, after_tokens=after), candidate
-                missed_target = feasible_target and target is not None and after > target
+                missed_target = budget.feasible_target and target is not None and after > target
                 if valid and size <= ceiling and not missed_target:
                     break
                 if attempt == 0:
@@ -499,6 +418,53 @@ class CompactionManager:
             return None, request
         await self._session_log.append(best[0])
         return best
+
+    async def _summarize(
+        self,
+        summarizer: Summarizer,
+        request: CompactionRequest,
+        *,
+        trace: Span,
+        usage: ModelUsage | None,
+    ) -> tuple[str | None, ModelUsage | None]:
+        """Run one summary attempt; no text when the generation was truncated."""
+        try:
+            summary = await summarizer.summarize(request)
+        except SummaryError as error:
+            usage = await self._record_usage(error.usage, trace=trace, total=usage)
+            if not error.truncated:
+                raise
+            return None, usage
+        if not isinstance(summary, Summary):
+            raise TypeError("Summarizer must return Summary")
+        if summary.usage is not None:
+            usage = await self._record_usage(summary.usage, trace=trace, total=usage)
+        if not isinstance(summary.text, str) or not summary.text.strip():
+            raise ValueError("Summarizer returned an empty summary")
+        return summary.text.strip(), usage
+
+    async def _record_usage(
+        self, usage: ModelUsage, *, trace: Span, total: ModelUsage | None
+    ) -> ModelUsage:
+        total = usage if total is None else sum_usage((total, usage))
+        trace.set_attribute("usage", total)
+        await self._session_log.append(
+            ModelUsageRecordedEvent(usage, purpose=UsagePurpose.COMPACTION)
+        )
+        return total
+
+    def _backing_off(self, plan: _CompactionPlan) -> bool:
+        """Whether an unproductive compaction still waits for conversation progress."""
+        if self._session_log.closed_turn_count >= self._retry_after_turns:
+            return False
+        current = self._session_log.open_turn
+        return (
+            self._retry_after_step is None
+            or current is None
+            or current.id != self._retry_after_step[0]
+            or sum(step.closed for step in current.steps) < self._retry_after_step[1]
+            or plan.through <= self._retry_through
+        )
 
     def _backoff(self, plan: _CompactionPlan) -> None:
         current = self._session_log.open_turn
@@ -526,7 +492,7 @@ class _CompactionPlan:
 
 
 def _plan_compaction(session: SessionLog, keep_last_steps: int) -> _CompactionPlan | None:
-    steps = session._history.completed_steps
+    steps = session.completed_steps
     if len(steps) <= keep_last_steps:
         return None
     through = steps[-keep_last_steps - 1].boundary
@@ -535,17 +501,21 @@ def _plan_compaction(session: SessionLog, keep_last_steps: int) -> _CompactionPl
     protected_turns = {step.turn_id for step in steps[-keep_last_steps:]}
     if session.open_turn is not None:
         protected_turns.add(session.open_turn.id)
-    entries = session._history.items()
+    entries = session.history_entries()
     inputs = tuple(
         entry.position
         for entry in entries
         if entry.position < through
         and (
-            isinstance(entry.message, SystemMessage)
-            and not entry.message.id.startswith("compaction:")
-            or entry.turn_id in protected_turns
-            and (entry.is_input or isinstance(entry.message, UserMessage))
-            and entry.observation is None
+            (
+                isinstance(entry.message, SystemMessage)
+                and not entry.message.id.startswith("compaction:")
+            )
+            or (
+                entry.turn_id in protected_turns
+                and (entry.is_input or isinstance(entry.message, UserMessage))
+                and entry.observation is None
+            )
         )
     )
     messages = frozenset(
@@ -628,3 +598,100 @@ def _merge_compacted(
     )
     messages.insert(position, summary)
     return tuple(messages)
+
+
+class _SummaryBudget(NamedTuple):
+    ceiling: int
+    feasible_target: bool
+
+
+def _model_summarizer(
+    selected: Model,
+    policy: CompactionPolicy | None,
+    counter: TokenCounter,
+    *,
+    generation_allowance: int | None = None,
+) -> ModelSummarizer:
+    return ModelSummarizer(
+        selected,
+        prompt=policy.prompt if policy is not None else None,
+        counter=counter,
+        generation_allowance=generation_allowance,
+    )
+
+
+def _compaction_context(
+    request: ModelRequest,
+    base: ModelRequest,
+    plan: _CompactionPlan,
+    *,
+    state: ContextState,
+    target: int | None,
+) -> CompactionContext:
+    """Split the request into compacted, retained and system messages for the summarizer."""
+    return CompactionContext(
+        tuple(message for message in request.messages if message.id in plan.message_ids),
+        tuple(
+            message
+            for message in base.messages
+            if not isinstance(message, SystemMessage) and not message.id.startswith("compaction:")
+        ),
+        tuple(
+            message
+            for message in request.messages
+            if isinstance(message, SystemMessage) and not message.id.startswith("compaction:")
+        ),
+        state,
+        target,
+    )
+
+
+def _summary_budget(
+    settings: CompactionSettings,
+    selected: Model,
+    state: ContextState,
+    *,
+    base_tokens: int,
+    target: int | None,
+) -> _SummaryBudget:
+    """The tightest summary token ceiling and whether the target remains reachable."""
+    hard_room = (
+        state.context_window - state.reserve_tokens - base_tokens
+        if state.context_window is not None
+        else None
+    )
+    limits = [
+        value
+        for value in (
+            settings.max_summary_tokens,
+            selected.info.max_output,
+            selected.settings.max_tokens,
+            hard_room,
+            selected.info.context_window if hard_room is None else None,
+        )
+        if value is not None
+    ]
+    feasible_target = target is not None and target > base_tokens
+    if feasible_target:
+        limits.append(target - base_tokens)
+    elif not limits and target is not None:
+        limits.append(target)
+    if not limits:
+        raise ConfigError(
+            "Compaction needs a finite budget; configure max_summary_tokens or a context window"
+        )
+    return _SummaryBudget(min(limits), feasible_target)
+
+
+def _with_summary(request: ModelRequest, applied: CompactionAppliedEvent) -> ModelRequest:
+    """Replace the projected summary placeholder with the applied summary text."""
+    summary_id = f"compaction:{applied.id}"
+    return replace(
+        request,
+        messages=tuple(
+            SystemMessage(f"Conversation summary:\n{applied.summary}", id=summary_id)
+            if message.id == summary_id
+            else message
+            for message in request.messages
+        ),
+    )

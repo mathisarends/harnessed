@@ -8,9 +8,7 @@ from pydantic.dataclasses import dataclass
 
 from harnessed.core.assets import AssetRef, AssetValue
 from harnessed.core.errors import SessionFormatError
-from harnessed.core.events.messages import MessageLifetime
-from harnessed.core.events.observations import IncludedObservation
-from harnessed.core.events.subagents import SubagentLinkedEvent
+from harnessed.core.events import IncludedObservation, MessageLifetime, SubagentLinkedEvent
 from harnessed.core.messages import (
     AssistantMessage,
     ImageReference,
@@ -69,6 +67,28 @@ def image_refs(entries: tuple[HistoryEntry, ...]) -> set[AssetRef]:
     }
 
 
+def _check_tool_pairs(history: tuple[HistoryEntry, ...]) -> None:
+    """Require conversation-only messages whose tool calls are answered in order."""
+    pending: set[str] = set()
+    for entry in history:
+        message = entry.message
+        if message.id == "system" or message.id.startswith("mount-context:"):
+            raise ValueError("Agent configuration is not conversation state")
+        if isinstance(message, AssistantMessage):
+            if pending:
+                raise ValueError("Tool calls must be answered before the next assistant")
+            for call in message.tool_calls:
+                if call.id in pending:
+                    raise ValueError("A tool batch cannot contain duplicate call identities")
+                pending.add(call.id)
+        elif isinstance(message, ToolMessage):
+            if message.tool_call_id not in pending:
+                raise ValueError("Tool results must match a retained tool call")
+            pending.remove(message.tool_call_id)
+    if pending:
+        raise ValueError("A snapshot cannot contain unanswered tool calls")
+
+
 @dataclass(frozen=True, config=_CONFIG)
 class SessionState:
     """An immutable, self-contained conversation at a terminal turn boundary.
@@ -99,12 +119,32 @@ class SessionState:
         if type(self.version) is not int:
             raise ValueError("State versions must be integers")
         object.__setattr__(self, "plugin_instructions", freeze(self.plugin_instructions))
+        self._check_links()
+        self._check_history_order()
+        _check_tool_pairs(self.history)
+        self._check_resources()
+
+    def to_json(self) -> str:
+        """Serialize in memory; this method performs no filesystem or network I/O."""
+        return _STATE.dump_json(self).decode("utf-8")
+
+    @classmethod
+    def from_json(cls, payload: str | bytes) -> Self:
+        """Validate the current canonical format, including resource integrity."""
+        try:
+            return TypeAdapter(cls).validate_json(payload)
+        except (ValidationError, ValueError, TypeError) as error:
+            raise SessionFormatError("Invalid conversation state") from error
+
+    def _check_links(self) -> None:
         if len({child.id for child in self.children}) != len(self.children) or len(
             {child.call_id for child in self.children}
         ) != len(self.children):
             raise ValueError("Child and delegation call identities must be unique")
         if self.parent is not None and not 1 <= self.parent.depth <= self.parent.depth_limit:
             raise ValueError("A child requires one valid parent link")
+
+    def _check_history_order(self) -> None:
         positions = [entry.position for entry in self.history]
         if len(set(positions)) != len(positions):
             raise ValueError("History positions must be unique")
@@ -121,24 +161,8 @@ class SessionState:
             previous = step.boundary
         if not set(self.preserved_turns) <= {turn.id for turn in self.turns}:
             raise ValueError("Pinned turns must be present in the snapshot")
-        pending: set[str] = set()
-        for entry in self.history:
-            message = entry.message
-            if message.id == "system" or message.id.startswith("mount-context:"):
-                raise ValueError("Agent configuration is not conversation state")
-            if isinstance(message, AssistantMessage):
-                if pending:
-                    raise ValueError("Tool calls must be answered before the next assistant")
-                for call in message.tool_calls:
-                    if call.id in pending:
-                        raise ValueError("A tool batch cannot contain duplicate call identities")
-                    pending.add(call.id)
-            elif isinstance(message, ToolMessage):
-                if message.tool_call_id not in pending:
-                    raise ValueError("Tool results must match a retained tool call")
-                pending.remove(message.tool_call_id)
-        if pending:
-            raise ValueError("A snapshot cannot contain unanswered tool calls")
+
+    def _check_resources(self) -> None:
         refs = image_refs(self.history)
         if refs != {value.ref for value in self.assets} or len(refs) != len(self.assets):
             raise ValueError("Snapshot images must exactly match retained references")
@@ -155,18 +179,6 @@ class SessionState:
                 != resources[value.key].sha256
             ):
                 raise ValueError("Snapshot text resource integrity check failed")
-
-    def to_json(self) -> str:
-        """Serialize in memory; this method performs no filesystem or network I/O."""
-        return _STATE.dump_json(self).decode("utf-8")
-
-    @classmethod
-    def from_json(cls, payload: str | bytes) -> Self:
-        """Validate the current canonical format, including resource integrity."""
-        try:
-            return TypeAdapter(cls).validate_json(payload)
-        except (ValidationError, ValueError, TypeError) as error:
-            raise SessionFormatError("Invalid conversation state") from error
 
 
 _STATE = TypeAdapter(SessionState)

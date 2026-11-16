@@ -8,14 +8,14 @@ from harnessed import Agent as Application
 from harnessed import Plugin, PolicyDecision, ToolCall, tool
 from harnessed.core.budget import ContextBudget
 from harnessed.core.errors import ContextBudgetExceeded, ContextLengthExceeded
-from harnessed.core.events.compaction import CompactionAppliedEvent
-from harnessed.core.events.messages import AssistantMessageEvent
-from harnessed.core.events.model import (
+from harnessed.core.events import (
+    AssistantMessageEvent,
+    CompactionAppliedEvent,
     ModelRequestedEvent,
     ModelRequestFailedEvent,
     ModelRequestOutcome,
+    TurnOutcome,
 )
-from harnessed.core.events.turn import TurnOutcome
 from harnessed.core.hooks import PrepareRequest
 from harnessed.core.messages import Role, SystemMessage
 from harnessed.core.model import Model, ModelChunk, ModelInfo

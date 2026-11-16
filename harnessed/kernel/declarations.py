@@ -133,9 +133,12 @@ class PluginBase:  # smelt: ignore[SMT326] -- Stable kernel facade name; core Pl
     ) -> None:
         if "_constructor_args" not in vars(self):
             self._constructor_args = ()
-            self._constructor_kwargs = dict(
-                name=name, hooks=tuple(hooks), needs=needs, registrations=tuple(registrations)
-            )
+            self._constructor_kwargs = {
+                "name": name,
+                "hooks": tuple(hooks),
+                "needs": needs,
+                "registrations": tuple(registrations),
+            }
             hooks = self._constructor_kwargs["hooks"]
             registrations = self._constructor_kwargs["registrations"]
         self.name = type(self).__name__ if name is None or name == "" else name
@@ -157,45 +160,9 @@ class PluginBase:  # smelt: ignore[SMT326] -- Stable kernel facade name; core Pl
         if needs is not None:
             cls.needs = tuple(needs)
         if provides is not None:
-            if (
-                provides is not True
-                and provides is not False
-                and not isinstance(provides, type | Key)
-            ):
-                raise TypeError("provides requires True, False, a service class or named Key")
-            if provides is True:
-                cls._provides = cls
-            elif provides is False:
-                cls._provides = None
-            else:
-                cls._provides = provides
-        try:
-            annotations = inspect.get_annotations(cls)
-        except NameError:
-            # Python 3.14 defers ordinary annotations, including unresolved names.
-            # They declare no dependencies and must not block class creation.
-            annotations = {}
-        for annotation in annotations.values():
-            if (
-                isinstance(annotation, str)
-                and "Inject[" in annotation
-                or not isinstance(annotation, str)
-                and annotation_dependency(annotation) is not None
-            ):
-                raise TypeError(
-                    "Class-level Inject fields were removed; use needs(key) or observes(key)"
-                )
-        constructor = cls.__dict__.get("__init__")
-        if constructor is not None:
-
-            @wraps(constructor)
-            def initialize(self: PluginBase, *args: Any, **kwargs: Any) -> None:
-                if "_constructor_args" not in vars(self):
-                    self._constructor_args = args
-                    self._constructor_kwargs = dict(kwargs)
-                constructor(self, *args, **kwargs)
-
-            type.__setattr__(cls, "__init__", initialize)
+            cls._provides = _provided_key(cls, provides=provides)
+        _reject_class_injections(cls)
+        _record_constructor_inputs(cls)
 
     @property
     def is_active(self) -> bool:
@@ -229,19 +196,11 @@ class PluginBase:  # smelt: ignore[SMT326] -- Stable kernel facade name; core Pl
         if self.is_active:
             raise TypeError("Cannot mount an already mounted instance; use its recipe")
         dependencies = _class_dependencies(type(self))
-        members = {}
-        for base in reversed(type(self).__mro__):
-            members.update(vars(base))
+        members = _class_members(type(self))
         state_fields = tuple(
             dict.fromkeys(member for member in members.values() if isinstance(member, PluginState))
         )
-        registrations = list(self._registration_entries())
-        for name, member in members.items():
-            if callable(member):
-                callback = getattr(self, name)
-                registrations.extend(
-                    (recipe, callback) for recipe in getattr(member, "_harnessed_registrations", ())
-                )
+        registrations = _member_registrations(self, members)
         needs: list[ServiceKey[Any]] = list(self.needs)
         needs.extend(binding.key for binding in dependencies.values() if not binding.optional)
         needs.extend(key for registration, _ in registrations for key in registration.needs)
@@ -267,18 +226,7 @@ class PluginBase:  # smelt: ignore[SMT326] -- Stable kernel facade name; core Pl
                 scope.provide(self._provides, instance)
             await instance._setup(scope)
             try:
-                for event, callback, priority in _hooks(getattr(instance, "hooks", ())):
-                    scope.on(event, callback, priority=priority)
-                for registration, callback in instance._registration_entries():
-                    await resolve(registration.mount(scope, callback))
-                for name, member in members.items():
-                    if not callable(member):
-                        continue
-                    callback = getattr(instance, name)
-                    for event, prepend, priority in getattr(member, "_harnessed_hooks", ()):
-                        scope.on(event, callback, prepend=prepend, priority=priority)
-                    for registration in getattr(member, "_harnessed_registrations", ()):
-                        await resolve(registration.mount(scope, callback))
+                await _connect(instance, scope, members)
                 yield instance
             finally:
                 await instance._teardown(scope)
@@ -303,15 +251,92 @@ class PluginBase:  # smelt: ignore[SMT326] -- Stable kernel facade name; core Pl
         await resolve(self.teardown(*bound.args, **bound.kwargs))
 
 
-def _class_dependencies(cls: type[PluginBase]) -> dict[str, Dependency]:
+def _class_members(cls: type) -> dict[str, object]:
     members: dict[str, object] = {}
     for base in reversed(cls.__mro__):
         members.update(vars(base))
+    return members
+
+
+def _class_dependencies(cls: type[PluginBase]) -> dict[str, Dependency]:
     return {
         name: member.binding
-        for name, member in members.items()
+        for name, member in _class_members(cls).items()
         if isinstance(member, DependencyField)
     }
+
+
+def _provided_key(
+    cls: type[PluginBase], *, provides: bool | ServiceKey[Any]
+) -> ServiceKey[Any] | None:
+    if provides is True:
+        return cls
+    if provides is False:
+        return None
+    if not isinstance(provides, type | Key):
+        raise TypeError("provides requires True, False, a service class or named Key")
+    return provides
+
+
+def _reject_class_injections(cls: type) -> None:
+    try:
+        annotations = inspect.get_annotations(cls)
+    except NameError:
+        # Python 3.14 defers ordinary annotations, including unresolved names.
+        # They declare no dependencies and must not block class creation.
+        annotations = {}
+    for annotation in annotations.values():
+        if (isinstance(annotation, str) and "Inject[" in annotation) or (
+            not isinstance(annotation, str) and annotation_dependency(annotation) is not None
+        ):
+            raise TypeError(
+                "Class-level Inject fields were removed; use needs(key) or observes(key)"
+            )
+
+
+def _record_constructor_inputs(cls: type[PluginBase]) -> None:
+    """Wrap a class's own constructor so its recipe can replay the explicit inputs."""
+    constructor = cls.__dict__.get("__init__")
+    if constructor is None:
+        return
+
+    @wraps(constructor)
+    def initialize(self: PluginBase, *args: Any, **kwargs: Any) -> None:
+        if "_constructor_args" not in vars(self):
+            self._constructor_args = args
+            self._constructor_kwargs = dict(kwargs)
+        constructor(self, *args, **kwargs)
+
+    type.__setattr__(cls, "__init__", initialize)
+
+
+def _member_registrations(
+    plugin: PluginBase, members: dict[str, object]
+) -> list[tuple[Registration, Callable]]:
+    registrations = list(plugin._registration_entries())
+    for name, member in members.items():
+        if callable(member):
+            callback = getattr(plugin, name)
+            registrations.extend(
+                (recipe, callback) for recipe in getattr(member, "_harnessed_registrations", ())
+            )
+    return registrations
+
+
+async def _connect(instance: PluginBase, scope: Scope, members: dict[str, object]) -> None:
+    """Subscribe an activation's hooks and mount its registrations in declaration order."""
+    for event, callback, priority in _hooks(getattr(instance, "hooks", ())):
+        scope.on(event, callback, priority=priority)
+    for registration, callback in instance._registration_entries():
+        await resolve(registration.mount(scope, callback))
+    for name, member in members.items():
+        if not callable(member):
+            continue
+        callback = getattr(instance, name)
+        for event, prepend, priority in getattr(member, "_harnessed_hooks", ()):
+            scope.on(event, callback, prepend=prepend, priority=priority)
+        for registration in getattr(member, "_harnessed_registrations", ()):
+            await resolve(registration.mount(scope, callback))
 
 
 def _lifecycle_arguments(callback, scope):

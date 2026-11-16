@@ -8,9 +8,7 @@ from harnessed import Agent, Plugin, ToolCall
 from harnessed.core.messages import ToolResult
 from harnessed.core.model import ModelChunk
 from harnessed.core.plugin import Bundle
-from harnessed.core.tools.context import ToolContext
-from harnessed.core.tools.decorator import tool
-from harnessed.core.tools.registry import ToolRegistry
+from harnessed.core.tools import ToolContext, ToolRegistry, tool
 from harnessed.kernel import Inject, InjectMarker, PluginStatus, Scope
 from harnessed.models import UserMessage
 from harnessed.services import SessionContext

@@ -95,7 +95,7 @@ class JsonSessionStore:
                     stream.write(data)
                     stream.flush()
                     os.fsync(stream.fileno())
-                os.replace(temporary, path)
+                temporary.replace(path)
                 if os.name != "nt":
                     directory = os.open(self._root, os.O_RDONLY)
                     try:

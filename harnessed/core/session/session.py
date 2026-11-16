@@ -7,29 +7,37 @@ from typing import cast
 from harnessed.core.approvals import Approval, ApprovalState
 from harnessed.core.assets import AssetStore, MemoryAssets
 from harnessed.core.errors import RunUnavailable, SessionFormatError, SessionStateError
-from harnessed.core.events.approvals import ApprovalResolvedEvent, ApprovalStatus
-from harnessed.core.events.base import DurableEvent, TransientEvent
-from harnessed.core.events.compaction import CompactionAppliedEvent
-from harnessed.core.events.inbox import (
+from harnessed.core.events import (
+    SESSION_EVENT_TYPES,
+    ApprovalResolvedEvent,
+    ApprovalStatus,
+    AssistantMessageEvent,
+    CompactionAppliedEvent,
+    ControlState,
+    DurableEvent,
     InboxAddedEvent,
     InboxMode,
     InboxRemovalReason,
     InboxRemovedEvent,
-)
-from harnessed.core.events.messages import AssistantMessageEvent, MessageAppendedEvent
-from harnessed.core.events.model import ModelRequestFailedEvent, ModelRequestOutcome
-from harnessed.core.events.observations import IncludedObservation
-from harnessed.core.events.publishing import SessionPublished
-from harnessed.core.events.registry import EventRegistry
-from harnessed.core.events.session import ControlState, SessionControlChangedEvent
-from harnessed.core.events.subagents import (
+    IncludedObservation,
+    LogEvent,
+    MessageAppendedEvent,
+    ModelRequestFailedEvent,
+    ModelRequestOutcome,
+    SessionControlChangedEvent,
+    SessionPublished,
+    StepEndedEvent,
+    StepOutcome,
     SubagentFinishedEvent,
     SubagentLinkedEvent,
     SubagentStatus,
+    ToolCallFinishedEvent,
+    ToolExecutionFinishedEvent,
+    TransientEvent,
+    TurnEndedEvent,
+    TurnStartedEvent,
 )
-from harnessed.core.events.tools import ToolCallFinishedEvent, ToolExecutionFinishedEvent
-from harnessed.core.events.turn import StepEndedEvent, StepOutcome, TurnEndedEvent, TurnStartedEvent
-from harnessed.core.events.unions import SESSION_EVENT_TYPES, LogEvent
+from harnessed.core.events.registry import EventRegistry
 from harnessed.core.hooks import SessionAppended
 from harnessed.core.messages import (
     AssistantMessage,
@@ -59,7 +67,13 @@ from harnessed.core.session.inbox import Inbox, InboxProjection
 from harnessed.core.session.observers import LogObservers
 from harnessed.core.session.repair import InterruptedActivity
 from harnessed.core.session.requests import RequestProjection
-from harnessed.core.session.state import HistoryTurn, SessionState, image_refs
+from harnessed.core.session.state import (
+    HistoryEntry,
+    HistoryStep,
+    HistoryTurn,
+    SessionState,
+    image_refs,
+)
 from harnessed.core.session.store import SessionPersistence
 from harnessed.core.session.turns import Turn, TurnProjection
 from harnessed.kernel import Scope
@@ -257,7 +271,7 @@ class SessionLog:
 
     def close_resources(self) -> None:
         self._images.clear()
-        self._assets._clear()
+        self._assets.clear()
         self._files.clear()
 
     @property
@@ -273,6 +287,23 @@ class SessionLog:
         callers should release it after use.
         """
         return await self._images.resolve(request)
+
+    async def retain_message[M: Message](self, message: M) -> M:
+        """Move inline image payloads of a new message into this log's assets."""
+        return await self._images.retain_message(message)
+
+    async def retain_request(self, request: ModelRequest) -> ModelRequest:
+        """Move inline image payloads of a model request into this log's assets."""
+        return await self._images.retain_request(request)
+
+    @property
+    def completed_steps(self) -> tuple[HistoryStep, ...]:
+        """Closed steps of the working history, oldest first."""
+        return tuple(self._history.completed_steps)
+
+    def history_entries(self) -> tuple[HistoryEntry, ...]:
+        """Entries of the working history in conversation order."""
+        return self._history.items()
 
     @property
     def events(self) -> tuple[DurableEvent, ...]:
@@ -604,9 +635,11 @@ class SessionLog:
             turn = self.open_turn
             if turn is None or turn.id != expected_turn:
                 raise RunUnavailable("The target turn has already finished")
-        if expected_input is not None:
-            if self._inbox.get(expected_input.message.id) != expected_input:
-                raise RunUnavailable("The target input is no longer queued")
+        if (
+            expected_input is not None
+            and self._inbox.get(expected_input.message.id) != expected_input
+        ):
+            raise RunUnavailable("The target input is no longer queued")
         if during_run is not None:
             if not isinstance(event, InboxAddedEvent) or event.mode is not InboxMode.STEER:
                 raise ValueError("A run precondition requires steering input")
@@ -630,7 +663,7 @@ class SessionLog:
         )
         if event.through not in boundaries:
             raise ValueError("Compaction must end at a completed step or closed turn")
-        if not set((*event.preserve_turns, *event.retained_turns)) <= self._known_turns:
+        if not {*event.preserve_turns, *event.retained_turns} <= self._known_turns:
             raise ValueError("Compaction cannot revive unavailable turns")
         pending_calls: set[str] = set()
         for entry in sorted(self._history.items(), key=lambda entry: entry.position):

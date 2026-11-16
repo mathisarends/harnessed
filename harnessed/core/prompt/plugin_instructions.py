@@ -1,6 +1,6 @@
 import asyncio
 
-from harnessed.core.events.messages import PluginInstructionsChangedEvent
+from harnessed.core.events import PluginInstructionsChangedEvent
 from harnessed.core.session.session import SessionLog
 
 

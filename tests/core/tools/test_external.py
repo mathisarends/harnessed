@@ -6,9 +6,7 @@ from harnessed import Agent
 from harnessed.core.errors import ToolNameConflict
 from harnessed.core.messages import ToolCall, ToolResult
 from harnessed.core.model import ToolDefinition
-from harnessed.core.tools.availability import ToolAvailability
-from harnessed.core.tools.context import ToolContext
-from harnessed.core.tools.registry import ToolRegistry, ToolSpec
+from harnessed.core.tools import ToolAvailability, ToolContext, ToolRegistry, ToolSpec
 from harnessed.kernel import Scope
 from harnessed.testing import ScriptedModel
 

@@ -73,7 +73,7 @@ def export_file(destination: Path, data: bytes) -> None:
         with NamedTemporaryFile(dir=destination.parent, delete=False) as stream:
             temporary = Path(stream.name)
             stream.write(data)
-        os.replace(temporary, destination)
+        temporary.replace(destination)
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)

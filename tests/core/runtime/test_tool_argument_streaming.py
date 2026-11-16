@@ -4,9 +4,13 @@ import pytest
 from pydantic import TypeAdapter
 
 from harnessed import Agent, Plugin, StopReason, ToolCall, events, tool
-from harnessed.core.events.messages import AssistantMessageEvent, TextDeltaEvent
+from harnessed.core.events import (
+    AssistantMessageEvent,
+    TextDeltaEvent,
+    ToolArgumentsDeltaEvent,
+    ToolCallRequestedEvent,
+)
 from harnessed.core.events.stream import coalesce_deltas
-from harnessed.core.events.tools import ToolArgumentsDeltaEvent, ToolCallRequestedEvent
 from harnessed.core.model import ModelChunk, ToolArgumentsMode, ToolCallDelta, ToolCallStart
 from harnessed.core.session.codec import encode_event
 from harnessed.testing import CallbackModel, ScriptedModel
@@ -158,18 +162,20 @@ async def test_large_argument_previews_coalesce_for_a_slow_consumer_instead_of_o
         ModelChunk(tool_call=ToolCall("add", {"a": int("1" * 500), "b": 2}, "call")),
     ]
     model = ScriptedModel([first, "done"])
-    async with Agent(model=model, plugins=[Add(effects)]).session() as session:
-        async with session.stream("add", buffer_size=32) as stream:
-            try:
-                notifications = []
-                async for event in stream:
-                    notifications.append(event)
-                    if isinstance(event, events.ToolArgumentsDeltaEvent):
-                        break
-                await session.wait_until_idle()  # read nothing while the model streams
-                notifications += [event async for event in stream]
-            finally:
-                await stream.aclose()
+    async with (
+        Agent(model=model, plugins=[Add(effects)]).session() as session,
+        session.stream("add", buffer_size=32) as stream,
+    ):
+        try:
+            notifications = []
+            async for event in stream:
+                notifications.append(event)
+                if isinstance(event, events.ToolArgumentsDeltaEvent):
+                    break
+            await session.wait_until_idle()  # read nothing while the model streams
+            notifications += [event async for event in stream]
+        finally:
+            await stream.aclose()
     deltas = [e for e in notifications if isinstance(e, events.ToolArgumentsDeltaEvent)]
     assert len(deltas) < len(fragments)
     assert "".join(e.delta.arguments for e in deltas) == "".join(fragments)

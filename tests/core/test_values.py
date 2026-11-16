@@ -2,9 +2,7 @@ from collections.abc import Hashable
 
 import pytest
 
-from harnessed.core.events.model import ModelRequestedEvent
-from harnessed.core.events.observations import ObservationRecordedEvent
-from harnessed.core.events.turn import TurnStartedEvent
+from harnessed.core.events import ModelRequestedEvent, ObservationRecordedEvent, TurnStartedEvent
 from harnessed.core.messages import AssistantMessage, ImagePart, TextPart, ToolCall, UserMessage
 from harnessed.core.model import ModelInfo, ModelRequest, ModelResponse, ModelUsage, ToolDefinition
 

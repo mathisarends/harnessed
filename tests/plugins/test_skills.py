@@ -13,7 +13,7 @@ from harnessed import (
 from harnessed.core.errors import ConfigError
 from harnessed.core.messages import ToolStatus
 from harnessed.core.prompt.plugin_instructions import PluginInstructions
-from harnessed.core.tools.registry import ToolRegistry
+from harnessed.core.tools import ToolRegistry
 from harnessed.plugins import Compaction, Rules, Skill, Skills, Spill, ToolOutputLimit, when
 from harnessed.plugins.skills import SkillCatalog
 from harnessed.testing import ExtractiveSummarizer, ScriptedModel, call
@@ -115,10 +115,10 @@ async def test_earlier_sources_win_and_catalog_metadata_and_shadows_are_inspecta
         assert entry.inline is inline and entry.shadows == (str(root.resolve()),)
         assert "Inline winner." in await session.prompt.render()
         assert (
-            "Inline instructions."
-            == json.loads((await execute(session, "load_skill", name="pdf-forms")).text)[
+            json.loads((await execute(session, "load_skill", name="pdf-forms")).text)[
                 "instructions"
             ]
+            == "Inline instructions."
         )
     skills_4 = Skills(root.parent)
     async with Agent(
@@ -294,7 +294,7 @@ async def test_invalid_frontmatter_fails_at_session_open_with_its_path(tmp_path,
         model=ScriptedModel([]),
         plugins=[skills],
     )
-    with pytest.raises(ConfigError, match="SKILL.md"):
+    with pytest.raises(ConfigError, match=r"SKILL.md"):
         async with app.session():
             pass
 
@@ -435,7 +435,7 @@ async def test_reloading_after_compaction_updates_the_retained_body_even_with_re
 
 async def test_yaml_python_tags_are_rejected_as_configuration_errors(tmp_path):
     root = folder(tmp_path, extra="metadata: !!python/tuple [one, two]\n")
-    with pytest.raises(ConfigError, match="SKILL.md"):
+    with pytest.raises(ConfigError, match=r"SKILL.md"):
         skills = Skills(Skill.from_dir(root))
         async with Agent(
             model=ScriptedModel([]),

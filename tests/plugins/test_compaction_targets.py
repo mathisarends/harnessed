@@ -3,7 +3,7 @@ import pytest
 from harnessed import Agent
 from harnessed.core.budget import ContextBudget
 from harnessed.core.errors import ConfigError
-from harnessed.core.events.messages import MessageAppendedEvent
+from harnessed.core.events import MessageAppendedEvent
 from harnessed.core.messages import AssistantMessage, UserMessage
 from harnessed.core.model import ModelInfo, ModelRequest, ModelResponse, ModelUsage, StopReason
 from harnessed.core.plugin import Service
