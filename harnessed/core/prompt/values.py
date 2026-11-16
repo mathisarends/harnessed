@@ -187,31 +187,9 @@ class PromptComposition:
         self._omitted = () if document.collects_plugins else tuple(item.name for item in providers)
         if self._omitted:
             providers = ()
-        entries: list[PromptEntry] = []
-
-        def flatten(group: SystemPrompt, origin: str) -> None:
-            for index, part in enumerate(group.sections, 1):
-                match part:
-                    case SystemPrompt():
-                        flatten(part, origin)
-                    case str():
-                        entries.append(PromptEntry(Instructions(text=part), origin))
-                    case Instructions():
-                        entries.append(PromptEntry(part, f"{origin}: {part.title or index}"))
-
-        flatten(document, "application instructions")
+        entries = _flatten(document, "application instructions")
         for contribution in providers:
-            provider = contribution.instructions
-            if provider is None:
-                continue
-            block = provider()
-            if not isinstance(block, SystemPrompt):
-                raise TypeError(f"{contribution.name}.instructions() must return a SystemPrompt")
-            if block.collects_plugins:
-                raise ValueError(
-                    f"{contribution.name}.instructions() must return content, not plugin collection"
-                )
-            flatten(block, f"{contribution.name}.instructions")
+            entries.extend(_contributed_entries(contribution))
         self.entries = tuple(entries)
 
     def __str__(self) -> str:
@@ -239,3 +217,30 @@ class PromptComposition:
                     attribute = f" title={quoteattr(title)}" if title else ""
                     parts.append(f"<section{attribute}>\n{escape(text)}\n</section>")
         return "\n\n".join(parts)
+
+
+def _flatten(group: SystemPrompt, origin: str) -> list[PromptEntry]:
+    entries: list[PromptEntry] = []
+    for index, part in enumerate(group.sections, 1):
+        match part:
+            case SystemPrompt():
+                entries.extend(_flatten(part, origin))
+            case str():
+                entries.append(PromptEntry(Instructions(text=part), origin))
+            case Instructions():
+                entries.append(PromptEntry(part, f"{origin}: {part.title or index}"))
+    return entries
+
+
+def _contributed_entries(contribution: PromptContribution) -> list[PromptEntry]:
+    provider = contribution.instructions
+    if provider is None:
+        return []
+    block = provider()
+    if not isinstance(block, SystemPrompt):
+        raise TypeError(f"{contribution.name}.instructions() must return a SystemPrompt")
+    if block.collects_plugins:
+        raise ValueError(
+            f"{contribution.name}.instructions() must return content, not plugin collection"
+        )
+    return _flatten(block, f"{contribution.name}.instructions")
