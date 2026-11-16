@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import override
 
 from pydantic import Field
 
@@ -30,11 +31,12 @@ class FailureNudge(Plugin[FailureNudgeConfig]):
     def __init__(self, threshold: int = 2):
         super().__init__(config=FailureNudgeConfig(threshold=threshold))
 
+    @override
     async def setup(self, scope: PluginScope) -> None:
         self.failures = 0
 
     @hook(ReviewToolResult)
-    async def review(self, event, next_):
+    async def review(self, _event, next_):
         result = await next_()
         if result.is_error:
             self.failures += 1
@@ -42,7 +44,7 @@ class FailureNudge(Plugin[FailureNudgeConfig]):
         return result
 
     @hook(PrepareRequest)
-    async def enrich(self, event, next_):
+    async def enrich(self, _event, next_):
         request = await next_()
         if self.failures >= self.config.threshold:
             request = request.append_message(

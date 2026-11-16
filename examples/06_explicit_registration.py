@@ -1,6 +1,7 @@
 """Run with: uv run python -m examples.06_explicit_registration"""
 
 import asyncio
+from typing import override
 
 from harnessed import Agent, Plugin, SessionLog, ToolResult, tool
 from harnessed.hooks import Next, ReviewToolResult
@@ -33,6 +34,7 @@ class TemporaryEcho(Plugin):
         """Echo text while this plugin is mounted."""
         return text
 
+    @override
     async def teardown(self, scope: PluginScope) -> None:
         print("Removed temporary_echo.")
 

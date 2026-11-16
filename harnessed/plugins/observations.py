@@ -1,3 +1,5 @@
+from typing import override
+
 from harnessed.core.events.observations import ObservationPolicyAppliedEvent
 from harnessed.core.plugin import Plugin
 from harnessed.core.session.session import SessionLog
@@ -15,10 +17,12 @@ class LatestObservationOnly(Plugin):
 
     _previous: int | None
 
+    @override
     async def setup(self, scope: PluginScope) -> None:
         previous = self.session.last(ObservationPolicyAppliedEvent)
         self._previous = previous.max_observations if previous is not None else None
         await self.session.append(ObservationPolicyAppliedEvent(1))
 
+    @override
     async def teardown(self, scope: PluginScope) -> None:
         await self.session.append(ObservationPolicyAppliedEvent(self._previous))

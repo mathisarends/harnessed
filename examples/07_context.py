@@ -4,7 +4,7 @@ import asyncio
 import base64
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Protocol
+from typing import Protocol, override
 
 from harnessed import (
     Agent,
@@ -26,7 +26,8 @@ class Memory(Protocol):
     async def search(self, query: str, k: int) -> list[str]: ...
 
 
-class DemoMemory:
+class DemoMemory(Memory):
+    @override
     async def search(self, query: str, k: int) -> list[str]:
         return ["The project uses Python 3.12+.", "Focus on authentication tests."][:k]
 
@@ -39,7 +40,7 @@ async def memory_backend(scope: Scope):
 
 class RelevantMemories(Plugin, needs=(Memory,)):
     @hook(PrepareRequest)
-    async def recall(self, event: PrepareRequest, next_, memory: Inject[Memory]):
+    async def recall(self, _event: PrepareRequest, next_, memory: Inject[Memory]):
         request = await next_()
         query = next(
             (

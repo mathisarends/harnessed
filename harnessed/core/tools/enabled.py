@@ -39,7 +39,7 @@ def bind_enabled(
     """Bind a condition to the tool's mount, resolving its services for each check."""
     validate_enabled(enabled)
     if isinstance(enabled, bool):
-        return BoundToolEnabled(lambda scope: enabled)
+        return BoundToolEnabled(lambda _: enabled)
 
     predicate = enabled
     parameters = tuple(inspect.signature(predicate).parameters.values())

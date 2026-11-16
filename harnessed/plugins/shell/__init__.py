@@ -188,7 +188,7 @@ class BackgroundShell(
         scope.on(SessionClosing, self._close_commands)
         scope[ToolRegistry].result_converter(CommandResult, command_result, owner=scope)
 
-    async def _close_commands(self, event: SessionClosing) -> None:
+    async def _close_commands(self, _event: SessionClosing) -> None:
         await self._commands.close()
 
     def _command_fields(self) -> Mapping[str, FieldInfo]:

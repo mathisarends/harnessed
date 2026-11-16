@@ -421,7 +421,7 @@ class Skills(Plugin, slot="skills"):
             await self._retain()
 
     @hook(PrepareRequest)
-    async def enrich(self, event: PrepareRequest, next_: Next[ModelRequest]) -> ModelRequest:
+    async def enrich(self, _event: PrepareRequest, next_: Next[ModelRequest]) -> ModelRequest:
         request = await next_()
         for name, instructions in self._loaded.items():
             request = request.append_message(

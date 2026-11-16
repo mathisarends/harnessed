@@ -2,6 +2,7 @@
 
 import asyncio
 from dataclasses import dataclass
+from typing import override
 
 from harnessed import Plugin, ToolCall, tool
 from harnessed.kernel import Emit, PluginScope, Scope, needs
@@ -27,7 +28,7 @@ class BrowserTools(Plugin):
     async def setup(self, scope: PluginScope) -> None:
         print(f"Setup with {self.browser.name}")
         self.prompt.fixed(f"Current browser: {self.browser.name}")
-        scope.on(PageChanged, lambda event: print(f"Listener with {self.browser.name}"))
+        scope.on(PageChanged, lambda _: print(f"Listener with {self.browser.name}"))
         scope.effect(lambda: print(f"Custom effect cleaned for {self.browser.name}"))
 
     @tool(readonly=True)
@@ -35,6 +36,7 @@ class BrowserTools(Plugin):
         """Read the current page title."""
         return await self.browser.title()
 
+    @override
     async def teardown(self, scope: PluginScope) -> None:
         print(f"Teardown with {self.browser.name}")
 

@@ -132,7 +132,9 @@ def _http_client(
     *,
     follow_redirects: bool = False,
 ) -> httpx2.AsyncClient:
-    # Keep the application's redirect boundary and bounded HTTP termination.
+    # Keep the application's redirect boundary (never follow redirects) and bounded
+    # HTTP termination.
+    del follow_redirects
     return httpx2.AsyncClient(
         headers=headers,
         auth=auth,

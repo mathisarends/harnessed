@@ -99,7 +99,7 @@ async def main():
             notes,
             notes_backend(),
             trace(),
-            Approvals(approver=lambda request: ApprovalAnswer.ALLOW),
+            Approvals(approver=lambda _: ApprovalAnswer.ALLOW),
         ],
     )
 

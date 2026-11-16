@@ -5,7 +5,7 @@ import os
 import signal
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, override
 
 from pydantic import Field
 
@@ -254,6 +254,7 @@ class _ProcessProtocol(asyncio.SubprocessProtocol):
     def pause_writing(self) -> None:
         self.writable.clear()
 
+    @override
     def resume_writing(self) -> None:
         self.writable.set()
 

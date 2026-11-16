@@ -44,7 +44,7 @@ def runtime_sections(
             if text:
                 message = UserMessage(text, id=f"mount-context:{uuid4().hex}")
 
-                async def enrich(event: PrepareRequest, next_: Next[ModelRequest]) -> ModelRequest:
+                async def enrich(_event: PrepareRequest, next_: Next[ModelRequest]) -> ModelRequest:
                     request = await next_()
                     return request.append_message(message)
 

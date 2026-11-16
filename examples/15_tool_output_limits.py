@@ -37,7 +37,7 @@ tools = LargeResultsTools()
 
 class EarlyOutputLimitTools(Plugin):
     @hook(ExecuteTool)
-    async def truncate(self, event, next_):
+    async def truncate(self, _event, next_):
         return budget.apply(await next_())
 
 

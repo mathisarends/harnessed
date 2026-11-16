@@ -232,7 +232,7 @@ class ToolRegistry:
         selected = tool_selector(selector)
         if isinstance(selected, ToolReference):
 
-            def install(registration: RegistrationState):
+            def install(_registration: RegistrationState):
                 self._references.append(selected)
                 return lambda: self._references.remove(selected)
 

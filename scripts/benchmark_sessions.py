@@ -5,15 +5,17 @@ import asyncio
 import gc
 import json
 import tracemalloc
-from collections.abc import AsyncGenerator, AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
+from contextlib import AbstractAsyncContextManager, nullcontext
 from pathlib import Path
 from time import perf_counter
+from typing import override
 
 from harnessed import Agent, SessionState
 from harnessed.models import (
     AssistantMessage,
     GenerationSettings,
+    Model,
     ModelChunk,
     ModelInfo,
     ModelRequest,
@@ -48,7 +50,7 @@ class EchoStream:
         return self.value
 
 
-class EchoModel:
+class EchoModel(Model):
     """Keep no requests or responses outside the active call."""
 
     info = ModelInfo("benchmark")
@@ -57,12 +59,13 @@ class EchoModel:
     def __init__(self, text: str) -> None:
         self.text = text
 
+    @override
     async def request(self, request: ModelRequest) -> ModelResponse:
         return ModelResponse(AssistantMessage(self.text))
 
-    @asynccontextmanager
-    async def stream(self, request: ModelRequest) -> AsyncGenerator[EchoStream]:
-        yield EchoStream(self.text)
+    @override
+    def stream(self, request: ModelRequest) -> AbstractAsyncContextManager[EchoStream]:
+        return nullcontext(EchoStream(self.text))
 
 
 async def measure(count: int, chars: int, *, one_shots: bool) -> dict[str, int | float | str]:
