@@ -37,12 +37,12 @@ class _MemoryFiles:
         self.files = files
 
     def _entries(self) -> dict[str, FileStat]:
-        entries = {"": FileStat(".", 0, True, 0)}
+        entries = {"": FileStat(".", 0, is_dir=True, modified=0)}
         for path, text in self.files.items():
-            entries[path] = FileStat(path, len(text.encode("utf-8")), False, 0)
+            entries[path] = FileStat(path, len(text.encode("utf-8")), is_dir=False, modified=0)
             for parent in PurePosixPath(path).parents:
                 key = _path(parent)
-                entries[key] = FileStat(key, 0, True, 0)
+                entries[key] = FileStat(key, 0, is_dir=True, modified=0)
         return entries
 
     async def read(self, path: PurePath, *, offset: int = 0, limit: int | None = None) -> str:

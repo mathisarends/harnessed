@@ -239,6 +239,7 @@ class BackgroundShell(
         self,
         command_id: str,
         text: Annotated[str, Field(max_length=65536)] = "",
+        *,
         eof: bool = False,
     ) -> CommandResult:
         """Write UTF-8 text to background stdin; eof=True closes stdin after this input.

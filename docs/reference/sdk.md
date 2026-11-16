@@ -231,7 +231,7 @@ Import `BackgroundShell` from `harnessed.plugins` and register it explicitly wit
 `BackgroundShell(cwd=".", *, timeout=600.0, max_timeout=600.0,
 max_background_commands=32)` requires an existing shell backend and a live session.
 It adds `start_command(argv, timeout=None)`, `read_command(command_id, wait=0.0)`,
-`write_command(command_id, text="", eof=False)`, `terminate_command(command_id)` and
+`write_command(command_id, text="", *, eof=False)`, `terminate_command(command_id)` and
 `list_commands()`. `Shell` and `ShellTools` retain their foreground-only tool set.
 
 `start_command` returns a mount-scoped ID promptly. Completion, failure, timeout

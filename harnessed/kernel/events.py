@@ -36,7 +36,7 @@ class Event(Generic[_Result]):  # noqa: UP046 -- Invariance keeps the result con
 
     @classmethod
     def _hook(cls, owner=None, *, prepend=False, priority=0) -> Any:
-        return ObserverHook(cls, owner, prepend, priority)
+        return ObserverHook(cls, owner, prepend=prepend, priority=priority)
 
 
 class Priority(IntEnum):
@@ -56,7 +56,7 @@ class Emit(Event[None]):
 
     @classmethod
     def _hook(cls, owner=None, *, prepend=False, priority=0) -> ObserverHook[Self, None]:
-        return ObserverHook(cls, owner, prepend, priority)
+        return ObserverHook(cls, owner, prepend=prepend, priority=priority)
 
 
 @dataclass(frozen=True)
@@ -85,7 +85,7 @@ class Bail[R](Event[R | None]):
 
     @classmethod
     def _hook(cls, owner=None, *, prepend=False, priority=0) -> ObserverHook[Self, R | None]:
-        return ObserverHook(cls, owner, prepend, priority)
+        return ObserverHook(cls, owner, prepend=prepend, priority=priority)
 
 
 class Waterfall[R](Event[R]):
@@ -97,7 +97,7 @@ class Waterfall[R](Event[R]):
 
     @classmethod
     def _hook(cls, owner=None, *, prepend=False, priority=0) -> WaterfallHook[Self, R]:
-        return WaterfallHook(cls, owner, prepend, priority)
+        return WaterfallHook(cls, owner, prepend=prepend, priority=priority)
 
 
 class Parallel(Event[None]):
@@ -109,7 +109,7 @@ class Parallel(Event[None]):
 
     @classmethod
     def _hook(cls, owner=None, *, prepend=False, priority=0) -> ObserverHook[Self, None]:
-        return ObserverHook(cls, owner, prepend, priority)
+        return ObserverHook(cls, owner, prepend=prepend, priority=priority)
 
 
 @dataclass(frozen=True)

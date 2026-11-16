@@ -45,7 +45,7 @@ class WaterfallFactory[E, R](Protocol):
 
 class _Declaration:
     def __init__(
-        self, event: type[Event[Any]], owner: Scope | None, prepend: bool, priority: int
+        self, event: type[Event[Any]], owner: Scope | None, *, prepend: bool, priority: int
     ) -> None:
         self.event = event
         self.owner = owner

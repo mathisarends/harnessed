@@ -5,6 +5,23 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## Unreleased
+
+### Added
+
+- `Scope.get(key, default=None)` and `PluginScope.get(key, default=None)` return a
+  visible service or the default instead of raising `MissingService`, for
+  optional collaborators such as an `Approver` or a `CompactionPolicy`.
+
+### Changed
+
+- The `eof` flag of the background shell's `write_command` tool is keyword-only.
+  The model-facing tool schema is unchanged.
+
+### Upgrade from 0.18.0
+
+- Direct Python calls of `Shell.write_command` pass `eof=True` by keyword.
+
 ## 0.18.0 (2026-11-16)
 
 ### Added
