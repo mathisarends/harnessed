@@ -37,7 +37,7 @@ async def test_rules_events_require_the_plugin_catalog_for_replay():
     async with Application(model=ScriptedModel([]), plugins=[rules]).session() as restored:
         assert restored.log.registry.decode(record) == event
     async with Application(model=ScriptedModel([])).session() as bare:
-        with pytest.raises(SessionFormatError, match="Unknown session event type: rule.triggered"):
+        with pytest.raises(SessionFormatError, match=r"Unknown session event type: rule.triggered"):
             bare.log.registry.decode(record)
 
 

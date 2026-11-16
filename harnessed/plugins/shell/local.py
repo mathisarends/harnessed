@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import signal
 from collections.abc import Mapping
@@ -94,15 +95,11 @@ class LocalShell:
             if job is not None:
                 job.close()
             elif process is not None:
-                try:
+                with contextlib.suppress(ProcessLookupError):
                     os.killpg(process.get_pid(), signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
             if process is not None and process.get_returncode() is None:
-                try:
+                with contextlib.suppress(ProcessLookupError):
                     process.kill()
-                except ProcessLookupError:
-                    pass
 
         spawning = asyncio.create_task(
             asyncio.get_running_loop().subprocess_exec(
@@ -254,10 +251,10 @@ class _ProcessProtocol(asyncio.SubprocessProtocol):
     def pause_writing(self) -> None:
         self.writable.clear()
 
-    @override
     def resume_writing(self) -> None:
         self.writable.set()
 
+    @override
     def connection_lost(self, exc: Exception | None) -> None:
         self.writable.set()
         self.closed.set()

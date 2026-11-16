@@ -299,9 +299,8 @@ class SessionControl:
                         immediate
                         and task is not None
                         and self.log.control.state == ControlState.ABORTING
-                    ):
-                        if not task.cancelling():
-                            task.cancel()
+                    ) and not task.cancelling():
+                        task.cancel()
             if not busy:
                 await self.finish_termination()
         if task is not None:

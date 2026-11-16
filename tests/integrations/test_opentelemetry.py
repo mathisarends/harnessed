@@ -814,10 +814,12 @@ async def test_filter_runs_before_serialization_and_truncation(telemetry):
         tracer_provider=provider, capture_content=True, content_filter=redact, max_content_length=4
     )
     async with Agent(model=ScriptedModel([]), plugins=[tracer]).session() as session:
-        with pytest.raises(RuntimeError, match="secret error"):
-            with session.scope[Tracer].span("harnessed.tool", tool="work") as span:
-                span.set_attribute("input", ToolCall("work", {"api_key": "long secret value"}))
-                raise RuntimeError("secret error beyond the limit")
+        with (
+            pytest.raises(RuntimeError, match="secret error"),
+            session.scope[Tracer].span("harnessed.tool", tool="work") as span,
+        ):
+            span.set_attribute("input", ToolCall("work", {"api_key": "long secret value"}))
+            raise RuntimeError("secret error beyond the limit")
     assert [item.value for item in seen] == [
         {"api_key": "long secret value"},
         "secret error beyond the limit",
@@ -940,9 +942,11 @@ async def test_redacted_exception_text_is_separately_enabled(telemetry, include_
     )
     tracer = OpenTelemetryTracer(tracer_provider=provider, capture_content=capture)
     async with Agent(model=ScriptedModel([]), plugins=[tracer]).session() as session:
-        with pytest.raises(RuntimeError, match="Bearer token-xyz"):
-            with session.scope[Tracer].span("harnessed.tool", tool="billing"):
-                raise RuntimeError("Authorization: Bearer token-xyz")
+        with (
+            pytest.raises(RuntimeError, match="Bearer token-xyz"),
+            session.scope[Tracer].span("harnessed.tool", tool="billing"),
+        ):
+            raise RuntimeError("Authorization: Bearer token-xyz")
     span = exporter.get_finished_spans()[0]
     attributes = span.events[0].attributes
     assert attributes["exception.type"] == "builtins.RuntimeError"

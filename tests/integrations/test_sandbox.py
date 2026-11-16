@@ -271,16 +271,16 @@ async def test_interrupted_commands_close_sandbox(tmp_path, end):
         shell = session.scope[ShellBackend]
         if end == "timeout":
             with pytest.raises(TimeoutError):
-                await shell.run(["timeout"], cwd=Path("."), timeout=1)
+                await shell.run(["timeout"], cwd=Path(), timeout=1)
         else:
-            pending = asyncio.create_task(shell.run(["wait"], cwd=Path("."), timeout=10))
+            pending = asyncio.create_task(shell.run(["wait"], cwd=Path(), timeout=10))
             await backend.block.wait()
             pending.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await asyncio.wait_for(pending, timeout=5)
         assert backend.closed
         with pytest.raises(SandboxError, match="closed"):
-            await shell.run(["test"], cwd=Path("."), timeout=1)
+            await shell.run(["test"], cwd=Path(), timeout=1)
 
 
 @pytest.mark.parametrize(

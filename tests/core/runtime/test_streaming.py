@@ -215,21 +215,23 @@ async def test_slow_stream_overflows_without_blocking_the_run_or_losing_the_dura
     # Alternating text and reasoning cannot be coalesced, so the buffer fills.
     chunks = [ModelChunk(text="x") if i % 2 else ModelChunk(reasoning="r") for i in range(200)]
     model = ScriptedModel([chunks, "after"])
-    async with Agent(model=model).session() as session:
-        async with session.stream("large reply", buffer_size=16) as stream:
-            try:
-                async for event in stream:
-                    if isinstance(event, TextDeltaEvent):
-                        break
-                await session.wait_until_idle()
-                with pytest.raises(StreamOverflow) as error:
-                    await anext(stream)
-                assert error.value.capacity == 16
-                assert session.messages[-1].text == "x" * 100
-                assert not session._streams
-                assert (await session.run("continue")).text == "after"
-            finally:
-                await stream.aclose()
+    async with (
+        Agent(model=model).session() as session,
+        session.stream("large reply", buffer_size=16) as stream,
+    ):
+        try:
+            async for event in stream:
+                if isinstance(event, TextDeltaEvent):
+                    break
+            await session.wait_until_idle()
+            with pytest.raises(StreamOverflow) as error:
+                await anext(stream)
+            assert error.value.capacity == 16
+            assert session.messages[-1].text == "x" * 100
+            assert not session._streams
+            assert (await session.run("continue")).text == "after"
+        finally:
+            await stream.aclose()
 
 
 @pytest.mark.parametrize("capacity", [0, -1, True])
@@ -330,12 +332,14 @@ async def test_stream_has_model_lifecycle_a_durable_approval_and_one_terminal_re
 
 async def test_execution_start_precedes_progress_without_approval():
     effects = []
-    async with Agent(
-        model=ScriptedModel([work(), "done"]),
-        plugins=[Work(effects), Approvals(default=PolicyDecision.ALLOW)],
-    ).session() as session:
-        async with session.stream("Publish") as run_stream:
-            events = [event async for event in run_stream]
+    async with (
+        Agent(
+            model=ScriptedModel([work(), "done"]),
+            plugins=[Work(effects), Approvals(default=PolicyDecision.ALLOW)],
+        ).session() as session,
+        session.stream("Publish") as run_stream,
+    ):
+        events = [event async for event in run_stream]
     assert effects == ["published"]
     lifecycle = [
         type(event)
@@ -451,23 +455,23 @@ async def test_a_queued_stream_cannot_answer_a_different_turns_approval():
 async def test_expired_ui_approval_cannot_be_answered_and_still_finishes_the_turn():
     effects = []
     model = ScriptedModel([work(), "timed out"])
-    async with Agent(
-        model=model, plugins=[Work(effects), Approvals(timeout=0.02)]
-    ).session() as session:
-        async with session.stream("Publish") as stream:
-            async for event in stream:
-                if isinstance(event, ApprovalNeededEvent):
-                    question = event
-                    break
-            await asyncio.wait_for(session.wait_until_idle(), 3)
-            with pytest.raises(ApprovalUnavailable):
-                await session.approvals.answer(question.request_id, ApprovalAnswer.ALLOW)
-            rest = [event async for event in stream]
-            assert isinstance(rest[-1], TurnResultEvent) and effects == []
-            assert (
-                next(e.result.status for e in rest if isinstance(e, ToolCallFinishedEvent))
-                == "unavailable"
-            )
+    async with (
+        Agent(model=model, plugins=[Work(effects), Approvals(timeout=0.02)]).session() as session,
+        session.stream("Publish") as stream,
+    ):
+        async for event in stream:
+            if isinstance(event, ApprovalNeededEvent):
+                question = event
+                break
+        await asyncio.wait_for(session.wait_until_idle(), 3)
+        with pytest.raises(ApprovalUnavailable):
+            await session.approvals.answer(question.request_id, ApprovalAnswer.ALLOW)
+        rest = [event async for event in stream]
+        assert isinstance(rest[-1], TurnResultEvent) and effects == []
+        assert (
+            next(e.result.status for e in rest if isinstance(e, ToolCallFinishedEvent))
+            == "unavailable"
+        )
 
 
 async def test_abort_during_ui_approval_returns_an_aborted_terminal_result():
@@ -563,20 +567,19 @@ async def test_slow_stream_consumers_do_not_repeat_validators_after_many_complet
             for index in range(130)
         ]
     )
-    async with Agent(model=model).session() as session:
-        async with AsyncExitStack() as observations:
-            streams = []
-            for _ in range(130):
-                # This test deliberately holds 130 streams without consuming them.
-                stream = await observations.enter_async_context(
-                    session.stream("Report", output=Report, buffer_size=4096)
-                )
-                streams.append(stream)
-                async for event in stream:
-                    if isinstance(event, TextDeltaEvent):
-                        break
-                await session.wait_until_idle()
-            assert len(validated) == 130
-            rest = [event async for event in streams[0]]
-            assert isinstance(rest[-1], TurnResultEvent)
-            assert rest[-1].result.output.value == 1 and len(validated) == 130
+    async with Agent(model=model).session() as session, AsyncExitStack() as observations:
+        streams = []
+        for _ in range(130):
+            # This test deliberately holds 130 streams without consuming them.
+            stream = await observations.enter_async_context(
+                session.stream("Report", output=Report, buffer_size=4096)
+            )
+            streams.append(stream)
+            async for event in stream:
+                if isinstance(event, TextDeltaEvent):
+                    break
+            await session.wait_until_idle()
+        assert len(validated) == 130
+        rest = [event async for event in streams[0]]
+        assert isinstance(rest[-1], TurnResultEvent)
+        assert rest[-1].result.output.value == 1 and len(validated) == 130

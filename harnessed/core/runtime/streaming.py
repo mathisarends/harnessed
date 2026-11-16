@@ -173,9 +173,8 @@ class TurnStreams:
                         self._control.wake()
                         continue
                     return
-                if isinstance(event, TurnStartedEvent):
-                    if event.input_id == input_id:
-                        turn_id = event.turn_id
+                if isinstance(event, TurnStartedEvent) and event.input_id == input_id:
+                    turn_id = event.turn_id
                 if turn_id is None:
                     if isinstance(event, InboxAddedEvent) and event.message.id == input_id:
                         yield event

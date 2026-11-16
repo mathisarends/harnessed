@@ -604,9 +604,11 @@ class SessionLog:
             turn = self.open_turn
             if turn is None or turn.id != expected_turn:
                 raise RunUnavailable("The target turn has already finished")
-        if expected_input is not None:
-            if self._inbox.get(expected_input.message.id) != expected_input:
-                raise RunUnavailable("The target input is no longer queued")
+        if (
+            expected_input is not None
+            and self._inbox.get(expected_input.message.id) != expected_input
+        ):
+            raise RunUnavailable("The target input is no longer queued")
         if during_run is not None:
             if not isinstance(event, InboxAddedEvent) or event.mode is not InboxMode.STEER:
                 raise ValueError("A run precondition requires steering input")
@@ -630,7 +632,7 @@ class SessionLog:
         )
         if event.through not in boundaries:
             raise ValueError("Compaction must end at a completed step or closed turn")
-        if not set((*event.preserve_turns, *event.retained_turns)) <= self._known_turns:
+        if not {*event.preserve_turns, *event.retained_turns} <= self._known_turns:
             raise ValueError("Compaction cannot revive unavailable turns")
         pending_calls: set[str] = set()
         for entry in sorted(self._history.items(), key=lambda entry: entry.position):

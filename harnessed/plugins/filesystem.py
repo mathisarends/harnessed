@@ -1,4 +1,3 @@
-import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import partial
@@ -185,7 +184,7 @@ class LocalFileSystem:
                 stream.write(text)
             if resolved.exists():
                 temporary.chmod(resolved.stat().st_mode)
-            os.replace(temporary, resolved)
+            temporary.replace(resolved)
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)
@@ -196,7 +195,7 @@ class LocalFileSystem:
             path.relative_to(self.root).as_posix(), info.st_size, path.is_dir(), info.st_mtime
         )
 
-    async def list(self, path: PurePath = Path(".")) -> tuple[FileStat, ...]:
+    async def list(self, path: PurePath = Path()) -> tuple[FileStat, ...]:
         def entries() -> tuple[FileStat, ...]:
             return tuple(
                 self._stat(self._path(item)) for item in sorted(self._path(path).iterdir())
@@ -336,7 +335,7 @@ class FilesystemTools[ConfigT: PluginConfig](
 
 
 class FilesystemConfig(PluginConfig):
-    root: Path = Path(".")
+    root: Path = Path()
 
 
 class Filesystem(FilesystemTools[FilesystemConfig], slot="filesystem"):

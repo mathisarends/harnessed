@@ -253,16 +253,8 @@ class CompactionManager:
             plan = _plan_compaction(self._session_log, settings.keep_last_steps)
             if plan is None:
                 return None, request
-            current = self._session_log.open_turn
-            if not force and self._session_log.closed_turn_count < self._retry_after_turns:
-                if (
-                    self._retry_after_step is None
-                    or current is None
-                    or current.id != self._retry_after_step[0]
-                    or sum(step.closed for step in current.steps) < self._retry_after_step[1]
-                    or plan.through <= self._retry_through
-                ):
-                    return None, request
+            if not force and self._backing_off(plan):
+                return None, request
             counter = self.scope[TokenCounter]
             if isinstance(counter, CalibratedTokenCounter):
                 counter = copy(counter)
@@ -500,6 +492,19 @@ class CompactionManager:
         await self._session_log.append(best[0])
         return best
 
+    def _backing_off(self, plan: _CompactionPlan) -> bool:
+        """Whether an unproductive compaction still waits for conversation progress."""
+        if self._session_log.closed_turn_count >= self._retry_after_turns:
+            return False
+        current = self._session_log.open_turn
+        return (
+            self._retry_after_step is None
+            or current is None
+            or current.id != self._retry_after_step[0]
+            or sum(step.closed for step in current.steps) < self._retry_after_step[1]
+            or plan.through <= self._retry_through
+        )
+
     def _backoff(self, plan: _CompactionPlan) -> None:
         current = self._session_log.open_turn
         self._retry_after_turns = self._session_log.closed_turn_count + 2
@@ -541,11 +546,15 @@ def _plan_compaction(session: SessionLog, keep_last_steps: int) -> _CompactionPl
         for entry in entries
         if entry.position < through
         and (
-            isinstance(entry.message, SystemMessage)
-            and not entry.message.id.startswith("compaction:")
-            or entry.turn_id in protected_turns
-            and (entry.is_input or isinstance(entry.message, UserMessage))
-            and entry.observation is None
+            (
+                isinstance(entry.message, SystemMessage)
+                and not entry.message.id.startswith("compaction:")
+            )
+            or (
+                entry.turn_id in protected_turns
+                and (entry.is_input or isinstance(entry.message, UserMessage))
+                and entry.observation is None
+            )
         )
     )
     messages = frozenset(

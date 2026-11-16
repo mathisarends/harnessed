@@ -30,7 +30,7 @@ class Approver(Protocol):
 
 
 type ApprovalCallback = Callable[
-    [ApprovalRequestedEvent], ApprovalAnswer | bool | None | Awaitable[ApprovalAnswer | bool | None]
+    [ApprovalRequestedEvent], ApprovalAnswer | bool | Awaitable[ApprovalAnswer | bool | None] | None
 ]
 
 

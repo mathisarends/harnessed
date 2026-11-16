@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 from dataclasses import dataclass, replace
@@ -233,10 +234,8 @@ class ChildExecution:
             # Receipt persistence is owned work too; cancellation must not strand its waiters.
             finishing = asyncio.create_task(self._finish(status, text, child))
             while not finishing.done():
-                try:
+                with contextlib.suppress(asyncio.CancelledError):
                     await asyncio.shield(finishing)
-                except asyncio.CancelledError:
-                    pass
             finishing.result()
 
     async def cancel(self, *, notify: bool = True) -> None:

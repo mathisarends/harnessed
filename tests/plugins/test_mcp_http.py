@@ -279,17 +279,19 @@ async def test_http_shutdown_does_not_wait_forever_for_delete(serve_http, monkey
         else:
             await inner(scope, receive, send)
 
-    async with serve_http(app, legacy=True) as url:
-        async with Agent(model=ScriptedModel(["unused"])).session() as session:
-            handle = await session.mount(MCP.http("web", url=url))
-            closing = asyncio.create_task(handle.aclose())
-            try:
-                await asyncio.wait_for(deleting.wait(), 2)
-                done, _ = await asyncio.wait([closing], timeout=0.3)
-            finally:
-                release.set()
-                await asyncio.wait_for(closing, timeout=5)
-            assert done, "Closing the mount waited indefinitely for the server's DELETE response"
+    async with (
+        serve_http(app, legacy=True) as url,
+        Agent(model=ScriptedModel(["unused"])).session() as session,
+    ):
+        handle = await session.mount(MCP.http("web", url=url))
+        closing = asyncio.create_task(handle.aclose())
+        try:
+            await asyncio.wait_for(deleting.wait(), 2)
+            done, _ = await asyncio.wait([closing], timeout=0.3)
+        finally:
+            release.set()
+            await asyncio.wait_for(closing, timeout=5)
+        assert done, "Closing the mount waited indefinitely for the server's DELETE response"
 
 
 async def test_http_protocol_failure_disables_tools_without_retry(serve_http):
@@ -312,15 +314,14 @@ async def test_http_protocol_failure_disables_tools_without_retry(serve_http):
         else:
             await inner(scope, receive, send)
 
-    async with serve_http(app) as url:
-        async with Agent(model=ScriptedModel(["unused"])).session() as session:
-            await session.mount(MCP.http("web", url=url, readonly_tools=["echo"]))
-            registry = session.scope[ToolRegistry]
-            fail = True
-            result = await registry.execute(ToolCall("web__echo", {"query": "once"}))
-            assert result.status is ToolStatus.ERROR
-            assert registry.definitions == ()
-            assert (await registry.execute(ToolCall("web__echo", {"query": "again"}))).is_error
+    async with serve_http(app) as url, Agent(model=ScriptedModel(["unused"])).session() as session:
+        await session.mount(MCP.http("web", url=url, readonly_tools=["echo"]))
+        registry = session.scope[ToolRegistry]
+        fail = True
+        result = await registry.execute(ToolCall("web__echo", {"query": "once"}))
+        assert result.status is ToolStatus.ERROR
+        assert registry.definitions == ()
+        assert (await registry.execute(ToolCall("web__echo", {"query": "again"}))).is_error
     assert calls == [] and failures == ["POST"]
 
 
@@ -360,15 +361,14 @@ async def test_malformed_http_response_fails_without_waiting_for_call_timeout(se
         else:
             await inner(scope, receive, send)
 
-    async with serve_http(app) as url:
-        async with Agent(model=ScriptedModel(["unused"])).session() as session:
-            await session.mount(MCP.http("web", url=url, call_timeout=1))
-            fail = True
-            registry = session.scope[ToolRegistry]
-            async with asyncio.timeout(0.5):
-                result = await registry.execute(ToolCall("web__echo", {"query": "x"}))
-            assert result.status is ToolStatus.ERROR
-            assert registry.definitions == ()
+    async with serve_http(app) as url, Agent(model=ScriptedModel(["unused"])).session() as session:
+        await session.mount(MCP.http("web", url=url, call_timeout=1))
+        fail = True
+        registry = session.scope[ToolRegistry]
+        async with asyncio.timeout(0.5):
+            result = await registry.execute(ToolCall("web__echo", {"query": "x"}))
+        assert result.status is ToolStatus.ERROR
+        assert registry.definitions == ()
 
 
 async def test_http_startup_timeout_cleans_up_pending_request(serve_http):
@@ -410,7 +410,7 @@ async def test_http_cross_origin_redirect_does_not_forward_credentials(serve_htt
 
         source = Starlette(routes=[Route("/mcp", redirect, methods=["POST"])])
         async with serve_http(source) as url:
-            with pytest.raises(MCPError, match="Redirect .* not followed"):
+            with pytest.raises(MCPError, match=r"Redirect .* not followed"):
                 await Agent(
                     model=ScriptedModel(["unused"]),
                     plugins=[
@@ -520,39 +520,39 @@ async def test_http_timeout_abort_and_unmount_wake_shared_connection_waiters(ser
         await release.wait()
         return query
 
-    async with serve_http(server.streamable_http_app(json_response=False)) as url:
-        async with Agent(model=ScriptedModel(["unused"])).session() as session:
-            mount = await session.mount(
-                MCP.http(
-                    "web", url=url, parallel=True, call_timeout=0.5 if action == "timeout" else 10
-                )
+    async with (
+        serve_http(server.streamable_http_app(json_response=False)) as url,
+        Agent(model=ScriptedModel(["unused"])).session() as session,
+    ):
+        mount = await session.mount(
+            MCP.http("web", url=url, parallel=True, call_timeout=0.5 if action == "timeout" else 10)
+        )
+        registry = session.scope[ToolRegistry]
+        first = asyncio.create_task(registry.execute(ToolCall("web__slow", {"query": "one"})))
+        second = asyncio.create_task(registry.execute(ToolCall("web__slow", {"query": "two"})))
+        try:
+            await asyncio.wait_for(started.wait(), 2)
+            if action == "abort":
+                first.cancel()
+            elif action == "unmount":
+                await mount.aclose()
+            async with asyncio.timeout(2):
+                results = await asyncio.gather(first, second, return_exceptions=True)
+            if action == "abort":
+                assert isinstance(results[0], asyncio.CancelledError)
+            elif action == "timeout":
+                assert results[0].status is ToolStatus.TIMEOUT
+            else:
+                assert results[0].status is ToolStatus.ERROR
+            assert results[1].status in (
+                {ToolStatus.ERROR, ToolStatus.TIMEOUT}
+                if action == "timeout"
+                else {ToolStatus.ERROR}
             )
-            registry = session.scope[ToolRegistry]
-            first = asyncio.create_task(registry.execute(ToolCall("web__slow", {"query": "one"})))
-            second = asyncio.create_task(registry.execute(ToolCall("web__slow", {"query": "two"})))
-            try:
-                await asyncio.wait_for(started.wait(), 2)
-                if action == "abort":
-                    first.cancel()
-                elif action == "unmount":
-                    await mount.aclose()
-                async with asyncio.timeout(2):
-                    results = await asyncio.gather(first, second, return_exceptions=True)
-                if action == "abort":
-                    assert isinstance(results[0], asyncio.CancelledError)
-                elif action == "timeout":
-                    assert results[0].status is ToolStatus.TIMEOUT
-                else:
-                    assert results[0].status is ToolStatus.ERROR
-                assert results[1].status in (
-                    {ToolStatus.ERROR, ToolStatus.TIMEOUT}
-                    if action == "timeout"
-                    else {ToolStatus.ERROR}
-                )
-                assert registry.definitions == ()
-            finally:
-                release.set()
-                await asyncio.gather(first, second, return_exceptions=True)
+            assert registry.definitions == ()
+        finally:
+            release.set()
+            await asyncio.gather(first, second, return_exceptions=True)
     assert sorted(calls) == ["one", "two"]
 
 

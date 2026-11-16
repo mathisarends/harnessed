@@ -183,7 +183,7 @@ async def test_unresponsive_approval_uses_the_session_timeout_and_cancels_the_re
             agent.on(RequestApproval, wait)
         elif transport == "service":
             agent.scope.provide(Approver, WaitingApprover())
-        with pytest.raises(ApprovalUnavailable, match="timed out after 0.02 seconds"):
+        with pytest.raises(ApprovalUnavailable, match=r"timed out after 0.02 seconds"):
             await asyncio.wait_for(agent.approvals.request(ToolCall("work"), "permission"), 2)
         assert stopped.is_set()
         assert not agent.log.approvals.pending
@@ -324,7 +324,7 @@ async def test_request_timeout_replaces_the_default_in_either_direction(default,
                 is ApprovalAnswer.ALLOW
             )
         else:
-            with pytest.raises(ApprovalUnavailable, match="timed out after 0.01 seconds"):
+            with pytest.raises(ApprovalUnavailable, match=r"timed out after 0.01 seconds"):
                 await session.approvals.request(ToolCall("work"), "permission", timeout=override)
         assert not session.approvals.pending
 
@@ -341,7 +341,7 @@ async def test_none_inherits_the_default_and_an_override_does_not_change_the_nex
             await session.approvals.request(ToolCall("work"), "permission", timeout=1)
             is ApprovalAnswer.ALLOW
         )
-        with pytest.raises(ApprovalUnavailable, match="timed out after 0.01 seconds"):
+        with pytest.raises(ApprovalUnavailable, match=r"timed out after 0.01 seconds"):
             await session.approvals.request(ToolCall("work"), "permission", timeout=None)
         assert not session.approvals.pending
 
@@ -362,7 +362,7 @@ async def test_replacing_approval_configuration_changes_only_new_questions():
             waiting = asyncio.create_task(session.approvals.request(ToolCall("work"), "permission"))
             await asked.wait()
             handle = await session.mount(Approvals(approver=respond, timeout=1))
-            with pytest.raises(ApprovalUnavailable, match="timed out after 0.03 seconds"):
+            with pytest.raises(ApprovalUnavailable, match=r"timed out after 0.03 seconds"):
                 await waiting
             answer.set()
             assert (

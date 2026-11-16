@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 import types
 from collections.abc import Callable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import (
@@ -112,10 +113,9 @@ def binding_plan(callback: Callable) -> BindingPlan:
     plan = BindingPlan(
         inspect.signature(callback), MappingProxyType(hints), MappingProxyType(dependencies)
     )
-    try:
+    # Unhashable or non-weakref callables can retain the returned plan themselves.
+    with suppress(TypeError):
         _plans[callback] = plan
-    except TypeError:
-        pass  # Unhashable or non-weakref callables can retain the returned plan themselves.
     return plan
 
 

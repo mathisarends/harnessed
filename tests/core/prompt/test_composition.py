@@ -113,7 +113,7 @@ def test_plugin_provider_must_return_a_document(value):
         def instructions(self):
             return value
 
-    with pytest.raises(TypeError, match="Invalid.instructions.*SystemPrompt"):
+    with pytest.raises(TypeError, match=r"Invalid.instructions.*SystemPrompt"):
         Agent(plugins=[Invalid()])
 
 

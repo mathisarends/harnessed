@@ -103,24 +103,24 @@ class MemoryTransport:
 
         server = Server("test", on_list_tools=list_tools, on_call_tool=call_tool)
         try:
-            async with create_client_server_memory_streams() as (client_streams, server_streams):
-                async with anyio.create_task_group() as group:
-                    self.server_output = server_streams[1]
+            async with (
+                create_client_server_memory_streams() as (client_streams, server_streams),
+                anyio.create_task_group() as group,
+            ):
+                self.server_output = server_streams[1]
 
-                    async def run_server():
-                        try:
-                            await server.run(
-                                *server_streams, server.create_initialization_options()
-                            )
-                        finally:
-                            self.server_stopped.set()
+                async def run_server():
+                    try:
+                        await server.run(*server_streams, server.create_initialization_options())
+                    finally:
+                        self.server_stopped.set()
 
-                    group.start_soon(run_server)
-                    async with options.session_class(*client_streams, **session_kwargs) as client:
-                        try:
-                            yield client
-                        finally:
-                            group.cancel_scope.cancel()
+                group.start_soon(run_server)
+                async with options.session_class(*client_streams, **session_kwargs) as client:
+                    try:
+                        yield client
+                    finally:
+                        group.cancel_scope.cancel()
         finally:
             assert asyncio.current_task() is task
             self.closed += 1

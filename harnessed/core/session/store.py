@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Protocol
@@ -176,10 +177,8 @@ class SessionPersistence:
 
     async def _deferred(self) -> None:
         try:
-            try:
+            with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._wake.wait(), timeout=_CHECKPOINT_INTERVAL)
-            except TimeoutError:
-                pass
             flush = self._flush
             if flush is not None:
                 await flush()

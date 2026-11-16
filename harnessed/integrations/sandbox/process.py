@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import os
 from collections.abc import Awaitable
 
@@ -53,10 +54,8 @@ async def run_process(
             pass
         finally:
             process.stdin.close()
-            try:
+            with contextlib.suppress(BrokenPipeError, ConnectionResetError):
                 await process.stdin.wait_closed()
-            except (BrokenPipeError, ConnectionResetError):
-                pass
 
     sending: asyncio.Task[None] | None = None
     try:
@@ -84,10 +83,8 @@ async def run_process(
                 except OSError:
                     return
             if process.returncode is None:
-                try:
+                with contextlib.suppress(ProcessLookupError):
                     process.kill()
-                except ProcessLookupError:
-                    pass
             for task in [*readers, *([sending] if sending is not None else [])]:
                 task.cancel()
             await asyncio.gather(*readers, *([sending] if sending else []), return_exceptions=True)
@@ -118,10 +115,8 @@ class WorkerProcess:
         try:
             self.process = await asyncio.shield(spawning)
         except BaseException:
-            try:
+            with contextlib.suppress(OSError):
                 self.process = await finish(spawning)
-            except OSError:
-                pass
             raise
 
         async def drain() -> None:
@@ -157,10 +152,8 @@ class WorkerProcess:
         if process is None:
             return
         if process.returncode is None:
-            try:
+            with contextlib.suppress(ProcessLookupError):
                 process.kill()
-            except ProcessLookupError:
-                pass
         await process.wait()
         if self._drain is not None:
             self._drain.cancel()

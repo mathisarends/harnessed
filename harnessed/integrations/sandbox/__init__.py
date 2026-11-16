@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
@@ -74,11 +75,9 @@ class Sandbox(Plugin[SandboxConfig], slot="sandbox"):
                 await asyncio.shield(startup)
         except BaseException:
             startup.cancel()
-            try:
+            # Drain failed startup without replacing the original setup error or cancellation.
+            with contextlib.suppress(Exception, asyncio.CancelledError):
                 await finish(startup)
-            except (Exception, asyncio.CancelledError):
-                # Drain failed startup without replacing the original setup error or cancellation.
-                pass
             raise
         services = SandboxServices(backend.shell, backend.file_system)
         scope.provide(self.recipe._services_key, services)

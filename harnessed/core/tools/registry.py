@@ -74,7 +74,7 @@ class ToolError(Exception):
 
 
 type ParameterFields = Callable[[Any], Mapping[str, FieldInfo]]
-type ToolTimeout = float | None | Callable[[Any], float | None]
+type ToolTimeout = float | Callable[[Any], float | None] | None
 
 
 @dataclass(frozen=True)

@@ -12,7 +12,7 @@ import tarfile
 import time
 import uuid
 from collections.abc import Generator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from pathlib import PurePosixPath
@@ -74,10 +74,8 @@ def parent(path: str, *, create: bool = False) -> Generator[tuple[int, str]]:
     try:
         for name in components[:-1]:
             if create:
-                try:
+                with suppress(FileExistsError):
                     os.mkdir(name, dir_fd=fd)
-                except FileExistsError:
-                    pass
             child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
             os.close(fd)
             fd = child
@@ -156,10 +154,8 @@ def write_bytes(path: str, data: bytes, maximum: int) -> None:
                 stream.write(data)
             os.replace(temporary, name, src_dir_fd=fd, dst_dir_fd=fd)
         finally:
-            try:
+            with suppress(FileNotFoundError):
                 os.unlink(temporary, dir_fd=fd)
-            except FileNotFoundError:
-                pass
 
 
 def _match_path(path: tuple[str, ...], pattern: tuple[str, ...]) -> bool:
@@ -267,10 +263,8 @@ def command(request: Request) -> CommandResult:
     timed_out = False
 
     def kill() -> None:
-        try:
+        with suppress(ProcessLookupError):
             os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
 
     try:
         with selectors.DefaultSelector() as selector:
@@ -369,7 +363,8 @@ def _dispatch(request: Request) -> object:
             return metadata(request.path)
         case Operation.LIST:
             with opened(request.path, directory=True) as fd:
-                names = os.listdir(fd)
+                # Path.iterdir() cannot list an already opened, confined directory descriptor.
+                names = os.listdir(fd)  # noqa: PTH208
             if len(names) > 1000:
                 raise ValueError("Directory exceeds 1000 entries; use glob")
             return [metadata(str(PurePosixPath(request.path, name))) for name in sorted(names)]

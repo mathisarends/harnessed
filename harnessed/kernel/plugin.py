@@ -4,7 +4,7 @@ import asyncio
 import inspect
 import logging
 from collections.abc import AsyncGenerator, Callable, Iterable
-from contextlib import AsyncExitStack
+from contextlib import AsyncExitStack, suppress
 from enum import StrEnum
 from functools import wraps
 from typing import TYPE_CHECKING, Any, Concatenate, overload
@@ -145,10 +145,8 @@ class PluginHandle:
             task = asyncio.current_task()
             if task is not None and task.cancelling():
                 self._start_task.cancel()
-                try:
+                with suppress(asyncio.CancelledError):
                     await self._start_task
-                except asyncio.CancelledError:
-                    pass
                 raise
             if not (
                 self._disposed
@@ -233,10 +231,8 @@ class PluginHandle:
     async def _suspend(self, visited: set | None = None) -> None:
         if self.status == PluginStatus.STARTING and self._start_task is not None:
             self._start_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._start_task
-            except asyncio.CancelledError:
-                pass
         visited = set() if visited is None else visited
         if self in visited:
             return
@@ -307,12 +303,16 @@ class PluginRuntime:
                     ):
                         await handle._suspend()
                     signature = handle._signature()
-                    if signature is not None and handle.status in (
-                        PluginStatus.WAITING,
-                        PluginStatus.FAILED,
+                    if (
+                        signature is not None
+                        and handle.status
+                        in (
+                            PluginStatus.WAITING,
+                            PluginStatus.FAILED,
+                        )
+                        and signature != handle._failed_signature
                     ):
-                        if signature != handle._failed_signature:
-                            await handle._activate()
+                        await handle._activate()
                 except Exception as exc:
                     # Collect arbitrary failures so other plugins can reconcile.
                     self.errors.append(exc)

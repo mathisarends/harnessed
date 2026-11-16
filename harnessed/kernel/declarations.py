@@ -133,9 +133,12 @@ class PluginBase:  # smelt: ignore[SMT326] -- Stable kernel facade name; core Pl
     ) -> None:
         if "_constructor_args" not in vars(self):
             self._constructor_args = ()
-            self._constructor_kwargs = dict(
-                name=name, hooks=tuple(hooks), needs=needs, registrations=tuple(registrations)
-            )
+            self._constructor_kwargs = {
+                "name": name,
+                "hooks": tuple(hooks),
+                "needs": needs,
+                "registrations": tuple(registrations),
+            }
             hooks = self._constructor_kwargs["hooks"]
             registrations = self._constructor_kwargs["registrations"]
         self.name = type(self).__name__ if name is None or name == "" else name
@@ -176,11 +179,8 @@ class PluginBase:  # smelt: ignore[SMT326] -- Stable kernel facade name; core Pl
             # They declare no dependencies and must not block class creation.
             annotations = {}
         for annotation in annotations.values():
-            if (
-                isinstance(annotation, str)
-                and "Inject[" in annotation
-                or not isinstance(annotation, str)
-                and annotation_dependency(annotation) is not None
+            if (isinstance(annotation, str) and "Inject[" in annotation) or (
+                not isinstance(annotation, str) and annotation_dependency(annotation) is not None
             ):
                 raise TypeError(
                     "Class-level Inject fields were removed; use needs(key) or observes(key)"

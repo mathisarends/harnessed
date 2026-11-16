@@ -39,7 +39,7 @@ def proc_result(value: ProcResult) -> ToolResult:
 
 
 class ShellToolsConfig(PluginConfig):
-    cwd: Path = Path(".")
+    cwd: Path = Path()
     timeout: Annotated[float, Field(gt=0, le=600)] = 30.0
     max_timeout: Annotated[float, Field(gt=0, le=600)] = 600.0
 
@@ -272,9 +272,9 @@ __all__ = [
     "CommandInfo",
     "CommandResult",
     "LocalShell",
+    "ProcResult",
     "ProcessSnapshot",
     "ProcessState",
-    "ProcResult",
     "Shell",
     "ShellBackend",
     "ShellConfig",

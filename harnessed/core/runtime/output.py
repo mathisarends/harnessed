@@ -78,8 +78,10 @@ class OutputHandler:
             raise SessionStateError("Output validation requires a recorded assistant message")
         if not outputs and (
             answer.stop_reason in (StopReason.CONTENT_FILTER, StopReason.ERROR)
-            or answer.stop_reason == StopReason.MAX_TOKENS
-            and self.options.on_max_tokens != TokenLimitBehavior.CONTINUE
+            or (
+                answer.stop_reason == StopReason.MAX_TOKENS
+                and self.options.on_max_tokens != TokenLimitBehavior.CONTINUE
+            )
         ):
             return {}, None
         compiled = self.scope[OutputTypes].resolve(schema)

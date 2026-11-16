@@ -51,7 +51,7 @@ class WorkerClient:
     async def initialize(self, seed: bytes | None) -> None:
         if seed is None:
             request = self._file_request(
-                Operation.STAT, Path("."), timeout=self.config.startup_timeout
+                Operation.STAT, Path(), timeout=self.config.startup_timeout
             )
             info = await self.request(request, TypeAdapter(FileStat))
             if not info.is_dir:

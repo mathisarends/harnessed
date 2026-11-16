@@ -4,7 +4,7 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
-from typing import Annotated, Any, Protocol
+from typing import Annotated, Any, ClassVar, Protocol, override
 from unicodedata import normalize
 from xml.sax.saxutils import escape, quoteattr
 
@@ -141,8 +141,9 @@ def _metadata(text: str) -> dict:
     class UniqueLoader(yaml.SafeLoader):
         # Skill frontmatter scalars are strings, including names such as `on` and `123`.
         # Keep this local so ordinary SafeLoader users retain their YAML type resolution.
-        yaml_implicit_resolvers = {}
+        yaml_implicit_resolvers: ClassVar[dict[str, list[object]]] = {}
 
+        @override
         def construct_mapping(self, node, deep=False):
             self.flatten_mapping(node)
             result = {}
