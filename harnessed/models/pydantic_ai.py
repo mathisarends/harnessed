@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncGenerator, AsyncIterator, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Iterator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from types import TracebackType
@@ -25,6 +25,7 @@ from harnessed.core.messages import (
     Role,
     TextPart,
     ToolCall,
+    ToolMessage,
     ToolStatus,
     to_dict,
 )
@@ -46,7 +47,9 @@ from harnessed.core.model import (
 
 if TYPE_CHECKING:
     from pydantic_ai.messages import ModelMessage as NativeMessage
+    from pydantic_ai.messages import ModelRequest as NativeRequest
     from pydantic_ai.messages import ModelResponse as NativeResponse
+    from pydantic_ai.messages import PartDeltaEvent, PartStartEvent
     from pydantic_ai.messages import ToolCallPart as NativeToolCall
     from pydantic_ai.models import Model as NativeModel
     from pydantic_ai.models import ModelRequestParameters, StreamedResponse
@@ -216,74 +219,93 @@ def _history(request: ModelRequest, info: ModelInfo) -> list[NativeMessage]:
     calls = {call.id: call.name for message in request.messages for call in message.tool_calls}
     for message in request.messages:
         if message.role == Role.ASSISTANT:
-            if message.provider_state is not None:
-                state = message.provider_state
-                if (
-                    state.format != "pydantic-ai.response"
-                    or state.version != 1
-                    or state.provider != info.provider
-                    or state.model != info.name
-                ):
-                    raise InvalidRequest(
-                        "Incompatible provider_state format or originating model; clear "
-                        "provider_state explicitly to discard the original signed response"
-                    )
-                restored = native.ModelMessagesTypeAdapter.validate_json(
-                    json.dumps([to_dict(state.data)], allow_nan=False)
-                )[0]
-                if not isinstance(restored, native.ModelResponse):
-                    raise ValueError("Assistant provider state must contain a response")
-                original = _response(restored, info).message
-                if (
-                    message.content != original.content
-                    or message.tool_calls != original.tool_calls
-                    or message.reasoning != original.reasoning
-                ):
-                    raise InvalidRequest(
-                        "Assistant message differs from its provider state; clear provider_state "
-                        "when editing history to discard the original signed response"
-                    )
-                history.append(restored)
-                continue
-            parts: list[native.ModelResponsePart] = []
-            # Only native state carries the provider's reasoning signatures. Neutral
-            # partial/synthetic reasoning remains in the audit log, never replayed unsigned.
-            if message.text:
-                parts.append(native.TextPart(message.text))
-            parts.extend(
-                native.ToolCallPart(
-                    call.name,
-                    call.malformed.text if call.malformed is not None else to_dict(call.arguments),
-                    call.id,
-                )
-                for call in message.tool_calls
-            )
-            history.append(native.ModelResponse(parts))
+            state = message.provider_state
+            if state is not None:
+                history.append(_restored_response(message, state, info))
+            else:
+                history.append(_unsigned_response(message))
         elif message.role == Role.SYSTEM:
             history.append(native.ModelRequest([native.SystemPromptPart(message.text)]))
         elif message.role == Role.TOOL:
-            if message.status == ToolStatus.DENIED:
-                outcome = "denied"
-            elif message.is_error:
-                outcome = "failed"
-            else:
-                outcome = "success"
-            history.append(
-                native.ModelRequest(
-                    [
-                        native.ToolReturnPart(
-                            calls.get(message.tool_call_id or "", "unknown_tool"),
-                            _content(message.content),
-                            message.tool_call_id or "",
-                            outcome=outcome,
-                        )
-                    ]
-                )
-            )
+            history.append(_tool_return(message, calls))
         else:
             content = _content(message.content)
             history.append(native.ModelRequest([native.UserPromptPart(content)]))
     return history
+
+
+def _restored_response(
+    message: AssistantMessage, state: ProviderState, info: ModelInfo
+) -> NativeResponse:
+    """Replay the original signed response, rejecting edits and foreign provider state."""
+    from pydantic_ai import messages as native
+
+    if (
+        state.format != "pydantic-ai.response"
+        or state.version != 1
+        or state.provider != info.provider
+        or state.model != info.name
+    ):
+        raise InvalidRequest(
+            "Incompatible provider_state format or originating model; clear "
+            "provider_state explicitly to discard the original signed response"
+        )
+    restored = native.ModelMessagesTypeAdapter.validate_json(
+        json.dumps([to_dict(state.data)], allow_nan=False)
+    )[0]
+    if not isinstance(restored, native.ModelResponse):
+        raise ValueError("Assistant provider state must contain a response")
+    original = _response(restored, info).message
+    if (
+        message.content != original.content
+        or message.tool_calls != original.tool_calls
+        or message.reasoning != original.reasoning
+    ):
+        raise InvalidRequest(
+            "Assistant message differs from its provider state; clear provider_state "
+            "when editing history to discard the original signed response"
+        )
+    return restored
+
+
+def _unsigned_response(message: AssistantMessage) -> NativeResponse:
+    from pydantic_ai import messages as native
+
+    parts: list[native.ModelResponsePart] = []
+    # Only native state carries the provider's reasoning signatures. Neutral
+    # partial/synthetic reasoning remains in the audit log, never replayed unsigned.
+    if message.text:
+        parts.append(native.TextPart(message.text))
+    parts.extend(
+        native.ToolCallPart(
+            call.name,
+            call.malformed.text if call.malformed is not None else to_dict(call.arguments),
+            call.id,
+        )
+        for call in message.tool_calls
+    )
+    return native.ModelResponse(parts)
+
+
+def _tool_return(message: ToolMessage, calls: dict[str, str]) -> NativeRequest:
+    from pydantic_ai import messages as native
+
+    if message.status == ToolStatus.DENIED:
+        outcome = "denied"
+    elif message.is_error:
+        outcome = "failed"
+    else:
+        outcome = "success"
+    return native.ModelRequest(
+        [
+            native.ToolReturnPart(
+                calls.get(message.tool_call_id or "", "unknown_tool"),
+                _content(message.content),
+                message.tool_call_id or "",
+                outcome=outcome,
+            )
+        ]
+    )
 
 
 def _content(content: str | tuple[ContentPart, ...]):
@@ -475,67 +497,77 @@ class _Stream:
         previews: dict[int, _ToolPreview] = {}
         async for event in self._native:
             if isinstance(event, native.PartStartEvent):
-                # A start replaces whatever part previously used this index.
-                previews.pop(event.index, None)
-                if isinstance(event.part, native.TextPart):
-                    yield ModelChunk(text=event.part.content)
-                elif isinstance(event.part, native.ThinkingPart):
-                    yield ModelChunk(reasoning=event.part.content)
-                elif isinstance(event.part, native.ToolCallPart):
-                    part = event.part
-                    preview = _ToolPreview(part.tool_name, part.tool_call_id)
-                    previews[event.index] = preview
-                    yield ModelChunk(
-                        tool_call_start=ToolCallStart(event.index, preview.name, preview.call_id)
-                    )
-                    if part.args is not None:
-                        if isinstance(part.args, dict):
-                            preview.arguments = dict(part.args)
-                            arguments = json.dumps(preview.arguments, ensure_ascii=False)
-                            mode = ToolArgumentsMode.REPLACE
-                        else:
-                            arguments = part.args
-                            mode = ToolArgumentsMode.APPEND
-                        yield ModelChunk(
-                            tool_call_delta=ToolCallDelta(
-                                event.index, arguments, preview.name, preview.call_id, mode
-                            )
-                        )
+                for chunk in _start_chunks(event, previews):
+                    yield chunk
             elif isinstance(event, native.PartDeltaEvent):
-                if isinstance(event.delta, native.TextPartDelta):
-                    yield ModelChunk(text=event.delta.content_delta)
-                elif (
-                    isinstance(event.delta, native.ThinkingPartDelta) and event.delta.content_delta
-                ):
-                    yield ModelChunk(reasoning=event.delta.content_delta)
-                elif isinstance(event.delta, native.ToolCallPartDelta):
-                    # Provider-executed native calls share this delta type but are
-                    # not previewed; the final response decides whether they are valid.
-                    preview = previews.get(event.index)
-                    if preview is None:
-                        continue
-                    delta = event.delta
-                    preview.name += delta.tool_name_delta or ""
-                    if delta.tool_call_id is not None:
-                        preview.call_id = delta.tool_call_id
-                    if isinstance(delta.args_delta, dict):
-                        # Each patch re-sends the full snapshot: payload grows with the
-                        # number of patches. Fine while providers send few of them.
-                        preview.arguments = {**(preview.arguments or {}), **delta.args_delta}
-                        arguments = json.dumps(preview.arguments, ensure_ascii=False)
-                        mode = ToolArgumentsMode.REPLACE
-                    else:
-                        arguments = delta.args_delta or ""
-                        mode = ToolArgumentsMode.APPEND
-                    yield ModelChunk(
-                        tool_call_delta=ToolCallDelta(
-                            event.index, arguments, preview.name, preview.call_id, mode
-                        )
-                    )
+                for chunk in _delta_chunks(event, previews):
+                    yield chunk
         self._response = response = _response(self._native.get(), self._info)
         for call in response.message.tool_calls:
             yield ModelChunk(tool_call=call)
         yield ModelChunk(usage=response.usage, stop_reason=response.stop_reason)
+
+
+def _start_chunks(event: PartStartEvent, previews: dict[int, _ToolPreview]) -> Iterator[ModelChunk]:
+    from pydantic_ai import messages as native
+
+    # A start replaces whatever part previously used this index.
+    previews.pop(event.index, None)
+    part = event.part
+    if isinstance(part, native.TextPart):
+        yield ModelChunk(text=part.content)
+    elif isinstance(part, native.ThinkingPart):
+        yield ModelChunk(reasoning=part.content)
+    elif isinstance(part, native.ToolCallPart):
+        preview = _ToolPreview(part.tool_name, part.tool_call_id)
+        previews[event.index] = preview
+        yield ModelChunk(tool_call_start=ToolCallStart(event.index, preview.name, preview.call_id))
+        if part.args is not None:
+            if isinstance(part.args, dict):
+                preview.arguments = dict(part.args)
+                arguments = json.dumps(preview.arguments, ensure_ascii=False)
+                mode = ToolArgumentsMode.REPLACE
+            else:
+                arguments = part.args
+                mode = ToolArgumentsMode.APPEND
+            yield ModelChunk(
+                tool_call_delta=ToolCallDelta(
+                    event.index, arguments, preview.name, preview.call_id, mode
+                )
+            )
+
+
+def _delta_chunks(event: PartDeltaEvent, previews: dict[int, _ToolPreview]) -> Iterator[ModelChunk]:
+    from pydantic_ai import messages as native
+
+    delta = event.delta
+    if isinstance(delta, native.TextPartDelta):
+        yield ModelChunk(text=delta.content_delta)
+    elif isinstance(delta, native.ThinkingPartDelta) and delta.content_delta:
+        yield ModelChunk(reasoning=delta.content_delta)
+    elif isinstance(delta, native.ToolCallPartDelta):
+        # Provider-executed native calls share this delta type but are
+        # not previewed; the final response decides whether they are valid.
+        preview = previews.get(event.index)
+        if preview is None:
+            return
+        preview.name += delta.tool_name_delta or ""
+        if delta.tool_call_id is not None:
+            preview.call_id = delta.tool_call_id
+        if isinstance(delta.args_delta, dict):
+            # Each patch re-sends the full snapshot: payload grows with the
+            # number of patches. Fine while providers send few of them.
+            preview.arguments = {**(preview.arguments or {}), **delta.args_delta}
+            arguments = json.dumps(preview.arguments, ensure_ascii=False)
+            mode = ToolArgumentsMode.REPLACE
+        else:
+            arguments = delta.args_delta or ""
+            mode = ToolArgumentsMode.APPEND
+        yield ModelChunk(
+            tool_call_delta=ToolCallDelta(
+                event.index, arguments, preview.name, preview.call_id, mode
+            )
+        )
 
 
 def _error(error: Exception) -> ProviderError | None:
