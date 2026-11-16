@@ -474,7 +474,9 @@ class _Span:
                 ):
                     raise TypeError("Filtered exception messages must be strings")
                 if self._capture_policy is not None:
-                    filtered = replace(filtered, value=self._capture_policy._redact(filtered.value))
+                    # The capture policy is defined in this module; redaction is not public API.
+                    redacted = self._capture_policy._redact(filtered.value)  # noqa: SLF001
+                    filtered = replace(filtered, value=redacted)
             return filtered
         except Exception:
             # A redaction failure must never fall back to exporting the original

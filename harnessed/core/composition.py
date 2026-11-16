@@ -292,7 +292,8 @@ def _resolve(
                     _describe(as_plugin_spec(item.plugin), (*child_path, *item.pack_path)),
                     child_path,
                 )
-                for item in value._excluded
+                # PluginPack exclusions are private state of this composition module.
+                for item in value._excluded  # noqa: SLF001
             )
         else:
             spec = as_plugin_spec(value)

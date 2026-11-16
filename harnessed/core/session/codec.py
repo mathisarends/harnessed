@@ -93,8 +93,8 @@ def decode_event(record: dict[str, Any], *, registry: EventRegistry | None = Non
     tag = record.get("type")
     if not isinstance(tag, str):
         raise SessionFormatError("Session records require a type tag")
-    kinds = registry._types if registry is not None else SESSION_EVENT_TYPES
-    if tag not in kinds or not issubclass(kinds[tag], DurableEvent):
+    kind = registry.kind(tag) if registry is not None else SESSION_EVENT_TYPES.get(tag)
+    if kind is None or not issubclass(kind, DurableEvent):
         raise SessionFormatError(f"Unknown session event type: {tag}")
     body = record.get("data")
     if not isinstance(body, dict):

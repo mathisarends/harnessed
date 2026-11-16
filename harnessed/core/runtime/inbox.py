@@ -79,7 +79,7 @@ class InboxWriter:
             self.control.check_open()
             message = await prepare_input(content, attachments=attachments, assets=self.log.assets)
             self.control.check_open()
-            message = await self.log._images.retain_message(message)
+            message = await self.log.retain_message(message)
             self.control.check_open()
             event = InboxAddedEvent.create(
                 message,

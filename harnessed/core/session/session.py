@@ -59,7 +59,13 @@ from harnessed.core.session.inbox import Inbox, InboxProjection
 from harnessed.core.session.observers import LogObservers
 from harnessed.core.session.repair import InterruptedActivity
 from harnessed.core.session.requests import RequestProjection
-from harnessed.core.session.state import HistoryTurn, SessionState, image_refs
+from harnessed.core.session.state import (
+    HistoryEntry,
+    HistoryStep,
+    HistoryTurn,
+    SessionState,
+    image_refs,
+)
 from harnessed.core.session.store import SessionPersistence
 from harnessed.core.session.turns import Turn, TurnProjection
 from harnessed.kernel import Scope
@@ -257,7 +263,7 @@ class SessionLog:
 
     def close_resources(self) -> None:
         self._images.clear()
-        self._assets._clear()
+        self._assets.clear()
         self._files.clear()
 
     @property
@@ -273,6 +279,23 @@ class SessionLog:
         callers should release it after use.
         """
         return await self._images.resolve(request)
+
+    async def retain_message[M: Message](self, message: M) -> M:
+        """Move inline image payloads of a new message into this log's assets."""
+        return await self._images.retain_message(message)
+
+    async def retain_request(self, request: ModelRequest) -> ModelRequest:
+        """Move inline image payloads of a model request into this log's assets."""
+        return await self._images.retain_request(request)
+
+    @property
+    def completed_steps(self) -> tuple[HistoryStep, ...]:
+        """Closed steps of the working history, oldest first."""
+        return tuple(self._history.completed_steps)
+
+    def history_entries(self) -> tuple[HistoryEntry, ...]:
+        """Entries of the working history in conversation order."""
+        return self._history.items()
 
     @property
     def events(self) -> tuple[DurableEvent, ...]:

@@ -157,7 +157,7 @@ class StepRunner:
                 request, schema, model=model, enforce=output_decision is OutputDecision.ENFORCE
             )
         request = resolve_request_settings(request, model.settings)
-        request = await self.log._images.retain_request(request)
+        request = await self.log.retain_request(request)
         request = await self._compaction.prepare(request, model=model)
         if final:
             request = replace(request, tools=(), output_schema=None)

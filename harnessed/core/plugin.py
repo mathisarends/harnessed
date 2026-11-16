@@ -86,7 +86,7 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         registrations: Iterable[tuple[Registration, Callable]] = (),
     ) -> None:
         super().__init__(name=name, hooks=hooks, needs=needs, registrations=registrations)
-        schema = type(self)._configuration_type
+        schema = self._configuration_type
         if config is None:
             if schema is not None and schema is not PluginConfig:
                 raise TypeError(f"{type(self).__name__} requires config={schema.__name__}(...)")

@@ -216,7 +216,8 @@ class _LocalProcess:
         self.started.set()
         state = ProcessState.EXITED
         try:
-            result = await backend._execute(self)
+            # LocalShell owns and runs the processes defined beside it in this module.
+            result = await backend._execute(self)  # noqa: SLF001
             self.returncode = result.returncode
         except asyncio.CancelledError:
             state = ProcessState.CANCELLED

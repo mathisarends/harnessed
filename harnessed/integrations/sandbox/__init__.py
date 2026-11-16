@@ -80,13 +80,14 @@ class Sandbox(Plugin[SandboxConfig], slot="sandbox"):
                 await finish(startup)
             raise
         services = SandboxServices(backend.shell, backend.file_system)
-        scope.provide(self.recipe._services_key, services)
+        # Every session mount of one recipe shares the recipe's private service key.
+        scope.provide(self.recipe._services_key, services)  # noqa: SLF001
         scope.provide(ShellBackend, services.shell)
         scope.provide(FileSystemBackend, services.file_system)
 
     def services(self, session: Session) -> SandboxServices:
         """Resolve this recipe's ready shell and file_system in the selected live session."""
-        return session.scope[self.recipe._services_key]
+        return session.scope[self.recipe._services_key]  # noqa: SLF001
 
     async def export(self, session: Session, *, source: str, destination: str | Path) -> None:
         """Export one bounded binary file through this recipe's live session mount."""

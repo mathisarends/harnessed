@@ -361,7 +361,8 @@ class Skills(Plugin, slot="skills"):
                 self._calls.discard(message.tool_call_id)
 
     async def _catalog(self, scope: PluginScope) -> _Catalog:
-        key = self.recipe._key
+        # Every session mount of one recipe shares the recipe's private catalog key.
+        key = self.recipe._key  # noqa: SLF001
         if key not in scope:
             try:
                 catalog = await asyncio.to_thread(_discover, self.sources)

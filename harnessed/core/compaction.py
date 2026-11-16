@@ -531,7 +531,7 @@ class _CompactionPlan:
 
 
 def _plan_compaction(session: SessionLog, keep_last_steps: int) -> _CompactionPlan | None:
-    steps = session._history.completed_steps
+    steps = session.completed_steps
     if len(steps) <= keep_last_steps:
         return None
     through = steps[-keep_last_steps - 1].boundary
@@ -540,7 +540,7 @@ def _plan_compaction(session: SessionLog, keep_last_steps: int) -> _CompactionPl
     protected_turns = {step.turn_id for step in steps[-keep_last_steps:]}
     if session.open_turn is not None:
         protected_turns.add(session.open_turn.id)
-    entries = session._history.items()
+    entries = session.history_entries()
     inputs = tuple(
         entry.position
         for entry in entries
