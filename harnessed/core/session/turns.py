@@ -2,11 +2,12 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from harnessed.core.errors import SessionFormatError
-from harnessed.core.events.base import DurableEvent
-from harnessed.core.events.messages import AssistantMessageEvent
-from harnessed.core.events.model import ModelRequestedEvent
-from harnessed.core.events.output import OutputValidatedEvent, OutputValidationFailedEvent
-from harnessed.core.events.turn import (
+from harnessed.core.events import (
+    AssistantMessageEvent,
+    DurableEvent,
+    ModelRequestedEvent,
+    OutputValidatedEvent,
+    OutputValidationFailedEvent,
     StepEndedEvent,
     StepOutcome,
     StepStartedEvent,

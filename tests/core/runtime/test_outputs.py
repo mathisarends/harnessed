@@ -7,8 +7,12 @@ from pydantic import BaseModel, field_validator
 
 from harnessed import Agent, Plugin, StopReason, ToolCall, tool
 from harnessed.core.errors import ConfigError, OutputUnavailable, OutputValidationError
-from harnessed.core.events.output import OutputValidatedEvent, OutputValidationFailedEvent
-from harnessed.core.events.turn import TurnEndedEvent, TurnOutcome
+from harnessed.core.events import (
+    OutputValidatedEvent,
+    OutputValidationFailedEvent,
+    TurnEndedEvent,
+    TurnOutcome,
+)
 from harnessed.core.hooks import PrepareRequest, ToolPolicy
 from harnessed.core.messages import AssistantMessage, PolicyDecision
 from harnessed.core.model import (
@@ -20,7 +24,7 @@ from harnessed.core.model import (
     OutputMode,
 )
 from harnessed.core.outputs import OutputContract, OutputTypes
-from harnessed.core.runtime.agent_loop import AgentLoop
+from harnessed.core.runtime import AgentLoop
 from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.kernel import Scope, plugin
 from harnessed.testing import CallbackModel, ScriptedModel

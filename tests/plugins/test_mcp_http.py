@@ -31,7 +31,7 @@ from harnessed import Agent, ToolCall
 from harnessed import ToolAnnotations as LocalToolAnnotations
 from harnessed.core.messages import ToolStatus
 from harnessed.core.model import ModelChunk
-from harnessed.core.tools.registry import ToolRegistry
+from harnessed.core.tools import ToolRegistry
 from harnessed.events import ToolProgressEvent
 from harnessed.plugins.mcp import MCP
 from harnessed.testing import ScriptedModel

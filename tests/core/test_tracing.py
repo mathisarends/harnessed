@@ -7,7 +7,7 @@ import pytest
 
 from harnessed import Agent, ApprovalAnswer, Plugin, ToolCall
 from harnessed.core.model import ModelChunk
-from harnessed.core.tools.decorator import tool
+from harnessed.core.tools import tool
 from harnessed.core.tracing import Tracer
 from harnessed.hooks import PreStep, SessionClosing, StepDecision
 from harnessed.kernel import Next, PluginScope, Scope, hook

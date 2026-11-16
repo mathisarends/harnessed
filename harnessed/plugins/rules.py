@@ -12,13 +12,13 @@ from typing import Annotated, Literal, Self, override
 from pydantic import AfterValidator, ConfigDict, Field, StringConstraints, TypeAdapter
 from pydantic.dataclasses import dataclass
 
-from harnessed.core.events.base import DurableEvent, Identifier
+from harnessed.core.events import DurableEvent, Identifier
 from harnessed.core.hooks import PrepareRequest, ReviewToolResult
 from harnessed.core.messages import ToolCall, ToolResult, UserMessage, to_dict, user
 from harnessed.core.model import ModelRequest
 from harnessed.core.plugin import Plugin
 from harnessed.core.prompt.plugin_instructions import PluginInstructions
-from harnessed.core.runtime.inbox import SessionInbox
+from harnessed.core.runtime import SessionInbox
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import TokenCounter, count_content
 from harnessed.kernel import Inject, Next, PluginScope, PluginState, hook, needs

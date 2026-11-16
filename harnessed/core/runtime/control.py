@@ -3,8 +3,8 @@ from collections.abc import AsyncGenerator, Callable, Coroutine
 from contextlib import asynccontextmanager
 
 from harnessed.core.errors import RunUnavailable, SessionClosed, SessionStateError
-from harnessed.core.events.session import ControlState, SessionControlChangedEvent
-from harnessed.core.events.session import SessionStatus as SessionStatus
+from harnessed.core.events import ControlState, SessionControlChangedEvent
+from harnessed.core.events import SessionStatus as SessionStatus
 from harnessed.core.hooks import SessionAborting
 from harnessed.core.session.session import SessionLog
 

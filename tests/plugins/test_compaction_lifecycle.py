@@ -3,8 +3,7 @@ import asyncio
 import pytest
 
 from harnessed import Agent, Plugin
-from harnessed.core.events.base import TransientEvent
-from harnessed.core.events.publishing import SessionPublished
+from harnessed.core.events import SessionPublished, TransientEvent
 from harnessed.events import (
     CompactionAppliedEvent,
     CompactionFinishedEvent,

@@ -6,9 +6,9 @@ from pydantic import ValidationError
 from harnessed import Agent
 from harnessed.core.budget import ContextBudget
 from harnessed.core.errors import PluginConflict
-from harnessed.core.events.model import ModelRequestedEvent
+from harnessed.core.events import ModelRequestedEvent
 from harnessed.core.model import ModelChunk, ModelInfo, ModelUsage
-from harnessed.core.runtime.services import RuntimeServices
+from harnessed.core.runtime import RuntimeServices
 from harnessed.core.tokens import ApproximateTokenCounter, CalibratedTokenCounter, TokenCounter
 from harnessed.kernel import PluginScope
 from harnessed.plugins import (
@@ -65,8 +65,7 @@ async def test_unknown_model_window_and_async_token_counting_do_not_assume_128k(
 
 async def test_replacing_the_loop_slot_keeps_shared_tools_and_prompt():
     from harnessed import Plugin, tool
-    from harnessed.core.runtime.agent_loop import AgentFactory, ReactLoopFactory
-    from harnessed.core.runtime.options import AgentLoopConfig
+    from harnessed.core.runtime import AgentFactory, AgentLoopConfig, ReactLoopFactory
     from harnessed.testing import call
 
     class CustomLoop(Plugin, slot="loop"):

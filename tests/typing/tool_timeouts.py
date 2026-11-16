@@ -1,7 +1,7 @@
 from typing import assert_type
 
 from harnessed import Plugin, tool
-from harnessed.core.tools.registry import ToolRegistry
+from harnessed.core.tools import ToolRegistry
 
 
 class TimedTools(Plugin):

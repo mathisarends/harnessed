@@ -5,13 +5,11 @@ import pytest
 from harnessed import Agent as Application
 from harnessed import ApprovalAnswer, Plugin, ToolCall, tool
 from harnessed.core.approvals import ApprovalState, Approver, CallbackApprover, ToolApprovalGuard
-from harnessed.core.events.approvals import (
+from harnessed.core.events import (
     ApprovalRequestedEvent,
     ApprovalResolvedEvent,
     ApprovalRevokedEvent,
     ApprovalStatus,
-)
-from harnessed.core.events.tools import (
     ToolCallFinishedEvent,
     ToolExecutionStartedEvent,
     ToolPolicyAppliedEvent,

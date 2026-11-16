@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 
 from harnessed import ToolCall, plugin
-from harnessed.core.runtime.services import RuntimeServices
-from harnessed.core.tools.registry import ToolRegistry
+from harnessed.core.runtime import RuntimeServices
+from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import PluginStatus, Scope
 from harnessed.plugins.filesystem import FileSystemBackend, FilesystemTools
 from harnessed.plugins.shell import ProcResult, ShellTools

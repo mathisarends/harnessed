@@ -10,7 +10,7 @@ from harnessed import (
 )
 from harnessed.core.messages import ToolStatus
 from harnessed.core.model import ModelChunk
-from harnessed.core.tools.registry import ToolError, ToolRegistry
+from harnessed.core.tools import ToolError, ToolRegistry
 from harnessed.plugins.filesystem import Filesystem, LocalFileSystem
 from harnessed.testing import ScriptedModel
 

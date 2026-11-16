@@ -4,8 +4,11 @@ import pytest
 
 from harnessed import Agent, Plugin
 from harnessed.core.assets import AssetRef
-from harnessed.core.events.model import ModelRequestedEvent
-from harnessed.core.events.observations import ObservationRecordedEvent, ObservationsIncludedEvent
+from harnessed.core.events import (
+    ModelRequestedEvent,
+    ObservationRecordedEvent,
+    ObservationsIncludedEvent,
+)
 from harnessed.core.messages import ImagePart, ImageReference, TextPart, UserMessage
 from harnessed.core.model import ModelRequest
 from harnessed.hooks import Next, PrepareRequest

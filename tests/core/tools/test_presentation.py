@@ -14,7 +14,7 @@ from harnessed import (
     tool,
 )
 from harnessed.core.model import ToolDefinition
-from harnessed.core.tools.registry import ToolRegistry, ToolSpec
+from harnessed.core.tools import ToolRegistry, ToolSpec
 from harnessed.hooks import ExecuteTool
 from harnessed.kernel import hook
 from harnessed.plugins import Approvals

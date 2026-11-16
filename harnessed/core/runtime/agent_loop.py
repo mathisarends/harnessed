@@ -8,8 +8,8 @@ from harnessed.core.plugin import Plugin
 from harnessed.core.runtime.options import AgentLoopConfig, AgentOptions
 from harnessed.core.runtime.session import Session
 from harnessed.core.session.session import SessionLog
+from harnessed.core.tools import ErrorFormatter
 from harnessed.core.tools.output_limit import ToolOutputLimit
-from harnessed.core.tools.registry import ErrorFormatter
 from harnessed.kernel import PluginScope, Scope
 
 

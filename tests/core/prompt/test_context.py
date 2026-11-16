@@ -5,8 +5,7 @@ import pytest
 
 from harnessed import Agent as Application
 from harnessed import File, Image, Inject, Plugin, PolicyDecision, SessionState, ToolCall, tool
-from harnessed.core.events.model import ModelRequestedEvent
-from harnessed.core.events.observations import ObservationRecordedEvent
+from harnessed.core.events import ModelRequestedEvent, ObservationRecordedEvent
 from harnessed.core.hooks import PrepareRequest, PreStep
 from harnessed.core.messages import ImageDetail, ImagePart, Role, TextPart, UserMessage, user
 from harnessed.core.model import ModelChunk

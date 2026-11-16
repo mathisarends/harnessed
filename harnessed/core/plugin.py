@@ -8,10 +8,9 @@ from typing import Any, ClassVar, Self, TypeVar, cast, get_args, get_origin, ove
 
 from pydantic import BaseModel, ConfigDict
 
-from harnessed.core.events.base import DurableEvent, TransientEvent
+from harnessed.core.events import DurableEvent, TransientEvent
 from harnessed.core.prompt.values import PromptContribution, SystemPrompt
-from harnessed.core.tools import ToolSpec
-from harnessed.core.tools.decorator import activation_tool
+from harnessed.core.tools import ToolSpec, activation_tool
 from harnessed.kernel import Bundle as KernelBundle
 from harnessed.kernel import (
     HookEntry,

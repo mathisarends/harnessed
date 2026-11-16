@@ -4,7 +4,7 @@ import pytest
 
 from harnessed import Agent, Plugin, PolicyDecision, ToolCall, ToolContext, events, tool
 from harnessed.core.approvals import ApprovalState
-from harnessed.core.events.approvals import ApprovalRequestedEvent, ApprovalStatus
+from harnessed.core.events import ApprovalRequestedEvent, ApprovalStatus
 from harnessed.core.messages import ApprovalAnswer, ToolStatus
 from harnessed.core.model import ModelChunk
 from harnessed.kernel import Inject

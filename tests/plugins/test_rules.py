@@ -2,9 +2,11 @@ import pytest
 
 from harnessed import Agent as Application
 from harnessed import Plugin, PolicyDecision, ToolCall, ToolResult, tool
-from harnessed.core.events.inbox import InboxAddedEvent
-from harnessed.core.events.messages import PluginInstructionsChangedEvent
-from harnessed.core.events.tools import ToolCallFinishedEvent
+from harnessed.core.events import (
+    InboxAddedEvent,
+    PluginInstructionsChangedEvent,
+    ToolCallFinishedEvent,
+)
 from harnessed.core.messages import Role, ToolStatus
 from harnessed.core.model import ModelChunk
 from harnessed.core.prompt.plugin_instructions import PluginInstructions
@@ -221,7 +223,7 @@ async def test_size_predicate_and_missing_exit_code_and_tool_filters():
 
 
 async def test_process_return_values_are_normalized_with_exit_codes():
-    from harnessed.core.tools.registry import ToolRegistry
+    from harnessed.core.tools import ToolRegistry
     from harnessed.kernel import plugin
     from harnessed.plugins.shell import proc_result
 
@@ -264,7 +266,7 @@ def test_invalid_rule_options(kwargs):
 
 async def test_canonical_match_metadata_survives_output_limits_and_context_resets(tmp_path):
     from harnessed import Agent, Plugin
-    from harnessed.core.tools.decorator import tool
+    from harnessed.core.tools import tool
     from harnessed.plugins import ToolOutputLimit
     from harnessed.testing import ScriptedModel
 
@@ -351,8 +353,7 @@ def test_rule_conditions_are_sync_and_must_return_booleans():
 
 async def test_rule_and_observation_policies_mount_with_narrow_services_without_a_driver():
     from harnessed.core.prompt.plugin_instructions import PluginInstructions
-    from harnessed.core.runtime.control import SessionControl
-    from harnessed.core.runtime.inbox import InboxWriter, SessionInbox
+    from harnessed.core.runtime import InboxWriter, SessionControl, SessionInbox
     from harnessed.core.tokens import ApproximateTokenCounter, TokenCounter
     from harnessed.kernel import Scope
     from harnessed.plugins import LatestObservationOnly

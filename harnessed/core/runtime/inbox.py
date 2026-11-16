@@ -5,13 +5,13 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from harnessed.core.attachments import Attachment, prepare_input
-from harnessed.core.events.inbox import (
+from harnessed.core.events import (
     InboxAddedEvent,
     InboxMode,
     InboxRemovalReason,
     InboxRemovedEvent,
+    TurnLimits,
 )
-from harnessed.core.events.turn import TurnLimits
 from harnessed.core.messages import UserMessage
 from harnessed.core.model import GenerationSettings, OutputSchema
 from harnessed.core.runtime.control import SessionControl

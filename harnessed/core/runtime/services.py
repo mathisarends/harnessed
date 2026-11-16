@@ -1,6 +1,6 @@
 from harnessed.core.approvals import ApprovalsConfig
 from harnessed.core.budget import ContextBudget
-from harnessed.core.events.model import ModelRequestedEvent, ModelUsageRecordedEvent
+from harnessed.core.events import ModelRequestedEvent, ModelUsageRecordedEvent
 from harnessed.core.hooks import SessionAppended
 from harnessed.core.model import UsagePurpose
 from harnessed.core.plugin import Plugin

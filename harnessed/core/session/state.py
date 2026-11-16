@@ -8,9 +8,7 @@ from pydantic.dataclasses import dataclass
 
 from harnessed.core.assets import AssetRef, AssetValue
 from harnessed.core.errors import SessionFormatError
-from harnessed.core.events.messages import MessageLifetime
-from harnessed.core.events.observations import IncludedObservation
-from harnessed.core.events.subagents import SubagentLinkedEvent
+from harnessed.core.events import IncludedObservation, MessageLifetime, SubagentLinkedEvent
 from harnessed.core.messages import (
     AssistantMessage,
     ImageReference,

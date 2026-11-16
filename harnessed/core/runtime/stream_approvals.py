@@ -1,13 +1,13 @@
 from typing import Self
 
 from harnessed.core.errors import ApprovalUnavailable
-from harnessed.core.events.approvals import (
+from harnessed.core.events import (
     ApprovalNeededEvent,
     ApprovalResolvedEvent,
     ApprovalStatus,
+    InboxAddedEvent,
+    TurnStartedEvent,
 )
-from harnessed.core.events.inbox import InboxAddedEvent
-from harnessed.core.events.turn import TurnStartedEvent
 from harnessed.core.hooks import RequestApproval, SessionAppended
 from harnessed.core.messages import ApprovalAnswer
 from harnessed.core.runtime.approvals import LiveApproval, LiveApprovals

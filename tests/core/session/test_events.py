@@ -6,11 +6,13 @@ import pytest
 
 from harnessed import Agent as Application
 from harnessed import Plugin, PolicyDecision, ToolCall, ToolResult, tool
-from harnessed.core.events.base import DurableEvent
-from harnessed.core.events.messages import SystemMessageEvent
-from harnessed.core.events.model import ModelRequestedEvent
-from harnessed.core.events.turn import TurnEndedEvent
-from harnessed.core.events.unions import SESSION_EVENT_TYPES
+from harnessed.core.events import (
+    SESSION_EVENT_TYPES,
+    DurableEvent,
+    ModelRequestedEvent,
+    SystemMessageEvent,
+    TurnEndedEvent,
+)
 from harnessed.core.hooks import PrepareRequest
 from harnessed.core.messages import SystemMessage
 from harnessed.core.model import ModelChunk

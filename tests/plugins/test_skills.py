@@ -13,7 +13,7 @@ from harnessed import (
 from harnessed.core.errors import ConfigError
 from harnessed.core.messages import ToolStatus
 from harnessed.core.prompt.plugin_instructions import PluginInstructions
-from harnessed.core.tools.registry import ToolRegistry
+from harnessed.core.tools import ToolRegistry
 from harnessed.plugins import Compaction, Rules, Skill, Skills, Spill, ToolOutputLimit, when
 from harnessed.plugins.skills import SkillCatalog
 from harnessed.testing import ExtractiveSummarizer, ScriptedModel, call

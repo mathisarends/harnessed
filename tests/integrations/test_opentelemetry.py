@@ -28,7 +28,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from harnessed import Agent, ApprovalAnswer, Plugin, ToolCall, tool
-from harnessed.core.events.session import ControlState, SessionControlChangedEvent
+from harnessed.core.events import ControlState, SessionControlChangedEvent
 from harnessed.core.hooks import SessionAppended, SessionClosing
 from harnessed.core.messages import AssistantMessage, ToolResult, ToolStatus, UserMessage
 from harnessed.core.model import (

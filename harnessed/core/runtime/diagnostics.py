@@ -9,7 +9,7 @@ from harnessed.core.diagnostics import (
     RetryReason,
 )
 from harnessed.core.errors import ContextLengthExceeded, ProviderError, RateLimited
-from harnessed.core.events.model import (
+from harnessed.core.events import (
     ModelAttemptFinishedEvent,
     ModelAttemptStartedEvent,
     ModelRetryScheduledEvent,

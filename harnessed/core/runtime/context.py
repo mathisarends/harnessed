@@ -3,8 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, NamedTuple
 
-from harnessed.core.events.base import DurableEvent, TransientEvent
-from harnessed.core.events.messages import MessageAppendedEvent
+from harnessed.core.events import DurableEvent, MessageAppendedEvent, TransientEvent
 from harnessed.core.messages import Message, UserMessage
 from harnessed.core.runtime.control import SessionControl, SessionStatus
 from harnessed.core.runtime.inbox import SessionInbox

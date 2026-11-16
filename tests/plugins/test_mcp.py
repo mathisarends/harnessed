@@ -37,8 +37,7 @@ from harnessed import Agent, ToolCall
 from harnessed.core.errors import ToolNameConflict
 from harnessed.core.messages import ToolStatus, to_dict
 from harnessed.core.model import ModelChunk
-from harnessed.core.tools import ToolError
-from harnessed.core.tools.registry import ToolRegistry
+from harnessed.core.tools import ToolError, ToolRegistry
 from harnessed.events import ToolProgressEvent
 from harnessed.plugins import Approvals, ToolApprovalGuard, ToolOutputLimit
 from harnessed.plugins.mcp import MCP

@@ -1,6 +1,6 @@
 from typing import override
 
-from harnessed.core.events.observations import ObservationPolicyAppliedEvent
+from harnessed.core.events import ObservationPolicyAppliedEvent
 from harnessed.core.plugin import Plugin
 from harnessed.core.session.session import SessionLog
 from harnessed.kernel import PluginScope, needs

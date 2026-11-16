@@ -35,11 +35,11 @@ from harnessed.core.errors import (
     ProviderUnavailable,
     RateLimited,
 )
-from harnessed.core.events.model import ModelUsageRecordedEvent
+from harnessed.core.events import ModelUsageRecordedEvent
 from harnessed.core.messages import ImagePart, TextPart
 from harnessed.core.model import ModelRequest, StopReason, ToolArgumentsMode
 from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.tools.decorator import tool
+from harnessed.core.tools import tool
 from harnessed.models import PydanticAIModel
 from harnessed.plugins import AgentLoop
 

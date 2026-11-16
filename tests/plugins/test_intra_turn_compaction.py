@@ -3,20 +3,18 @@ import pytest
 from harnessed import Agent, Plugin, tool
 from harnessed.core.compaction import CompactionManager, CompactionPolicy, CompactionSettings
 from harnessed.core.errors import ContextLengthExceeded
-from harnessed.core.events.compaction import CompactionAppliedEvent
-from harnessed.core.events.messages import (
+from harnessed.core.events import (
     AssistantMessageEvent,
+    CompactionAppliedEvent,
     MessageAppendedEvent,
     MessageLifetime,
-    UserMessageEvent,
-)
-from harnessed.core.events.model import ModelRequestedEvent
-from harnessed.core.events.tools import ToolCallFinishedEvent
-from harnessed.core.events.turn import (
+    ModelRequestedEvent,
     StepEndedEvent,
     StepStartedEvent,
+    ToolCallFinishedEvent,
     TurnEndedEvent,
     TurnStartedEvent,
+    UserMessageEvent,
 )
 from harnessed.core.messages import (
     AssistantMessage,

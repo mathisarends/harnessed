@@ -6,7 +6,7 @@ import pytest
 from pydantic import BaseModel, ConfigDict, Field, RootModel, ValidationError, model_validator
 
 from harnessed import Agent, Plugin, ToolCall, ToolContext, tool
-from harnessed.core.tools.registry import ToolRegistry, ToolSpec
+from harnessed.core.tools import ToolRegistry, ToolSpec
 from harnessed.kernel import Inject, Scope
 from harnessed.plugins import Service
 from harnessed.testing import ScriptedModel, call

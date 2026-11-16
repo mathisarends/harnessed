@@ -17,10 +17,12 @@ from harnessed.core.child_status import (
 )
 from harnessed.core.children import ChildLimits, ChildSessionFactory, ChildSessionRequest
 from harnessed.core.errors import SessionStateError
-from harnessed.core.events.approvals import ApprovalRequestedEvent, ApprovalResolvedEvent
-from harnessed.core.events.base import DurableEvent
-from harnessed.core.events.model import ModelRequestedEvent
-from harnessed.core.events.subagents import (
+from harnessed.core.events import (
+    ApprovalRequestedEvent,
+    ApprovalResolvedEvent,
+    DurableEvent,
+    ModelRequestedEvent,
+    StepEndedEvent,
     SubagentApprovalRequestedEvent,
     SubagentFinishedEvent,
     SubagentLinkedEvent,
@@ -28,15 +30,13 @@ from harnessed.core.events.subagents import (
     SubagentStartedEvent,
     SubagentStatus,
     SubagentUpdatedEvent,
-)
-from harnessed.core.events.tools import (
     ToolCallFinishedEvent,
     ToolCallRequestedEvent,
     ToolExecutionFinishedEvent,
     ToolExecutionStartedEvent,
     ToolProgressEvent,
+    TurnEndedEvent,
 )
-from harnessed.core.events.turn import StepEndedEvent, TurnEndedEvent
 from harnessed.core.hooks import SessionAppended
 from harnessed.core.messages import ApprovalAnswer, ToolCall, UserMessage, to_dict
 from harnessed.core.model import ModelUsage
@@ -44,7 +44,7 @@ from harnessed.core.tools import ToolError
 from harnessed.core.tools.output_limit import ToolOutputLimit
 
 if TYPE_CHECKING:
-    from harnessed.core.events.subagents import SubagentLinkedEvent
+    from harnessed.core.events import SubagentLinkedEvent
     from harnessed.core.session.children import ChildSession
     from harnessed.kernel import PluginScope, Scope
 

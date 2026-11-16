@@ -15,7 +15,7 @@ from harnessed import (
     ToolContext,
     tool,
 )
-from harnessed.core.tools.registry import ToolRegistry, ToolSpec
+from harnessed.core.tools import ToolRegistry, ToolSpec
 from harnessed.events import ApprovalRequestedEvent, ToolCallFinishedEvent
 from harnessed.kernel import Inject, InjectMarker, Key, Scope
 from harnessed.models import AssistantMessage, ModelResponse

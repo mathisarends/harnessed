@@ -17,7 +17,7 @@ from harnessed.core.messages import (
 )
 from harnessed.core.model import ModelInfo, ModelRequest
 from harnessed.core.tokens import ApproximateTokenCounter, count_content
-from harnessed.core.tools.decorator import tool
+from harnessed.core.tools import tool
 from harnessed.core.tools.output_limit import ToolOutputLimit
 from harnessed.plugins import Rules, when
 from harnessed.plugins.spill import Spill, SpillStore

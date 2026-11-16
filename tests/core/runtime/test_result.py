@@ -6,10 +6,8 @@ import pytest
 from harnessed import Agent as Application
 from harnessed import Plugin, PolicyDecision, StopReason, ToolCall, tool
 from harnessed.core.errors import OutputTokenLimit
+from harnessed.core.events import InboxAddedEvent, InboxMode, TextDeltaEvent, TurnLimits
 from harnessed.core.events.completion import TurnResultEvent
-from harnessed.core.events.inbox import InboxAddedEvent, InboxMode
-from harnessed.core.events.messages import TextDeltaEvent
-from harnessed.core.events.turn import TurnLimits
 from harnessed.core.messages import user
 from harnessed.core.model import ModelChunk, ModelUsage, TokenLimitBehavior
 from harnessed.core.session.codec import decode_event, encode_event

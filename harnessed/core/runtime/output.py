@@ -1,12 +1,13 @@
 from dataclasses import replace
 
 from harnessed.core.errors import ConfigError, SessionStateError
-from harnessed.core.events.messages import (
+from harnessed.core.events import (
     AssistantMessageEvent,
     MessageAppendedEvent,
     MessageLifetime,
+    OutputValidatedEvent,
+    OutputValidationFailedEvent,
 )
-from harnessed.core.events.output import OutputValidatedEvent, OutputValidationFailedEvent
 from harnessed.core.messages import AssistantMessage, ToolResult, UserMessage
 from harnessed.core.model import (
     Model,

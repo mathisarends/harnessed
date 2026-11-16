@@ -2,13 +2,14 @@ from dataclasses import replace
 from uuid import uuid4
 
 from harnessed.core.diagnostics import ModelAttemptOutcome, model_diagnostics
-from harnessed.core.events.messages import (
+from harnessed.core.events import (
     AssistantMessageEvent,
+    ModelUsageRecordedEvent,
     ReasoningDeltaEvent,
     TextDeltaEvent,
+    ToolArgumentsDeltaEvent,
+    ToolCallGenerationStartedEvent,
 )
-from harnessed.core.events.model import ModelUsageRecordedEvent
-from harnessed.core.events.tools import ToolArgumentsDeltaEvent, ToolCallGenerationStartedEvent
 from harnessed.core.messages import AssistantMessage, ToolCall
 from harnessed.core.model import Model, ModelChunk, ModelRequest, ModelStream
 from harnessed.core.runtime.diagnostics import RequestDiagnostics

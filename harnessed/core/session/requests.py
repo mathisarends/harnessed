@@ -1,11 +1,12 @@
-from harnessed.core.events.base import DurableEvent
-from harnessed.core.events.messages import AssistantMessageEvent
-from harnessed.core.events.model import (
+from harnessed.core.events import (
+    AssistantMessageEvent,
+    DurableEvent,
     ModelRequestedEvent,
     ModelRequestFailedEvent,
     ModelUsageRecordedEvent,
+    ToolExecutionFinishedEvent,
+    ToolExecutionStartedEvent,
 )
-from harnessed.core.events.tools import ToolExecutionFinishedEvent, ToolExecutionStartedEvent
 from harnessed.core.model import ModelRequest, ModelUsage, sum_usage
 
 

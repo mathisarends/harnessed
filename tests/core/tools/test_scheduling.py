@@ -14,7 +14,7 @@ from harnessed import (
     plugin,
     tool,
 )
-from harnessed.core.events.tools import (
+from harnessed.core.events import (
     ToolCallFinishedEvent,
     ToolCallRequestedEvent,
     ToolExecutionFinishedEvent,
@@ -24,7 +24,7 @@ from harnessed.core.hooks import ReviewToolResult
 from harnessed.core.messages import PolicyDecision, Role
 from harnessed.core.model import ModelChunk
 from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.tools.registry import ToolRegistry
+from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import hook
 from harnessed.plugins import AgentLoop, Approvals
 from harnessed.plugins.filesystem import FileSystemBackend, FilesystemTools, LocalFileSystem

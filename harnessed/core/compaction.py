@@ -15,13 +15,13 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 from harnessed.core.budget import ContextBudget
 from harnessed.core.errors import ConfigError, ContextBudgetExceeded
-from harnessed.core.events.compaction import (
+from harnessed.core.events import (
     CompactionAppliedEvent,
     CompactionFinishedEvent,
     CompactionOutcome,
     CompactionStartedEvent,
+    ModelUsageRecordedEvent,
 )
-from harnessed.core.events.model import ModelUsageRecordedEvent
 from harnessed.core.messages import (
     ImagePart,
     ImageReference,

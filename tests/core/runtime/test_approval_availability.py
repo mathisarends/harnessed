@@ -12,8 +12,12 @@ from harnessed.core.approvals import (
     ToolApprovalGuard,
 )
 from harnessed.core.errors import ApprovalUnavailable
-from harnessed.core.events.approvals import ApprovalResolvedEvent, ApprovalStatus
-from harnessed.core.events.tools import ToolCallFinishedEvent, ToolExecutionStartedEvent
+from harnessed.core.events import (
+    ApprovalResolvedEvent,
+    ApprovalStatus,
+    ToolCallFinishedEvent,
+    ToolExecutionStartedEvent,
+)
 from harnessed.core.hooks import RequestApproval, ToolPolicy
 from harnessed.core.messages import PolicyDecision, ToolStatus
 from harnessed.core.model import ModelChunk

@@ -12,9 +12,8 @@ from harnessed.core.hooks import SessionClosing
 from harnessed.core.messages import ToolResult, ToolStatus, result_content, to_dict
 from harnessed.core.plugin import Plugin, PluginConfig
 from harnessed.core.prompt.values import Instructions, SystemPrompt
-from harnessed.core.runtime.inbox import SessionInbox
-from harnessed.core.tools.decorator import tool
-from harnessed.core.tools.registry import ToolError, ToolRegistry
+from harnessed.core.runtime import SessionInbox
+from harnessed.core.tools import ToolError, ToolRegistry, tool
 from harnessed.kernel import Inject, PluginScope
 
 from .background import BackgroundCommands, command_result

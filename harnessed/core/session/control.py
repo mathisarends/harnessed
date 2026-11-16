@@ -1,8 +1,7 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from harnessed.core.events.base import DurableEvent
-from harnessed.core.events.session import ControlState, SessionControlChangedEvent
+from harnessed.core.events import ControlState, DurableEvent, SessionControlChangedEvent
 
 
 @dataclass(frozen=True, init=False)

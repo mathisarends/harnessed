@@ -7,11 +7,7 @@ from collections.abc import Mapping
 from hashlib import sha256
 
 from harnessed.core.children import ChildLimits, ChildSessionFactory
-from harnessed.core.events.subagents import (
-    SubagentFinishedEvent,
-    SubagentStartedEvent,
-    SubagentStatus,
-)
+from harnessed.core.events import SubagentFinishedEvent, SubagentStartedEvent, SubagentStatus
 from harnessed.core.hooks import SessionAborting, SessionClosing
 from harnessed.core.messages import ToolResult, ToolStatus, UserMessage, to_dict
 from harnessed.core.session.children import ChildSession

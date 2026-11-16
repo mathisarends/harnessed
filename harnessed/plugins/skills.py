@@ -19,7 +19,7 @@ from pydantic import (
 )
 
 from harnessed.core.errors import ConfigError
-from harnessed.core.events.tools import ToolCallFinishedEvent, ToolCallRequestedEvent
+from harnessed.core.events import ToolCallFinishedEvent, ToolCallRequestedEvent
 from harnessed.core.hooks import PrepareRequest, SessionAppended
 from harnessed.core.messages import (
     AssistantMessage,

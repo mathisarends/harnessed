@@ -4,11 +4,13 @@ from pathlib import Path
 import pytest
 
 from harnessed.core.errors import SessionFormatError
-from harnessed.core.events.model import ModelRequestedEvent
+from harnessed.core.events import (
+    SESSION_EVENT_TYPES,
+    ModelRequestedEvent,
+    ToolCallRequestedEvent,
+    TurnStartedEvent,
+)
 from harnessed.core.events.registry import EventRegistry
-from harnessed.core.events.tools import ToolCallRequestedEvent
-from harnessed.core.events.turn import TurnStartedEvent
-from harnessed.core.events.unions import SESSION_EVENT_TYPES
 from harnessed.core.messages import ToolCall, UserMessage
 from harnessed.core.model import ModelRequest
 from harnessed.core.session.codec import decode_event, encode_event

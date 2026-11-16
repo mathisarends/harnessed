@@ -14,7 +14,7 @@ from harnessed import (
     ApprovalAnswer,
     ToolCall,
 )
-from harnessed.core.tools.registry import ToolRegistry
+from harnessed.core.tools import ToolRegistry
 from harnessed.integrations.sandbox import (
     Sandbox,
     SandboxConfig,

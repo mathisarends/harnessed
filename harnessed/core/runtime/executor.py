@@ -5,8 +5,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 
 from harnessed.core.errors import ApprovalUnavailable
-from harnessed.core.events.approvals import PolicySource
-from harnessed.core.events.tools import (
+from harnessed.core.events import (
+    PolicySource,
     ToolCallFinishedEvent,
     ToolCallRequestedEvent,
     ToolExecutionFinishedEvent,
@@ -30,12 +30,17 @@ from harnessed.core.runtime.approvals import SessionApprovals
 from harnessed.core.runtime.context import SessionContext
 from harnessed.core.runtime.options import AgentOptions
 from harnessed.core.session.session import SessionLog
-from harnessed.core.tools import ToolChain
-from harnessed.core.tools.context import ToolContexts
+from harnessed.core.tools import (
+    OutputLimit,
+    PreparedToolCall,
+    ToolChain,
+    ToolContexts,
+    ToolRegistry,
+    ToolScheduler,
+    ToolScheduling,
+    format_tool_error,
+)
 from harnessed.core.tools.output_limit import ToolOutputLimit
-from harnessed.core.tools.policy import OutputLimit
-from harnessed.core.tools.registry import ToolRegistry, format_tool_error
-from harnessed.core.tools.scheduling import PreparedToolCall, ToolScheduler, ToolScheduling
 from harnessed.core.tracing import span
 from harnessed.kernel import Scope
 

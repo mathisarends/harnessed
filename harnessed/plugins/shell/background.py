@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from harnessed.core.errors import SessionClosed
 from harnessed.core.messages import ToolResult, ToolStatus, result_content, to_dict
-from harnessed.core.runtime.inbox import SessionInbox
+from harnessed.core.runtime import SessionInbox
 from harnessed.core.tools import ToolError
 
 from .process import BackgroundShellBackend, ProcessState, ShellProcess

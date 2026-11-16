@@ -3,14 +3,16 @@ from typing import Any, overload
 
 from harnessed.core.attachments import Attachment
 from harnessed.core.errors import RunUnavailable, SessionClosed, SessionStateError
-from harnessed.core.events.base import DurableEvent
-from harnessed.core.events.inbox import (
+from harnessed.core.events import (
+    DurableEvent,
     InboxAddedEvent,
     InboxMode,
     InboxRemovalReason,
     InboxRemovedEvent,
+    TurnEndedEvent,
+    TurnLimits,
+    TurnStartedEvent,
 )
-from harnessed.core.events.turn import TurnEndedEvent, TurnLimits, TurnStartedEvent
 from harnessed.core.messages import UserMessage
 from harnessed.core.model import GenerationSettings, OutputSchema
 from harnessed.core.outputs import OutputValues

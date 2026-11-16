@@ -4,7 +4,7 @@ from harnessed.core.assets import AssetStore, MemoryAssets
 from harnessed.core.children import ChildSessionRequest
 from harnessed.core.composition import PluginValidation, validate_plugins
 from harnessed.core.errors import ConfigError
-from harnessed.core.events.turn import TurnStartedEvent
+from harnessed.core.events import TurnStartedEvent
 from harnessed.core.outputs import OutputTypes
 from harnessed.core.plugin import Service
 from harnessed.core.prompt.plugin_instructions import PluginInstructions

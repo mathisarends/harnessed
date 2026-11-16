@@ -4,30 +4,26 @@ from collections.abc import Iterable
 from dataclasses import replace
 from typing import TypedDict, Unpack
 
-from harnessed.core.events.base import DurableEvent
-from harnessed.core.events.compaction import CompactionAppliedEvent
-from harnessed.core.events.messages import (
+from harnessed.core.events import (
     AssistantMessageEvent,
+    CompactionAppliedEvent,
+    DurableEvent,
+    IncludedObservation,
     MessageAppendedEvent,
     MessageLifetime,
-    PluginInstructionsChangedEvent,
-    SystemMessageEvent,
-    UserMessageEvent,
-)
-from harnessed.core.events.model import ModelRequestedEvent
-from harnessed.core.events.observations import (
-    IncludedObservation,
+    ModelRequestedEvent,
     ObservationPolicyAppliedEvent,
     ObservationRecordedEvent,
+    PluginInstructionsChangedEvent,
     SpillExpiredEvent,
-)
-from harnessed.core.events.tools import ToolCallFinishedEvent
-from harnessed.core.events.turn import (
     StepEndedEvent,
     StepOutcome,
     StepStartedEvent,
+    SystemMessageEvent,
+    ToolCallFinishedEvent,
     TurnEndedEvent,
     TurnStartedEvent,
+    UserMessageEvent,
 )
 from harnessed.core.messages import Message, SpillRef, SystemMessage, ToolMessage
 from harnessed.core.model import ModelRequest

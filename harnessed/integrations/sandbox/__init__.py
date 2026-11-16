@@ -24,7 +24,7 @@ from .types import workspace_path
 from .workspace import export_file
 
 if TYPE_CHECKING:
-    from harnessed.core.runtime.session import Session
+    from harnessed.core.runtime import Session
 
 
 class SandboxServices(NamedTuple):

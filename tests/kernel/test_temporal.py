@@ -6,9 +6,8 @@ import pytest
 from harnessed import Plugin, ToolCall, plugin
 from harnessed.core.plugin import Bundle
 from harnessed.core.prompt.system import SystemPromptStore
-from harnessed.core.runtime.services import RuntimeServices
-from harnessed.core.tools.decorator import tool
-from harnessed.core.tools.registry import ToolRegistry
+from harnessed.core.runtime import RuntimeServices
+from harnessed.core.tools import ToolRegistry, tool
 from harnessed.kernel import Emit, MissingService, PluginScope, PluginStatus, Scope, needs
 
 

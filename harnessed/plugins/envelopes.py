@@ -6,8 +6,9 @@ from harnessed.core.tools import (
     EnvelopeSelector,
     InvalidEnvelope,
     ToolRegistry,
+    envelope_models,
+    envelope_selector,
 )
-from harnessed.core.tools.envelope import envelope_models, envelope_selector
 from harnessed.kernel import PluginScope
 
 
