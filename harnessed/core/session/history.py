@@ -126,18 +126,14 @@ class WorkingHistory:
             }
 
     def items(self) -> tuple[HistoryEntry, ...]:
-        return tuple(
-            sorted(
-                self._items.values(),
-                key=lambda item: (
-                    -2
-                    if item.message.id == "system"
-                    else -1
-                    if item.message.id.startswith("compaction:")
-                    else item.position
-                ),
-            )
-        )
+        def position(item: HistoryEntry) -> int:
+            if item.message.id == "system":
+                return -2
+            if item.message.id.startswith("compaction:"):
+                return -1
+            return item.position
+
+        return tuple(sorted(self._items.values(), key=position))
 
     def snapshot(self) -> tuple[Message, ...]:
         if self._snapshot is None:

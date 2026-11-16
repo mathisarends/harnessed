@@ -224,13 +224,12 @@ class SessionApprovals:
         try:
             with suspend_tool_execution():
                 async with asyncio.timeout(timeout):
-                    selected = (
-                        self.scope[ChildSessionRequest].approver
-                        if ChildSessionRequest in self.scope
-                        else approver
-                        if approver is not None
-                        else (self.scope[Approver] if Approver in self.scope else None)
-                    )
+                    if ChildSessionRequest in self.scope:
+                        selected = self.scope[ChildSessionRequest].approver
+                    elif approver is not None:
+                        selected = approver
+                    else:
+                        selected = self.scope[Approver] if Approver in self.scope else None
                     if selected is not None:
                         decision = await selected.ask(request)
                     else:

@@ -222,6 +222,7 @@ class PluginHandle:
                     try:
                         await self._mount.dispatch(PluginFailed(self.name, self.error))
                     except Exception:
+                        # Dispose the activation even when a user observer fails.
                         logger.exception("PluginFailed observer failed for %s", self.name)
                 try:
                     await child.aclose()
@@ -313,6 +314,7 @@ class PluginRuntime:
                         if signature != handle._failed_signature:
                             await handle._activate()
                 except Exception as exc:
+                    # Collect arbitrary failures so other plugins can reconcile.
                     self.errors.append(exc)
 
 

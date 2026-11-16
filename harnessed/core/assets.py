@@ -33,8 +33,13 @@ class AssetStore(Protocol):
     missing or corrupt data must fail rather than silently change model input.
     """
 
-    async def put(self, data: bytes, *, media_type: str) -> AssetRef: ...
-    async def read(self, ref: AssetRef) -> bytes: ...
+    async def put(self, data: bytes, *, media_type: str) -> AssetRef:
+        """Finish storing bytes before returning their content-addressed reference."""
+        ...
+
+    async def read(self, ref: AssetRef) -> bytes:
+        """Return bytes matching the reference; fail on missing or corrupt content."""
+        ...
 
 
 @dataclass(frozen=True)

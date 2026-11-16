@@ -92,6 +92,7 @@ class OutputHandler:
                 raise ValueError("Use final_answer to return the declared response")
             value, data = compiled.parse(dict(outputs[0].arguments) if outputs else response.text)
         except Exception as error:
+            # Feed arbitrary application-validator failures into output correction.
             note = str(error) if ordinary or len(outputs) > 1 else validation_note(error)
             failures = {
                 e.message_id for e in current.events if isinstance(e, OutputValidationFailedEvent)

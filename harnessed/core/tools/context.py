@@ -51,7 +51,9 @@ class ToolContext:
 
 
 class ToolContexts(Protocol):
-    def create(self, call: ToolCall) -> ToolContext: ...
+    def create(self, call: ToolCall) -> ToolContext:
+        """Bind the call to its session log, inbox and approval services."""
+        ...
 
 
 @dataclass(frozen=True)

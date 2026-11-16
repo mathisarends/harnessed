@@ -19,7 +19,9 @@ class ShellBackend(Protocol):
     Configure environment and capture limits on the backend itself.
     """
 
-    async def run(self, argv: list[str], *, cwd: Path, timeout: float) -> ProcResult: ...
+    async def run(self, argv: list[str], *, cwd: Path, timeout: float) -> ProcResult:
+        """Run argv within timeout seconds; drain owned cleanup before returning or raising."""
+        ...
 
 
 class ProcessState(StrEnum):
@@ -49,13 +51,21 @@ class ShellProcess(Protocol):
     input, optionally followed by EOF. Output remains bounded while running.
     """
 
-    def snapshot(self) -> ProcessSnapshot: ...
+    def snapshot(self) -> ProcessSnapshot:
+        """Return bounded current output and state without consuming output."""
+        ...
 
-    async def wait(self) -> ProcessSnapshot: ...
+    async def wait(self) -> ProcessSnapshot:
+        """Wait for a terminal snapshot after cleanup; cancelling this wait leaves it running."""
+        ...
 
-    async def write(self, text: str, *, eof: bool = False) -> None: ...
+    async def write(self, text: str, *, eof: bool = False) -> None:
+        """Send UTF-8 input and optionally EOF to the running process."""
+        ...
 
-    async def terminate(self) -> ProcessSnapshot: ...
+    async def terminate(self) -> ProcessSnapshot:
+        """Idempotently kill the process tree and return its terminal snapshot after cleanup."""
+        ...
 
 
 @runtime_checkable
@@ -67,4 +77,6 @@ class BackgroundShellBackend(ShellBackend, Protocol):
     process tree until termination, including after its parent tool call ends.
     """
 
-    async def start(self, argv: list[str], *, cwd: Path, timeout: float) -> ShellProcess: ...
+    async def start(self, argv: list[str], *, cwd: Path, timeout: float) -> ShellProcess:
+        """Launch within timeout seconds and return an owned handle without waiting for exit."""
+        ...

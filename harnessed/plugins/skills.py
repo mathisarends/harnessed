@@ -117,7 +117,9 @@ class SkillCatalog(Protocol):
     """The immutable, inspectable catalog belonging to the current session."""
 
     @property
-    def entries(self) -> tuple[SkillEntry, ...]: ...
+    def entries(self) -> tuple[SkillEntry, ...]:
+        """Return the immutable selected skills, including source and shadow information."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -319,14 +321,16 @@ class Skills(Plugin, slot="skills"):
         self._key = Key[_Catalog]("skill catalog")
 
     def instructions(self) -> SystemPrompt:
-        description = "; ".join(
-            source.name
-            if isinstance(source, Skill)
-            else str(source.path)
-            if isinstance(source, _DirectorySkill)
-            else str(source)
-            for source in self.sources
-        )
+        descriptions: list[str] = []
+        for source in self.sources:
+            match source:
+                case Skill():
+                    descriptions.append(source.name)
+                case _DirectorySkill():
+                    descriptions.append(str(source.path))
+                case _:
+                    descriptions.append(str(source))
+        description = "; ".join(descriptions)
         return SystemPrompt(
             Instructions.from_factory(
                 factory=self._render_catalog,

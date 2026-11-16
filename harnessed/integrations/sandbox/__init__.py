@@ -77,6 +77,7 @@ class Sandbox(Plugin[SandboxConfig], slot="sandbox"):
             try:
                 await finish(startup)
             except (Exception, asyncio.CancelledError):
+                # Drain failed startup without replacing the original setup error or cancellation.
                 pass
             raise
         services = SandboxServices(backend.shell, backend.file_system)

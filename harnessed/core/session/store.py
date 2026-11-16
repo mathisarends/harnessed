@@ -50,7 +50,9 @@ class SessionStore(Protocol):
     external tool side effects.
     """
 
-    async def load_session(self, conversation_id: str) -> StoredSession | None: ...
+    async def load_session(self, conversation_id: str) -> StoredSession | None:
+        """Return the committed checkpoint and revision, or None when absent."""
+        ...
 
     async def save_session(
         self,
@@ -58,7 +60,9 @@ class SessionStore(Protocol):
         commit: SessionCommit,
         *,
         expected_revision: int | None,
-    ) -> int: ...
+    ) -> int:
+        """Atomically commit at expected_revision or raise SessionWriteConflict."""
+        ...
 
 
 class SessionPersistence:
@@ -180,6 +184,7 @@ class SessionPersistence:
             if flush is not None:
                 await flush()
         except Exception as error:
+            # Any application-store failure poisons persistence and must notify the owning runtime.
             self._failure = error
             callback = self._on_failure
             if callback is not None:

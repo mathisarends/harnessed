@@ -1,6 +1,6 @@
 # Smelt policy and adoption feedback
 
-Harnessed pins [`smelt-cli` 0.8.0](https://github.com/mathisarends/smelt)
+Harnessed pins [`smelt-cli` 0.10.0](https://github.com/mathisarends/smelt)
 in the development group. The executable policy is
 [`smelt.yaml`](https://github.com/mathisarends/harnessed/blob/main/smelt.yaml).
 It complements Ruff, ty, runtime tests and the architecture suite.
@@ -47,8 +47,9 @@ The requested checks are explicit in the config:
 | Error | `no-base-class-prefix`, `no-base-class-suffix`, `redundant-str-enum-value`, `str-enum-explicit-values`, `prefer-str-enum-discriminator`, `duplicate-literal-type`, `anonymous-tuple-type` |
 | Error | `information-hiding` group: `internal-public-member`, `internal-public-module-symbol`, `internal-public-attribute`, `test-only-public-function`, `test-only-public-attribute` |
 | Error | `private-test-access`, `string-patch-target`, `test-without-outcome-check`, `test-only-checks-possibly-empty-data`, `unbounded-test-wait`, `async-mock-without-await-check`, `nondeterministic-test-data`; at most three patches per test |
+| Error | `missing-interface-docstring`, `missing-broad-except-reason`, `duplicate-function`, `duplicate-class-name`, `duplicate-narrowing-assert`, `prefer-named-duration`, `nested-conditional-expression`, `parallel-record-fields` |
 | Error (policy) | `max_positional_parameters: 3` (`excess-positional-parameters`), `yaml_extension: yaml` (`yaml-file-extension`) |
-| Hint | `independent-test-case-loop`, `deep-object-navigation` |
+| Hint | `independent-test-case-loop`, `deep-object-navigation`, `stateful-dataclass`, `mutable-field-in-frozen-dataclass`, `loop-invariant-collection` |
 
 Hooks and CI use `--fail-on warning`, so metadata warnings such as unused
 suppressions fail too. Optional defaults select a fallback only for `None`;
@@ -101,7 +102,7 @@ The configuration deliberately leaves these optional policies unselected:
 
 ## Reviewed exceptions
 
-There is no debt baseline. The full check covers 153 governed modules with no
+There is no debt baseline. The full check covers 159 modules with no
 errors or warnings. Twelve individual inline findings are suppressed with reasons. One config exception permits private access only in
 `tests/core/session/test_image_cache.py`, whose purpose is to measure byte and
 entry limits, eviction and reuse. Public asset behavior remains in separate tests.
@@ -141,6 +142,40 @@ installing/updating Smelt:
 ```bash
 uv run smelt config schema > .smelt.schema.json
 ```
+
+If a bundled Smelt agent skill is installed locally, refresh it with
+`uv run smelt skill install --force`, preserving its custom destination and any
+local edits first. This repository does not vendor a generated skill copy.
+
+## Review after the 0.10.0 upgrade
+
+The upgrade from 0.8.0 reviews all thirteen rules added in 0.9.0 and both rules
+added in 0.10.0. Report schema 2, YAML version 1 and the default rule set are
+unchanged. The exact development pin in `pyproject.toml` and `uv.lock` also
+controls prek and CI; neither has an independent Smelt installation.
+
+| Rule | Decision and evidence |
+| --- | --- |
+| SMT348 `missing-interface-docstring` | Error. Documented 55 placeholder methods with their behavioral, ownership or typing contract rather than repeating their signatures. |
+| SMT349 `stateful-dataclass` | Hint. `InterruptedActivity` deliberately folds ordered events into mutable recovery state before producing repair records; it is not an immutable value. Review new stateful records against their owner. |
+| SMT350 `missing-broad-except-reason` | Error. Added reasons at 20 exception boundaries: arbitrary application callbacks, model/plugin failures, durable results and cancellation-safe cleanup. The handlers keep their exception behavior. |
+| SMT351 `missing-dataclass-option` | Not selected. Frozen configuration, mutable event-fold state, identity-based listeners and records using `cached_property` need different options. A package-wide `frozen`, `slots` or `kw_only` requirement would conflate those contracts; no uniform option policy is claimed. |
+| SMT352 `duplicate-function` | Error. No initial findings; shared implementations must have one owner that both callers may import. |
+| SMT353 `prefer-project-base-class` | Not selected. `PluginConfig` is the base for plugin configuration, not all Pydantic models. Wire replies, skill manifests and other payloads use their own validation policies; a package-wide `BaseModel` replacement would impose unrelated config semantics. |
+| SMT354 `prefer-domain-exception` | Not selected. The standalone kernel owns its errors independently of core's `HarnessedError`. Argument/schema validation and filesystem operations also intentionally expose built-in exceptions. A blanket domain hierarchy would erase that distinction; allowing all those built-ins would add little enforcement. |
+| SMT355 `duplicate-class-name` | Error. No initial findings; public class identities should be distinct within their owning package. |
+| SMT356 `duplicate-narrowing-assert` | Error. No initial findings; repeated lifecycle narrowings should lead to a required constructor value or one checked property. |
+| SMT357 `missing-duration-unit` | Not selected. The trial reports 67 declarations, largely `timeout`, `tool_timeout` and their protocol implementations. These follow the asyncio convention of seconds. Preserve that consistent API vocabulary and document seconds at the contract instead of imposing suffixes everywhere. Values in other units already use explicit names such as `delay_seconds` and `modified_ns`. |
+| SMT358 `prefer-named-duration` | Error. No initial findings; named constants clarify nonzero wait durations without renaming timeout APIs. |
+| SMT359 `nested-conditional-expression` | Error. Replaced 16 nested expressions with explicit branches or matches, preserving branch priority and lazy evaluation. |
+| SMT360 `mutable-field-in-frozen-dataclass` | Hint. The three findings are `ToolArguments.names` and the cached `_EnvelopeSchema.properties` / `definitions` dictionaries. They are schema-builder data, where frozen binds the fields without promising deep immutability. Keep ownership review visible; changing annotations to `Mapping` alone would provide no isolation. |
+| SMT361 `parallel-record-fields` | Error. Replaced `EnvelopeLayout`'s model/field/policy tuples with one sequence of named bindings. Construction, splitting and tool inspection now read the same record; mixed strict/drop policies and leading/trailing positions have behavioral regression coverage. |
+| SMT362 `loop-invariant-collection` | Hint. No initial findings in the rule's conservative inference scope. Review any future hoist for guards, empty loops and exception timing. Pydantic/Annotated snapshots are outside this version's inference; a clean report is not a performance proof. |
+
+The four initial ownership findings remain visible hints, with no new inline
+suppression or debt. The existing deep-navigation hints retain the lifecycle
+reasoning below. The upgrade changes no public SDK imports, timeout parameter
+names, exception types or persisted formats.
 
 ## Review after the 0.8.0 upgrade
 

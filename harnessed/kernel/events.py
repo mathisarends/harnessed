@@ -126,7 +126,9 @@ class HookInvocation:
 class HookInstrumentation(Protocol):
     """Bracket an eligible callback without altering dispatch or its result."""
 
-    def invoke(self, scope: Scope, invocation: HookInvocation) -> AbstractContextManager[None]: ...
+    def invoke(self, scope: Scope, invocation: HookInvocation) -> AbstractContextManager[None]:
+        """Bracket one callback invocation without changing its result or exception."""
+        ...
 
 
 @dataclass(eq=False)

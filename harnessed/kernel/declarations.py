@@ -32,9 +32,13 @@ def _hooks(entries: Iterable[HookEntry]):
 
 class Registration(Protocol):
     @property
-    def needs(self) -> tuple[ServiceKey[Any], ...]: ...
+    def needs(self) -> tuple[ServiceKey[Any], ...]:
+        """Declare services that must be available before this registration is mounted."""
+        ...
 
-    def mount(self, scope: Scope, callback: Callable) -> Any: ...
+    def mount(self, scope: Scope, callback: Callable) -> Any:
+        """Register the bound callback, with cleanup owned by the supplied scope."""
+        ...
 
 
 def registration[F: Callable[..., Any]](recipe: Registration) -> Callable[[F], F]:
@@ -159,7 +163,12 @@ class PluginBase:  # smelt: ignore[SMT326] -- Stable kernel facade name; core Pl
                 and not isinstance(provides, type | Key)
             ):
                 raise TypeError("provides requires True, False, a service class or named Key")
-            cls._provides = cls if provides is True else None if provides is False else provides
+            if provides is True:
+                cls._provides = cls
+            elif provides is False:
+                cls._provides = None
+            else:
+                cls._provides = provides
         try:
             annotations = inspect.get_annotations(cls)
         except NameError:

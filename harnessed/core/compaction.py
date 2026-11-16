@@ -107,7 +107,9 @@ class SummaryError(ValueError):
 
 @runtime_checkable
 class Summarizer(Protocol):
-    async def summarize(self, request: CompactionRequest) -> Summary: ...
+    async def summarize(self, request: CompactionRequest) -> Summary:
+        """Summarize context.history_to_compact; report paid invalid output with SummaryError."""
+        ...
 
 
 class ModelSummarizer:

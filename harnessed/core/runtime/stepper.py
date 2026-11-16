@@ -274,13 +274,13 @@ class StepRunner:
             if self.log.request(request_id) is not None and not self.log.request_finished(
                 request_id
             ):
-                outcome = (
-                    ModelRequestOutcome.CANCELLED
-                    if isinstance(error, asyncio.CancelledError)
-                    else ModelRequestOutcome.CONTEXT_EXCEEDED
-                    if isinstance(error, ContextLengthExceeded)
-                    else ModelRequestOutcome.FAILED
-                )
+                match error:
+                    case asyncio.CancelledError():
+                        outcome = ModelRequestOutcome.CANCELLED
+                    case ContextLengthExceeded():
+                        outcome = ModelRequestOutcome.CONTEXT_EXCEEDED
+                    case _:
+                        outcome = ModelRequestOutcome.FAILED
                 await self.log.append(ModelRequestFailedEvent(request_id, outcome, str(error)))
             raise
 

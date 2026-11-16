@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import inspect
 import json
 import logging
@@ -110,9 +112,7 @@ class EnvelopeLayout:
     """
 
     definition: ToolDefinition
-    models: tuple[type[BaseModel], ...] = ()
-    fields: tuple[tuple[str, ...], ...] = ()
-    policies: tuple[InvalidEnvelope, ...] = ()
+    bindings: tuple[_EnvelopeBinding, ...] = ()
 
     @classmethod
     def build(
@@ -177,9 +177,12 @@ class EnvelopeLayout:
         merged = ToolDefinition(definition.name, definition.description, parameters)
         return cls(
             merged,
-            tuple(part.model for part in parts),
-            tuple(tuple(_envelope_schema(part.model).properties) for part in parts),
-            tuple(part.on_invalid for part in parts),
+            tuple(
+                _EnvelopeBinding(
+                    part.model, tuple(_envelope_schema(part.model).properties), part.on_invalid
+                )
+                for part in parts
+            ),
         )
 
     def split(self, arguments: Mapping[str, object]) -> tuple[ToolEnvelope, Mapping[str, object]]:
@@ -189,19 +192,25 @@ class EnvelopeLayout:
         invalid. `InvalidEnvelope.DROP` envelopes are left out of the result instead.
         Every envelope's fields are removed from the tool's arguments either way.
         """
-        if not self.models:
+        if not self.bindings:
             return ToolEnvelope(), arguments
         values: list[BaseModel] = []
-        for model, names, on_invalid in zip(self.models, self.fields, self.policies, strict=True):
+        for binding in self.bindings:
             try:
-                values.append(_validate(model, arguments, names))
+                values.append(_validate(binding.model, arguments, binding.names))
             except ValueError:
-                if on_invalid is InvalidEnvelope.ERROR:
+                if binding.on_invalid is InvalidEnvelope.ERROR:
                     raise
-                logger.debug("Dropped invalid envelope %s", model.__name__, exc_info=True)
-        envelope_names = {name for names in self.fields for name in names}
+                logger.debug("Dropped invalid envelope %s", binding.model.__name__, exc_info=True)
+        envelope_names = {name for binding in self.bindings for name in binding.names}
         remaining = {name: value for name, value in arguments.items() if name not in envelope_names}
         return ToolEnvelope(tuple(values)), MappingProxyType(remaining)
+
+
+class _EnvelopeBinding(NamedTuple):
+    model: type[BaseModel]
+    names: tuple[str, ...]
+    on_invalid: InvalidEnvelope
 
 
 class _Claims:
