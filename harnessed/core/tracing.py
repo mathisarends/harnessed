@@ -17,13 +17,17 @@ class Span(Protocol):
     without serialization. Scalar attributes describe IDs, outcomes and timing.
     """
 
-    def set_attribute(self, name: str, value: Any) -> None: ...
+    def set_attribute(self, name: str, value: Any) -> None:
+        """Attach a typed value; the exporter decides whether to capture content."""
+        ...
 
 
 class Tracer(Protocol):
     """Open spans using the supplied name verbatim, without a vendor dependency."""
 
-    def span(self, name: str, **attributes: Any) -> AbstractContextManager[Span]: ...
+    def span(self, name: str, **attributes: Any) -> AbstractContextManager[Span]:
+        """Open and close a span named verbatim, starting with the supplied attributes."""
+        ...
 
 
 @dataclass(frozen=True)

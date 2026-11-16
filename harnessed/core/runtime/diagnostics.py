@@ -119,14 +119,17 @@ class RequestDiagnostics:
         )
 
     async def failed(self, error: BaseException) -> None:
+        match error:
+            case RateLimited():
+                reason = RetryReason.RATE_LIMIT
+            case ContextLengthExceeded():
+                reason = RetryReason.CONTEXT_LIMIT
+            case _:
+                reason = RetryReason.UNKNOWN
         await self.finish(
             ModelAttemptOutcome.CANCELLED
             if isinstance(error, asyncio.CancelledError)
             else ModelAttemptOutcome.FAILED,
-            reason=RetryReason.RATE_LIMIT
-            if isinstance(error, RateLimited)
-            else RetryReason.CONTEXT_LIMIT
-            if isinstance(error, ContextLengthExceeded)
-            else RetryReason.UNKNOWN,
+            reason=reason,
             status_code=error.status_code if isinstance(error, ProviderError) else None,
         )

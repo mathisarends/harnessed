@@ -224,6 +224,7 @@ class ChildExecution:
             status = SubagentStatus.TIMED_OUT
             text = "Delegation timed out"
         except Exception as exc:
+            # Report arbitrary model or plugin failures in the child's terminal receipt.
             logger.exception("Subagent %s failed", self.started.agent)
             status = SubagentStatus.FAILED
             text = f"Subagent failed: {type(exc).__name__}"
@@ -347,6 +348,7 @@ class ChildExecution:
             else:
                 self.completion.set_result(RuntimeError("Child admission failed before start"))
         except Exception as exc:
+            # Propagate any driver failure to both the pending submission and parent control.
             if not self.completion.done():
                 self.completion.set_result(exc)
             self.parent.control.fail(exc)

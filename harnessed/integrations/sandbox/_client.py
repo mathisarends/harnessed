@@ -17,11 +17,15 @@ from .worker import Operation, Request
 
 
 class WorkerTransport(Protocol):
-    async def aclose(self) -> None: ...
+    async def aclose(self) -> None:
+        """Release the transport and owned processes, including partial startup."""
+        ...
 
     async def _request(
         self, payload: bytes, *, timeout: float, max_output_bytes: int
-    ) -> ProcessOutput: ...
+    ) -> ProcessOutput:
+        """Exchange one payload within a timeout in seconds and a byte capture limit."""
+        ...
 
 
 class _Reply(BaseModel):

@@ -130,6 +130,14 @@ rules:
   redundant-private-delegate: error
   redundant-name-alias: error
   prefer-deferred-annotations: error
+  nested-conditional-expression: error
+  missing-interface-docstring: error
+  missing-broad-except-reason: error
+  duplicate-function: error
+  duplicate-class-name: error
+  duplicate-narrowing-assert: error
+  prefer-named-duration: error
+  parallel-record-fields: error
   # Naming and types
   no-base-class-prefix: error
   no-base-class-suffix: error
@@ -151,3 +159,6 @@ rules:
   # Design reviews
   deep-object-navigation: hint
   independent-test-case-loop: hint
+  stateful-dataclass: hint
+  mutable-field-in-frozen-dataclass: hint
+  loop-invariant-collection: hint

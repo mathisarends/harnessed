@@ -28,8 +28,13 @@ logger = logging.getLogger(__name__)
 
 
 class SpillStore(Protocol):
-    async def put(self, content: str) -> SpillRef: ...
-    async def read(self, path: str, *, offset: int = 0, limit: int = 4000) -> str: ...
+    async def put(self, content: str) -> SpillRef:
+        """Store full result text and return the reference used by durable spill records."""
+        ...
+
+    async def read(self, path: str, *, offset: int = 0, limit: int = 4000) -> str:
+        """Read a character range from a stored result using character offsets and limits."""
+        ...
 
 
 class SpillCapacityExceeded(ValueError):

@@ -18,8 +18,13 @@ from harnessed.core.model import ModelRequest, OutputMode
 class TokenCounter(Protocol):
     """Cheap text estimates and optionally asynchronous provider request counts."""
 
-    def count_text(self, text: str) -> int: ...
-    def count_request(self, request: ModelRequest) -> int | Awaitable[int]: ...
+    def count_text(self, text: str) -> int:
+        """Return a cheap local token estimate for text."""
+        ...
+
+    def count_request(self, request: ModelRequest) -> int | Awaitable[int]:
+        """Count the complete model input, synchronously or through a provider."""
+        ...
 
 
 async def count_request(counter: TokenCounter, request: ModelRequest) -> int:

@@ -57,13 +57,11 @@ if TYPE_CHECKING:
 
 def _extra(model: object) -> str:
     provider = model.split(":", 1)[0] if isinstance(model, str) else "openai"
-    return (
-        "anthropic"
-        if provider == "anthropic"
-        else "google"
-        if provider in ("google", "google-gla", "google-vertex")
-        else "openai"
-    )
+    if provider == "anthropic":
+        return "anthropic"
+    if provider in ("google", "google-gla", "google-vertex"):
+        return "google"
+    return "openai"
 
 
 class PydanticAIModel:
@@ -264,6 +262,12 @@ def _history(request: ModelRequest, info: ModelInfo) -> list[NativeMessage]:
         elif message.role == Role.SYSTEM:
             history.append(native.ModelRequest([native.SystemPromptPart(message.text)]))
         elif message.role == Role.TOOL:
+            if message.status == ToolStatus.DENIED:
+                outcome = "denied"
+            elif message.is_error:
+                outcome = "failed"
+            else:
+                outcome = "success"
             history.append(
                 native.ModelRequest(
                     [
@@ -271,9 +275,7 @@ def _history(request: ModelRequest, info: ModelInfo) -> list[NativeMessage]:
                             calls.get(message.tool_call_id or "", "unknown_tool"),
                             _content(message.content),
                             message.tool_call_id or "",
-                            outcome="denied"
-                            if message.status == ToolStatus.DENIED
-                            else ("failed" if message.is_error else "success"),
+                            outcome=outcome,
                         )
                     ]
                 )
@@ -314,13 +316,12 @@ def _parameters(
     from pydantic_ai.tools import ToolDefinition
 
     schema = request.output_schema
-    mode = (
-        (OutputMode.NATIVE if native_output else OutputMode.TOOL)
-        if schema is not None and schema.mode == OutputMode.AUTO
-        else schema.mode
-        if schema is not None
-        else "text"
-    )
+    if schema is None:
+        mode = "text"
+    elif schema.mode == OutputMode.AUTO:
+        mode = OutputMode.NATIVE if native_output else OutputMode.TOOL
+    else:
+        mode = schema.mode
     parameters = ModelRequestParameters(
         function_tools=[
             ToolDefinition(
@@ -334,9 +335,13 @@ def _parameters(
         native_tools=list(native_tools),
     )
     if schema is not None:
-        parameters.output_mode = (
-            "native" if mode == OutputMode.NATIVE else "tool" if mode == OutputMode.TOOL else "text"
-        )
+        match mode:
+            case OutputMode.NATIVE:
+                parameters.output_mode = "native"
+            case OutputMode.TOOL:
+                parameters.output_mode = "tool"
+            case _:
+                parameters.output_mode = "text"
         if mode == OutputMode.NATIVE:
             parameters.output_object = OutputObjectDefinition(
                 json_schema=to_dict(schema.json_schema), name=schema.name

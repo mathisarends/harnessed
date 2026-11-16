@@ -24,15 +24,16 @@ class RequestRetries:
     ) -> ModelRequestedEvent:
         steps = self.log.current_turn().steps
         previous = steps[-2] if len(steps) > 1 else None
-        kind = (
-            RetryKind.CONTEXT_RECOVERY
-            if previous is not None and previous.reason == StepOutcome.CONTEXT_LIMIT
-            else RetryKind.OUTPUT_CORRECTION
-            if previous is not None
+        if previous is not None and previous.reason == StepOutcome.CONTEXT_LIMIT:
+            kind = RetryKind.CONTEXT_RECOVERY
+        elif (
+            previous is not None
             and request.output_schema is not None
             and any(isinstance(e, OutputValidationFailedEvent) for e in previous.events)
-            else None
-        )
+        ):
+            kind = RetryKind.OUTPUT_CORRECTION
+        else:
+            kind = None
         prior = (
             next((e for e in reversed(previous.events) if isinstance(e, ModelRequestedEvent)), None)
             if previous is not None

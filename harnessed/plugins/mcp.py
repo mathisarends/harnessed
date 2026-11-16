@@ -91,7 +91,9 @@ async def _check_http_response(response: httpx2.Response) -> None:
 class MCPTransport(Protocol):
     """Create a fresh FastMCP transport for each independently owned mount."""
 
-    def create(self) -> ClientTransport: ...
+    def create(self) -> ClientTransport:
+        """Return a fresh transport whose connection lifecycle belongs to one mount."""
+        ...
 
 
 @dataclass(frozen=True)

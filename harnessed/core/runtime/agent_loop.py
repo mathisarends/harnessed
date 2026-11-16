@@ -14,7 +14,9 @@ from harnessed.kernel import PluginScope, Scope
 
 
 class AgentFactory(Protocol):
-    def create(self, scope: Scope, session: SessionLog) -> Session: ...
+    def create(self, scope: Scope, session: SessionLog) -> Session:
+        """Build a live session for the supplied scope and conversation log."""
+        ...
 
 
 _DEFAULTS = AgentLoopConfig()

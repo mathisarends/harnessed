@@ -131,7 +131,12 @@ def when(
     result_tokens_over: int | None = None,
     predicate: Callable[[ToolCall, ToolResult], bool] | None = None,
 ) -> Rule:
-    tools = () if tool is None else (tool,) if isinstance(tool, str) else tuple(tool)
+    if tool is None:
+        tools = ()
+    elif isinstance(tool, str):
+        tools = (tool,)
+    else:
+        tools = tuple(tool)
     return Rule(tools, command_contains, exit_code, repeated, result_tokens_over, predicate)
 
 

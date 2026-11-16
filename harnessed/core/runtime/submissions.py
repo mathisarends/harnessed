@@ -152,6 +152,7 @@ class RunSubmissions:
                     ),
                 )
             except Exception as error:
+                # Settle the waiter on any driver or persistence failure.
                 value = error
             self._finish(submitted, value)
 

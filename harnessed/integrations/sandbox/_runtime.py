@@ -48,12 +48,18 @@ class WorkerRuntime(ABC):
         self._state = RuntimeState.READY
 
     @abstractmethod
-    async def start(self, config: SandboxConfig) -> None: ...
+    async def start(self, config: SandboxConfig) -> None:
+        """Start and verify the isolated worker before marking its services ready."""
+        ...
 
     @abstractmethod
     async def _request(
         self, payload: bytes, *, timeout: float, max_output_bytes: int
-    ) -> ProcessOutput: ...
+    ) -> ProcessOutput:
+        """Run one worker exchange within the timeout in seconds and output byte limit."""
+        ...
 
     @abstractmethod
-    async def aclose(self) -> None: ...
+    async def aclose(self) -> None:
+        """Idempotently stop the worker and invalidate its services after cleanup."""
+        ...

@@ -738,6 +738,7 @@ class ToolRegistry:
         except ApprovalUnavailable as exc:
             return ToolResult.unavailable(str(exc))
         except Exception as exc:
+            # Tool callbacks are user code; convert arbitrary failures at the tool result boundary.
             return ToolResult.error(format_tool_error(call, exc, error_formatter))
 
 
@@ -750,7 +751,7 @@ def _tool_info(spec: ToolSpec, layout: EnvelopeLayout) -> ToolInfo:
         spec.chain,
         spec.presentation,
         confirm=spec.confirm,
-        envelope=layout.models,
+        envelope=tuple(binding.model for binding in layout.bindings),
     )
 
 

@@ -138,6 +138,7 @@ class BackgroundCommands:
         except SessionClosed:
             pass
         except Exception:
+            # Inbox or hook failures during best-effort delivery must not lose cleanup.
             logger.exception("Could not deliver shell completion for %s", command.id)
 
     async def _close(self) -> None:

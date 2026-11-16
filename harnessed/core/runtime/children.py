@@ -234,13 +234,13 @@ def _receipt(child: ChildSession) -> ToolResult:
 
 
 def _result(receipt: SubagentFinishedEvent) -> ToolResult:
-    status = (
-        ToolStatus.OK
-        if receipt.status is SubagentStatus.COMPLETED
-        else ToolStatus.TIMEOUT
-        if receipt.status is SubagentStatus.TIMED_OUT
-        else ToolStatus.CANCELLED
-        if receipt.status is SubagentStatus.CANCELLED
-        else ToolStatus.ERROR
-    )
+    match receipt.status:
+        case SubagentStatus.COMPLETED:
+            status = ToolStatus.OK
+        case SubagentStatus.TIMED_OUT:
+            status = ToolStatus.TIMEOUT
+        case SubagentStatus.CANCELLED:
+            status = ToolStatus.CANCELLED
+        case _:
+            status = ToolStatus.ERROR
     return ToolResult(json.dumps(to_dict(receipt)), status)

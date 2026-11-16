@@ -84,6 +84,7 @@ class ToolExecutor:
             try:
                 plans.append(registry.plan(call))
             except Exception as exc:
+                # Preserve the batch when arbitrary tool-planning code fails.
                 plans.append(
                     PreparedToolCall(
                         call,
@@ -141,6 +142,7 @@ class ToolExecutor:
             result = ToolResult("Tool execution cancelled", ToolStatus.CANCELLED)
             raise
         except Exception as exc:
+            # User tools may raise any exception; preserve it as a durable tool error result.
             result = ToolResult.error(format_tool_error(call, exc, self.options.error_formatter))
         finally:
             if result is not None:
@@ -149,13 +151,13 @@ class ToolExecutor:
                 if result.break_chain:
                     batch.broken = True
             if result is not None and self.log.execution_pending(call.id):
-                limit = (
-                    None
-                    if plan.output_limit is None
-                    else self.options.tool_output_limit
-                    if isinstance(plan.output_limit, OutputLimit)
-                    else ToolOutputLimit(plan.output_limit)
-                )
+                match plan.output_limit:
+                    case None:
+                        limit = None
+                    case OutputLimit():
+                        limit = self.options.tool_output_limit
+                    case _:
+                        limit = ToolOutputLimit(plan.output_limit)
                 receipt = limit.apply(result) if limit is not None else result
                 await self.log.append(ToolExecutionFinishedEvent(call.id, receipt))
         assert result is not None
@@ -168,13 +170,13 @@ class ToolExecutor:
 
         async def worker(index: int, plan: PreparedToolCall) -> None:
             try:
-                limit = (
-                    None
-                    if plan.output_limit is None
-                    else self.options.tool_output_limit
-                    if isinstance(plan.output_limit, OutputLimit)
-                    else ToolOutputLimit(plan.output_limit)
-                )
+                match plan.output_limit:
+                    case None:
+                        limit = None
+                    case OutputLimit():
+                        limit = self.options.tool_output_limit
+                    case _:
+                        limit = ToolOutputLimit(plan.output_limit)
                 reviewable = False
                 async with scheduler.slots:
                     if batch.broken:
@@ -250,6 +252,7 @@ class ToolExecutor:
             )
             return ToolResult.unavailable(str(exc))
         except Exception as exc:
+            # Policy hooks are user code; report their failures through the tool result boundary.
             return ToolResult.error(format_tool_error(call, exc, self.options.error_formatter))
 
     async def _review(
@@ -273,4 +276,5 @@ class ToolExecutor:
                 raise TypeError("Tool hooks must return a ToolResult")
             return result
         except Exception as exc:
+            # Review hooks are user code; convert any failure into the reviewed call's error result.
             return ToolResult.error(format_tool_error(plan.call, exc, self.options.error_formatter))

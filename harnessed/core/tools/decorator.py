@@ -97,7 +97,12 @@ def activation_tool(callback: Callable[..., Any]) -> Callable[..., Any]:
     parameters = tuple(inspect.signature(callback).parameters)
 
     def check_recipe(args: tuple[Any, ...], kwargs: dict[str, Any]) -> None:
-        owner = args[0] if args else kwargs.get(parameters[0]) if parameters else None
+        if args:
+            owner = args[0]
+        elif parameters:
+            owner = kwargs.get(parameters[0])
+        else:
+            owner = None
         if isinstance(owner, PluginBase) and not owner.is_active:
             raise RuntimeError(
                 "Tools can be called only on an active plugin instance, not its recipe "

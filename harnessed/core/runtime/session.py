@@ -545,12 +545,15 @@ class Session:
                 if not self.control.suspending:
                     await self.control.finish_termination()
             except Exception as exc:
+                # Record any repair failure so cancelled drivers still publish their terminal state.
                 self.control.error = exc
         except Exception as exc:
+            # Retain arbitrary model and plugin failures for session consumers.
             self.control.error = exc
             try:
                 await self.control.finish_termination()
             except Exception as repair_error:
+                # Keep both failures when termination repair also fails after a driver error.
                 if repair_error is not exc:
                     self.control.error = ExceptionGroup(
                         "Driver and session repair failed", [exc, repair_error]
@@ -559,6 +562,7 @@ class Session:
             try:
                 await self.control.finish_driver()
             except Exception as exc:
+                # Surface any cleanup failure before publishing driver completion.
                 self.control.error = exc
             _driving.reset(token)
             self._publish(None)

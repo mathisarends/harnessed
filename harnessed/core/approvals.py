@@ -24,7 +24,9 @@ from .messages import ToolCall
 
 @runtime_checkable
 class Approver(Protocol):
-    async def ask(self, request: ApprovalRequestedEvent) -> ApprovalAnswer | None: ...
+    async def ask(self, request: ApprovalRequestedEvent) -> ApprovalAnswer | None:
+        """Return an approval answer, or None when this responder cannot answer."""
+        ...
 
 
 type ApprovalCallback = Callable[

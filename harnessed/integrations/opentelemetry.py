@@ -114,7 +114,9 @@ type TraceContentFilter = Callable[[TraceContent], TraceContent | None]
 class SecretText(Protocol):
     """A text secret wrapper, including Pydantic's ``SecretStr``."""
 
-    def get_secret_value(self) -> str: ...
+    def get_secret_value(self) -> str:
+        """Return the plaintext value to snapshot for exact-value redaction."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)

@@ -14,27 +14,33 @@ type WaterfallCallback[E, R] = Callable[Concatenate[E, Next[R], ...], R | Awaita
 
 
 class ListenerFactory[C](Protocol):
-    def _callback(self, callback: C) -> C: ...
+    def _callback(self, callback: C) -> C:
+        """Accept a listener while preserving its exact callable type for inference."""
+        ...
 
 
 class HookFactory[H](Protocol):
     """An event class carries its callback's exact event and result types."""
 
-    def _hook(
-        self, owner: Scope | None = None, *, prepend: bool = False, priority: int = 0
-    ) -> H: ...
+    def _hook(self, owner: Scope | None = None, *, prepend: bool = False, priority: int = 0) -> H:
+        """Create a typed hook declaration with the requested owner and dispatch ordering."""
+        ...
 
 
 class ObserverFactory[E, R](Protocol):
     """Input-only validation lets several event types infer a shared event union."""
 
-    def _callback(self, callback: Callable[[E], R | Awaitable[R]]) -> object: ...
+    def _callback(self, callback: Callable[[E], R | Awaitable[R]]) -> object:
+        """Accept an observer with compatible event input and result types."""
+        ...
 
 
 class WaterfallFactory[E, R](Protocol):
     """A shared waterfall also requires compatible result and continuation types."""
 
-    def _callback(self, callback: Callable[[E, Next[R]], R | Awaitable[R]]) -> object: ...
+    def _callback(self, callback: Callable[[E, Next[R]], R | Awaitable[R]]) -> object:
+        """Accept a waterfall callback with compatible event, continuation and result types."""
+        ...
 
 
 class _Declaration:

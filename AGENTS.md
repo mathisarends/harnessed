@@ -122,7 +122,7 @@ workflows and bump the key when Python validation behavior changes.
 
 ## Architecture and convention checks
 
-`smelt.yaml` is the executable policy; `uv.lock` pins Smelt CLI 0.8.0.
+`smelt.yaml` is the executable policy; `uv.lock` pins Smelt CLI 0.10.0.
 Before editing, run `uv run smelt context <module-or-path>` to inspect its role.
 After editing, run `uv run smelt check --changed --base origin/main --format json`.
 Before finishing, run `uv run smelt check --show-hints --fail-on warning`,
@@ -132,6 +132,15 @@ and the relevant tests. Prek and CI run the same static checks. Smelt also check
 concrete runtime module cycles; annotation imports still count for boundaries.
 Unnecessary future imports and implicit truthiness defaults are errors. Review
 `deep-object-navigation` hints against ownership and public API contracts.
+Document placeholder Protocol/abstract methods and the reason for broad exception
+handlers. Expand nested conditional expressions into explicit branches while
+preserving evaluation order. Duplicate functions, class names and repeated
+attribute-narrowing assertions are errors; use named durations for waits.
+Store related envelope metadata as named records instead of parallel sequences.
+Review `stateful-dataclass` and `mutable-field-in-frozen-dataclass` hints against
+actual ownership: frozen fields do not make referenced containers immutable.
+Review `loop-invariant-collection` hints without changing guards, empty-loop
+behavior or the timing of evaluation.
 
 Fix errors in code; do not introduce a debt baseline. Review warnings in context,
 especially public APIs that static usage analysis cannot see. Preserve the lazy

@@ -245,6 +245,28 @@ async def test_trailing_envelopes_follow_the_tools_parameters_and_still_strip():
     assert result.text == "2"
 
 
+@pytest.mark.parametrize("position", [EnvelopePosition.LEADING, EnvelopePosition.TRAILING])
+async def test_each_envelope_keeps_its_fields_and_invalid_policy(position):
+    received: list[Mapping[str, object]] = []
+    plugins = [
+        CallEnvelope(ActionLabel, position=position),
+        CallEnvelope(Rationale, on_invalid=InvalidEnvelope.ERROR),
+        Workspace(received),
+    ]
+    async with Agent(model=ScriptedModel(["unused"]), plugins=plugins).session() as session:
+        registry = session.scope[ToolRegistry]
+        plan = registry.plan(
+            ToolCall("read", {"path": "a", "action_label": 7, "rationale": "asked"})
+        )
+        accepted = await registry.execute(plan.call, _expected=plan.binding)
+        rejected = await registry.execute(ToolCall("read", {"path": "b", "action_label": "Read"}))
+
+    assert plan.envelope.values == (Rationale(rationale="asked"),)
+    assert accepted.text == "read a"
+    assert rejected.is_error and "Rationale" in rejected.text
+    assert received == [{"path": "a"}]
+
+
 async def test_unmounting_removes_fields_but_keeps_the_planned_layout():
     received: list[Mapping[str, object]] = []
     async with Agent(

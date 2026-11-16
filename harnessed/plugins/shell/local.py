@@ -227,6 +227,7 @@ class _LocalProcess:
             self.failure = error
             state = ProcessState.TIMED_OUT
         except Exception as error:
+            # Publish any backend failure as a terminal process state after owned cleanup.
             self.failure = error
             state = ProcessState.FAILED
         finally:

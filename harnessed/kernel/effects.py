@@ -27,6 +27,7 @@ async def run_sync[T](
                 except asyncio.CancelledError:
                     continue
                 except BaseException:
+                    # Drain shielded cleanup while preserving the caller's original cancellation.
                     break
             if not worker.cancelled():
                 worker.exception()
