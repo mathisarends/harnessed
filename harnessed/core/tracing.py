@@ -179,11 +179,12 @@ class _NoopTracer:
 
 
 def _select(scope: Scope | PluginScope) -> Tracer:
-    return scope[Tracer] if Tracer in scope else _NOOP
+    return scope.get(Tracer, _NOOP)
 
 
 def _session(scope: Scope | PluginScope) -> str | None:
-    return scope[TraceSession].session_id if TraceSession in scope else None
+    session = scope.get(TraceSession)
+    return session.session_id if session is not None else None
 
 
 @contextmanager

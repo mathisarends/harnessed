@@ -229,7 +229,7 @@ class SessionApprovals:
                     elif approver is not None:
                         selected = approver
                     else:
-                        selected = self.scope[Approver] if Approver in self.scope else None
+                        selected = self.scope.get(Approver)
                     if selected is not None:
                         decision = await selected.ask(request)
                     else:

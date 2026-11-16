@@ -189,7 +189,7 @@ class EventBus:
         default: Callable[[], R | Awaitable[R]] | None = None,
     ) -> R:
         listeners = self.matching(event)
-        instrumentation = scope[HookInstrumentation] if HookInstrumentation in scope else None
+        instrumentation = scope.get(HookInstrumentation)
 
         async def invoke(listener, *args):
             if not listener.active or not listener.owner._registrations_active():

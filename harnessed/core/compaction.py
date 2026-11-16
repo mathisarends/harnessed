@@ -248,7 +248,7 @@ class CompactionManager:
         self, request: ModelRequest, *, model: Model, force: bool = True
     ) -> tuple[CompactionAppliedEvent | None, ModelRequest]:
         async with self._lock:
-            policy = self.scope[CompactionPolicy] if CompactionPolicy in self.scope else None
+            policy = self.scope.get(CompactionPolicy)
             settings = policy.settings if policy is not None else CompactionSettings()
             plan = _plan_compaction(self._session_log, settings.keep_last_steps)
             if plan is None:
@@ -323,7 +323,7 @@ class CompactionManager:
     async def _state(
         self, request: ModelRequest, model: Model, counter: TokenCounter
     ) -> ContextState:
-        budget = self.scope[ContextBudget] if ContextBudget in self.scope else ContextBudget()
+        budget = self.scope.get(ContextBudget, ContextBudget())
         input_tokens = await count_request(counter, request)
         return ContextState(
             input_tokens,

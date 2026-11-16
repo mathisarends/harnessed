@@ -72,6 +72,16 @@ class PluginScope:
     def __contains__(self, key: ServiceKey[Any]) -> bool:
         return key in self._owner
 
+    @overload
+    def get[T](self, key: ServiceKey[T]) -> T | None: ...
+
+    @overload
+    def get[T, D](self, key: ServiceKey[T], default: D) -> T | D: ...
+
+    def get(self, key: ServiceKey[Any], default: Any = None) -> Any:
+        """Return the visible service for ``key``, or ``default`` when none is provided."""
+        return self._owner.get(key, default)
+
     @property
     def owner_name(self) -> str:
         """The activation name used in registration diagnostics."""
@@ -210,6 +220,19 @@ class Scope:
         except MissingService:
             return False
         return True
+
+    @overload
+    def get[T](self, key: ServiceKey[T]) -> T | None: ...
+
+    @overload
+    def get[T, D](self, key: ServiceKey[T], default: D) -> T | D: ...
+
+    def get(self, key: ServiceKey[Any], default: Any = None) -> Any:
+        """Return the visible service for ``key``, or ``default`` when none is provided."""
+        try:
+            return self[key]
+        except MissingService:
+            return default
 
     def effect(self, cleanup: Callable[[], Any]) -> Disposer:
         self._check_open()
