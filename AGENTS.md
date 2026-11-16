@@ -44,7 +44,11 @@ through a core factory protocol. MCP and OTel are explicit optional integrations
 with their own dependency extras.
 Do not restore `seams`,
 `adapters`, `app`, `llms` or `presets`, or add native provider clients. Prefer
-canonical `core.messages` / `core.model` imports inside the library. Applications
+canonical `core.messages` / `core.model` imports inside the library. Outside
+`core.events`, `core.runtime` and `core.tools`, import their exported names
+through the package facade. A facade re-exports only members whose eager import
+adds no runtime cycle; the remaining modules and the cyclic `core.session` and
+`core.prompt` packages keep canonical submodule imports. Applications
 use the small root SDK, `harnessed.plugins`, `harnessed.models`, `harnessed.errors`
 and `harnessed.hooks`. Plugin service types are explicitly exported by
 `harnessed.services`; application tool inspection uses `session.tools`.

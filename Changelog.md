@@ -21,6 +21,10 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   simplified expressions, keyword-only boolean flags, used parameters and
   owner-only private access. Long runtime, session, kernel, tool, compaction and
   integration functions were split into named steps without behavior changes.
+- Internal `harnessed.core.events`, `harnessed.core.runtime` and
+  `harnessed.core.tools` packages re-export their cycle-free members, and the
+  library imports those names through the package. Smelt warns when a module
+  imports three or more modules of one of these packages instead of its facade.
 
 ### Upgrade from 0.18.0
 

@@ -81,6 +81,22 @@ structure:
     keyword-arguments:
       match: harnessed
       max_positional_parameters: 3
+    # Facades re-export only members whose eager import adds no runtime cycle;
+    # events.completion/registry/stream and tools.arguments/enabled/output_limit/
+    # references/view stay canonical. Session and prompt have no facade because
+    # their members take part in core runtime cycles.
+    event-facade:
+      match: harnessed.core.events
+      bundle_imports_at: 3
+      export_at: 3
+    runtime-facade:
+      match: harnessed.core.runtime
+      bundle_imports_at: 3
+      export_at: 3
+    tool-facade:
+      match: harnessed.core.tools
+      bundle_imports_at: 3
+      export_at: 3
     kernel-api:
       match: harnessed.kernel
       public: ['.']
@@ -103,6 +119,9 @@ ignore:
       - harnessed/plugins/mcp.py
       - harnessed/plugins/subagents.py
     reason: Single-module public facades are documented import paths; optional-extra modules cannot be re-exported eagerly from their package initializer.
+  - rule: package-import-fanout
+    paths: [harnessed/events/__init__.py, harnessed/core/runtime/streaming.py]
+    reason: Event completion, registry and stream modules cannot join the eager event facade without a core.result/session.codec import cycle.
   - rule: yaml-file-extension
     paths: [.github/workflows/release.yml]
     reason: PyPI trusted publishing is registered for this exact workflow filename.
@@ -117,6 +136,7 @@ rules:
   public-definitions-first: error
   bundled-instance-assignment: error
   prefer-package-import: error
+  package-import-fanout: warning
   internal-static-helper: error
   unnecessary-future-annotations: error
   prefer-match-type-dispatch: error
