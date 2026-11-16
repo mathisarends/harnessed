@@ -26,7 +26,13 @@ Existing pre-commit users should run
 The hook definitions stay in `.pre-commit-config.yaml`, which prek reads directly;
 Dependabot continues to update the pinned hook revisions through its `pre-commit`
 ecosystem. Ruff enforces modern syntax and absolute imports across package
-boundaries. Ty checks production code, examples, scripts
+boundaries. It also bounds function complexity (McCabe 12, at most 12 branches,
+6 returns and 50 statements), simplifies expressions (`SIM`, `C4`, `RUF`, `PTH`)
+and guards interfaces against unused parameters, positional boolean flags and
+access to another object's private members (`ARG`, `FBT`, `SLF001`). Split a
+function that exceeds a limit into named steps instead of raising the limit;
+a necessary private access names its invariant on the line above its `noqa`.
+Ty checks production code, examples, scripts
 and positive/negative consumer contracts. Expected failures must remain real
 errors; unused ignore comments are errors too.
 

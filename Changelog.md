@@ -17,6 +17,10 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 
 - The `eof` flag of the background shell's `write_command` tool is keyword-only.
   The model-facing tool schema is unchanged.
+- Contributor lint policy: Ruff now bounds function complexity and enforces
+  simplified expressions, keyword-only boolean flags, used parameters and
+  owner-only private access. Long runtime, session, kernel, tool, compaction and
+  integration functions were split into named steps without behavior changes.
 
 ### Upgrade from 0.18.0
 
