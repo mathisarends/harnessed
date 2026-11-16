@@ -401,6 +401,8 @@ def _read_bytes(request: Request) -> str:
 
 
 def _import(request: Request) -> None:
+    if sys.platform == "win32":
+        raise RuntimeError("The sandbox worker must execute inside a POSIX sandbox")
     with opened(".", directory=True):
         pass
     data = base64.b64decode(request.text, validate=True)
