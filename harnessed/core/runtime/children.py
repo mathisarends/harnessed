@@ -124,20 +124,8 @@ class ChildSessionSupervisor:
         )
         if depth > depth_limit:
             raise ToolError("Subagent depth limit reached")
-        existing = next(
-            (child for child in self.parent.children if child.call_id == context.call.id), None
-        )
+        existing = self._replayed(agent, task, context, background=background)
         if existing is not None:
-            if (
-                existing.agent != agent
-                or existing.task != task
-                or existing.background != background
-            ):
-                raise ToolError(
-                    "Delegation call ID was already used with a different agent or task"
-                )
-            if not background and existing.status is SubagentStatus.RUNNING:
-                raise ToolError("This delegation is already running; inspect its child session")
             return existing
         if context.call.id in self.calls:
             raise ToolError("This delegation is already starting")
@@ -178,6 +166,21 @@ class ChildSessionSupervisor:
             await execution.cancel(notify=False)
             raise
         return self._child(started.child_session_id)
+
+    def _replayed(
+        self, agent: str, task: str, context: ToolContext, *, background: bool
+    ) -> ChildSession | None:
+        """The child already started by this call ID, if the replay matches its delegation."""
+        existing = next(
+            (child for child in self.parent.children if child.call_id == context.call.id), None
+        )
+        if existing is None:
+            return None
+        if existing.agent != agent or existing.task != task or existing.background != background:
+            raise ToolError("Delegation call ID was already used with a different agent or task")
+        if not background and existing.status is SubagentStatus.RUNNING:
+            raise ToolError("This delegation is already running; inspect its child session")
+        return existing
 
     async def _drain(self) -> None:
         self._draining = True

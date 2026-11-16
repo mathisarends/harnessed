@@ -84,9 +84,10 @@ async def project_stream_events(
                     | ModelRetryScheduledEvent()
                     | ModelRequestedEvent()
                     | ModelRequestFailedEvent()
+                    | CompactionAppliedEvent()
+                    | SpillCreatedEvent()
+                    | SpillExpiredEvent()
                 ):
-                    yield event
-                case CompactionAppliedEvent() | SpillCreatedEvent() | SpillExpiredEvent():
                     yield event
                 case DurableEvent() | TransientEvent() if (
                     event.type not in SESSION_EVENT_TYPES and event.type not in STREAM_EVENT_TYPES
