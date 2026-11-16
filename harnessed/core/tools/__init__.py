@@ -1,6 +1,6 @@
 from .context import ToolContext
 from .decorator import tool
-from .envelope import EnvelopeSelector, InvalidEnvelope, envelope_value
+from .envelope import EnvelopePosition, EnvelopeSelector, InvalidEnvelope, envelope_value
 from .info import (
     ToolAnnotations,
     ToolChain,
@@ -13,6 +13,7 @@ from .info import (
 from .registry import ToolError, ToolRegistry, ToolSpec
 
 __all__ = [
+    "EnvelopePosition",
     "EnvelopeSelector",
     "InvalidEnvelope",
     "ToolContext",

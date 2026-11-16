@@ -610,10 +610,12 @@ See [parameter objects](../guides/tools.md#pydantic-parameter-objects),
 The same hooks expose per-call `event.envelope: ToolEnvelope`. `@tool(envelope=(M,))`
 merges Pydantic model fields into a tool's schema, validates them and removes them
 before the callback; `ToolEnvelope.get(M)` returns `M | None`.
-`CallEnvelope(M, *, select=None, on_invalid=InvalidEnvelope.DROP)` from
+`CallEnvelope(M, *, select=None, on_invalid=InvalidEnvelope.DROP,
+position=EnvelopePosition.LEADING)` from
 `harnessed.plugins` adds `M` to every selected tool, including other plugins',
 MCP and external tools, for the plugin's lifetime; it builds on
-`ToolRegistry.envelope(M, *, select, on_invalid, owner)`. `envelope_value(call, M)`
+`ToolRegistry.envelope(M, *, select, on_invalid, position, owner)`. `TRAILING`
+places the fields after the tool's parameters instead of before them. `envelope_value(call, M)`
 from `harnessed` reads `M | None` from a call's raw arguments without raising.
 See [tool call envelopes](../guides/tools.md#tool-call-envelopes) and
 [envelopes for every tool](../guides/tools.md#envelopes-for-every-tool).

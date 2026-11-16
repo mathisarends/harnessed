@@ -32,20 +32,33 @@ class InvalidEnvelope(StrEnum):
     DROP = "drop"
 
 
+class EnvelopePosition(StrEnum):
+    """Where a registry-wide envelope's fields sit relative to the tool's parameters.
+
+    Models usually fill arguments in schema order. `LEADING` asks for the fields
+    before the tool's input, such as intent or a rationale stated before acting.
+    `TRAILING` asks for them after it, such as a label summarizing concrete arguments.
+    """
+
+    LEADING = "leading"
+    TRAILING = "trailing"
+
+
 class EnvelopePart(NamedTuple):
     """One registry-wide envelope model selected for a tool."""
 
     model: type[BaseModel]
     on_invalid: InvalidEnvelope
+    position: EnvelopePosition = EnvelopePosition.LEADING
 
 
 def envelope_value[T: BaseModel](call: ToolCall, model: type[T]) -> T | None:
     """Read one envelope model from a call's raw arguments without raising.
 
     Returns None when the call carries none of the model's fields (including calls
-    with malformed arguments) or the values do not validate. Event consumers use this to read
-    labels from `ToolCallRequestedEvent.call` and later events, which keep the raw
-    arguments for replay.
+    with malformed arguments) or the values do not validate. Event consumers use
+    this to read labels from `ToolCallRequestedEvent.call` and later events, which
+    keep the raw arguments for replay.
     """
     names = tuple(_envelope_schema(model).properties)
     if not any(name in call.arguments for name in names):
@@ -90,9 +103,10 @@ def _validate_envelope_model(model: object) -> None:
 class EnvelopeLayout:
     """One tool's model-facing definition with the envelope fields of its call merged in.
 
-    Registry-wide envelopes come first, then the tool's own, then its parameters, so
-    streamed arguments carry envelope fields before the tool's input. Field names must
-    not collide with the tool's parameters or each other.
+    Properties are ordered as leading registry-wide envelopes, the tool's own
+    envelopes, the tool's parameters, then trailing registry-wide envelopes; each
+    group keeps registration order. Field names must not collide with the tool's
+    parameters or each other.
     """
 
     definition: ToolDefinition
@@ -139,18 +153,23 @@ class EnvelopeLayout:
                 logger.warning("Skipping registry envelope: %s", conflict)
             else:
                 raise ValueError(conflict)
-        parts = (*accepted, *declared)
+        leading = (
+            *(part for part in accepted if part.position is EnvelopePosition.LEADING),
+            *declared,
+        )
+        trailing = tuple(part for part in accepted if part.position is EnvelopePosition.TRAILING)
+        parts = (*leading, *trailing)
         if not parts:
             return cls(definition)
-        properties: dict[str, Any] = {}
-        required: list[str] = []
-        for part in parts:
-            schema = _envelope_schema(part.model)
-            properties.update(schema.properties)
-            required.extend(schema.required)
+        before, required_before = _merged_schema(leading)
+        after, required_after = _merged_schema(trailing)
         parameters["type"] = "object"
-        parameters["properties"] = properties | own
-        parameters["required"] = [*required, *parameters.get("required", ())]
+        parameters["properties"] = before | own | after
+        parameters["required"] = [
+            *required_before,
+            *parameters.get("required", ()),
+            *required_after,
+        ]
         if not parameters["required"]:
             del parameters["required"]
         if claims.definitions:
@@ -217,6 +236,16 @@ class _Claims:
         self._names.update(schema.properties)
         self.definitions.update(schema.definitions)
         return None
+
+
+def _merged_schema(parts: Iterable[EnvelopePart]) -> tuple[dict[str, Any], list[str]]:
+    properties: dict[str, Any] = {}
+    required: list[str] = []
+    for part in parts:
+        schema = _envelope_schema(part.model)
+        properties.update(schema.properties)
+        required.extend(schema.required)
+    return properties, required
 
 
 def _distinct(parts: Iterable[EnvelopePart]) -> list[EnvelopePart]:

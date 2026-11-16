@@ -486,7 +486,7 @@ from typing import Annotated
 from pydantic import BaseModel, Field
 
 from harnessed import Agent, ToolInfo
-from harnessed.plugins import CallEnvelope, InvalidEnvelope
+from harnessed.plugins import CallEnvelope, EnvelopePosition, InvalidEnvelope
 
 
 class ActionLabel(BaseModel):
@@ -509,7 +509,9 @@ def mutating(tool: ToolInfo) -> bool:
 
 agent = Agent(
     plugins=[
-        CallEnvelope(ActionLabel),  # every tool
+        # Every tool; the label summarizes the arguments, so it follows them.
+        CallEnvelope(ActionLabel, position=EnvelopePosition.TRAILING),
+        # Mutating tools; the rationale is stated before the arguments.
         CallEnvelope(Rationale, select=mutating, on_invalid=InvalidEnvelope.ERROR),
         Workspace(),  # plugins whose tools stay unchanged
     ]
@@ -531,10 +533,21 @@ the unmount still strips the fields the model was shown.
 - `InvalidEnvelope.ERROR` fails the call like an invalid argument. A tool's own
   `@tool(envelope=...)` always behaves this way.
 
-Registry-wide envelopes lead the schema in registration order, followed by the
-tool's own envelopes and its parameters. `ToolInfo.envelope` and `event.envelope`
-report the combined set in the same order. When a tool already declares the same
-model itself, its own declaration and its `ERROR` policy win.
+`position` decides where the fields sit in the tool's schema. Models usually fill
+arguments in schema order, though providers do not guarantee it:
+
+- `EnvelopePosition.LEADING` (the default) asks for the fields before the tool's
+  input. It suits intent or a rationale the model should state before acting, and
+  streams the fields first.
+- `EnvelopePosition.TRAILING` asks for them after the tool's input. It suits a
+  label or summary that should describe the concrete arguments.
+
+The merged schema lists leading registry-wide envelopes, the tool's own envelopes,
+the tool's parameters, then trailing registry-wide envelopes. Each group keeps
+registration order, and `required` follows the same order. A tool's own
+`@tool(envelope=...)` always leads. `ToolInfo.envelope` and `event.envelope` report
+the combined set in schema order. When a tool already declares the same model
+itself, its own declaration and its `ERROR` policy win.
 
 Conflicts depend on who owns the tool. A Python tool whose parameter or own
 envelope clashes with a registry-wide envelope raises `ValueError`, whichever of
@@ -546,7 +559,11 @@ a logged warning. The tool keeps working without the envelope.
 
 ```python
 dispose = scope[ToolRegistry].envelope(
-    ActionLabel, select=mutating, on_invalid=InvalidEnvelope.DROP, owner=scope
+    ActionLabel,
+    select=mutating,
+    on_invalid=InvalidEnvelope.DROP,
+    position=EnvelopePosition.TRAILING,
+    owner=scope,
 )
 ```
 

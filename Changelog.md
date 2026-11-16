@@ -20,6 +20,10 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 - `InvalidEnvelope.DROP` lets a call with missing or invalid envelope fields run
   without the envelope value; it is the default for registry-wide envelopes.
   Per-tool `@tool(envelope=...)` keeps failing the call.
+- `EnvelopePosition.LEADING` / `TRAILING` places a registry-wide envelope's fields
+  before or after the tool's parameters, for example a rationale before acting and
+  an action label summarizing the concrete arguments after them. `LEADING` is the
+  default; a tool's own `@tool(envelope=...)` always leads.
 - `envelope_value(call, Model)` from `harnessed` reads `Model | None` from a call's
   raw arguments, for event consumers such as UIs that show action labels.
 - A registry-wide envelope that conflicts with a Python tool raises `ValueError`

@@ -1,7 +1,12 @@
 from pydantic import BaseModel
 
 from harnessed.core.plugin import Plugin
-from harnessed.core.tools import EnvelopeSelector, InvalidEnvelope, ToolRegistry
+from harnessed.core.tools import (
+    EnvelopePosition,
+    EnvelopeSelector,
+    InvalidEnvelope,
+    ToolRegistry,
+)
 from harnessed.core.tools.envelope import envelope_models, envelope_selector
 from harnessed.kernel import PluginScope
 
@@ -17,7 +22,8 @@ class CallEnvelope(Plugin, needs=(ToolRegistry,)):
 
     `select` receives each tool's declared `ToolInfo`; the default selects every
     tool. With the default `InvalidEnvelope.DROP`, a call that omits or malforms
-    the fields still runs without the envelope value.
+    the fields still runs without the envelope value. `position` places the fields
+    before (`LEADING`, the default) or after (`TRAILING`) the tool's parameters.
     """
 
     def __init__(
@@ -26,14 +32,20 @@ class CallEnvelope(Plugin, needs=(ToolRegistry,)):
         *,
         select: EnvelopeSelector | None = None,
         on_invalid: InvalidEnvelope = InvalidEnvelope.DROP,
+        position: EnvelopePosition = EnvelopePosition.LEADING,
         name: str | None = None,
     ) -> None:
         super().__init__(name=name)
         (self._model,) = envelope_models((model,))
         self._select = envelope_selector(select)
         self._on_invalid = InvalidEnvelope(on_invalid)
+        self._position = EnvelopePosition(position)
 
     async def setup(self, scope: PluginScope) -> None:
         scope[ToolRegistry].envelope(
-            self._model, select=self._select, on_invalid=self._on_invalid, owner=scope
+            self._model,
+            select=self._select,
+            on_invalid=self._on_invalid,
+            position=self._position,
+            owner=scope,
         )

@@ -20,7 +20,7 @@ from harnessed.core.model import ToolDefinition
 from harnessed.events import ToolCallRequestedEvent
 from harnessed.hooks import ExecuteTool, ReviewToolResult, ToolPolicy
 from harnessed.kernel import hook
-from harnessed.plugins import CallEnvelope, InvalidEnvelope
+from harnessed.plugins import CallEnvelope, EnvelopePosition, InvalidEnvelope
 from harnessed.services import ToolRegistry
 from harnessed.testing import ScriptedModel, call
 
@@ -34,6 +34,10 @@ class ActionLabel(BaseModel):
 
 class Rationale(BaseModel):
     rationale: str
+
+
+class Intent(BaseModel):
+    intent: str
 
 
 class Workspace(Plugin):
@@ -216,6 +220,31 @@ async def test_registry_envelopes_precede_a_tools_own_and_do_not_duplicate_it():
     assert missing.is_error and "ActionLabel" in missing.text
 
 
+async def test_trailing_envelopes_follow_the_tools_parameters_and_still_strip():
+    class Browser(Plugin):
+        @tool(envelope=(Rationale,))
+        async def click(self, element: int) -> str:
+            return str(element)
+
+    plugins = [
+        CallEnvelope(ActionLabel, position=EnvelopePosition.TRAILING),
+        CallEnvelope(Intent),
+        Browser(),
+    ]
+    async with Agent(model=ScriptedModel(["unused"]), plugins=plugins).session() as session:
+        parameters = session.tools["click"].parameters
+        registry = session.scope[ToolRegistry]
+        arguments = {"intent": "open", "rationale": "asked", "element": 2, "action_label": "Open"}
+        plan = registry.plan(ToolCall("click", arguments))
+        result = await registry.execute(plan.call, _expected=plan.binding)
+
+    assert tuple(parameters["properties"]) == ("intent", "rationale", "element", "action_label")
+    assert parameters["required"] == ("intent", "rationale", "element", "action_label")
+    assert plan.tool is not None and plan.tool.envelope == (Intent, Rationale, ActionLabel)
+    assert plan.envelope.get(ActionLabel) == ActionLabel(action_label="Open")
+    assert result.text == "2"
+
+
 async def test_unmounting_removes_fields_but_keeps_the_planned_layout():
     received: list[Mapping[str, object]] = []
     async with Agent(
@@ -292,6 +321,7 @@ def test_envelope_value_reads_supplied_fields_and_ignores_calls_without_them():
         ({"model": dict}, TypeError),
         ({"model": ActionLabel, "select": "readonly"}, TypeError),
         ({"model": ActionLabel, "on_invalid": "ignore"}, ValueError),
+        ({"model": ActionLabel, "position": "middle"}, ValueError),
     ],
 )
 def test_call_envelope_validates_its_declaration(arguments, error):

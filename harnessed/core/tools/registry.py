@@ -25,6 +25,7 @@ from harnessed.core.tools.enabled import (
 from harnessed.core.tools.envelope import (
     EnvelopeLayout,
     EnvelopePart,
+    EnvelopePosition,
     EnvelopeSelector,
     InvalidEnvelope,
     envelope_models,
@@ -162,6 +163,7 @@ class _RegistryEnvelope:
     model: type[BaseModel]
     select: EnvelopeSelector | None
     on_invalid: InvalidEnvelope
+    position: EnvelopePosition
     registration: RegistrationState
 
 
@@ -282,6 +284,7 @@ class ToolRegistry:
         *,
         select: EnvelopeSelector | None = None,
         on_invalid: InvalidEnvelope = InvalidEnvelope.DROP,
+        position: EnvelopePosition = EnvelopePosition.LEADING,
         owner: Scope | PluginScope | None = None,
     ) -> Disposer:
         """Add a call envelope to every selected tool for the owner's lifetime.
@@ -289,16 +292,18 @@ class ToolRegistry:
         Applies to tools registered before or after it, including external tools of
         other plugins. `select` receives each tool's declared `ToolInfo` and must be
         deterministic, since layouts are cached until the set of active envelopes
-        changes. A conflict with a Python tool raises ValueError here or when that
-        tool registers; a conflicting external tool is skipped with a warning.
+        changes. `position` places the fields before or after the tool's parameters.
+        A conflict with a Python tool raises ValueError here or when that tool
+        registers; a conflicting external tool is skipped with a warning.
         """
         (model,) = envelope_models((model,))
         select = envelope_selector(select)
         on_invalid = InvalidEnvelope(on_invalid)
+        position = EnvelopePosition(position)
         owner = owner if owner is not None else Scope.current() or self._ctx
 
         def install(registration: RegistrationState) -> Callable[[], None]:
-            entry = _RegistryEnvelope(model, select, on_invalid, registration)
+            entry = _RegistryEnvelope(model, select, on_invalid, position, registration)
             envelopes = (*self._active_envelopes(), entry)
             for entries in self._tools.values():
                 for tool in entries:
@@ -760,7 +765,7 @@ def _layout_for(
     """Merge the registry-wide envelopes whose selector accepts the declared tool."""
     info = _tool_info(spec, declared)
     shared = tuple(
-        EnvelopePart(entry.model, entry.on_invalid)
+        EnvelopePart(entry.model, entry.on_invalid, entry.position)
         for entry in envelopes
         if entry.select is None or entry.select(info)
     )

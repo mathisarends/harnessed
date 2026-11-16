@@ -8,6 +8,7 @@ from harnessed.core.messages import ApprovalAnswer as ApprovalAnswer
 from harnessed.core.plugin import Service as Service
 from harnessed.core.prompt.instructions import PromptRenderer as PromptRenderer
 from harnessed.core.runtime.agent_loop import AgentLoop as AgentLoop
+from harnessed.core.tools.envelope import EnvelopePosition as EnvelopePosition
 from harnessed.core.tools.envelope import InvalidEnvelope as InvalidEnvelope
 from harnessed.core.tools.output_limit import ToolOutputLimit as ToolOutputLimit
 from harnessed.core.tracing import NoopTracer as NoopTracer
@@ -38,6 +39,7 @@ __all__ = [
     "CompactionPrompt",
     "ContextState",
     "DEFAULT_COMPACTION_PROMPT",
+    "EnvelopePosition",
     "Filesystem",
     "FilesystemTools",
     "FinalStepPolicy",
