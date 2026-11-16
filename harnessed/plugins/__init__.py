@@ -8,11 +8,14 @@ from harnessed.core.messages import ApprovalAnswer as ApprovalAnswer
 from harnessed.core.plugin import Service as Service
 from harnessed.core.prompt.instructions import PromptRenderer as PromptRenderer
 from harnessed.core.runtime.agent_loop import AgentLoop as AgentLoop
+from harnessed.core.tools.envelope import EnvelopePosition as EnvelopePosition
+from harnessed.core.tools.envelope import InvalidEnvelope as InvalidEnvelope
 from harnessed.core.tools.output_limit import ToolOutputLimit as ToolOutputLimit
 from harnessed.core.tracing import NoopTracer as NoopTracer
 from harnessed.plugins.compaction import Compaction as Compaction
 from harnessed.plugins.compaction import at_ratio as at_ratio
 from harnessed.plugins.compaction import every_turns as every_turns
+from harnessed.plugins.envelopes import CallEnvelope as CallEnvelope
 from harnessed.plugins.filesystem import Filesystem as Filesystem
 from harnessed.plugins.filesystem import FilesystemTools as FilesystemTools
 from harnessed.plugins.observations import LatestObservationOnly as LatestObservationOnly
@@ -31,13 +34,16 @@ __all__ = [
     "ApprovalAnswer",
     "Approvals",
     "BackgroundShell",
+    "CallEnvelope",
     "Compaction",
     "CompactionPrompt",
     "ContextState",
     "DEFAULT_COMPACTION_PROMPT",
+    "EnvelopePosition",
     "Filesystem",
     "FilesystemTools",
     "FinalStepPolicy",
+    "InvalidEnvelope",
     "LatestObservationOnly",
     "NoopTracer",
     "PromptRenderer",

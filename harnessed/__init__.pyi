@@ -33,6 +33,7 @@ from harnessed.core.session.session import SessionLog as SessionLog
 from harnessed.core.session.state import SessionState as SessionState
 from harnessed.core.tools.context import ToolContext as ToolContext
 from harnessed.core.tools.decorator import tool as tool
+from harnessed.core.tools.envelope import envelope_value as envelope_value
 from harnessed.core.tools.info import ToolAnnotations as ToolAnnotations
 from harnessed.core.tools.info import ToolChain as ToolChain
 from harnessed.core.tools.info import ToolEnvelope as ToolEnvelope
@@ -92,6 +93,7 @@ __all__ = [
     "ToolMetadata",
     "ToolResult",
     "ToolStatus",
+    "envelope_value",
     "events",
     "hook",
     "plugin",
