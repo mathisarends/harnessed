@@ -5,6 +5,27 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## Unreleased
+
+### Added
+
+- Registry-wide call envelopes. `CallEnvelope(Model, select=..., on_invalid=...)`
+  from `harnessed.plugins` adds an envelope to every selected tool, including tools
+  of other plugins, MCP servers and `register_external`, registered before or after
+  it, without changing those tools. It builds on the new
+  `ToolRegistry.envelope(...)`, which returns a `Disposer` like
+  `result_converter`. Each tool's envelope layout is now resolved lazily and cached
+  per set of active envelopes; `ToolInfo.envelope` and `event.envelope` report the
+  combined set, registry-wide envelopes first.
+- `InvalidEnvelope.DROP` lets a call with missing or invalid envelope fields run
+  without the envelope value; it is the default for registry-wide envelopes.
+  Per-tool `@tool(envelope=...)` keeps failing the call.
+- `envelope_value(call, Model)` from `harnessed` reads `Model | None` from a call's
+  raw arguments, for event consumers such as UIs that show action labels.
+- A registry-wide envelope that conflicts with a Python tool raises `ValueError`
+  for whichever of the two mounts second. On external and MCP tools, a conflicting
+  registry-wide envelope is skipped for that tool with a logged warning.
+
 ## 0.17.0 (2026-11-14)
 
 ### Added

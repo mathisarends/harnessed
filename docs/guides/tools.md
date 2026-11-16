@@ -474,6 +474,105 @@ Tests that execute scripted calls must include required envelope fields, e.g.
 Envelopes are not injected into callbacks. A tool that needs a value should declare
 it as an ordinary parameter.
 
+### Envelopes for every tool
+
+`CallEnvelope` adds an envelope to tools it does not own: Python tools of other
+plugins, MCP tools and `register_external` tools, registered before or after it.
+No tool has to change:
+
+```python
+from typing import Annotated
+
+from pydantic import BaseModel, Field
+
+from harnessed import Agent, ToolInfo
+from harnessed.plugins import CallEnvelope, InvalidEnvelope
+
+
+class ActionLabel(BaseModel):
+    action_label: Annotated[
+        str,
+        Field(
+            max_length=60,
+            description="Short present-tense summary of this call for people watching.",
+        ),
+    ]
+
+
+class Rationale(BaseModel):
+    rationale: str
+
+
+def mutating(tool: ToolInfo) -> bool:
+    return not tool.readonly
+
+
+agent = Agent(
+    plugins=[
+        CallEnvelope(ActionLabel),  # every tool
+        CallEnvelope(Rationale, select=mutating, on_invalid=InvalidEnvelope.ERROR),
+        Workspace(),  # plugins whose tools stay unchanged
+    ]
+)
+```
+
+`select` receives each tool's declared `ToolInfo` and returns whether the envelope
+applies; the default selects every tool. It must be a deterministic, synchronous
+predicate, because each tool's merged layout is cached until the set of active
+registry-wide envelopes changes. The envelope lasts for the plugin's lifetime;
+after unmount, the next request no longer shows its fields. A call planned before
+the unmount still strips the fields the model was shown.
+
+`on_invalid` decides what happens when the model omits or malforms the fields:
+
+- `InvalidEnvelope.DROP` (the default for `CallEnvelope`) strips the fields, leaves
+  the model out of `event.envelope` and runs the tool. Use it for presentation-only
+  fields, so a missing label never fails an action.
+- `InvalidEnvelope.ERROR` fails the call like an invalid argument. A tool's own
+  `@tool(envelope=...)` always behaves this way.
+
+Registry-wide envelopes lead the schema in registration order, followed by the
+tool's own envelopes and its parameters. `ToolInfo.envelope` and `event.envelope`
+report the combined set in the same order. When a tool already declares the same
+model itself, its own declaration and its `ERROR` policy win.
+
+Conflicts depend on who owns the tool. A Python tool whose parameter or own
+envelope clashes with a registry-wide envelope raises `ValueError`, whichever of
+the two mounts second. External and MCP tools are owned by a third party, so a
+clashing envelope, or a non-object parameter schema, is skipped for that tool with
+a logged warning. The tool keeps working without the envelope.
+
+`CallEnvelope` builds on the registry API, which features can also use directly:
+
+```python
+dispose = scope[ToolRegistry].envelope(
+    ActionLabel, select=mutating, on_invalid=InvalidEnvelope.DROP, owner=scope
+)
+```
+
+Child sessions started by `Subagents` are isolated and own their plugins, so they
+do not inherit a parent's envelopes. Add `CallEnvelope` to the child `Agent` that
+should receive it.
+
+### Reading envelopes from events
+
+No extra events are emitted. `ToolCall.arguments` keeps the raw envelope fields, so
+the calls on `ToolCallRequestedEvent` and `ToolCallFinishedEvent` carry them, and
+replay keeps them. A UI can show the label from `ToolCallRequestedEvent` and look it
+up by `call_id` for later execution events. Use `envelope_value` to read one model
+from a call without validating dictionaries yourself:
+
+```python
+from harnessed import envelope_value
+from harnessed.events import ToolCallRequestedEvent
+
+if isinstance(event, ToolCallRequestedEvent):
+    label = envelope_value(event.call, ActionLabel)  # ActionLabel | None
+```
+
+`envelope_value` never raises for call content. It returns `None` when the call
+carries none of the model's fields or when they do not validate.
+
 ## End an action chain
 
 One model response may contain several calls. A context-changing tool can stop

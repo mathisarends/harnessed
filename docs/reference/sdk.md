@@ -609,7 +609,14 @@ See [parameter objects](../guides/tools.md#pydantic-parameter-objects),
 `ToolChain`, `ToolInfo` and `ToolMetadata` are exported by `harnessed`.
 The same hooks expose per-call `event.envelope: ToolEnvelope`. `@tool(envelope=(M,))`
 merges Pydantic model fields into a tool's schema, validates them and removes them
-before the callback; `ToolEnvelope.get(M)` returns `M | None`. See [tool call envelopes](../guides/tools.md#tool-call-envelopes).
+before the callback; `ToolEnvelope.get(M)` returns `M | None`.
+`CallEnvelope(M, *, select=None, on_invalid=InvalidEnvelope.DROP)` from
+`harnessed.plugins` adds `M` to every selected tool, including other plugins',
+MCP and external tools, for the plugin's lifetime; it builds on
+`ToolRegistry.envelope(M, *, select, on_invalid, owner)`. `envelope_value(call, M)`
+from `harnessed` reads `M | None` from a call's raw arguments without raising.
+See [tool call envelopes](../guides/tools.md#tool-call-envelopes) and
+[envelopes for every tool](../guides/tools.md#envelopes-for-every-tool).
 Skipped calls have `ToolStatus.SKIPPED` and retain their model-history pairing.
 `PreStep.max_steps` is the effective turn limit; `remaining_steps` includes the
 current step, `is_last_step` indicates one remaining step, and `is_final_step`

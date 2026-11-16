@@ -62,6 +62,7 @@ _EXPORTS = {
     "ToolMetadata": ("harnessed.core.tools.info", "ToolMetadata"),
     "ToolEnvelope": ("harnessed.core.tools.info", "ToolEnvelope"),
     "ToolStatus": ("harnessed.core.messages", "ToolStatus"),
+    "envelope_value": ("harnessed.core.tools.envelope", "envelope_value"),
     "events": ("harnessed.events", None),
     "hook": ("harnessed.kernel", "hook"),
     "plugin": ("harnessed.kernel", "plugin"),
