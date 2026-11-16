@@ -169,29 +169,10 @@ class PluginHandle:
             self.status = PluginStatus.STARTING
             self.scope = child = self._mount._child(self._mount._scope)
             child._handle = self
-            for binding in signature:
-                if binding is None:
-                    continue
-                provider = binding.owner._handle
-                if provider is not None:
-                    provider._dependents.add(self)
-                    child.effect(lambda p=provider: p._dependents.discard(self))
+            self._depend_on_providers(child, signature)
             try:
-                with child.activate():
-                    spec = self.spec
-                    bound = bind_injected(
-                        spec.factory, child, (child, *spec.args), kwargs=spec.kwargs
-                    )
-                    generator = spec.factory(*bound.args, **bound.kwargs)
-                    if not inspect.isasyncgen(generator):
-                        raise TypeError(
-                            f"Plugin {spec.name} must be an async generator yielding once"
-                        )
-                    try:
-                        instance = await anext(generator)
-                        self._instance = instance if isinstance(instance, PluginBase) else None
-                    except StopAsyncIteration as exc:
-                        raise RuntimeError(f"Plugin {spec.name} did not yield") from exc
+                name = self.spec.name
+                generator = await self._start(child)
 
                 async def teardown() -> None:
                     with child.activate():
@@ -201,7 +182,7 @@ class PluginHandle:
                             return
                         finally:
                             await generator.aclose()
-                    raise RuntimeError(f"Plugin {spec.name} yielded more than once")
+                    raise RuntimeError(f"Plugin {name} yielded more than once")
 
                 child.effect(teardown)
                 self._active_signature = signature
@@ -211,22 +192,49 @@ class PluginHandle:
                 await self._mount.dispatch(PluginActivated(self))
                 self._mount._scope.runtime.changed()
             except BaseException as exc:
-                cancelled = isinstance(exc, asyncio.CancelledError)
-                self.status = PluginStatus.WAITING if cancelled else PluginStatus.FAILED
-                self._failed_signature = None if cancelled else signature
-                self.error = exc if isinstance(exc, Exception) else None
-                if self.error is not None:
-                    logger.error("Plugin %s setup failed", self.name, exc_info=exc)
-                    try:
-                        await self._mount.dispatch(PluginFailed(self.name, self.error))
-                    except Exception:
-                        # Dispose the activation even when a user observer fails.
-                        logger.exception("PluginFailed observer failed for %s", self.name)
+                await self._activation_failed(exc, signature)
                 try:
                     await child.aclose()
                 finally:
                     self._instance = None
                 raise
+
+    def _depend_on_providers(self, child: Scope, signature) -> None:
+        for binding in signature:
+            if binding is None:
+                continue
+            provider = binding.owner._handle
+            if provider is not None:
+                provider._dependents.add(self)
+                child.effect(lambda p=provider: p._dependents.discard(self))
+
+    async def _start(self, child: Scope) -> AsyncGenerator[Any]:
+        """Run the plugin factory in its activation scope up to its single yield."""
+        spec = self.spec
+        with child.activate():
+            bound = bind_injected(spec.factory, child, (child, *spec.args), kwargs=spec.kwargs)
+            generator = spec.factory(*bound.args, **bound.kwargs)
+            if not inspect.isasyncgen(generator):
+                raise TypeError(f"Plugin {spec.name} must be an async generator yielding once")
+            try:
+                instance = await anext(generator)
+                self._instance = instance if isinstance(instance, PluginBase) else None
+            except StopAsyncIteration as exc:
+                raise RuntimeError(f"Plugin {spec.name} did not yield") from exc
+        return generator
+
+    async def _activation_failed(self, exc: BaseException, signature) -> None:
+        cancelled = isinstance(exc, asyncio.CancelledError)
+        self.status = PluginStatus.WAITING if cancelled else PluginStatus.FAILED
+        self._failed_signature = None if cancelled else signature
+        self.error = exc if isinstance(exc, Exception) else None
+        if self.error is not None:
+            logger.error("Plugin %s setup failed", self.name, exc_info=exc)
+            try:
+                await self._mount.dispatch(PluginFailed(self.name, self.error))
+            except Exception:
+                # Dispose the activation even when a user observer fails.
+                logger.exception("PluginFailed observer failed for %s", self.name)
 
     async def _suspend(self, visited: set | None = None) -> None:
         if self.status == PluginStatus.STARTING and self._start_task is not None:
