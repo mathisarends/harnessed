@@ -677,58 +677,26 @@ class ToolRegistry:
         A planned call keeps the envelope layout the model was shown, even when a
         registry-wide envelope unmounts before it runs.
         """
-        if call.malformed is not None:
-            return ToolResult.error("Tool arguments must be a valid JSON object")
-        tool = self._visible(self._tools.get(call.name, []))
         planned = _expected.layout if isinstance(_expected, _Binding) else None
         expected = _expected.tool if isinstance(_expected, _Binding) else _expected
-        if expected is not _UNSPECIFIED and tool is not expected:
-            return ToolResult.error(
-                "Tool registration changed during batch planning; issue a fresh call"
-            )
-        if tool is None:
-            return ToolResult.error(f"Unknown tool: {call.name}")
+        tool = self._resolve(call, expected)
+        if isinstance(tool, ToolResult):
+            return tool
         scope = scope or self._ctx
         try:
-            if not tool.enabled(scope):
-                return ToolResult.unavailable(f"Tool {call.name} is currently disabled")
-            if not self._available(tool, scope):
-                return ToolResult.error(
-                    f"Tool {call.name} is unavailable: missing injected service"
-                )
-            needs_context = isinstance(tool, _ExternalTool) or (
-                isinstance(tool, _PythonTool)
-                and any(
-                    dependency.key is ToolContext for dependency in tool.plan.dependencies.values()
-                )
-            )
-            if call_context is None and needs_context:
+            unavailable = self._unavailable(tool, call, scope)
+            if unavailable is not None:
+                return unavailable
+            if call_context is None and _needs_context(tool):
                 call_context = scope[ToolContexts].create(call)
-            with tool.registration.activate():
-                async with ToolExecutionBudget(
-                    tool.timeout_seconds if tool.timeout_seconds is not None else default_timeout
-                ):
-                    layout = planned if planned is not None else self._layout(tool)
-                    _, own_arguments = layout.split(call.arguments)
-                    if isinstance(tool, _ExternalTool):
-                        if call_context is None:
-                            raise TypeError("External tools require a ToolContext")
-                        return await tool.handler(own_arguments, call_context)
-                    arguments = tool.arguments.parse(own_arguments)
-                    extra: dict[type, Any] = (
-                        {ToolContext: call_context} if call_context is not None else {}
-                    )
-                    bound = tool.plan.bind(scope, kwargs=arguments, extra=extra)
-                    if inspect.iscoroutinefunction(tool.callback):
-                        value = await tool.callback(*bound.args, **bound.kwargs)
-                    else:
-                        value = await run_sync(
-                            partial(tool.callback, *bound.args, **bound.kwargs),
-                            on_cancel=call_context.signal.set if call_context is not None else None,
-                        )
-                        if inspect.isawaitable(value):
-                            value = await value
-            return self._result(value)
+            return await self._call(
+                tool,
+                call,
+                scope=scope,
+                call_context=call_context,
+                layout=planned,
+                default_timeout=default_timeout,
+            )
         except asyncio.CancelledError:
             if call_context is not None:
                 call_context.signal.set()
@@ -740,6 +708,73 @@ class ToolRegistry:
         except Exception as exc:
             # Tool callbacks are user code; convert arbitrary failures at the tool result boundary.
             return ToolResult.error(format_tool_error(call, exc, error_formatter))
+
+    def _resolve(self, call: ToolCall, expected: object) -> _Tool | ToolResult:
+        """The visible tool for a call, or the error result that prevents running it."""
+        if call.malformed is not None:
+            return ToolResult.error("Tool arguments must be a valid JSON object")
+        tool = self._visible(self._tools.get(call.name, []))
+        if expected is not _UNSPECIFIED and tool is not expected:
+            return ToolResult.error(
+                "Tool registration changed during batch planning; issue a fresh call"
+            )
+        if tool is None:
+            return ToolResult.error(f"Unknown tool: {call.name}")
+        return tool
+
+    def _unavailable(
+        self, tool: _Tool, call: ToolCall, scope: Scope | PluginScope
+    ) -> ToolResult | None:
+        if not tool.enabled(scope):
+            return ToolResult.unavailable(f"Tool {call.name} is currently disabled")
+        if not self._available(tool, scope):
+            return ToolResult.error(f"Tool {call.name} is unavailable: missing injected service")
+        return None
+
+    async def _call(
+        self,
+        tool: _Tool,
+        call: ToolCall,
+        *,
+        scope: Scope | PluginScope,
+        call_context: ToolContext | None,
+        layout: EnvelopeLayout | None,
+        default_timeout: float | None,
+    ) -> ToolResult:
+        """Invoke the tool within its activation and timeout budget."""
+        with tool.registration.activate():
+            async with ToolExecutionBudget(
+                tool.timeout_seconds if tool.timeout_seconds is not None else default_timeout
+            ):
+                if layout is None:
+                    layout = self._layout(tool)
+                _, own_arguments = layout.split(call.arguments)
+                if isinstance(tool, _ExternalTool):
+                    if call_context is None:
+                        raise TypeError("External tools require a ToolContext")
+                    return await tool.handler(own_arguments, call_context)
+                arguments = tool.arguments.parse(own_arguments)
+                extra: dict[type, Any] = (
+                    {ToolContext: call_context} if call_context is not None else {}
+                )
+                bound = tool.plan.bind(scope, kwargs=arguments, extra=extra)
+                if inspect.iscoroutinefunction(tool.callback):
+                    value = await tool.callback(*bound.args, **bound.kwargs)
+                else:
+                    value = await run_sync(
+                        partial(tool.callback, *bound.args, **bound.kwargs),
+                        on_cancel=call_context.signal.set if call_context is not None else None,
+                    )
+                    if inspect.isawaitable(value):
+                        value = await value
+        return self._result(value)
+
+
+def _needs_context(tool: _Tool) -> bool:
+    return isinstance(tool, _ExternalTool) or (
+        isinstance(tool, _PythonTool)
+        and any(dependency.key is ToolContext for dependency in tool.plan.dependencies.values())
+    )
 
 
 def _tool_info(spec: ToolSpec, layout: EnvelopeLayout) -> ToolInfo:
