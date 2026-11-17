@@ -129,6 +129,8 @@ class StreamModel(Waterfall[AbstractAsyncContextManager[ModelStream]]):
 
     Return an unentered context manager; the runtime owns entry, consumption and
     exit. next_() returns the downstream manager, defaulting to model.stream(request).
+    Place @hook(StreamModel) above @asynccontextmanager for a Model.stream-style
+    method that yields the stream directly.
     The request contains resolved assets and effective settings. Request transforms
     belong in PrepareRequest so audit, output constraints and budgets see them.
     Standalone model calls and compaction requests do not dispatch this hook.

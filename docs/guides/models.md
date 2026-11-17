@@ -191,7 +191,7 @@ downstream manager; without another handler it is `event.model.stream(event.requ
 Return the manager unopened so the runtime owns entry, consumption and exit:
 
 ```python
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from time import monotonic
 
@@ -203,25 +203,25 @@ from harnessed.models import ModelStream
 
 class StreamTiming(Plugin):
     @hook(StreamModel)
-    async def time_stream(
+    @asynccontextmanager
+    async def stream(
         self, event: StreamModel, next_: Next[AbstractAsyncContextManager[ModelStream]]
-    ) -> AbstractAsyncContextManager[ModelStream]:
+    ) -> AsyncGenerator[ModelStream, None]:
         downstream = await next_()
-
-        @asynccontextmanager
-        async def measured() -> AsyncIterator[ModelStream]:
-            started = monotonic()
-            try:
-                async with downstream as stream:
-                    yield stream
-            finally:
-                print(event.request_id, "stream seconds:", monotonic() - started)
-
-        return measured()
+        started = monotonic()
+        try:
+            async with downstream as stream:
+                yield stream
+        finally:
+            print(event.request_id, "stream seconds:", monotonic() - started)
 ```
 
+The decorator order matters: `@hook(StreamModel)` registers the context-manager
+factory produced by `@asynccontextmanager`. This is the same method shape as a
+custom `Model.stream()` implementation; no nested factory is needed.
+
 Install it with `Agent(model=..., plugins=[StreamTiming()])`. To replace the
-transport, return your application's context manager without calling `next_()`.
+transport, open your application's stream and yield it without calling `next_()`.
 For example, a WebSocket tunnel can send `event.request` and expose remote chunks
 through `ModelStream`. The plugin owns its connection and wire protocol; no
 WebSocket dependency is required by Harnessed. A wrapper that changes chunks must

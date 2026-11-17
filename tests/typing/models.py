@@ -1,4 +1,5 @@
-from contextlib import AbstractAsyncContextManager
+from collections.abc import AsyncGenerator
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import assert_type
 
 from harnessed import Agent, Session
@@ -45,6 +46,17 @@ async def delegate_stream(
     return manager
 
 
+@hook(StreamModel)
+@asynccontextmanager
+async def wrap_stream(
+    event: StreamModel, next_: Next[AbstractAsyncContextManager[ModelStream]]
+) -> AsyncGenerator[ModelStream, None]:
+    manager = await next_()
+    async with manager as stream:
+        assert_type(stream, ModelStream)
+        yield stream
+
+
 def wrong_stream_result(
     event: StreamModel, next_: Next[AbstractAsyncContextManager[ModelStream]]
 ) -> str:
@@ -53,6 +65,7 @@ def wrong_stream_result(
 
 async def stream_hook_consumer(scope: Scope, event: StreamModel) -> None:
     scope.on(StreamModel, delegate_stream)
+    scope.on(StreamModel, wrap_stream)
     manager = await scope.dispatch(
         StreamModel(event.session, event.request, event.model, request_id=event.request_id),
         default=lambda: event.model.stream(event.request),

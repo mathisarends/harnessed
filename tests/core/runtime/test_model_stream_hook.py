@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
 import pytest
@@ -58,7 +58,7 @@ async def test_stream_hooks_compose_around_default_with_resolved_input() -> None
             downstream = await next_()
 
             @asynccontextmanager
-            async def wrap() -> AsyncIterator[ModelStream]:
+            async def wrap() -> AsyncGenerator[ModelStream, None]:
                 order.append("outer.enter")
                 try:
                     async with downstream as stream:
@@ -78,7 +78,7 @@ async def test_stream_hooks_compose_around_default_with_resolved_input() -> None
             downstream = await next_()
 
             @asynccontextmanager
-            async def wrap() -> AsyncIterator[ModelStream]:
+            async def wrap() -> AsyncGenerator[ModelStream, None]:
                 order.append("inner.enter")
                 try:
                     async with downstream as stream:
@@ -140,11 +140,13 @@ async def test_replacement_stream_keeps_tools_usage_and_provider_diagnostics() -
 
     class RemoteTransport(Plugin):
         @hook(StreamModel)
-        def tunnel(
+        @asynccontextmanager
+        async def tunnel(
             self, event: StreamModel, next_: Next[AbstractAsyncContextManager[ModelStream]]
-        ) -> AbstractAsyncContextManager[ModelStream]:
+        ) -> AsyncGenerator[ModelStream, None]:
             seen.append(event)
-            return remote.stream(event.request)
+            async with remote.stream(event.request) as stream:
+                yield stream
 
         @tool(readonly=True)
         async def echo(self, value: str) -> str:
@@ -200,7 +202,7 @@ async def test_hook_failure_before_stream_entry_closes_request(stage: str) -> No
                 raise ValueError("stream hook failed")
 
             @asynccontextmanager
-            async def open_stream() -> AsyncIterator[ModelStream]:
+            async def open_stream() -> AsyncGenerator[ModelStream, None]:
                 try:
                     raise ValueError("stream hook failed")
                     yield  # Entry fails before a stream can be yielded.
@@ -254,7 +256,7 @@ async def test_abort_before_stream_entry_releases_hook_resources(stage: str) -> 
                     cleanup.append("dispatch")
 
             @asynccontextmanager
-            async def connection() -> AsyncIterator[ModelStream]:
+            async def connection() -> AsyncGenerator[ModelStream, None]:
                 try:
                     ready.set()
                     await blocked.wait()
@@ -305,20 +307,16 @@ async def test_wrapped_stream_releases_resources_and_retains_partial_usage(
 
     class WrappedStream(Plugin):
         @hook(StreamModel)
+        @asynccontextmanager
         async def wrap(
             self, event: StreamModel, next_: Next[AbstractAsyncContextManager[ModelStream]]
-        ) -> AbstractAsyncContextManager[ModelStream]:
+        ) -> AsyncGenerator[ModelStream, None]:
             downstream = await next_()
-
-            @asynccontextmanager
-            async def connection() -> AsyncIterator[ModelStream]:
-                try:
-                    async with downstream as stream:
-                        yield stream
-                finally:
-                    cleanup.append("wrapper")
-
-            return connection()
+            try:
+                async with downstream as stream:
+                    yield stream
+            finally:
+                cleanup.append("wrapper")
 
     async with Agent(model=CallbackModel(chunks), plugins=[WrappedStream()]).session() as session:
         audit = Audit(session)
@@ -365,7 +363,7 @@ async def test_stream_wrapper_exit_failure_preserves_completed_prefix() -> None:
             downstream = await next_()
 
             @asynccontextmanager
-            async def connection() -> AsyncIterator[ModelStream]:
+            async def connection() -> AsyncGenerator[ModelStream, None]:
                 async with downstream as stream:
                     yield stream
                 cleanup.append("closed")
