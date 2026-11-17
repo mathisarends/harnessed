@@ -26,7 +26,10 @@ from harnessed.core.model import (
 from harnessed.core.outputs import OutputContract, OutputTypes
 from harnessed.core.runtime import AgentLoop
 from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.kernel import Scope, plugin
+from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not a module.
+    Scope,
+    plugin,
+)
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit
 

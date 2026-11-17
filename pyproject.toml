@@ -54,7 +54,7 @@ dev = [
     "pytest>=8,<10",
     "pytest-asyncio>=1,<2",
     "ruff>=0.17.3,<1",
-    "smelt-cli==0.10.0",
+    "smelt-cli==0.12.0",
     "twine>=6.2,<8",
     "ty>=0.0.93,<0.1",
 ]
@@ -101,7 +101,7 @@ max-complexity = 12
 "harnessed/models/pydantic_ai.py" = ["PLC0415"]
 "harnessed/plugins/skills.py" = ["PLC0415"]
 # Classes of the standalone kernel cooperate through private state by design;
-# ownership-aware checking is proposed upstream (mathisarends/smelt#170).
+# Smelt checks known receivers at the kernel package boundary (SMT365).
 "harnessed/kernel/**/*.py" = ["SLF001"]
 # Tests import optional integrations and patch import failures in their own scope.
 # Fakes implement protocols with unused parameters; Smelt SMT420 owns private access.

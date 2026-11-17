@@ -22,10 +22,9 @@ from harnessed.core.session.files import SessionFiles
 from harnessed.core.tools import ToolError, ToolRegistry
 from harnessed.core.tools.output_limit import ToolOutputLimit
 from harnessed.kernel import hook
-from harnessed.plugins import Approvals, Service
+from harnessed.plugins import Approvals, Service, Spill
 from harnessed.plugins.filesystem import FileSystemBackend, FilesystemTools, LocalFileSystem
 from harnessed.plugins.shell import LocalShell, ShellBackend, ShellTools
-from harnessed.plugins.spill import Spill
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit, AuditProjection
 

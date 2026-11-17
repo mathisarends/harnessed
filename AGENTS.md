@@ -133,7 +133,7 @@ workflows and bump the key when Python validation behavior changes.
 
 ## Architecture and convention checks
 
-`smelt.yaml` is the executable policy; `uv.lock` pins Smelt CLI 0.10.0.
+`smelt.yaml` is the executable policy; `uv.lock` pins Smelt CLI 0.12.0.
 Before editing, run `uv run smelt context <module-or-path>` to inspect its role.
 After editing, run `uv run smelt check --changed --base origin/main --format json`.
 Before finishing, run `uv run smelt check --show-hints --fail-on warning`,
@@ -152,6 +152,11 @@ Review `stateful-dataclass` and `mutable-field-in-frozen-dataclass` hints agains
 actual ownership: frozen fields do not make referenced containers immutable.
 Review `loop-invariant-collection` hints without changing guards, empty-loop
 behavior or the timing of evaluation.
+Name collection comprehensions before passing them to calls. Smelt checks private
+member access across module boundaries; only cooperating kernel implementations
+share an immediate-package boundary. Review `complex-comprehension`,
+`constructor-logic` and `excess-private-definitions` hints for cohesive extraction,
+preserving generator laziness, constructor validation and optional-import boundaries.
 
 Fix errors in code; do not introduce a debt baseline. Review warnings in context,
 especially public APIs that static usage analysis cannot see. Preserve the lazy

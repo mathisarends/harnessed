@@ -9,7 +9,10 @@ from harnessed.core.hooks import PrepareRequest
 from harnessed.core.model import Model, ModelRequest, resolve_request_settings
 from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.events import ModelRequestedEvent
-from harnessed.kernel import Scope, plugin
+from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not a module.
+    Scope,
+    plugin,
+)
 from harnessed.models import GenerationSettings, ModelInfo
 from harnessed.testing import ScriptedModel
 

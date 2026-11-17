@@ -15,6 +15,10 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 
 ### Changed
 
+- Pin the development Smelt CLI to 0.12.0 for local checks, prek and CI. Enforce
+  named collection arguments and ownership-aware private access, retain design
+  reviews as hints, and document the decision for every new rule in the
+  [Smelt policy](docs/contributing/smelt.md#review-after-the-0120-upgrade).
 - The `eof` flag of the background shell's `write_command` tool is keyword-only.
   The model-facing tool schema is unchanged.
 - Contributor lint policy: Ruff now bounds function complexity and enforces

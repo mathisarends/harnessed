@@ -2,7 +2,7 @@ from typing import Annotated
 
 import pytest
 
-from harnessed.kernel import (
+from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not a module.
     Bundle,
     Emit,
     Inject,
@@ -81,7 +81,7 @@ def test_bundle_configured_hooks_and_function_injections_do_not_add_needs():
 
 
 async def test_listener_resolves_current_service_without_repeating_reflection(monkeypatch):
-    import harnessed.kernel.di as di
+    import harnessed.kernel.di as di  # smelt: ignore[SMT107] -- Probe cached reflection.
 
     class Changed(Emit):
         pass

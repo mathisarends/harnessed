@@ -7,6 +7,10 @@ project:
   test_roots: [tests]
   coverage: strict
   exclude:
+    - path: .harnessed/**
+      reason: Generated session data and test workspaces are not repository source or configuration.
+    - path: .claude/worktrees/**
+      reason: Independent agent checkouts have their own policy and must not enter this checkout's inventory.
     - path: build/**
       reason: Local generated wheel contents and maintainer scratch scripts are not source modules.
     - path: examples/**
@@ -100,6 +104,9 @@ structure:
     kernel-api:
       match: harnessed.kernel
       public: ['.']
+      # Scope, PluginHandle, EventBus and descriptors share kernel-owned state;
+      # callers in higher layers still have only the public kernel operations.
+      private_attribute_boundary: package
 
 tests:
   layout: none  # Topic groups and consumer typing contracts need not mirror modules.
@@ -143,6 +150,7 @@ rules:
   implicit-optional-default: error
   package-only-dunder-all: error
   private-symbol-import: error
+  cross-module-private-attribute: error
   private-class-constant: error
   await-in-call-argument: error
   deprecated-async-contextmanager-return: error
@@ -158,6 +166,7 @@ rules:
   duplicate-narrowing-assert: error
   prefer-named-duration: error
   parallel-record-fields: error
+  comprehension-in-call-argument: error
   # Naming and types
   no-base-class-prefix: error
   no-base-class-suffix: error
@@ -182,3 +191,6 @@ rules:
   stateful-dataclass: hint
   mutable-field-in-frozen-dataclass: hint
   loop-invariant-collection: hint
+  complex-comprehension: hint
+  constructor-logic: hint
+  excess-private-definitions: hint

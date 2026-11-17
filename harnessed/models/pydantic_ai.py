@@ -114,14 +114,15 @@ class PydanticAIModel:
         self.native_tools = tuple(native_tools)
         defaults = self._native.settings or {}
         native_settings = dict(defaults)
+        provider_options = {
+            key: value
+            for key, value in native_settings.items()
+            if key not in ("max_tokens", "temperature")
+        }
         self._generation_settings = GenerationSettings(
             max_tokens=defaults.get("max_tokens"),
             temperature=defaults.get("temperature"),
-            provider_options={
-                key: value
-                for key, value in native_settings.items()
-                if key not in ("max_tokens", "temperature")
-            },
+            provider_options=provider_options,
         ).override(settings)
         profile = self._native.profile
         self._info = ModelInfo(
@@ -344,16 +345,17 @@ def _parameters(
         mode = OutputMode.NATIVE if native_output else OutputMode.TOOL
     else:
         mode = schema.mode
+    function_tools = [
+        ToolDefinition(
+            name=tool.name,
+            description=tool.description,
+            parameters_json_schema=to_dict(tool.parameters),
+        )
+        for tool in request.tools
+        if schema is None or tool.name != "final_answer"
+    ]
     parameters = ModelRequestParameters(
-        function_tools=[
-            ToolDefinition(
-                name=tool.name,
-                description=tool.description,
-                parameters_json_schema=to_dict(tool.parameters),
-            )
-            for tool in request.tools
-            if schema is None or tool.name != "final_answer"
-        ],
+        function_tools=function_tools,
         native_tools=list(native_tools),
     )
     if schema is not None:

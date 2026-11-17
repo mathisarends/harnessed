@@ -389,11 +389,8 @@ class _Span:
             self._native.set_attribute("gen_ai.request.temperature", request.settings.temperature)
         if not self.config.capture_content:
             return
-        self.content(
-            "input",
-            TraceContentKind.MODEL_INPUT,
-            [_message(message) for message in request.messages],
-        )
+        messages = [_message(message) for message in request.messages]
+        self.content("input", TraceContentKind.MODEL_INPUT, messages)
         self.content("request.tools", TraceContentKind.MODEL_TOOLS, request.tools)
         self.content("request.settings", TraceContentKind.MODEL_SETTINGS, request.settings)
         if request.output_schema is not None:
@@ -432,15 +429,10 @@ class _Span:
             self._native.set_attribute("harnessed.outcome", turn.reason.value)
         if not self.config.capture_content:
             return
-        self.content(
-            "input",
-            TraceContentKind.TURN_INPUT,
-            [
-                _message(event.message)
-                for event in turn.events
-                if isinstance(event, UserMessageEvent)
-            ],
-        )
+        messages = [
+            _message(event.message) for event in turn.events if isinstance(event, UserMessageEvent)
+        ]
+        self.content("input", TraceContentKind.TURN_INPUT, messages)
         final = next(
             (event for event in reversed(turn.events) if isinstance(event, AssistantMessageEvent)),
             None,

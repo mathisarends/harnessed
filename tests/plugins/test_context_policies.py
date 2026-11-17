@@ -27,8 +27,14 @@ from harnessed.core.session.session import SessionLog
 from harnessed.core.tokens import ApproximateTokenCounter
 from harnessed.core.tools import ToolError
 from harnessed.kernel import hook
-from harnessed.plugins import AgentLoop, Approvals, Compaction, at_ratio, every_turns
-from harnessed.plugins.observations import LatestObservationOnly
+from harnessed.plugins import (
+    AgentLoop,
+    Approvals,
+    Compaction,
+    LatestObservationOnly,
+    at_ratio,
+    every_turns,
+)
 from harnessed.plugins.spill import Spill, SpillStore
 from harnessed.services import CompactionContext, CompactionRequest, Summary
 from harnessed.testing import ExtractiveSummarizer, ScriptedModel

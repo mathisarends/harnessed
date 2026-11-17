@@ -109,7 +109,8 @@ class ModelResponder:
         trace.set_attribute("usage", response.usage)
         trace.set_attribute("output", response.message)
         trace.set_attribute("stop_reason", response.stop_reason)
-        if len({call.id for call in calls}) != len(calls):
+        call_ids = {call.id for call in calls}
+        if len(call_ids) != len(calls):
             raise ValueError("The model returned duplicate tool call ids")
         await self.log.append(ModelUsageRecordedEvent(response.usage, request_id=request_id))
         final = replace(response.message, id=message_id)

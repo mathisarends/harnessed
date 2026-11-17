@@ -1,6 +1,6 @@
 # Smelt policy and adoption feedback
 
-Harnessed pins [`smelt-cli` 0.10.0](https://github.com/mathisarends/smelt)
+Harnessed pins [`smelt-cli` 0.12.0](https://github.com/mathisarends/smelt)
 in the development group. The executable policy is
 [`smelt.yaml`](https://github.com/mathisarends/harnessed/blob/main/smelt.yaml).
 It complements Ruff, ty, runtime tests and the architecture suite.
@@ -11,6 +11,10 @@ Every production module has an explicit architectural role. Strict coverage
 rejects newly discovered code outside that policy. Examples and maintainer
 scripts have reasoned exclusions: they exercise the SDK or repository tooling,
 and remain covered by Ruff, ty, executable-example tests and distribution checks.
+Generated `.harnessed/` session/test workspaces and independent agent checkouts
+under `.claude/worktrees/` are excluded from this checkout's inventory, including
+the YAML filename scan. They contain runtime data or separate repositories, not
+this checkout's maintained source or configuration.
 
 The kernel accepts only standard-library dependencies. Core additionally accepts
 Pydantic. Feature, model and integration layers declare their optional imports.
@@ -64,8 +68,9 @@ The requested checks are explicit in the config:
 | Error | `information-hiding` group: `internal-public-member`, `internal-public-module-symbol`, `internal-public-attribute`, `test-only-public-function`, `test-only-public-attribute` |
 | Error | `private-test-access`, `string-patch-target`, `test-without-outcome-check`, `test-only-checks-possibly-empty-data`, `unbounded-test-wait`, `async-mock-without-await-check`, `nondeterministic-test-data`; at most three patches per test |
 | Error | `missing-interface-docstring`, `missing-broad-except-reason`, `duplicate-function`, `duplicate-class-name`, `duplicate-narrowing-assert`, `prefer-named-duration`, `nested-conditional-expression`, `parallel-record-fields` |
+| Error | `cross-module-private-attribute`, `comprehension-in-call-argument` |
 | Error (policy) | `max_positional_parameters: 3` (`excess-positional-parameters`), `yaml_extension: yaml` (`yaml-file-extension`) |
-| Hint | `independent-test-case-loop`, `deep-object-navigation`, `stateful-dataclass`, `mutable-field-in-frozen-dataclass`, `loop-invariant-collection` |
+| Hint | `independent-test-case-loop`, `deep-object-navigation`, `stateful-dataclass`, `mutable-field-in-frozen-dataclass`, `loop-invariant-collection`, `complex-comprehension`, `constructor-logic`, `excess-private-definitions` |
 
 Hooks and CI use `--fail-on warning`, so metadata warnings such as unused
 suppressions fail too. Optional defaults select a fallback only for `None`;
@@ -120,7 +125,8 @@ The configuration deliberately leaves these optional policies unselected:
 ## Reviewed exceptions
 
 There is no debt baseline. The full check covers 159 modules with no
-errors or warnings. Twelve individual inline findings are suppressed with reasons. The import fan-out exception is described under the architecture policy. Another config exception permits private access only in
+errors or warnings. Inline exceptions carry a reason at the reported statement.
+The import fan-out exception is described under the architecture policy. Another config exception permits private access only in
 `tests/core/session/test_image_cache.py`, whose purpose is to measure byte and
 entry limits, eviction and reuse. Public asset behavior remains in separate tests.
 
@@ -163,6 +169,41 @@ uv run smelt config schema > .smelt.schema.json
 If a bundled Smelt agent skill is installed locally, refresh it with
 `uv run smelt skill install --force`, preserving its custom destination and any
 local edits first. This repository does not vendor a generated skill copy.
+
+## Review after the 0.12.0 upgrade
+
+The upgrade from Smelt 0.10.0 reviews all six rules added in 0.11.0 and 0.12.0.
+They were tried against the complete checkout, together with 0.11.1's expanded test
+import checks. The exact `smelt-cli==0.12.0` development requirement and lockfile
+also select the version for prek and CI; neither installs Smelt separately.
+Report schema 2, YAML version 1 and the existing architecture contracts remain
+unchanged. The [upstream upgrade guide](https://github.com/mathisarends/smelt/blob/v0.12.0/docs/upgrading.md)
+describes the activation and inference limits.
+
+| Rule | Decision and evidence |
+| --- | --- |
+| SMT110 `module-import-fanout` | Not selected. A trial with `structure.max_module_imports: 10` reports 15 modules, including `core.runtime.session` (37 imports), `core.session.session` (24), `core.runtime.stepper` (21) and `agent` (19). These modules wire typed runtime collaborators, value contracts and events from several lower packages. A total-import limit neither establishes a violated boundary nor identifies a coherent replacement facade. In particular, aggregating session/prompt members would introduce the eager import cycles documented above. Keep strict layer/cycle checks, the existing per-package fan-out warning and Ruff's complexity bounds; do not hide dependencies behind a catch-all facade or choose a threshold just above today's maximum. |
+| SMT363 `complex-comprehension` | Hint at the default one-loop limit. The trial reports 32 expressions: some combine filters, while others only flatten message parts, hook declarations or envelope bindings. The resource-path set in `core.session.session`, for example, flattens each history entry's resources in iteration order. The count alone cannot distinguish a simple ordered flatten from a confusing transformation. Keep the findings visible and review cohesive per-item steps without converting lazy generators into eager collections. |
+| SMT364 `constructor-logic` | Hint at the default two-decision limit. The trial reports 42 constructors/post-initializers. `AssetRef.__post_init__` has three adjacent invariant guards counted as six decisions because each `raise` also counts; these guards belong beside construction of the value. Stateful owners such as `SessionLog` also normalize supplied history and establish owned components in order. Extract a cohesive normalization/validation responsibility when it clarifies that contract, rather than moving every guard into a single-use helper to satisfy a numeric limit. Ruff continues to enforce function complexity. |
+| SMT365 `cross-module-private-attribute` | Error. All 22 trial findings are cooperation inside `harnessed.kernel`: `Scope`/`PluginHandle` activation and registration, `EventBus` visibility and descriptor storage on `PluginBase`. Configure the documented immediate-package boundary only for the kernel contract. Making those lifecycle mechanisms public would contradict the facade-only kernel API. All other packages retain the module boundary, and higher layers must still call public kernel operations. No findings are suppressed for this rule. |
+| SMT366 `comprehension-in-call-argument` | Error. Name all eleven reported collections before their consumers: immutable JSON objects, model tool-call IDs, retained messages/resources, snapshot IDs, envelope fields, telemetry messages and provider tool/settings conversion. Snapshot turn/file ID sets are also reused within the same immutable validation pass. Keep content construction behind the telemetry capture guard and keep awaited image retention sequential. |
+| SMT367 `excess-private-definitions` | Hint at the default twelve-definition limit. The three findings are `integrations.sandbox.worker` (13), `models.pydantic_ai` (15) and `plugins.mcp` (13). The worker groups its confined filesystem/RPC implementation; the model module owns the optional provider SDK imports and conversion; MCP owns transport shutdown, schema validation and remote tool adaptation. These are useful review locations, but the count does not prove a safe extraction. Retain the hints and original limits; do not export private helpers or spread optional imports merely to lower the metric. |
+
+The three advisory rules remain visible at their original limits, adding 77
+hints. With the previously reviewed findings, the full report covers 159 modules,
+with 112 hints and no errors or warnings. There is no debt baseline.
+
+The expanded test checks expose two real package-import findings: `Spill` and
+`LatestObservationOnly` now use the existing `harnessed.plugins` facade. Nine
+SMT107 findings instead misclassify `from harnessed.kernel import plugin`: the
+initializer explicitly re-exports the decorator and includes it in `__all__`,
+while the checker treats its name as the `kernel.plugin` submodule. Keep the
+correct public import with a statement-local SMT107 explanation; do not weaken
+the kernel contract or rename its public decorator. An architecture regression
+checks the exported function's type and owning module. One further local exception
+allows the DI regression test to patch `kernel.di.get_type_hints`: proving that
+dispatch does not repeat reflection requires observing that implementation
+boundary. None of these exceptions grants private module access to production.
 
 ## Review after the 0.10.0 upgrade
 
