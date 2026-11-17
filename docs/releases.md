@@ -4,7 +4,7 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
-## 0.19.0 (unreleased)
+## 0.19.0 (2026-11-17)
 
 `ToolParameter(enabled=...)` makes individual `Annotated` tool parameters
 conditional for each activation. The `StreamModel` hook lets plugins wrap or
