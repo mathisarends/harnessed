@@ -41,6 +41,7 @@ from harnessed.core.tools.info import ToolIcon as ToolIcon
 from harnessed.core.tools.info import ToolInfo as ToolInfo
 from harnessed.core.tools.info import ToolMetadata as ToolMetadata
 from harnessed.core.tools.info import ToolPresentation as ToolPresentation
+from harnessed.core.tools.parameters import ToolParameter as ToolParameter
 from harnessed.core.tools.registry import ToolError as ToolError
 from harnessed.kernel import Inject as Inject
 from harnessed.kernel import PluginState as PluginState
@@ -90,6 +91,7 @@ __all__ = [
     "ToolIcon",
     "ToolInfo",
     "ToolMetadata",
+    "ToolParameter",
     "ToolPresentation",
     "ToolResult",
     "ToolStatus",

@@ -192,6 +192,87 @@ asynchronous action.
 prevent execution. `ToolPolicy` remains the authorization/approval mechanism.
 See the [offline conditional tools example](https://github.com/mathisarends/harnessed/blob/main/examples/30_conditional_tools.py).
 
+## Conditional parameters
+
+Attach `ToolParameter` to an individual signature parameter with `Annotated`.
+No policy service is required: a bool or a synchronous instance method can read
+the plugin's own configuration.
+
+```python
+from typing import Annotated
+
+from pydantic import Field
+
+from harnessed import Plugin, PluginConfig, ToolParameter, tool
+
+
+class SearchConfig(PluginConfig):
+    archives: bool = False
+
+
+class Search(Plugin[SearchConfig]):
+    def supports_archives(self) -> bool:
+        return self.config.archives
+
+    @tool
+    def search(
+        self,
+        query: str,
+        *,
+        include_archived: Annotated[
+            bool,
+            Field(description="Include archived records."),
+            ToolParameter(enabled=supports_archives),
+        ] = False,
+    ) -> str:
+        return f"Results for {query}; include_archived={include_archived}"
+
+
+search = Search(config=SearchConfig(archives=False))
+```
+
+When disabled, the property and its `required` entry are absent from both
+`session.tools` and model requests. Explicit input is rejected before the callback
+runs, even `include_archived=False`. Omission uses the declared default through
+the existing argument validation, including default constraints and per-call
+`Field(default_factory=...)` behavior. Invalid defaults still fail validation
+before invocation. Every conditional parameter must have a usable default;
+missing/required defaults fail registration even if the condition is currently true.
+The callback signature, `Field` metadata and unrelated arguments stay intact.
+Reusable `Annotated` aliases, including `type Alias = Annotated[...]`, are supported.
+
+For a capability shared by several plugins, predicates can use `Inject[T]` to
+read an existing application service. A dedicated policy class is optional.
+Harnessed does not discover other plugin classes or add implicit lifetime
+dependencies. Declare `needs`/`observes` explicitly to rebuild the activation
+when the service changes. As with whole-tool `enabled`, missing required predicate
+services produce false; optional injections receive None. Invalid signatures,
+async predicates/results, exceptions and non-bool returns fail activation.
+
+Parameter conditions are evaluated **once per registration**, after plugin setup
+and service binding. Dependency restarts evaluate them again with fresh mounted
+state. Mutating a service's data or entering a child call scope does not alter an
+existing parameter contract. Whole-tool `enabled` keeps its existing per-check
+semantics and composes independently. Prepared calls retain their registration
+and never follow replacements. Predicate bodies should be fast and side-effect-free.
+
+Disabled argument names remain reserved against tool and registry-wide envelope
+fields, including aliases: an envelope cannot consume or reintroduce a disabled
+argument. Unrelated call envelopes continue to work.
+
+This initial API supports signature-derived Python arguments. `params=Model`
+rejects `ToolParameter` on its parameter or model fields, including nested models;
+it does not rebuild Pydantic models and risk dropping validators or alias/default
+behavior. Keep ordinary `params` models unchanged, or use signature arguments for
+conditional fields. Conditions belong on the parameter's outer `Annotated`
+metadata, rather than inside a container element or an injected parameter.
+
+The scripted `call(Tools.method, ...)` helper validates declared value types but
+cannot evaluate conditions without a mount. For conditional tools it preserves
+the supplied wire arguments, including omitted defaults; the active registry
+enforces availability.
+See the [offline conditional parameters example](https://github.com/mathisarends/harnessed/blob/main/examples/43_conditional_parameters.py).
+
 ## Per-call state
 
 ```python

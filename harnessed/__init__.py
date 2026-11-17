@@ -56,6 +56,7 @@ _EXPORTS = {
     "ToolResult": ("harnessed.core.messages", "ToolResult"),
     "ToolAnnotations": ("harnessed.core.tools.info", "ToolAnnotations"),
     "ToolIcon": ("harnessed.core.tools.info", "ToolIcon"),
+    "ToolParameter": ("harnessed.core.tools.parameters", "ToolParameter"),
     "ToolPresentation": ("harnessed.core.tools.info", "ToolPresentation"),
     "ToolChain": ("harnessed.core.tools.info", "ToolChain"),
     "ToolInfo": ("harnessed.core.tools.info", "ToolInfo"),

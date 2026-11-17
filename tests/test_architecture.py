@@ -208,8 +208,8 @@ def test_public_exports_resolve_to_their_canonical_classes_and_functions(module)
 def test_application_facade_stays_small_and_has_no_transitional_names():
     import harnessed
 
-    # RunStream makes live observation explicit alongside the small run handle.
-    assert len(harnessed.__all__) <= 49
+    # ToolParameter adds parameter conditions to the deliberately small root SDK.
+    assert len(harnessed.__all__) <= 50
     assert {
         "Agent",
         "Session",
@@ -218,6 +218,7 @@ def test_application_facade_stays_small_and_has_no_transitional_names():
         "PluginPack",
         "CompositionDescription",
         "tool",
+        "ToolParameter",
         "RunResult",
         "RunHandle",
         "RunStream",

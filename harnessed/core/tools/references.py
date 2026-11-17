@@ -70,4 +70,6 @@ def call_arguments(reference: ToolReference, arguments: dict) -> dict:
     )
     parsed = form.parse(arguments)
     # A scripted response carries wire arguments, not the Python parameter object.
-    return arguments if spec.params is not None else parsed
+    # Conditions need a mounted scope. Keep omitted defaults off the wire so a
+    # scripted response does not explicitly supply a potentially disabled field.
+    return arguments if spec.params is not None or form.conditions else parsed

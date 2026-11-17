@@ -1,8 +1,8 @@
 import inspect
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from copy import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cached_property
 from typing import Annotated, Any, Self, TypeAliasType, get_args, get_origin
 
@@ -11,9 +11,16 @@ from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue
 
 from harnessed.core.messages import result_content, to_dict
-from harnessed.kernel import Dependency
+from harnessed.kernel import Dependency, PluginScope, RegistrationState, Scope
 
 from .context import ToolContext
+from .enabled import bind_enabled
+from .parameters import (
+    DisabledToolParameterError,
+    ToolParameter,
+    parameter_condition,
+    reject_model_conditions,
+)
 
 _CONFIG = ConfigDict(
     strict=True,
@@ -26,10 +33,19 @@ _SERIALIZER = TypeAdapter(Any, config=ConfigDict(ser_json_inf_nan="constants"))
 
 
 @dataclass(frozen=True)
+class _ConditionalParameter:
+    internal: str
+    name: str
+    condition: ToolParameter
+
+
+@dataclass(frozen=True)
 class ToolArguments:
     model: type[BaseModel]
     names: dict[str, str]
     model_parameter: str | None = None
+    conditions: tuple[_ConditionalParameter, ...] = ()
+    disabled: frozenset[str] = frozenset()
 
     @classmethod
     def from_signature(
@@ -55,18 +71,51 @@ class ToolArguments:
         # Pydantic accepts runtime type expressions as field definitions.
         fields: dict[str, Any] = {}
         names: dict[str, str] = {}
+        conditions: list[_ConditionalParameter] = []
         for parameter in parameters:
             # Aliases preserve Python parameter names, including BaseModel's reserved names.
             internal = f"argument_{len(fields)}"
             fields[internal] = _field_definition(parameter, hints, parameter_fields)
             names[internal] = parameter.name
+            condition = parameter_condition(hints.get(parameter.name, parameter.annotation))
+            if condition is not None:
+                if parameter.default is inspect.Parameter.empty:
+                    raise TypeError(f"Conditional parameter {parameter.name!r} requires a default")
+                conditions.append(_ConditionalParameter(internal, parameter.name, condition))
         model = create_model(f"{name}Arguments", __config__=_CONFIG, **fields)
         model.model_json_schema()  # Reject annotations without a JSON schema at registration.
-        return cls(model, names)
+        for conditional in conditions:
+            if model.model_fields[conditional.internal].is_required():
+                raise TypeError(f"Conditional parameter {conditional.name!r} requires a default")
+        return cls(model, names, conditions=tuple(conditions))
+
+    def activate(
+        self,
+        callback: Callable[..., object],
+        owner: RegistrationState,
+        *,
+        scope: Scope | PluginScope,
+    ) -> Self:
+        """Freeze parameter availability against this registration's mounted scope."""
+        disabled: set[str] = set()
+        for parameter in self.conditions:
+            check = bind_enabled(parameter.condition.enabled, callback, owner)
+            if not check(scope):
+                disabled.add(parameter.name)
+        return replace(self, disabled=frozenset(disabled))
 
     @cached_property
     def schema(self) -> JsonSchemaValue:
         schema = self.model.model_json_schema(by_alias=True)
+        if self.disabled:
+            properties = schema.get("properties", {})
+            for name in self.disabled:
+                properties.pop(name, None)
+            required = [name for name in schema.get("required", ()) if name not in self.disabled]
+            if required:
+                schema["required"] = required
+            else:
+                schema.pop("required", None)
         if self.model_parameter is not None:
             # Recursive models put their root object in $defs instead of at the root.
             if "$ref" in schema:
@@ -78,6 +127,11 @@ class ToolArguments:
         return schema
 
     def parse(self, arguments: Mapping[str, object]) -> dict[str, object]:
+        supplied = self.disabled.intersection(arguments)
+        if supplied:
+            raise DisabledToolParameterError(
+                f"Disabled tool parameters cannot be supplied: {sorted(supplied)}"
+            )
         parsed = self.model.model_validate_json(
             json.dumps(to_dict(arguments), allow_nan=False),
             strict=True,
@@ -97,6 +151,9 @@ class ToolArguments:
         if len(parameters) != 1:
             raise TypeError("params requires exactly one non-injected tool parameter")
         parameter = parameters[0]
+        reject_model_conditions(params)
+        if parameter_condition(hints.get(parameter.name, parameter.annotation)) is not None:
+            raise TypeError("ToolParameter supports signature parameters, not params models")
         if _unwrap(hints.get(parameter.name, parameter.annotation)) is not params:
             raise TypeError(f"Tool parameter {parameter.name!r} must be annotated with params")
         if parameter.default is not inspect.Parameter.empty:
@@ -126,7 +183,10 @@ def _reject_uninjected_context(
     signature: inspect.Signature, hints: Mapping[str, Any], *, injected: Mapping[str, Dependency]
 ) -> None:
     for parameter in signature.parameters.values():
-        annotation = _unwrap(hints.get(parameter.name, parameter.annotation))
+        original = hints.get(parameter.name, parameter.annotation)
+        if parameter.name in injected and parameter_condition(original) is not None:
+            raise TypeError("ToolParameter cannot annotate an injected parameter")
+        annotation = _unwrap(original)
         if annotation is ToolContext and parameter.name not in injected:
             raise TypeError(
                 f"Tool parameter {parameter.name!r} must use Inject[ToolContext] "

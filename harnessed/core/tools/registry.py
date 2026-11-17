@@ -38,6 +38,7 @@ from harnessed.core.tools.info import (
     ToolMetadata,
     ToolPresentation,
 )
+from harnessed.core.tools.parameters import DisabledToolParameterError
 from harnessed.core.tools.policy import OutputLimit, OutputLimitSetting, validate_output_limit
 from harnessed.core.tools.references import ToolReference, ToolSelector, tool_selector
 from harnessed.core.tools.scheduling import (
@@ -151,7 +152,7 @@ def format_tool_error(
     logger.error("Tool %s failed", call.name, exc_info=error)
     if formatter is not None:
         return formatter(call, error)
-    if isinstance(error, ToolError):
+    if isinstance(error, (ToolError, DisabledToolParameterError)):
         return str(error)
     if isinstance(error, ValidationError):
         return f"ValidationError: Invalid arguments for {call.name}: " + str(error)
@@ -473,14 +474,19 @@ class ToolRegistry:
             parameter_fields=parameter_fields,
             params=spec.params,
         )
-        definition = ToolDefinition(
-            tool_name,
-            spec.description if spec.description is not None else inspect.getdoc(callback) or "",
-            arguments.schema,
-        )
-        declared = EnvelopeLayout.build(definition, spec.envelope)
 
         def install(registration: RegistrationState):
+            effective = arguments.activate(callback, registration, scope=owner)
+            definition = ToolDefinition(
+                tool_name,
+                spec.description
+                if spec.description is not None
+                else inspect.getdoc(callback) or "",
+                effective.schema,
+            )
+            declared = EnvelopeLayout.build(
+                definition, spec.envelope, reserved_names=effective.disabled
+            )
             # Python tool conflicts with registry-wide envelopes fail the mount.
             _ = _layout_for(definition, spec, declared, envelopes=self._active_envelopes())
             check_enabled = bind_enabled(spec.enabled, callback, registration)
@@ -493,7 +499,7 @@ class ToolRegistry:
                 timeout_seconds,
                 check_enabled,
                 plan,
-                arguments,
+                effective,
                 declared=declared,
             )
             entries = self._tools.setdefault(definition.name, [])
@@ -806,7 +812,11 @@ def _layout_for(
         if entry.select is None or entry.select(info)
     )
     return EnvelopeLayout.build(
-        definition, spec.envelope, shared=shared, skip_conflicts=skip_conflicts
+        definition,
+        spec.envelope,
+        shared=shared,
+        skip_conflicts=skip_conflicts,
+        reserved_names=declared.reserved_names,
     )
 
 

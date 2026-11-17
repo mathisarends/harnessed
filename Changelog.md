@@ -9,6 +9,11 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 
 ### Added
 
+- `ToolParameter(enabled=...)` on `Annotated` signature arguments freezes their
+  availability per activation. Disabled arguments disappear from inspection and
+  model requests and reject explicit input, including the declared default.
+  Conditions accept booleans, mounted instance methods and injected services;
+  a separate policy service is optional. `params=Model` fields reject the marker.
 - `Scope.get(key, default=None)` and `PluginScope.get(key, default=None)` return a
   visible service or the default instead of raising `MissingService`, for
   optional collaborators such as an `Approver` or a `CompactionPolicy`.
