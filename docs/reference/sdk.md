@@ -630,6 +630,17 @@ calling the model. This is a plugin decision, not an LLM response. Supply automa
 environment snapshots through `session.observe()` so compaction can treat them
 as step history rather than protected user instructions.
 
+`StreamModel` from `harnessed.hooks` is a
+`Waterfall[AbstractAsyncContextManager[ModelStream]]` around the agent loop's model
+transport. It exposes `session: SessionContext`, the transport-ready
+`request: ModelRequest`, selected `model: Model` and `request_id: str`. Return an
+unentered context manager to wrap or replace the default `model.stream(request)`.
+It runs after request admission, budget checks and image resolution; use
+`PrepareRequest` for request changes. The runtime retains stream consumption,
+usage, diagnostics and assistant/tool event handling. Standalone model calls and
+compaction requests bypass this hook. See
+[stream middleware](../guides/models.md#wrap-or-replace-an-agent-model-stream).
+
 ## Event classes and data
 
 `harnessed.events` exposes `TextDeltaEvent`, `ReasoningDeltaEvent`, `ToolCallRequestedEvent`,

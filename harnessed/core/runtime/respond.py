@@ -10,8 +10,10 @@ from harnessed.core.events import (
     ToolArgumentsDeltaEvent,
     ToolCallGenerationStartedEvent,
 )
+from harnessed.core.hooks import StreamModel
 from harnessed.core.messages import AssistantMessage, ToolCall
 from harnessed.core.model import Model, ModelChunk, ModelRequest, ModelStream
+from harnessed.core.runtime.context import SessionContext
 from harnessed.core.runtime.diagnostics import RequestDiagnostics
 from harnessed.core.session.session import SessionLog
 from harnessed.core.tracing import Span, span
@@ -19,9 +21,10 @@ from harnessed.kernel import Scope
 
 
 class ModelResponder:
-    def __init__(self, scope: Scope, log: SessionLog) -> None:
+    def __init__(self, scope: Scope, log: SessionLog, context: SessionContext) -> None:
         self.scope = scope
         self.log = log
+        self.context = context
 
     async def respond(
         self, request: ModelRequest, *, model: Model, request_id: str
@@ -77,7 +80,11 @@ class ModelResponder:
 
         try:
             transport = await self.log.resolve_request(request)
-            async with model.stream(transport) as stream:
+            manager = await self.scope.dispatch(
+                StreamModel(self.context, transport, model, request_id=request_id),
+                default=lambda: model.stream(transport),
+            )
+            async with manager as stream:
                 async for chunk in stream:
                     if chunk.diagnostic is not None:
                         await diagnostics.receive(chunk.diagnostic)

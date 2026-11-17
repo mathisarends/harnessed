@@ -11,6 +11,7 @@ from harnessed.core.hooks import (
     SessionAppended,
     SessionClosing,
     StepDecision,
+    StreamModel,
     ToolPolicy,
     TurnStopping,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "SessionAppended",
     "SessionClosing",
     "StepDecision",
+    "StreamModel",
     "ToolPolicy",
     "TurnStopping",
 ]
