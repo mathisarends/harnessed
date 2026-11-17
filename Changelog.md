@@ -5,9 +5,13 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
-## Unreleased
+## 0.19.0 (unreleased)
 
 ### Added
+
+- `StreamModel` from `harnessed.hooks` lets plugins wrap or replace the agent
+  loop's model stream. Handlers return an async context manager, which the
+  runtime enters and closes. See [model stream hooks](docs/guides/models.md#wrap-or-replace-an-agent-model-stream).
 
 - `ToolParameter(enabled=...)` on `Annotated` signature arguments freezes their
   availability per activation. Disabled arguments disappear from inspection and
@@ -43,6 +47,8 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 ### Upgrade from 0.18.0
 
 - Direct Python calls of `Shell.write_command` pass `eof=True` by keyword.
+- Persisted formats remain at version **3** for conversation state, checkpoints
+  and JSON stores, and version **6** for standalone audit envelopes.
 
 ## 0.18.0 (2026-11-16)
 

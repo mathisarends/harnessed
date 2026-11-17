@@ -4,6 +4,18 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
+## 0.19.0 (unreleased)
+
+`ToolParameter(enabled=...)` makes individual `Annotated` tool parameters
+conditional for each activation. The `StreamModel` hook lets plugins wrap or
+replace the agent loop's model stream. See the [tools guide](guides/tools.md)
+and [model stream hooks](guides/models.md#wrap-or-replace-an-agent-model-stream).
+
+**Upgrade:** pass `eof` by keyword in direct Python calls to
+`Shell.write_command`. Persisted formats remain at version **3** for
+conversation state, checkpoints and JSON stores, and version **6** for audit
+envelopes.
+
 ## 0.18.0 (2026-11-16)
 
 Registry-wide call envelopes extend tool call envelopes to every selected tool,
