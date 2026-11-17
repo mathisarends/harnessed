@@ -73,6 +73,7 @@ architecture:
 
 structure:
   forbidden_names: [utils, helpers]
+  max_private_definitions: 12
   file_naming:
     yaml_extension: yaml
   contracts:
@@ -85,6 +86,24 @@ structure:
     keyword-arguments:
       match: harnessed
       max_positional_parameters: 3
+    model-adapter-structure:
+      match: harnessed.models.pydantic_ai
+      required: [adapter, conversion]
+      rules:
+        constructor-logic: error
+        complex-comprehension: error
+    mcp-structure:
+      match: harnessed.plugins.mcp
+      required: [plugin, transport]
+      rules:
+        constructor-logic: error
+        complex-comprehension: error
+    worker-structure:
+      match: harnessed.integrations.sandbox.worker
+      required: [models, filesystem, runtime, __main__]
+      rules:
+        constructor-logic: error
+        complex-comprehension: error
     # Facades re-export only members whose eager import adds no runtime cycle;
     # events.completion/registry/stream and tools.arguments/enabled/output_limit/
     # references/view stay canonical. Session and prompt have no facade because
@@ -123,7 +142,6 @@ ignore:
       - harnessed/integrations/bubblewrap.py
       - harnessed/integrations/json.py
       - harnessed/integrations/opentelemetry.py
-      - harnessed/plugins/mcp.py
       - harnessed/plugins/subagents.py
     reason: Single-module public facades are documented import paths; optional-extra modules cannot be re-exported eagerly from their package initializer.
   - rule: package-import-fanout
@@ -167,6 +185,7 @@ rules:
   prefer-named-duration: error
   parallel-record-fields: error
   comprehension-in-call-argument: error
+  excess-private-definitions: error
   # Naming and types
   no-base-class-prefix: error
   no-base-class-suffix: error
@@ -193,4 +212,3 @@ rules:
   loop-invariant-collection: hint
   complex-comprehension: hint
   constructor-logic: hint
-  excess-private-definitions: hint

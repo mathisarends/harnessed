@@ -110,7 +110,7 @@ def test_optional_integrations_and_features_are_isolated():
                 if module == "harnessed.testing" or module.startswith("harnessed.testing."):
                     assert relative.startswith("testing/"), relative
                 if module == "pydantic_ai" or module.startswith("pydantic_ai."):
-                    assert relative == "models/pydantic_ai.py", relative
+                    assert relative.startswith("models/pydantic_ai/"), relative
                 if module == "yaml":
                     assert relative == "plugins/skills.py", relative
                 if module.split(".")[0] in {
@@ -122,7 +122,7 @@ def test_optional_integrations_and_features_are_isolated():
                     "httpx2",
                     "anyio",
                 }:
-                    assert relative == "plugins/mcp.py", relative
+                    assert relative.startswith("plugins/mcp/"), relative
                 if relative.startswith("plugins/") and relative != "plugins/__init__.py":
                     assert module != "harnessed.plugins", relative
                     if module.startswith("harnessed.plugins."):

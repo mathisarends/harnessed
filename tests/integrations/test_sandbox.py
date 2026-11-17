@@ -26,6 +26,7 @@ from harnessed.integrations.sandbox import (
 from harnessed.integrations.sandbox.process import run_process
 from harnessed.integrations.sandbox.types import environment, workspace_path
 from harnessed.integrations.sandbox.worker import Operation, Request
+from harnessed.integrations.sandbox.worker import filesystem as worker_filesystem
 from harnessed.integrations.sandbox.workspace import seed_archive
 from harnessed.kernel import MissingService
 from harnessed.plugins import Approvals, FilesystemTools, ShellTools
@@ -364,7 +365,7 @@ def test_recursive_globs_match_whole_relative_paths(tmp_path, monkeypatch, path,
     def open_workspace(path, flags, *args, **kwargs):
         return original_open(tmp_path if path == "/workspace" else path, flags, *args, **kwargs)
 
-    monkeypatch.setattr(worker.os, "open", open_workspace)
+    monkeypatch.setattr(worker_filesystem.os, "open", open_workspace)
     reply = json.loads(
         worker.response(json.dumps({"operation": "glob", "path": pattern, "limit": 100}))
     )
@@ -393,7 +394,7 @@ async def test_worker_file_paths_and_shell_descendants(tmp_path, monkeypatch):
     def open_workspace(path, flags, *args, **kwargs):
         return original_open(tmp_path if path == "/workspace" else path, flags, *args, **kwargs)
 
-    monkeypatch.setattr(worker.os, "open", open_workspace)
+    monkeypatch.setattr(worker_filesystem.os, "open", open_workspace)
 
     def response(operation: Operation, **arguments: object) -> dict[str, object]:
         return json.loads(worker.response(json.dumps({"operation": operation, **arguments})))

@@ -19,6 +19,9 @@ uv run python scripts/check_wheel.py
 uv run twine check --strict dist/*
 ```
 
+If `dist/` contains older builds, pass the wheel path explicitly to
+`scripts/check_wheel.py`; its default requires exactly one wheel in that directory.
+
 `uv.lock` pins development tools, including Smelt CLI 0.12.0, and optional provider
 dependencies. Install the commit hooks with `uv run prek install`.
 Existing pre-commit users should run

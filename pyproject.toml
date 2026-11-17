@@ -98,7 +98,7 @@ max-complexity = 12
 
 [tool.ruff.lint.per-file-ignores]
 # Provider SDKs are optional; importing the core must not require an extra.
-"harnessed/models/pydantic_ai.py" = ["PLC0415"]
+"harnessed/models/pydantic_ai/**/*.py" = ["PLC0415"]
 "harnessed/plugins/skills.py" = ["PLC0415"]
 # Classes of the standalone kernel cooperate through private state by design;
 # Smelt checks known receivers at the kernel package boundary (SMT365).

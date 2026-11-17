@@ -26,7 +26,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse, Response
 from starlette.routing import Route
 
-import harnessed.plugins.mcp as mcp_plugin
+import harnessed.plugins.mcp.transport as mcp_transport
 from harnessed import Agent, ToolCall
 from harnessed import ToolAnnotations as LocalToolAnnotations
 from harnessed.core.messages import ToolStatus
@@ -265,7 +265,7 @@ async def test_http_startup_rejection_releases_connection(serve_http, status):
 
 
 async def test_http_shutdown_does_not_wait_forever_for_delete(serve_http, monkeypatch):
-    monkeypatch.setattr(mcp_plugin, "_HTTP_CLOSE_TIMEOUT", 0.05, raising=False)
+    monkeypatch.setattr(mcp_transport, "_HTTP_CLOSE_TIMEOUT", 0.05)
     server = MCPServer("http")
     inner = server.streamable_http_app()
     deleting = asyncio.Event()

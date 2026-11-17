@@ -10,7 +10,6 @@ from harnessed.integrations.sandbox import (
     Sandbox,
     SandboxConfig,
     WorkspaceMode,
-    worker,
 )
 from harnessed.integrations.sandbox import (
     SandboxError as SandboxError,
@@ -22,6 +21,7 @@ from harnessed.integrations.sandbox import (
     Workspace as Workspace,
 )
 from harnessed.integrations.sandbox._runtime import RuntimeState, WorkerRuntime
+from harnessed.integrations.sandbox.bundle import worker_source
 from harnessed.integrations.sandbox.process import WorkerProcess, finish, run_process
 from harnessed.integrations.sandbox.types import ProcessOutput, environment
 from harnessed.integrations.sandbox.workspace import seed_archive, source_root
@@ -143,7 +143,7 @@ class BubblewrapBackend(WorkerRuntime):
             argv.append("--share-net")
         for key, value in environment(config.env).items():
             argv.extend(["--setenv", key, value])
-        script = await run_sync(partial(Path(worker.__file__).read_text, encoding="utf-8"))
+        script = await run_sync(worker_source)
         argv.extend(
             ["--chdir", "/workspace", "--", self.python, "-I", "-u", "-c", script, "--serve"]
         )

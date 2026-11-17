@@ -32,7 +32,7 @@ from mcp.types import (
     ToolAnnotations,
 )
 
-import harnessed.plugins.mcp as mcp_plugin
+import harnessed.plugins.mcp.transport as mcp_transport
 from harnessed import Agent, ToolCall
 from harnessed.core.errors import ToolNameConflict
 from harnessed.core.messages import ToolStatus, to_dict
@@ -516,7 +516,7 @@ async def test_http_transport_with_real_mcp_server_and_auth(monkeypatch):
         clients.append(client)
         return client
 
-    monkeypatch.setattr(mcp_plugin.httpx2, "AsyncClient", create_client)
+    monkeypatch.setattr(mcp_transport.httpx2, "AsyncClient", create_client)
     call = ToolCall("web__echo", {"query": "http works"})
     agent = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=call)], "done"]),
