@@ -15,6 +15,15 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 
 ### Changed
 
+- Pin the development Smelt CLI to 0.12.0 for local checks, prek and CI. Enforce
+  named collection arguments, ownership-aware private access and at most twelve
+  private definitions per module. Split PydanticAI into adapter/conversion, MCP
+  into plugin/transport, and the sandbox worker into protocol models, filesystem
+  and runtime modules. Their package facades preserve existing import paths, and
+  Docker/Bubblewrap receive the complete worker as an isolated in-memory source
+  bundle. The three packages also enforce constructor and comprehension limits.
+  Document the decision for every new rule in the
+  [Smelt policy](docs/contributing/smelt.md#review-after-the-0120-upgrade).
 - The `eof` flag of the background shell's `write_command` tool is keyword-only.
   The model-facing tool schema is unchanged.
 - Contributor lint policy: Ruff now bounds function complexity and enforces

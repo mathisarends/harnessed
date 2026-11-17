@@ -270,9 +270,10 @@ def _distinct(parts: Iterable[EnvelopePart]) -> list[EnvelopePart]:
 def _validate[T: BaseModel](
     model: type[T], arguments: Mapping[str, object], names: Iterable[str]
 ) -> T:
+    fields = {name: arguments[name] for name in names if name in arguments}
     return model.model_validate_json(
         json.dumps(
-            to_dict({name: arguments[name] for name in names if name in arguments}),
+            to_dict(fields),
             allow_nan=False,
         ),
         strict=True,

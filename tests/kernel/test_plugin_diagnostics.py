@@ -1,4 +1,10 @@
-from harnessed.kernel import Key, PluginBase, PluginStatus, Scope, plugin
+from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not a module.
+    Key,
+    PluginBase,
+    PluginStatus,
+    Scope,
+    plugin,
+)
 
 
 async def test_diagnostics_preserve_service_identity_and_allow_later_activation():

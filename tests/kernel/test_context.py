@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from harnessed.kernel import (
+from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not a module.
     Bail,
     Emit,
     Inject,

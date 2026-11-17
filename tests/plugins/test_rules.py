@@ -224,7 +224,9 @@ async def test_size_predicate_and_missing_exit_code_and_tool_filters():
 
 async def test_process_return_values_are_normalized_with_exit_codes():
     from harnessed.core.tools import ToolRegistry
-    from harnessed.kernel import plugin
+    from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not a module.
+        plugin,
+    )
     from harnessed.plugins.shell import proc_result
 
     @plugin(needs=[ToolRegistry])

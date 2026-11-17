@@ -33,7 +33,7 @@ highest, are `kernel`, `core`, `plugins` / `models` / `integrations`, then
 `agent.py` and public facades. The standalone kernel uses only the standard
 library. Core may depend on kernel and Pydantic. Optional features depend on
 core, kernel and their own extras; features never import another plugin.
-Only `models/pydantic_ai.py` imports PydanticAI; only `plugins/skills.py` imports
+Only `models/pydantic_ai/` imports PydanticAI; only `plugins/skills.py` imports
 YAML. Internal modules import their owning layer, not the root facade.
 
 Follow `docs/reference/sdk.md`, the topic guides and the executable `smelt.yaml`
@@ -65,7 +65,7 @@ requires them (`ARG`), and reach another object's private state only through
 its public operations (`SLF001`); the kernel's cooperating classes are exempt.
 
 Keep production imports at module scope. Ruff enforces `PLC0415`; the explicit
-exceptions are `models/pydantic_ai.py` (optional SDK) and `plugins/skills.py`
+exceptions are `models/pydantic_ai/` (optional SDK) and `plugins/skills.py`
 (optional YAML), which delay their extra's imports. Test-local
 imports used for optional integration and import-failure tests are also exempt.
 Do not add local imports to work around dependency cycles; move shared types or
@@ -133,7 +133,7 @@ workflows and bump the key when Python validation behavior changes.
 
 ## Architecture and convention checks
 
-`smelt.yaml` is the executable policy; `uv.lock` pins Smelt CLI 0.10.0.
+`smelt.yaml` is the executable policy; `uv.lock` pins Smelt CLI 0.12.0.
 Before editing, run `uv run smelt context <module-or-path>` to inspect its role.
 After editing, run `uv run smelt check --changed --base origin/main --format json`.
 Before finishing, run `uv run smelt check --show-hints --fail-on warning`,
@@ -152,6 +152,14 @@ Review `stateful-dataclass` and `mutable-field-in-frozen-dataclass` hints agains
 actual ownership: frozen fields do not make referenced containers immutable.
 Review `loop-invariant-collection` hints without changing guards, empty-loop
 behavior or the timing of evaluation.
+Name collection comprehensions before passing them to calls. Smelt checks private
+member access across module boundaries; only cooperating kernel implementations
+share an immediate-package boundary. Modules contain at most twelve private
+top-level definitions; split cohesive responsibilities into packages while keeping
+facades small. The PydanticAI, MCP and worker packages also enforce one-loop
+comprehensions and at most two constructor decisions. Elsewhere, review these
+hints for cohesive extraction, preserving generator laziness, constructor
+validation and optional-import boundaries.
 
 Fix errors in code; do not introduce a debt baseline. Review warnings in context,
 especially public APIs that static usage analysis cannot see. Preserve the lazy

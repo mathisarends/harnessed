@@ -3,58 +3,15 @@ import fnmatch
 import io
 import json
 import os
-import selectors
-import signal
 import stat
-import subprocess
 import sys
 import tarfile
-import time
 import uuid
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from contextlib import contextmanager, suppress
-from dataclasses import asdict, dataclass
-from enum import StrEnum
 from pathlib import PurePosixPath
 
-
-class Operation(StrEnum):
-    RUN = "run"
-    READ = "read"
-    WRITE = "write"
-    LIST = "list"
-    GLOB = "glob"
-    GREP = "grep"
-    STAT = "stat"
-    EXISTS = "exists"
-    DELETE = "delete"
-    REPLACE = "replace"
-    READ_BYTES = "read_bytes"
-    IMPORT = "import"
-
-
-@dataclass(frozen=True)
-class Request:
-    operation: Operation
-    version: int = 1
-    path: str = "."
-    text: str = ""
-    old: str = ""
-    new: str = ""
-    offset: int = 0
-    limit: int | None = None
-    argv: tuple[str, ...] = ()
-    timeout: float = 30.0
-    max_output_bytes: int = 1_048_576
-    max_transfer_bytes: int = 16_777_216
-
-
-@dataclass(frozen=True)
-class CommandResult:
-    returncode: int
-    stdout: str
-    stderr: str
-    timed_out: bool = False
+from .models import Operation, Request
 
 
 def parts(path: str) -> tuple[str, ...]:
@@ -158,42 +115,6 @@ def write_bytes(path: str, data: bytes, maximum: int) -> None:
                 os.unlink(temporary, dir_fd=fd)
 
 
-def _match_path(path: tuple[str, ...], pattern: tuple[str, ...]) -> bool:
-    if not pattern:
-        return not path
-    if pattern[0] == "**":
-        return _match_path(path, pattern[1:]) or bool(path and _match_path(path[1:], pattern))
-    return bool(
-        path and fnmatch.fnmatchcase(path[0], pattern[0]) and _match_path(path[1:], pattern[1:])
-    )
-
-
-def _matches(pattern: str, limit: int) -> list[str]:
-    if sys.platform == "win32":
-        raise RuntimeError("The sandbox worker must execute inside a POSIX sandbox")
-    parts(pattern)
-    if limit < 1:
-        raise ValueError("Glob limit must be positive")
-    result: list[str] = []
-    with opened(".", directory=True) as fd:
-        for root, directories, files, root_fd in os.fwalk(".", dir_fd=fd, follow_symlinks=False):
-            directories[:] = sorted(
-                name
-                for name in directories
-                if stat.S_ISDIR(os.stat(name, dir_fd=root_fd, follow_symlinks=False).st_mode)
-            )
-            for name in sorted([*directories, *files]):
-                info = os.stat(name, dir_fd=root_fd, follow_symlinks=False)
-                if not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode)):
-                    continue
-                path = PurePosixPath(root, name)
-                if _match_path(path.parts, PurePosixPath(pattern).parts):
-                    result.append(path.as_posix())
-                    if len(result) == limit:
-                        return result
-    return result
-
-
 def grep(request: Request) -> dict[str, list[str] | int]:
     """Search inside the runtime, with the FilesystemTools preview and result limits."""
     limit = request.limit if request.limit is not None else 100
@@ -241,113 +162,7 @@ def grep(request: Request) -> dict[str, list[str] | int]:
     return result()
 
 
-def command(request: Request) -> CommandResult:
-    if sys.platform == "win32":
-        raise RuntimeError("The sandbox worker must execute inside a POSIX sandbox")
-    if not request.argv or request.timeout <= 0 or request.max_output_bytes < 256:
-        raise ValueError("Invalid command arguments or limits")
-    components = parts(request.path)
-    process = subprocess.Popen(
-        request.argv,
-        cwd=PurePosixPath("/workspace", *components),
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        start_new_session=True,
-    )
-    assert process.stdout is not None and process.stderr is not None
-    captures = {"stdout": bytearray(), "stderr": bytearray()}
-    totals = {"stdout": 0, "stderr": 0}
-    budget = request.max_output_bytes // 2
-    deadline = time.monotonic() + request.timeout
-    timed_out = False
-
-    def kill() -> None:
-        with suppress(ProcessLookupError):
-            os.killpg(process.pid, signal.SIGKILL)
-
-    try:
-        with selectors.DefaultSelector() as selector:
-            selector.register(process.stdout, selectors.EVENT_READ, "stdout")
-            selector.register(process.stderr, selectors.EVENT_READ, "stderr")
-            while selector.get_map():
-                if time.monotonic() >= deadline:
-                    timed_out = True
-                    kill()
-                    break
-                if process.poll() is not None:
-                    kill()
-                for key, _ in selector.select(timeout=0.05):
-                    chunk = os.read(key.fd, 65_536)
-                    if not chunk:
-                        selector.unregister(key.fd)
-                        continue
-                    name = key.data
-                    totals[name] += len(chunk)
-                    captures[name].extend(chunk[: max(0, budget - len(captures[name]))])
-        try:
-            process.wait(timeout=max(0.01, deadline - time.monotonic()))
-        except subprocess.TimeoutExpired:
-            timed_out = True
-    finally:
-        kill()
-        process.wait()
-        process.stdout.close()
-        process.stderr.close()
-
-    def text(name: str) -> str:
-        data = captures[name]
-        value = data.decode("utf-8", errors="replace")
-        if totals[name] > len(data):
-            value += f"\n[{name} truncated: kept {len(data)} of {totals[name]} bytes.]"
-        return value
-
-    return CommandResult(process.returncode, text("stdout"), text("stderr"), timed_out)
-
-
-def response(payload: str) -> str:
-    try:
-        data = json.loads(payload)
-        data["operation"] = Operation(data["operation"])
-        request = Request(**data)
-        value = _dispatch(request)
-        response = {"value": value, "error": None, "error_type": None}
-    except (OSError, ValueError, UnicodeError) as error:
-        response = {"value": None, "error": str(error), "error_type": type(error).__name__}
-    return json.dumps(response, ensure_ascii=True)
-
-
-def main() -> None:
-    if sys.version_info < (3, 12):  # noqa: UP036 -- Executed in application-supplied images.
-        raise RuntimeError("Sandbox helpers require Python 3.12+")
-    if "--serve" in sys.argv:
-        print('{"ready":true}', flush=True)
-        for line in sys.stdin:
-            print(response(line), flush=True)
-    else:
-        print(response(sys.stdin.read()), flush=True)
-
-
-def _dispatch(request: Request) -> object:
-    if sys.platform == "win32":
-        raise RuntimeError("The sandbox worker must execute inside a POSIX sandbox")
-    if request.version != 1:
-        raise ValueError("Unsupported sandbox protocol version")
-    handler = _HANDLERS.get(request.operation)
-    if handler is None:
-        raise ValueError("Unknown sandbox operation")
-    return handler(request)
-
-
-def _run(request: Request) -> dict[str, object]:
-    return asdict(command(request))
-
-
-def _write(request: Request) -> None:
-    write(request.path, request.text, request.max_transfer_bytes)
-
-
-def _replace(request: Request) -> None:
+def replace(request: Request) -> None:
     if not request.old:
         raise ValueError("The text to replace must not be empty")
     text = read(request)
@@ -357,12 +172,12 @@ def _replace(request: Request) -> None:
     write(request.path, text.replace(request.old, request.new, 1), request.max_transfer_bytes)
 
 
-def _delete(request: Request) -> None:
+def delete(request: Request) -> None:
     with parent(request.path) as (fd, name):
         os.unlink(name, dir_fd=fd)
 
 
-def _exists(request: Request) -> bool:
+def exists(request: Request) -> bool:
     try:
         metadata(request.path)
     except FileNotFoundError:
@@ -370,11 +185,7 @@ def _exists(request: Request) -> bool:
     return True
 
 
-def _stat(request: Request) -> dict[str, str | int | float | bool]:
-    return metadata(request.path)
-
-
-def _list(request: Request) -> list[dict[str, str | int | float | bool]]:
+def list_entries(request: Request) -> list[dict[str, str | int | float | bool]]:
     with opened(request.path, directory=True) as fd:
         # Path.iterdir() cannot list an already opened, confined directory descriptor.
         names = os.listdir(fd)  # noqa: PTH208
@@ -383,11 +194,11 @@ def _list(request: Request) -> list[dict[str, str | int | float | bool]]:
     return [metadata(str(PurePosixPath(request.path, name))) for name in sorted(names)]
 
 
-def _glob(request: Request) -> list[str]:
+def glob(request: Request) -> list[str]:
     return _matches(request.path, request.limit if request.limit is not None else 1000)
 
 
-def _read_bytes(request: Request) -> str:
+def read_bytes(request: Request) -> str:
     if request.limit is not None and request.limit < 0:
         raise ValueError("File ranges must be non-negative")
     maximum = request.max_transfer_bytes + 1
@@ -400,7 +211,7 @@ def _read_bytes(request: Request) -> str:
     return base64.b64encode(data).decode("ascii")
 
 
-def _import(request: Request) -> None:
+def import_archive(request: Request) -> None:
     if sys.platform == "win32":
         raise RuntimeError("The sandbox worker must execute inside a POSIX sandbox")
     with opened(".", directory=True):
@@ -429,20 +240,37 @@ def _import(request: Request) -> None:
                 os.fchmod(fd, member.mode & 0o777)
 
 
-_HANDLERS: dict[Operation, Callable[[Request], object]] = {
-    Operation.RUN: _run,
-    Operation.READ: read,
-    Operation.WRITE: _write,
-    Operation.REPLACE: _replace,
-    Operation.DELETE: _delete,
-    Operation.EXISTS: _exists,
-    Operation.STAT: _stat,
-    Operation.LIST: _list,
-    Operation.GLOB: _glob,
-    Operation.GREP: grep,
-    Operation.READ_BYTES: _read_bytes,
-    Operation.IMPORT: _import,
-}
+def _match_path(path: tuple[str, ...], pattern: tuple[str, ...]) -> bool:
+    if not pattern:
+        return not path
+    if pattern[0] == "**":
+        return _match_path(path, pattern[1:]) or bool(path and _match_path(path[1:], pattern))
+    return bool(
+        path and fnmatch.fnmatchcase(path[0], pattern[0]) and _match_path(path[1:], pattern[1:])
+    )
 
-if __name__ == "__main__":
-    main()
+
+def _matches(pattern: str, limit: int) -> list[str]:
+    if sys.platform == "win32":
+        raise RuntimeError("The sandbox worker must execute inside a POSIX sandbox")
+    parts(pattern)
+    if limit < 1:
+        raise ValueError("Glob limit must be positive")
+    result: list[str] = []
+    with opened(".", directory=True) as fd:
+        for root, directories, files, root_fd in os.fwalk(".", dir_fd=fd, follow_symlinks=False):
+            directories[:] = sorted(
+                name
+                for name in directories
+                if stat.S_ISDIR(os.stat(name, dir_fd=root_fd, follow_symlinks=False).st_mode)
+            )
+            for name in sorted([*directories, *files]):
+                info = os.stat(name, dir_fd=root_fd, follow_symlinks=False)
+                if not (stat.S_ISDIR(info.st_mode) or stat.S_ISREG(info.st_mode)):
+                    continue
+                path = PurePosixPath(root, name)
+                if _match_path(path.parts, PurePosixPath(pattern).parts):
+                    result.append(path.as_posix())
+                    if len(result) == limit:
+                        return result
+    return result

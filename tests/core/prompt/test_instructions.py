@@ -6,7 +6,11 @@ from harnessed import (
     SystemPrompt,
 )
 from harnessed.core.prompt.system import SystemPromptStore
-from harnessed.kernel import PluginScope, Scope, plugin
+from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not a module.
+    PluginScope,
+    Scope,
+    plugin,
+)
 from harnessed.testing import ScriptedModel
 
 

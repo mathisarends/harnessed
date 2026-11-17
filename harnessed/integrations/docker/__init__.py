@@ -1,6 +1,5 @@
 import json
 from functools import partial
-from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
@@ -13,7 +12,6 @@ from harnessed.integrations.sandbox import (
     Sandbox,
     SandboxConfig,
     WorkspaceMode,
-    worker,
 )
 from harnessed.integrations.sandbox import (
     SandboxError as SandboxError,
@@ -25,6 +23,7 @@ from harnessed.integrations.sandbox import (
     Workspace as Workspace,
 )
 from harnessed.integrations.sandbox._runtime import RuntimeState, WorkerRuntime
+from harnessed.integrations.sandbox.bundle import worker_source
 from harnessed.integrations.sandbox.process import finish, run_process
 from harnessed.integrations.sandbox.types import ProcessOutput, environment
 from harnessed.integrations.sandbox.workspace import seed_archive, source_root
@@ -72,7 +71,7 @@ class DockerBackend(WorkerRuntime):
     async def start(self, config: SandboxConfig) -> None:
         client = self._begin_start(config)
         self.config = config
-        self._script = await run_sync(partial(Path(worker.__file__).read_text, encoding="utf-8"))
+        self._script = await run_sync(worker_source)
         limits = config.limits
         root = await run_sync(partial(source_root, config.workspace))
         info = await self.command(

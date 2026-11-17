@@ -1,3 +1,4 @@
+import argparse
 import os
 import subprocess
 import sys
@@ -7,6 +8,8 @@ from tempfile import TemporaryDirectory
 ROOT = Path(__file__).resolve().parents[1]
 SMOKE = r"""
 import asyncio
+import json
+import subprocess
 import sys
 from importlib.metadata import distribution
 from pathlib import Path
@@ -24,6 +27,7 @@ from harnessed.models import ModelRequest, UserMessage
 from harnessed.events import TextDeltaEvent, TurnResultEvent
 from harnessed.plugins import Service, Skill, Skills
 from harnessed.integrations.json import JsonSessionStore
+from harnessed.integrations.sandbox.bundle import worker_source
 from harnessed.sessions import StoredSession
 from harnessed.testing import ScriptedModel, call, reply, assert_tool_called, mount_plugin
 from pydantic import BaseModel
@@ -52,6 +56,16 @@ assert not requirements & {
     'mkdocs', 'prek', 'pytest', 'pytest-asyncio', 'ruff', 'smelt-cli', 'twine', 'ty',
 }
 assert not any(str(file).startswith(('docs/', 'build/', 'site/')) for file in installed.files or ())
+
+with TemporaryDirectory(prefix='harnessed-installed-worker-') as directory:
+    worker = subprocess.run(
+        [sys.executable, '-I', '-S', '-c', worker_source()],
+        input='{"operation":"unknown"}', capture_output=True, text=True,
+        cwd=directory, timeout=10,
+    )
+    assert worker.returncode == 0, worker.stderr
+    worker_reply = json.loads(worker.stdout)
+    assert worker_reply['value'] is None and worker_reply['error_type'] == 'ValueError'
 
 class CalculatorConfig(PluginConfig):
     offset: int = 0
@@ -191,10 +205,23 @@ print('Installed harnessed wheel, metadata, public API, and SDK smoke checks ver
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Smoke-test an installed wheel outside the checkout."
+    )
+    parser.add_argument(
+        "wheel", nargs="?", type=Path, help="Wheel to check; defaults to the only dist/*.whl"
+    )
+    options = parser.parse_args()
     uv = os.environ.get("UV_BIN", "uv")
-    wheels = tuple((ROOT / "dist").glob("*.whl"))
+    wheels = (
+        tuple((ROOT / "dist").glob("*.whl"))
+        if options.wheel is None
+        else (options.wheel.resolve(strict=True),)
+    )
     if len(wheels) != 1:
-        raise SystemExit("Build exactly one wheel with `uv build --no-sources` first.")
+        raise SystemExit(
+            "Pass a wheel path or build exactly one wheel with `uv build --no-sources`."
+        )
     with TemporaryDirectory(prefix="harnessed-wheel-") as directory:
         temporary = Path(directory)
         environment = temporary / "venv"

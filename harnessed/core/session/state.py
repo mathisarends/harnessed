@@ -150,16 +150,17 @@ class SessionState:
             raise ValueError("History positions must be unique")
         if any(entry.lifetime != MessageLifetime.SESSION for entry in self.history):
             raise ValueError("A snapshot cannot contain turn-scoped messages")
-        if len({turn.id for turn in self.turns}) != len(self.turns):
+        turn_ids = {turn.id for turn in self.turns}
+        if len(turn_ids) != len(self.turns):
             raise ValueError("Retained turn identities must be unique")
         previous = 0
         for step in self.steps:
             if not previous <= step.start < step.boundary:
                 raise ValueError("Retained steps must be ordered, disjoint completed batches")
-            if step.turn_id not in {turn.id for turn in self.turns}:
+            if step.turn_id not in turn_ids:
                 raise ValueError("Retained steps must belong to available turns")
             previous = step.boundary
-        if not set(self.preserved_turns) <= {turn.id for turn in self.turns}:
+        if not set(self.preserved_turns) <= turn_ids:
             raise ValueError("Pinned turns must be present in the snapshot")
 
     def _check_resources(self) -> None:
@@ -169,9 +170,10 @@ class SessionState:
         for value in self.assets:
             value.ref.verify(value.data)
         resources = {ref.path: ref for entry in self.history for ref in entry.resources}
-        if len({value.key for value in self.files}) != len(self.files):
+        file_keys = {value.key for value in self.files}
+        if len(file_keys) != len(self.files):
             raise ValueError("Snapshot text resources must be unique")
-        if resources.keys() != {value.key for value in self.files}:
+        if resources.keys() != file_keys:
             raise ValueError("Snapshot text resources must match retained references")
         for value in self.files:
             if (

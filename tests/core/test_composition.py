@@ -12,7 +12,13 @@ from harnessed import (
 )
 from harnessed.core.composition import compose_plugins
 from harnessed.errors import PluginConflict, PluginDependencyError
-from harnessed.kernel import Bundle, PluginLike, PluginScope, Scope, plugin
+from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not a module.
+    Bundle,
+    PluginLike,
+    PluginScope,
+    Scope,
+    plugin,
+)
 from harnessed.plugins import AgentLoop, Compaction
 from harnessed.testing import ScriptedModel
 

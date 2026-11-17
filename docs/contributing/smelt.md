@@ -1,6 +1,6 @@
 # Smelt policy and adoption feedback
 
-Harnessed pins [`smelt-cli` 0.10.0](https://github.com/mathisarends/smelt)
+Harnessed pins [`smelt-cli` 0.12.0](https://github.com/mathisarends/smelt)
 in the development group. The executable policy is
 [`smelt.yaml`](https://github.com/mathisarends/harnessed/blob/main/smelt.yaml).
 It complements Ruff, ty, runtime tests and the architecture suite.
@@ -11,6 +11,10 @@ Every production module has an explicit architectural role. Strict coverage
 rejects newly discovered code outside that policy. Examples and maintainer
 scripts have reasoned exclusions: they exercise the SDK or repository tooling,
 and remain covered by Ruff, ty, executable-example tests and distribution checks.
+Generated `.harnessed/` session/test workspaces and independent agent checkouts
+under `.claude/worktrees/` are excluded from this checkout's inventory, including
+the YAML filename scan. They contain runtime data or separate repositories, not
+this checkout's maintained source or configuration.
 
 The kernel accepts only standard-library dependencies. Core additionally accepts
 Pydantic. Feature, model and integration layers declare their optional imports.
@@ -64,8 +68,10 @@ The requested checks are explicit in the config:
 | Error | `information-hiding` group: `internal-public-member`, `internal-public-module-symbol`, `internal-public-attribute`, `test-only-public-function`, `test-only-public-attribute` |
 | Error | `private-test-access`, `string-patch-target`, `test-without-outcome-check`, `test-only-checks-possibly-empty-data`, `unbounded-test-wait`, `async-mock-without-await-check`, `nondeterministic-test-data`; at most three patches per test |
 | Error | `missing-interface-docstring`, `missing-broad-except-reason`, `duplicate-function`, `duplicate-class-name`, `duplicate-narrowing-assert`, `prefer-named-duration`, `nested-conditional-expression`, `parallel-record-fields` |
+| Error | `cross-module-private-attribute`, `comprehension-in-call-argument`, `excess-private-definitions` (limit 12) |
 | Error (policy) | `max_positional_parameters: 3` (`excess-positional-parameters`), `yaml_extension: yaml` (`yaml-file-extension`) |
-| Hint | `independent-test-case-loop`, `deep-object-navigation`, `stateful-dataclass`, `mutable-field-in-frozen-dataclass`, `loop-invariant-collection` |
+| Error (package policy) | `complex-comprehension` (one loop) and `constructor-logic` (two decisions) in `models.pydantic_ai`, `plugins.mcp` and `integrations.sandbox.worker` |
+| Hint | `independent-test-case-loop`, `deep-object-navigation`, `stateful-dataclass`, `mutable-field-in-frozen-dataclass`, `loop-invariant-collection`; `complex-comprehension` and `constructor-logic` outside those packages |
 
 Hooks and CI use `--fail-on warning`, so metadata warnings such as unused
 suppressions fail too. Optional defaults select a fallback only for `None`;
@@ -75,7 +81,7 @@ necessary for deferred names under the supported Python 3.12 minimum.
 Public definitions precede implementation helpers. Module dunder assignments
 follow those definitions. Only package initializers declare `__all__`; the
 single-module public facades (`errors`, `hooks`, `services`, `sessions`,
-`tracing`, the optional integrations, `plugins.mcp` and `plugins.subagents`)
+`tracing`, the optional integrations and `plugins.subagents`)
 have a reasoned config exception because their module path is the documented
 import, and optional extras cannot be re-exported eagerly from a package. Class initializers and dunders precede public/private methods.
 Ordering fixes use `safe-only`; reflection-sensitive sections require manual
@@ -119,8 +125,9 @@ The configuration deliberately leaves these optional policies unselected:
 
 ## Reviewed exceptions
 
-There is no debt baseline. The full check covers 159 modules with no
-errors or warnings. Twelve individual inline findings are suppressed with reasons. The import fan-out exception is described under the architecture policy. Another config exception permits private access only in
+There is no debt baseline. The full check covers 168 modules with no
+errors or warnings. Inline exceptions carry a reason at the reported statement.
+The import fan-out exception is described under the architecture policy. Another config exception permits private access only in
 `tests/core/session/test_image_cache.py`, whose purpose is to measure byte and
 entry limits, eviction and reuse. Public asset behavior remains in separate tests.
 
@@ -163,6 +170,52 @@ uv run smelt config schema > .smelt.schema.json
 If a bundled Smelt agent skill is installed locally, refresh it with
 `uv run smelt skill install --force`, preserving its custom destination and any
 local edits first. This repository does not vendor a generated skill copy.
+
+## Review after the 0.12.0 upgrade
+
+The upgrade from Smelt 0.10.0 reviews all six rules added in 0.11.0 and 0.12.0.
+They were tried against the complete checkout, together with 0.11.1's expanded test
+import checks. The exact `smelt-cli==0.12.0` development requirement and lockfile
+also select the version for prek and CI; neither installs Smelt separately.
+Report schema 2, YAML version 1 and the existing architecture contracts remain
+unchanged. The [upstream upgrade guide](https://github.com/mathisarends/smelt/blob/v0.12.0/docs/upgrading.md)
+describes the activation and inference limits.
+
+| Rule | Decision and evidence |
+| --- | --- |
+| SMT110 `module-import-fanout` | Not selected. A trial with `structure.max_module_imports: 10` reports 15 modules, including `core.runtime.session` (37 imports), `core.session.session` (24), `core.runtime.stepper` (21) and `agent` (19). These modules wire typed runtime collaborators, value contracts and events from several lower packages. A total-import limit neither establishes a violated boundary nor identifies a coherent replacement facade. In particular, aggregating session/prompt members would introduce the eager import cycles documented above. Keep strict layer/cycle checks, the existing per-package fan-out warning and Ruff's complexity bounds; do not hide dependencies behind a catch-all facade or choose a threshold just above today's maximum. |
+| SMT363 `complex-comprehension` | Error at the default one-loop limit in the three split packages; hint elsewhere. The initial trial reports 32 expressions, including simple ordered flattening of message parts, resources and hook declarations. PydanticAI history conversion now builds the call-name index in explicit loops, and content conversion names each branch. Both retain iteration order and validation before image conversion. Other findings remain visible for review without imposing eager collection construction on lazy generators. |
+| SMT364 `constructor-logic` | Error at the default two-decision limit in the three split packages; hint elsewhere. PydanticAI construction now names native-model resolution, option validation, generation defaults and model metadata; MCP validates selections before building configuration. Existing value guards remain advisory elsewhere: `AssetRef.__post_init__` has three adjacent invariant guards counted as six decisions because each raise also counts. Ruff continues to enforce function complexity throughout production. |
+| SMT365 `cross-module-private-attribute` | Error. All 22 trial findings are cooperation inside `harnessed.kernel`: `Scope`/`PluginHandle` activation and registration, `EventBus` visibility and descriptor storage on `PluginBase`. Configure the documented immediate-package boundary only for the kernel contract. Making those lifecycle mechanisms public would contradict the facade-only kernel API. All other packages retain the module boundary, and higher layers must still call public kernel operations. No findings are suppressed for this rule. |
+| SMT366 `comprehension-in-call-argument` | Error. Name all eleven reported collections before their consumers: immutable JSON objects, model tool-call IDs, retained messages/resources, snapshot IDs, envelope fields, telemetry messages and provider tool/settings conversion. Snapshot turn/file ID sets are also reused within the same immutable validation pass. Keep content construction behind the telemetry capture guard and keep awaited image retention sequential. |
+| SMT367 `excess-private-definitions` | Error with an explicit global limit of twelve. Split all three initial findings into cohesive packages: PydanticAI adapter/conversion, MCP plugin/transport, and worker protocol models/filesystem/runtime. Initializers retain the existing import paths. Shared operations have module-public names only where another implementation module actually uses them; SDK facades stay small. The optional PydanticAI and MCP dependency boundaries now encompass their respective packages. No threshold override or suppression. |
+
+The full report covers 168 modules with 105 advisory findings, no errors or
+warnings and no debt baseline. The new package contracts require the named
+implementation modules and enforce the original constructor/comprehension limits.
+
+The worker package contains only standard-library imports. `sandbox.bundle`
+captures its source modules in dependency order and builds a self-contained
+start script for Docker and Bubblewrap. The script loads the supplied modules
+into an in-memory package with an empty search path; worker imports cannot come
+from the workspace or a writable temporary directory. Docker captures the script
+once at startup and reuses it for requests; Bubblewrap serves requests in one
+process. The protocol remains version 1. Subprocess regressions run the bundle
+with `-I -S`, hostile workspace modules and an injected `PYTHONPATH`, testing
+both one-shot replies and persistent readiness/replies. The installed-wheel
+smoke check also executes the bundled worker outside the checkout.
+
+The expanded test checks expose two real package-import findings: `Spill` and
+`LatestObservationOnly` now use the existing `harnessed.plugins` facade. Nine
+SMT107 findings instead misclassify `from harnessed.kernel import plugin`: the
+initializer explicitly re-exports the decorator and includes it in `__all__`,
+while the checker treats its name as the `kernel.plugin` submodule. Keep the
+correct public import with a statement-local SMT107 explanation; do not weaken
+the kernel contract or rename its public decorator. An architecture regression
+checks the exported function's type and owning module. One further local exception
+allows the DI regression test to patch `kernel.di.get_type_hints`: proving that
+dispatch does not repeat reflection requires observing that implementation
+boundary. None of these exceptions grants private module access to production.
 
 ## Review after the 0.10.0 upgrade
 

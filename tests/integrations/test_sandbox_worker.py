@@ -13,6 +13,8 @@ from harnessed.integrations.sandbox._client import (  # smelt: ignore[SMT420] --
 )
 from harnessed.integrations.sandbox.process import WorkerProcess
 from harnessed.integrations.sandbox.types import ProcessOutput
+from harnessed.integrations.sandbox.worker import filesystem as worker_filesystem
+from harnessed.integrations.sandbox.worker import runtime as worker_runtime
 from harnessed.plugins import Service
 from harnessed.plugins.filesystem import (
     FileSystemBackend,
@@ -33,10 +35,10 @@ def worker_files(tmp_path, monkeypatch):
         with (tmp_path / path).open("rb") as stream:
             yield stream.fileno()
 
-    monkeypatch.setattr(worker, "opened", opened)
-    monkeypatch.setattr(worker, "sys", SimpleNamespace(platform="linux"))
+    monkeypatch.setattr(worker_filesystem, "opened", opened)
+    monkeypatch.setattr(worker_runtime, "sys", SimpleNamespace(platform="linux"))
     monkeypatch.setattr(
-        worker,
+        worker_filesystem,
         "_matches",
         lambda pattern, limit: [
             path.relative_to(tmp_path).as_posix() for path in sorted(tmp_path.glob(pattern))
@@ -53,7 +55,7 @@ def worker_files(tmp_path, monkeypatch):
             "modified": info.st_mtime,
         }
 
-    monkeypatch.setattr(worker, "metadata", metadata)
+    monkeypatch.setattr(worker_filesystem, "metadata", metadata)
 
     class Transport:
         def __init__(self):
@@ -187,12 +189,12 @@ async def test_docker_grep_for_1000_files_uses_one_exec_and_caches_worker_source
         (tmp_path / f"{number:04}.txt").write_text("no matches", encoding="utf-8")
     operations = []
     scripts = []
-    original_read = Path.read_text
+    original_source = docker.worker_source
 
-    def read_script(path, *args, **kwargs):
-        if path == Path(worker.__file__):
-            scripts.append(path)
-        return original_read(path, *args, **kwargs)
+    def build_script():
+        source = original_source()
+        scripts.append(source)
+        return source
 
     async def run(argv, *, input=b"", **kwargs):
         if "info" in argv:
@@ -211,7 +213,7 @@ async def test_docker_grep_for_1000_files_uses_one_exec_and_caches_worker_source
             return ProcessOutput(0, worker.response(input.decode()).encode(), b"")
         return ProcessOutput(0, b"", b"")
 
-    monkeypatch.setattr(Path, "read_text", read_script)
+    monkeypatch.setattr(docker, "worker_source", build_script)
     monkeypatch.setattr(docker, "run_process", run)
     backend = docker.DockerBackend(image="test")
     try:

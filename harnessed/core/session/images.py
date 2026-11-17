@@ -103,7 +103,8 @@ class SessionImages:
             for part in message.content
         ):
             return request
-        messages = tuple([await self.retain_message(message) for message in request.messages])
+        retained_messages = [await self.retain_message(message) for message in request.messages]
+        messages = tuple(retained_messages)
         return (
             request
             if all(a is b for a, b in zip(messages, request.messages, strict=True))

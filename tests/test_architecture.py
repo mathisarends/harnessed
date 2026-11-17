@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tomllib
 from pathlib import Path
+from types import FunctionType
 
 import pytest
 
@@ -109,7 +110,7 @@ def test_optional_integrations_and_features_are_isolated():
                 if module == "harnessed.testing" or module.startswith("harnessed.testing."):
                     assert relative.startswith("testing/"), relative
                 if module == "pydantic_ai" or module.startswith("pydantic_ai."):
-                    assert relative == "models/pydantic_ai.py", relative
+                    assert relative.startswith("models/pydantic_ai/"), relative
                 if module == "yaml":
                     assert relative == "plugins/skills.py", relative
                 if module.split(".")[0] in {
@@ -121,7 +122,7 @@ def test_optional_integrations_and_features_are_isolated():
                     "httpx2",
                     "anyio",
                 }:
-                    assert relative == "plugins/mcp.py", relative
+                    assert relative.startswith("plugins/mcp/"), relative
                 if relative.startswith("plugins/") and relative != "plugins/__init__.py":
                     assert module != "harnessed.plugins", relative
                     if module.startswith("harnessed.plugins."):
@@ -244,6 +245,14 @@ def test_kernel_scope_has_one_canonical_public_name():
     assert not hasattr(kernel, "Context") and not hasattr(kernel, "ContextClosed")
 
 
+def test_kernel_exports_plugin_as_a_decorator() -> None:
+    import harnessed.kernel as kernel
+
+    assert "plugin" in kernel.__all__
+    assert isinstance(kernel.plugin, FunctionType)
+    assert kernel.plugin.__module__ == "harnessed.kernel.plugin"
+
+
 async def test_session_exposes_its_kernel_scope_without_a_legacy_alias():
     from harnessed import Agent
     from harnessed.kernel import Scope
@@ -291,7 +300,11 @@ def test_package_root_has_only_public_entrypoints_and_no_transition_modules():
 
 
 async def test_typed_keys_have_identity_and_work_with_temporal_needs():
-    from harnessed.kernel import Key, Scope, plugin
+    from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not a module.
+        Key,
+        Scope,
+        plugin,
+    )
 
     first, second = Key[str]("backend"), Key[str]("backend")
     seen = []

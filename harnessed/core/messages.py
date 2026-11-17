@@ -22,7 +22,8 @@ def freeze(value: Any) -> Any:
     if isinstance(value, Mapping):
         if any(not isinstance(key, str) for key in value):
             raise TypeError("JSON object keys must be strings")
-        return MappingProxyType({key: freeze(item) for key, item in value.items()})
+        frozen = {key: freeze(item) for key, item in value.items()}
+        return MappingProxyType(frozen)
     if isinstance(value, list | tuple):
         return tuple(freeze(item) for item in value)
     raise TypeError(f"Not a lossless JSON value: {type(value).__name__}")

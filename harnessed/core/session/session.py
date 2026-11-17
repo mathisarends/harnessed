@@ -385,7 +385,8 @@ class SessionLog:
             if isinstance(part, ImageReference)
         )
         self._assets.retain(refs)
-        self._files.retain({ref.path for entry in entries for ref in entry.resources})
+        paths = {ref.path for entry in entries for ref in entry.resources}
+        self._files.retain(paths)
         self._images.clear()
 
     def subscribe(
