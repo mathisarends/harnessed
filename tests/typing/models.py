@@ -1,7 +1,19 @@
+from collections.abc import AsyncGenerator
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import assert_type
 
 from harnessed import Agent, Session
-from harnessed.models import GenerationSettings, Model, ModelInfo, ModelRequest, PydanticAIModel
+from harnessed.hooks import Next, StreamModel
+from harnessed.kernel import Scope, hook
+from harnessed.models import (
+    GenerationSettings,
+    Model,
+    ModelInfo,
+    ModelRequest,
+    ModelStream,
+    PydanticAIModel,
+)
+from harnessed.services import SessionContext
 from harnessed.testing import ScriptedModel
 
 
@@ -19,3 +31,44 @@ async def generation_settings_consumer(session: Session) -> None:
     ModelRequest((), max_tokens=10)  # ty: ignore[unknown-argument]
     PydanticAIModel("anthropic:fixture", settings={})  # ty: ignore[invalid-argument-type]
     await session.run("Short", settings={})  # ty: ignore[invalid-argument-type]
+
+
+@hook(StreamModel)
+async def delegate_stream(
+    event: StreamModel, next_: Next[AbstractAsyncContextManager[ModelStream]]
+) -> AbstractAsyncContextManager[ModelStream]:
+    assert_type(event.session, SessionContext)
+    assert_type(event.request, ModelRequest)
+    assert_type(event.model, Model)
+    assert_type(event.request_id, str)
+    manager = await next_()
+    assert_type(manager, AbstractAsyncContextManager[ModelStream])
+    return manager
+
+
+@hook(StreamModel)
+@asynccontextmanager
+async def wrap_stream(
+    event: StreamModel, next_: Next[AbstractAsyncContextManager[ModelStream]]
+) -> AsyncGenerator[ModelStream, None]:
+    manager = await next_()
+    async with manager as stream:
+        assert_type(stream, ModelStream)
+        yield stream
+
+
+def wrong_stream_result(
+    event: StreamModel, next_: Next[AbstractAsyncContextManager[ModelStream]]
+) -> str:
+    return "not a stream context manager"
+
+
+async def stream_hook_consumer(scope: Scope, event: StreamModel) -> None:
+    scope.on(StreamModel, delegate_stream)
+    scope.on(StreamModel, wrap_stream)
+    manager = await scope.dispatch(
+        StreamModel(event.session, event.request, event.model, request_id=event.request_id),
+        default=lambda: event.model.stream(event.request),
+    )
+    assert_type(manager, AbstractAsyncContextManager[ModelStream])
+    hook(StreamModel)(wrong_stream_result)  # ty: ignore[no-matching-overload]
