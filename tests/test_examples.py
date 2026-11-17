@@ -60,6 +60,7 @@ runpy.run_module(module, run_name="__main__", alter_sys=True)
         "examples.40_atomic_session_store",
         "examples.41_subagents",
         "examples.42_background_subagents",
+        "examples.43_conditional_parameters",
     ],
 )
 def test_offline_sdk_example_runs(module):

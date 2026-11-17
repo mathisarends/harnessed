@@ -19,6 +19,7 @@ from .info import (
     ToolMetadata,
     ToolPresentation,
 )
+from .parameters import ToolParameter
 from .policy import OutputLimit, OutputLimitSetting
 from .registry import ErrorFormatter, ToolError, ToolRegistry, ToolSpec, format_tool_error
 from .scheduling import PreparedToolCall, ToolScheduler, ToolScheduling
@@ -43,6 +44,7 @@ __all__ = [
     "ToolIcon",
     "ToolInfo",
     "ToolMetadata",
+    "ToolParameter",
     "ToolPresentation",
     "ToolRegistry",
     "ToolScheduler",

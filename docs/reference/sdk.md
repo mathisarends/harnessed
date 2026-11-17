@@ -553,6 +553,7 @@ unhashable. See [values and record versions](../concepts/values.md).
 | Plugin / @tool | Class-based reusable capability |
 | @tool(description="...") | Explicit model-facing description; None falls back to the docstring |
 | @tool(enabled=True \| False \| predicate) | Per-tool visibility and execution condition; synchronous predicates use Inject and mounted instance state |
+| Annotated[T, ToolParameter(enabled=True \| False \| predicate)] | Per-activation parameter visibility and acceptance; requires a default, supports signature-derived arguments |
 | @tool(metadata=(value, ...)) | Immutable application annotations keyed by exact type; no automatic model or persistence effect |
 | @tool(chain=ToolChain.STOP_AFTER) | Run this tool, then skip remaining calls from the same model response; default CONTINUE |
 | ToolResult(..., break_chain=True) | Request the same boundary dynamically; already-started parallel calls finish |

@@ -113,6 +113,7 @@ class EnvelopeLayout:
 
     definition: ToolDefinition
     bindings: tuple[_EnvelopeBinding, ...] = ()
+    reserved_names: frozenset[str] = frozenset()
 
     @classmethod
     def build(
@@ -122,6 +123,7 @@ class EnvelopeLayout:
         *,
         shared: Sequence[EnvelopePart] = (),
         skip_conflicts: bool = False,
+        reserved_names: frozenset[str] = frozenset(),
     ) -> Self:
         """Merge the tool's own envelopes and the selected registry-wide ones.
 
@@ -131,7 +133,7 @@ class EnvelopeLayout:
         """
         shared = [part for part in _distinct(shared) if part.model not in models]
         if not models and not shared:
-            return cls(definition)
+            return cls(definition, reserved_names=reserved_names)
         parameters: dict[str, Any] = to_dict(definition.parameters)
         if "$ref" in parameters or parameters.get("type", "object") != "object":
             error = f"Tool {definition.name!r} needs an object parameter schema to accept envelopes"
@@ -140,7 +142,7 @@ class EnvelopeLayout:
             logger.warning("Skipping registry envelopes: %s", error)
             return cls(definition)
         own: dict[str, Any] = parameters.get("properties", {})
-        claims = _Claims(definition.name, set(own), parameters.get("$defs", {}))
+        claims = _Claims(definition.name, set(own) | reserved_names, parameters.get("$defs", {}))
         declared = [EnvelopePart(model, InvalidEnvelope.ERROR) for model in models]
         for part in declared:
             if (conflict := claims.admit(part.model)) is not None:
@@ -160,7 +162,7 @@ class EnvelopeLayout:
         trailing = tuple(part for part in accepted if part.position is EnvelopePosition.TRAILING)
         parts = (*leading, *trailing)
         if not parts:
-            return cls(definition)
+            return cls(definition, reserved_names=reserved_names)
         before, required_before = _merged_schema(leading)
         after, required_after = _merged_schema(trailing)
         parameters["type"] = "object"
@@ -183,6 +185,7 @@ class EnvelopeLayout:
                 )
                 for part in parts
             ),
+            reserved_names,
         )
 
     def split(self, arguments: Mapping[str, object]) -> tuple[ToolEnvelope, Mapping[str, object]]:
