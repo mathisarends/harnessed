@@ -116,7 +116,7 @@ class Session:
             self._compaction,
             OutputHandler(scope, session, options, output_values),
             ToolExecutor(scope, session, options, self.approvals, self._context),
-            ModelResponder(scope, session),
+            ModelResponder(scope, session, self._context),
             self._context,
             observations,
         )

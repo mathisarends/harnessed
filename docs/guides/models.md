@@ -182,6 +182,69 @@ cumulative `ModelUsage` snapshot, or `None` while usage is unknown. Keep this
 snapshot readable after interruption or cleanup. The runtime records it once when
 a stream fails or is aborted; successful requests use the final response's usage.
 
+## Wrap or replace an agent model stream
+
+Plugins can intercept the agent loop's stream with `StreamModel` from
+`harnessed.hooks`. Its waterfall result is an
+`AbstractAsyncContextManager[ModelStream]`. Calling `await next_()` obtains the
+downstream manager; without another handler it is `event.model.stream(event.request)`.
+Return the manager unopened so the runtime owns entry, consumption and exit:
+
+```python
+from collections.abc import AsyncGenerator
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from time import monotonic
+
+from harnessed import Plugin
+from harnessed.hooks import Next, StreamModel
+from harnessed.kernel import hook
+from harnessed.models import ModelStream
+
+
+class StreamTiming(Plugin):
+    @hook(StreamModel)
+    @asynccontextmanager
+    async def stream(
+        self, event: StreamModel, next_: Next[AbstractAsyncContextManager[ModelStream]]
+    ) -> AsyncGenerator[ModelStream, None]:
+        downstream = await next_()
+        started = monotonic()
+        try:
+            async with downstream as stream:
+                yield stream
+        finally:
+            print(event.request_id, "stream seconds:", monotonic() - started)
+```
+
+The decorator order matters: `@hook(StreamModel)` registers the context-manager
+factory produced by `@asynccontextmanager`. This is the same method shape as a
+custom `Model.stream()` implementation; no nested factory is needed.
+
+Install it with `Agent(model=..., plugins=[StreamTiming()])`. To replace the
+transport, open your application's stream and yield it without calling `next_()`.
+For example, a WebSocket tunnel can send `event.request` and expose remote chunks
+through `ModelStream`. The plugin owns its connection and wire protocol; no
+WebSocket dependency is required by Harnessed. A wrapper that changes chunks must
+also keep `response()` consistent with those chunks and forward cumulative `usage`.
+
+`event.session` is the restricted `SessionContext`, `event.model` is the selected
+model, and `event.request_id` correlates the stream with `ModelRequestedEvent` and
+its completion. The hook runs after request logging, output preparation, budget
+checks and stored-image resolution. Its request contains transport-ready images
+and effective settings; the audit request keeps stored asset references. Put
+request changes in `PrepareRequest` so constraints, budgets and audit records
+include them. Replacing a transport retains the configured model's identity and
+capabilities; configure a different `Model` when those change.
+
+The runtime still consumes chunks, schedules application tools and records usage,
+diagnostics and the final assistant message. Context managers must release their
+resources on success, failure and cancellation, propagate exceptions, and keep
+`stream.usage` readable after exit. Use `try/finally` for cleanup when entry itself
+fails or is cancelled. The hook applies once per agent-loop model invocation,
+including runtime retries; provider-internal retries remain inside that stream.
+Standalone `Model.request()` / `Model.stream()` calls and compaction summarizer
+requests do not dispatch it. This is a control hook, not a durable or UI event.
+
 ## Streaming tool calls
 
 Custom models can emit `ModelChunk(tool_call_start=ToolCallStart(index, name, call_id))`

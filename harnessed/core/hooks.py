@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Self
@@ -13,7 +14,7 @@ from harnessed.core.messages import (
     ToolCall,
     ToolResult,
 )
-from harnessed.core.model import ModelRequest, OutputSchema
+from harnessed.core.model import Model, ModelRequest, ModelStream, OutputSchema
 from harnessed.core.tools import OutputLimit, OutputLimitSetting, ToolEnvelope, ToolInfo
 from harnessed.kernel import Bail, Emit, Waterfall
 from harnessed.kernel import Next as Next
@@ -120,6 +121,25 @@ class PrepareOutput(Waterfall[OutputDecision]):
     session: SessionContext
     request: ModelRequest
     schema: OutputSchema | None
+
+
+@dataclass(frozen=True)
+class StreamModel(Waterfall[AbstractAsyncContextManager[ModelStream]]):
+    """Wrap or replace one agent-loop stream after request admission and resolution.
+
+    Return an unentered context manager; the runtime owns entry, consumption and
+    exit. next_() returns the downstream manager, defaulting to model.stream(request).
+    Place @hook(StreamModel) above @asynccontextmanager for a Model.stream-style
+    method that yields the stream directly.
+    The request contains resolved assets and effective settings. Request transforms
+    belong in PrepareRequest so audit, output constraints and budgets see them.
+    Standalone model calls and compaction requests do not dispatch this hook.
+    """
+
+    session: SessionContext
+    request: ModelRequest
+    model: Model
+    request_id: str = field(kw_only=True)
 
 
 @dataclass(frozen=True)

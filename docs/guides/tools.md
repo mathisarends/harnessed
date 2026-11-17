@@ -642,7 +642,7 @@ Async callbacks return those values after awaiting. Additional parameters use
 `Inject[T]`. Class-based plugin methods follow the same signatures after `self`.
 `Next[R]` is a zero-argument async continuation and may be called once.
 
-Runtime hook events (`PreStep`, `PrepareRequest`, `PrepareRequest`,
+Runtime hook events (`PreStep`, `PrepareRequest`, `PrepareOutput`, `StreamModel`,
 `ToolPolicy`, `ExecuteTool`, `ReviewToolResult`, `RequestApproval`,
 `TurnStopping` and `SessionClosing`) carry `event.session: SessionContext`, not
 the application `Session`. The context exposes `id`, `status`, `log`, `messages`,
