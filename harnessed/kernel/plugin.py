@@ -13,7 +13,7 @@ from .declarations import Bundle, PluginBase
 from .di import bind_injected
 from .events import PluginActivated, PluginFailed
 from .keys import MissingService, ServiceKey
-from .spec import PluginSpec
+from .spec import PluginDependencyIssue, PluginSpec
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,8 @@ class PluginHandle:
         self.name = spec.name
         self.spec = spec
         self._mount = mount
-        self.scope = mount._child(mount._scope)
+        self._runtime = mount._runtime
+        self.scope = mount._new_owner()
         self.scope._closed = True
         self.status: PluginStatus = PluginStatus.WAITING
         self.error: Exception | None = None
@@ -81,13 +82,12 @@ class PluginHandle:
         if self._disposed:
             return
         self._disposed = True
-        runtime = self._mount._scope.runtime
-        runtime.handles.remove(self)
+        self._runtime.remove(self)
         try:
             await self._suspend()
         finally:
             self.status = PluginStatus.DISPOSED
-            runtime.changed()
+            self._runtime.changed()
 
     def _signature(self):
         try:
@@ -167,7 +167,8 @@ class PluginHandle:
                 self.status = PluginStatus.WAITING
                 return
             self.status = PluginStatus.STARTING
-            self.scope = child = self._mount._child(self._mount._scope)
+            child = self._mount._new_owner()
+            self.scope = child
             child._handle = self
             self._depend_on_providers(child, signature)
             try:
@@ -190,7 +191,7 @@ class PluginHandle:
                 self.error = None
                 self.status = PluginStatus.ACTIVE
                 await self._mount.dispatch(PluginActivated(self))
-                self._mount._scope.runtime.changed()
+                self._runtime.changed()
             except BaseException as exc:
                 await self._activation_failed(exc, signature)
                 try:
@@ -258,26 +259,41 @@ class PluginHandle:
                 self.status = PluginStatus.WAITING
                 self._active_signature = None
                 self._instance = None
-                self._mount._scope.runtime.changed()
+                self._runtime.changed()
 
 
 class PluginRuntime:
     def __init__(self) -> None:
-        self.handles: list[PluginHandle] = []
+        self._handles: list[PluginHandle] = []
         self.task: asyncio.Task | None = None
         self.dirty = False
         self.errors: list[Exception] = []
 
+    def retain(self, spec: PluginSpec, mount: Scope) -> PluginHandle:
+        handle = PluginHandle(spec, mount)
+        self._handles.append(handle)
+        return handle
+
+    def remove(self, handle: PluginHandle) -> None:
+        self._handles.remove(handle)
+
+    def diagnostics(self) -> tuple[PluginDependencyIssue, ...]:
+        return tuple(
+            PluginDependencyIssue(handle.spec, handle.missing_services)
+            for handle in self._handles
+            if handle.status == PluginStatus.WAITING and not handle._mount._closed
+        )
+
     def changed(self) -> None:
         self.dirty = True
-        for handle in tuple(self.handles):
+        for handle in tuple(self._handles):
             if (
                 handle.status == PluginStatus.STARTING
                 and handle._start_task is not None
                 and (handle._mount._closed or handle._signature() != handle._starting_signature)
             ):
                 handle._start_task.cancel()
-        if not self.handles or (self.task is not None and not self.task.done()):
+        if not self._handles or (self.task is not None and not self.task.done()):
             return
         try:
             loop = asyncio.get_running_loop()
@@ -289,7 +305,7 @@ class PluginRuntime:
         blocked = set()
         while self.dirty:
             self.dirty = False
-            for handle in tuple(self.handles):
+            for handle in tuple(self._handles):
                 if handle in blocked or (
                     handle._disposed
                     or handle._mount._closed

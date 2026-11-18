@@ -34,7 +34,6 @@ class _Scope:
     parent: _Scope | None = None
     services: dict[ServiceKey[Any], list[_Binding]] = field(default_factory=dict)
     event_bus: EventBus = field(default_factory=EventBus)
-    runtime: PluginRuntime = field(default_factory=PluginRuntime)
 
 
 class RegistrationState:
@@ -145,10 +144,12 @@ class Scope:
 
     Plugins share their mount's service scope. ``extend()`` creates an isolated
     child which inherits parent services and listeners, with local overrides.
+    All owners in the same tree share one plugin runtime.
     """
 
     def __init__(self) -> None:
         self._scope = _Scope()
+        self._runtime = PluginRuntime()
         self._stack = AsyncExitStack()
         self._closed = False
         self._handle: PluginHandle | None = None
@@ -164,11 +165,12 @@ class Scope:
         """The owner of registrations in the current asynchronous call chain."""
         return _current.get()
 
-    @classmethod
-    def _child(cls, scope: _Scope) -> Self:
-        child = cls()
-        child._scope = scope
-        return child
+    def _new_owner(self, scope: _Scope | None = None) -> Self:
+        """Give the owner its own cleanup stack in this tree's runtime."""
+        owner = type(self)()
+        owner._scope = self._scope if scope is None else scope
+        owner._runtime = self._runtime
+        return owner
 
     @contextmanager
     def activate(self):
@@ -272,22 +274,21 @@ class Scope:
         bindings = self._scope.services.setdefault(key, [])
         binding = _Binding(implementation, self)
         bindings.append(binding)
-        self._scope.runtime.changed()
+        self._runtime.changed()
 
         def remove() -> None:
             bindings.remove(binding)
             if not bindings:
                 del self._scope.services[key]
-            self._scope.runtime.changed()
+            self._runtime.changed()
 
         return self.effect(remove)
 
     def extend(self) -> Self:
         self._check_open()
-        child = self._child(
+        child = self._new_owner(
             _Scope(
                 parent=self._scope,
-                runtime=self._scope.runtime,
                 event_bus=EventBus(self._scope.event_bus),
             )
         )
@@ -365,8 +366,7 @@ class Scope:
         """Retain a plugin recipe; activate it while its declared needs are available."""
         self._check_open()
         spec = as_plugin_spec(spec)
-        handle = PluginHandle(spec, self)
-        self._scope.runtime.handles.append(handle)
+        handle = self._runtime.retain(spec, self)
         retained = ref(handle)
 
         async def close_handle() -> None:
@@ -427,15 +427,11 @@ class Scope:
         Each issue resolves services in the waiting plugin's own mount scope.
         Inspection neither activates plugins nor rejects deferred dependencies.
         """
-        return tuple(
-            PluginDependencyIssue(handle.spec, handle.missing_services)
-            for handle in self._scope.runtime.handles
-            if handle.status == PluginStatus.WAITING and not handle._mount._closed
-        )
+        return self._runtime.diagnostics()
 
     async def settle(self) -> None:
         """Wait for scheduled dependency teardown/rebuild; report background setup failures."""
-        runtime = self._scope.runtime
+        runtime = self._runtime
         if asyncio.current_task() is runtime.task:
             return
         if runtime.dirty:
