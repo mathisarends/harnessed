@@ -1,17 +1,14 @@
 import re
 from dataclasses import fields
-from typing import get_args, get_origin
+from typing import TypeAliasType, get_args, get_origin
 
 from harnessed.events import LogEvent
 from harnessed.events.stream import StreamEvent
 
 
 def builtin_event_types() -> tuple[type, ...]:
-    kinds = {
-        get_origin(kind) or kind
-        for union in (LogEvent, StreamEvent)
-        for kind in get_args(get_args(union.__value__)[0])
-    }
+    kinds = set(_event_types(get_args(LogEvent.__value__)[0]))
+    kinds.update(_event_types(get_args(StreamEvent.__value__)[0]))
     return tuple(sorted(kinds, key=lambda kind: kind.__name__))
 
 
@@ -21,3 +18,14 @@ def default_tag(event_type: type) -> str:
 
 def tag_from_class_name(name: str) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", ".", name.removesuffix("Event")).lower()
+
+
+def _event_types(union: object) -> list[type]:
+    kinds = []
+    for member in get_args(union):
+        kind = get_origin(member) or member
+        if isinstance(kind, TypeAliasType):
+            kinds.extend(_event_types(kind.__value__))
+        else:
+            kinds.append(kind)
+    return kinds

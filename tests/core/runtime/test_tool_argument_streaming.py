@@ -11,7 +11,8 @@ from harnessed.events import (
     ToolCallRequestedEvent,
 )
 from harnessed.events.codec import encode_event
-from harnessed.events.stream import StreamEvent, coalesce_deltas
+from harnessed.events.deltas import coalesce_deltas
+from harnessed.events.stream import StreamEvent
 from harnessed.models import ModelChunk, ToolArgumentsMode, ToolCallDelta, ToolCallStart
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit

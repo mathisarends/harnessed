@@ -14,7 +14,7 @@ from .base import (
     TransientEvent,
 )
 from .codec import decode_event, encode_event, validate_event
-from .stream import STREAM_EVENT_TYPES
+from .live import LIVE_EVENT_TYPES
 from .unions import SESSION_EVENT_TYPES
 
 
@@ -26,7 +26,7 @@ class EventRegistry:
     """
 
     def __init__(self, kinds: Iterable[type[DurableEvent | TransientEvent]] = ()) -> None:
-        self._types: dict[str, type] = {**SESSION_EVENT_TYPES, **STREAM_EVENT_TYPES}
+        self._types: dict[str, type] = {**SESSION_EVENT_TYPES, **LIVE_EVENT_TYPES}
         self._builtin_types = frozenset(self._types.values())
         self._custom: dict[type[DurableEvent | TransientEvent], TypeAdapter] = {}
         self._adapter: TypeAdapter | None = None

@@ -16,7 +16,7 @@ PACKAGE = ROOT / "harnessed"
 
 
 def test_event_vocabulary_does_not_depend_on_runtime():
-    live_and_persistence = {"codec.py", "completion.py", "registry.py", "stream.py"}
+    live_and_persistence = {"codec.py", "completion.py", "live.py", "registry.py", "stream.py"}
     paths = [
         path for path in (PACKAGE / "events").glob("*.py") if path.name not in live_and_persistence
     ]

@@ -40,7 +40,9 @@ from harnessed.events import (
     TurnEndedEvent,
     TurnStartedEvent,
 )
-from harnessed.events.stream import STREAM_EVENT_TYPES, StreamItem, TurnResultEvent, coalesce_deltas
+from harnessed.events.deltas import coalesce_deltas
+from harnessed.events.live import LIVE_EVENT_TYPES
+from harnessed.events.stream import StreamItem, TurnResultEvent
 from harnessed.events.unions import SESSION_EVENT_TYPES
 from harnessed.sessions.result import RunResult
 
@@ -86,7 +88,7 @@ async def project_stream_events(
                 ):
                     yield event
                 case DurableEvent() | TransientEvent() if (
-                    event.type not in SESSION_EVENT_TYPES and event.type not in STREAM_EVENT_TYPES
+                    event.type not in SESSION_EVENT_TYPES and event.type not in LIVE_EVENT_TYPES
                 ):
                     yield event
                 case (

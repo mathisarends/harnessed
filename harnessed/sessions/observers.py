@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator
 
 from harnessed.events import DurableEvent, TransientEvent
-from harnessed.events.stream import coalesce_deltas
+from harnessed.events.deltas import coalesce_deltas
 from harnessed.runtime.buffering import EventBuffer
 
 

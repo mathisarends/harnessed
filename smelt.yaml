@@ -27,6 +27,7 @@ architecture:
     harnessed.events: events
     harnessed.events.codec: engine
     harnessed.events.completion: engine
+    harnessed.events.live: engine
     harnessed.events.registry: engine
     harnessed.events.stream: engine
     harnessed.runtime: engine

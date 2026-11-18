@@ -23,8 +23,8 @@ The kernel remains standard-library-only. Higher layers use its public facade.
 The root SDK remains lazy, with matching explicit runtime exports and type stubs.
 Event consumers import the explicit `harnessed.events` facade. Internally, each
 domain owns its durable and transient events. `events.unions` assembles the
-durable catalog; `events.stream` assembles the live catalog, including the terminal
-result event. Keeping these catalogs separate lets result validation
+durable catalog; `events.live` assembles the live catalog, including the terminal
+result event. `events.stream` defines the public UI union. Keeping these catalogs separate lets result validation
 use the durable codec without a dependency cycle through the terminal event.
 `runtime.streaming` projects records for UIs; `runtime.stream_approvals`
 owns live approval waits. Neither mechanism belongs to the event vocabulary.
