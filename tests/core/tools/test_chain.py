@@ -4,15 +4,15 @@ from dataclasses import replace
 import pytest
 
 from harnessed import Agent, Plugin, ToolCall, ToolChain, ToolResult, ToolStatus, tool
-from harnessed.core.messages import PolicyDecision
-from harnessed.core.model import ModelChunk
-from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.events import (
     ToolCallFinishedEvent,
     ToolExecutionFinishedEvent,
 )
+from harnessed.events.codec import decode_event, encode_event
 from harnessed.hooks import ReviewToolResult, ToolPolicy
 from harnessed.kernel import hook
+from harnessed.models import ModelChunk
+from harnessed.models.messages import PolicyDecision
 from harnessed.plugins import AgentLoop
 from harnessed.testing import ScriptedModel
 

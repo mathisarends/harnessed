@@ -159,8 +159,7 @@ retention are separate future requirements, not additional controls in this API.
 
 Export `CompactionPrompt` and `DEFAULT_COMPACTION_PROMPT` from
 `harnessed.plugins`, and the request/protocol types below from
-`harnessed.services`. Their implementation belongs to core, with explicit facade
-re-exports; optional features must not depend on another plugin.
+`harnessed.plugins.compaction`. The runtime owns summary planning and execution.
 
 ```python
 from collections.abc import Awaitable, Callable
@@ -225,7 +224,7 @@ result contract; report available usage even for rejected output.
 from dataclasses import dataclass
 from typing import Protocol
 
-from harnessed.services import CompactionContext, Summary
+from harnessed.plugins.compaction import CompactionContext, Summary
 
 
 @dataclass(frozen=True)

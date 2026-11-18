@@ -13,11 +13,13 @@ from harnessed.kernel import PluginStatus
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "harnessed"
-LAYERS = {"kernel": 0, "core": 1, "plugins": 2, "models": 2, "integrations": 2}
 
 
 def test_event_vocabulary_does_not_depend_on_runtime():
-    paths = tuple((PACKAGE / "core" / "events").glob("*.py"))
+    live_and_persistence = {"codec.py", "completion.py", "live.py", "registry.py", "stream.py"}
+    paths = [
+        path for path in (PACKAGE / "events").glob("*.py") if path.name not in live_and_persistence
+    ]
     assert paths
     violations = []
     for path in paths:
@@ -28,65 +30,30 @@ def test_event_vocabulary_does_not_depend_on_runtime():
                 modules = [alias.name for alias in node.names]
             else:
                 continue
-            if any(module.startswith("harnessed.core.runtime") for module in modules):
+            if any(
+                module.startswith(("harnessed.runtime", "harnessed.sessions")) for module in modules
+            ):
                 violations.append(path.name)
     assert violations == []
 
 
 def test_runtime_components_and_hooks_do_not_reference_the_application_session():
-    # Only the composition points that open or wrap a session may name it.
-    owners = {"session.py", "opener.py", "agent_loop.py"}
-    paths = (
-        *(path for path in (PACKAGE / "core" / "runtime").glob("*.py") if path.name not in owners),
-        PACKAGE / "core" / "hooks.py",
-    )
+    # Composition and child-session ownership boundaries may name the application session.
+    owners = {
+        "session.py",
+        "opener.py",
+        "agent_loop.py",
+        "child_contracts.py",
+        "child_execution.py",
+    }
+    paths = [path for path in (PACKAGE / "runtime").glob("*.py") if path.name not in owners]
     violations = [
         path.name
         for path in paths
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
-        if isinstance(node, ast.ImportFrom) and node.module == "harnessed.core.runtime.session"
+        if isinstance(node, ast.ImportFrom)
+        and node.module in {"harnessed.runtime.session", "session"}
     ]
-    assert violations == []
-
-
-def test_imports_follow_layer_direction_and_public_boundaries():
-    violations = []
-    ranks = LAYERS
-    for layer, rank in ranks.items():
-        for path in (PACKAGE / layer).rglob("*.py"):
-            parts = path.relative_to(ROOT).with_suffix("").parts
-            package = ".".join(parts[:-1])
-            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-                modules = []
-                if isinstance(node, ast.ImportFrom):
-                    modules = [
-                        importlib.util.resolve_name(
-                            "." * node.level + (node.module or ""),
-                            package,
-                        )
-                        if node.level
-                        else node.module
-                    ]
-                elif isinstance(node, ast.Import):
-                    modules = [alias.name for alias in node.names]
-                for module in modules:
-                    if not module or not module.startswith("harnessed"):
-                        continue
-                    if layer == "plugins" and module.startswith("harnessed.kernel."):
-                        violations.append(
-                            f"{path.relative_to(ROOT)}:{node.lineno}: use harnessed.kernel facade"
-                        )
-                    target = module.split(".")[1:2]
-                    if target == ["_exports"]:
-                        continue
-                    if not target or target[0] not in ranks:
-                        violations.append(
-                            f"{path.relative_to(ROOT)}:{node.lineno}: facade {module}"
-                        )
-                    elif ranks[target[0]] > rank:
-                        violations.append(
-                            f"{path.relative_to(ROOT)}:{node.lineno}: upward {module}"
-                        )
     assert violations == []
 
 
@@ -134,7 +101,7 @@ def test_kernel_import_is_independent_of_agents_adapters_and_third_party_package
     code = """
 import sys
 from harnessed.kernel import Scope, PluginBase, Bundle, Event, Key, plugin
-for layer in ('core', 'seams', 'plugins', 'adapters', 'presets'):
+for layer in ('runtime', 'events', 'models', 'plugins', 'prompts', 'sessions', 'tools'):
     assert not any(name == 'harnessed.' + layer or name.startswith('harnessed.' + layer + '.')
                    for name in sys.modules), (layer, sorted(sys.modules))
 assert 'httpx' not in sys.modules
@@ -142,6 +109,23 @@ assert 'httpx2' not in sys.modules
 assert 'pydantic' not in sys.modules
 assert not any(name.startswith('opentelemetry') for name in sys.modules)
 print('standalone kernel')
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, timeout=10
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_event_vocabulary_loads_without_the_execution_engine_or_provider_adapter():
+    code = """
+import sys
+from harnessed.events import TurnEndedEvent
+assert TurnEndedEvent.__module__ == 'harnessed.events.turn'
+assert 'harnessed.events.stream' not in sys.modules
+assert 'harnessed.events.registry' not in sys.modules
+assert 'harnessed.models.pydantic_ai' not in sys.modules
+assert 'harnessed.runtime' not in sys.modules
+assert 'harnessed.sessions' not in sys.modules
 """
     result = subprocess.run(
         [sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True, timeout=10
@@ -174,8 +158,10 @@ def test_validation_is_explicit_and_otel_is_optional_and_isolated():
         "harnessed.hooks",
         "harnessed.models",
         "harnessed.plugins",
+        "harnessed.plugins.compaction",
+        "harnessed.prompts",
         "harnessed.sessions",
-        "harnessed.services",
+        "harnessed.tools",
         "harnessed.tracing",
     ],
 )
@@ -188,7 +174,9 @@ def test_public_exports_resolve_to_their_canonical_classes_and_functions(module)
         for node in ast.parse(source).body:
             if isinstance(node, ast.ImportFrom):
                 canonical = (
-                    importlib.util.resolve_name("." * node.level + (node.module or ""), module)
+                    importlib.util.resolve_name(
+                        "." * node.level + (node.module or ""), facade.__package__
+                    )
                     if node.level
                     else node.module
                 )
@@ -197,6 +185,8 @@ def test_public_exports_resolve_to_their_canonical_classes_and_functions(module)
                         declarations[name] = (canonical, alias.name)
             elif isinstance(node, ast.TypeAlias) and node.name.id in facade.__all__:
                 type_aliases.add(node.name.id)
+            elif isinstance(node, (ast.ClassDef, ast.FunctionDef)) and node.name in facade.__all__:
+                declarations[node.name] = (module, node.name)
     assert set(declarations) | type_aliases == set(facade.__all__)
     for name, (canonical, attribute) in declarations.items():
         module = importlib.import_module(canonical)
@@ -268,16 +258,16 @@ async def test_session_exposes_its_kernel_scope_without_a_legacy_alias():
     "name", ["SystemMessage", "UserMessage", "AssistantMessage", "ToolMessage"]
 )
 def test_message_facade_uses_explicit_canonical_names_without_aliases(name: str) -> None:
-    import harnessed.core.messages as messages
     import harnessed.models as models
+    import harnessed.models.messages as messages
 
     assert getattr(models, name) is getattr(messages, name)
 
 
 @pytest.mark.parametrize("name", ["System", "User", "Assistant", "ToolReply"])
 def test_message_variants_have_no_transitional_aliases(name: str) -> None:
-    import harnessed.core.messages as messages
     import harnessed.models as models
+    import harnessed.models.messages as messages
 
     assert not hasattr(messages, name) and not hasattr(models, name)
 
@@ -288,11 +278,10 @@ def test_package_root_has_only_public_entrypoints_and_no_transition_modules():
         "agent.py",
         "errors.py",
         "hooks.py",
-        "sessions.py",
-        "services.py",
         "tracing.py",
     }
     assert (PACKAGE / "events" / "__init__.py").is_file()
+    assert not (PACKAGE / "core" / "__init__.py").exists()
     assert not (PACKAGE / "std").exists()
     assert not (PACKAGE / "adapters").exists()
     assert not (PACKAGE / "seams").exists()

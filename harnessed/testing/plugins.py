@@ -2,8 +2,8 @@ from collections.abc import AsyncGenerator, Iterable
 from contextlib import asynccontextmanager
 from typing import cast
 
-from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import PluginBase, PluginLike, Scope
+from harnessed.tools import ToolRegistry
 
 
 @asynccontextmanager

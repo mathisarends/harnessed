@@ -4,10 +4,9 @@ import pytest
 from pydantic import BaseModel, field_validator
 
 from harnessed import Agent, Plugin, RunHandle, RunStream, SessionStatus, StopReason, tool
-from harnessed.core.messages import UserMessage
 from harnessed.events import ControlState, InboxAddedEvent, SessionControlChangedEvent
 from harnessed.hooks import PreStep, StepDecision
-from harnessed.models import ModelChunk
+from harnessed.models import ModelChunk, UserMessage
 from harnessed.testing import CallbackModel, ScriptedModel, call
 from tests._audit import Audit
 

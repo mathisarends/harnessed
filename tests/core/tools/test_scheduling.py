@@ -14,21 +14,21 @@ from harnessed import (
     plugin,
     tool,
 )
-from harnessed.core.events import (
+from harnessed.events import (
     ToolCallFinishedEvent,
     ToolCallRequestedEvent,
     ToolExecutionFinishedEvent,
     ToolProgressEvent,
 )
-from harnessed.core.hooks import ReviewToolResult
-from harnessed.core.messages import PolicyDecision, Role
-from harnessed.core.model import ModelChunk
-from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.tools import ToolRegistry
+from harnessed.events.codec import decode_event, encode_event
 from harnessed.kernel import hook
+from harnessed.models import ModelChunk
+from harnessed.models.messages import PolicyDecision, Role
 from harnessed.plugins import AgentLoop, Approvals
 from harnessed.plugins.filesystem import FileSystemBackend, FilesystemTools, LocalFileSystem
+from harnessed.runtime.hooks import ReviewToolResult
 from harnessed.testing import ScriptedModel
+from harnessed.tools import ToolRegistry
 from tests._audit import Audit, AuditProjection
 
 
@@ -262,7 +262,7 @@ async def test_global_parallel_limit_bounds_execution_and_can_force_serial_mode(
 
 
 async def test_tool_errors_and_denials_do_not_cancel_independent_calls():
-    from harnessed.core.hooks import ToolPolicy
+    from harnessed.runtime.hooks import ToolPolicy
 
     executed, reviewed = ([], [])
 
@@ -504,7 +504,7 @@ async def test_invalid_resource_resolver_is_a_bounded_tool_error():
 
 
 async def test_replaced_tool_registration_cannot_run_with_stale_parallel_metadata():
-    from harnessed.core.hooks import ToolPolicy
+    from harnessed.runtime.hooks import ToolPolicy
 
     executed = []
 

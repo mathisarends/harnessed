@@ -5,6 +5,26 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## Unreleased
+
+### Breaking changes
+
+- The `harnessed.services` module was removed. Import `SessionContext` from
+  `harnessed.sessions`, `SystemPromptStore` from `harnessed.prompts`, and
+  `SessionTools`, `ToolAvailability`, `ToolExplanation`, and `ToolRegistry` from
+  `harnessed.tools`. Import `CompactionContext`, `CompactionRequest`, `Summary`,
+  and `Summarizer` from `harnessed.plugins.compaction`.
+- Import `StreamEvent`, `StreamItem`, and `TurnResultEvent` from
+  `harnessed.events.stream`. Import `EventRegistry` from
+  `harnessed.events.registry`. Use `EventRegistry.kind(tag)` to look up a
+  registered class. The registry's `builtin_types` attribute is now internal.
+- Import `PydanticAIModel` from `harnessed.models.pydantic_ai`.
+  Provider-independent model and message types remain in `harnessed.models`.
+- The internal `harnessed.core` package was removed. Its modules now live with
+  their owning domains. Use the public import paths in the
+  [SDK reference](docs/reference/sdk.md) when updating consumers. Event tags and
+  persisted session formats retain their existing versions.
+
 ## 0.19.0 (2026-11-17)
 
 ### Added

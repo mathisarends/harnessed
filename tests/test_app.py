@@ -14,20 +14,19 @@ from harnessed import (
     ToolCall,
     tool,
 )
-from harnessed.core.events import (
+from harnessed.events import (
     CompactionAppliedEvent,
     PluginInstructionsChangedEvent,
     ToolPolicyAppliedEvent,
     TurnEndedEvent,
     TurnStartedEvent,
 )
-from harnessed.core.messages import PolicyDecision, ToolStatus
-from harnessed.core.model import ModelChunk
-from harnessed.core.prompt.plugin_instructions import PluginInstructions
-from harnessed.core.session.session import SessionLog
 from harnessed.kernel import PluginScope, needs
-from harnessed.models import Model
+from harnessed.models import Model, ModelChunk
+from harnessed.models.messages import PolicyDecision, ToolStatus
 from harnessed.plugins import Approvals, PromptRenderer, Service
+from harnessed.prompts.plugin_instructions import PluginInstructions
+from harnessed.sessions.log import SessionLog
 from harnessed.testing import ScriptedModel
 
 
@@ -176,7 +175,7 @@ async def test_denials_distinguish_policy_from_the_user_in_log_and_result(user_a
 
 
 async def test_feature_instruction_state_survives_compaction_without_creating_messages():
-    from harnessed.core.prompt.plugin_instructions import PluginInstructions
+    from harnessed.prompts.plugin_instructions import PluginInstructions
 
     session = SessionLog("context-compaction")
     values = PluginInstructions(session)

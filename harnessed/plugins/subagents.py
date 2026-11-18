@@ -4,27 +4,25 @@ from typing import Annotated
 
 from pydantic import Field
 
-from harnessed.core.child_status import ChildActivity as ChildActivity
-from harnessed.core.child_status import ChildReport as ChildReport
-from harnessed.core.child_status import ChildReportState as ChildReportState
-from harnessed.core.child_status import ChildRuntimeState as ChildRuntimeState
-from harnessed.core.children import ChildLimits
-from harnessed.core.children import ChildSessionFactory as ChildSessionFactory
-from harnessed.core.children import ChildSessionRequest as ChildSessionRequest
-from harnessed.core.children import ChildStatusReporter as ChildStatusReporter
-from harnessed.core.hooks import SessionAborting, SessionClosing
-from harnessed.core.messages import ToolResult
-from harnessed.core.plugin import Plugin, PluginConfig
-from harnessed.core.prompt.values import SystemPrompt
-from harnessed.core.runtime import (
-    ChildParent,
-    ChildSessionSupervisor,
-    SessionContext,
-    SessionControl,
-)
-from harnessed.core.session.children import ChildSession as ChildSession
-from harnessed.core.tools import ToolContext, tool
+from harnessed.events.child_status import ChildActivity as ChildActivity
+from harnessed.events.child_status import ChildReport as ChildReport
+from harnessed.events.child_status import ChildReportState as ChildReportState
+from harnessed.events.child_status import ChildRuntimeState as ChildRuntimeState
 from harnessed.kernel import Inject, PluginScope, needs
+from harnessed.models.messages import ToolResult
+from harnessed.prompts.values import SystemPrompt
+from harnessed.runtime.child_contracts import ChildLimits
+from harnessed.runtime.child_contracts import ChildSessionFactory as ChildSessionFactory
+from harnessed.runtime.child_contracts import ChildSessionRequest as ChildSessionRequest
+from harnessed.runtime.child_contracts import ChildStatusReporter as ChildStatusReporter
+from harnessed.runtime.child_execution import ChildParent
+from harnessed.runtime.children import ChildSessionSupervisor
+from harnessed.runtime.control import SessionControl
+from harnessed.runtime.hooks import SessionAborting, SessionClosing
+from harnessed.runtime.plugin import Plugin, PluginConfig
+from harnessed.sessions import SessionContext
+from harnessed.sessions.children import ChildSession as ChildSession
+from harnessed.tools import ToolContext, tool
 
 
 class SubagentsConfig(PluginConfig):

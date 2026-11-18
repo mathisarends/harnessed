@@ -17,7 +17,7 @@ from fastmcp.client.transports.base import SessionKwargs, TransportOptions
 from mcp import ClientSession
 from mcp.types import ServerNotification
 
-from harnessed.core.tools import ToolError
+from harnessed.tools import ToolError
 
 logger = logging.getLogger(__name__)
 

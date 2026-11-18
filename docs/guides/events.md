@@ -1,7 +1,8 @@
 # Typed events and extensions
 
-Import built-in event classes directly from `harnessed.events`. Every concrete
-built-in class has a full name ending in `Event`:
+Import domain event classes from `harnessed.events`. The terminal
+`TurnResultEvent` and typed stream unions live in `harnessed.events.stream`.
+Every concrete built-in class has a full name ending in `Event`.
 
 ```python
 from harnessed.events import (
@@ -38,7 +39,7 @@ not required.
 The log and UI stream consume the same event vocabulary. A `DurableEvent` is
 recorded in the log and may also be projected onto the stream. A `TransientEvent`
 is live only. Use the reference's *Durable* and *On stream* columns to choose
-notifications; all concrete classes remain in `harnessed.events`.
+notifications.
 
 For application tools, distinguish pending calls, human approval, and execution:
 
@@ -267,7 +268,8 @@ Pydantic supplies validation and schemas without requiring BaseModel events:
 
 ```python
 from pydantic import TypeAdapter
-from harnessed.events import LogEvent, StreamEvent
+from harnessed.events import LogEvent
+from harnessed.events.stream import StreamEvent
 
 type ProjectEvent = LogEvent | StreamEvent[str] | ProjectIndexed
 
@@ -285,7 +287,8 @@ Consumers can ignore unmatched event classes. Applications that use exhaustive
 matching or a closed JSON union must maintain that explicit list when adopting
 additional variants; an optional `case _: pass` does not change their schema.
 
-For durable JSON envelopes, `EventRegistry([ProjectIndexed])` provides `schema()`,
+For durable JSON envelopes, import `EventRegistry` from `harnessed.events.registry`.
+`EventRegistry([ProjectIndexed])` provides `schema()`,
 `encode(event)` and `decode(record)`. A live session exposes its complete catalog
 at `session.log.registry`. Use `context={"events": registry}` when decoding a
 Pydantic terminal result whose nested log contains application events.

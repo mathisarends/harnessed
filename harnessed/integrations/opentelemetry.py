@@ -16,25 +16,25 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.util.types import AttributeValue
 from pydantic import Field, JsonValue, SecretBytes
 
-from harnessed.core.events import (
+from harnessed.events import (
     AssistantMessageEvent,
     OutputValidatedEvent,
     TurnOutcome,
     UserMessageEvent,
 )
-from harnessed.core.messages import (
+from harnessed.kernel import HookInstrumentation, PluginScope
+from harnessed.models import ModelRequest, ModelUsage, StopReason
+from harnessed.models.messages import (
     AssistantMessage,
     Message,
     ToolCall,
     ToolResult,
     ToolStatus,
 )
-from harnessed.core.model import ModelRequest, ModelUsage, StopReason
-from harnessed.core.plugin import Plugin, PluginConfig
-from harnessed.core.runtime import StopAtBoundary
-from harnessed.core.session.turns import Turn
-from harnessed.core.tracing import HookTracing, Span, Tracer
-from harnessed.kernel import HookInstrumentation, PluginScope
+from harnessed.runtime.control import StopAtBoundary
+from harnessed.runtime.plugin import Plugin, PluginConfig
+from harnessed.runtime.tracing import HookTracing, Span, Tracer
+from harnessed.sessions.turns import Turn
 
 _correlation: ContextVar[dict[str, str | int] | None] = ContextVar(
     "harnessed_trace_scope", default=None

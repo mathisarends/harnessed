@@ -1,6 +1,6 @@
 import base64
 
-from harnessed.core.messages import ImageDetail, ImagePart
+from harnessed.models.messages import ImageDetail, ImagePart
 
 
 def inline(data: bytes, detail: ImageDetail = ImageDetail.AUTO) -> ImagePart:

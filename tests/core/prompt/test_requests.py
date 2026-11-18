@@ -1,12 +1,12 @@
 import pytest
 
 from harnessed import Agent, Plugin, tool
-from harnessed.core.model import OutputSchema
 from harnessed.hooks import Next, PrepareRequest
 from harnessed.kernel import PluginStatus, hook
 from harnessed.models import (
     GenerationSettings,
     ModelRequest,
+    OutputSchema,
     SystemMessage,
     ToolDefinition,
     UserMessage,

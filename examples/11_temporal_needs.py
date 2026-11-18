@@ -6,7 +6,8 @@ from typing import override
 
 from harnessed import Plugin, ToolCall, tool
 from harnessed.kernel import Emit, PluginScope, Scope, needs
-from harnessed.services import SystemPromptStore, ToolRegistry
+from harnessed.prompts import SystemPromptStore
+from harnessed.tools import ToolRegistry
 
 
 @dataclass

@@ -84,13 +84,13 @@ def test_offline_sdk_example_runs(module):
     assert result.stdout
 
 
-def test_examples_do_not_import_core():
+def test_examples_do_not_import_the_internal_runtime():
     root = Path(__file__).resolve().parents[1] / "examples"
     found = set()
     for path in root.rglob("*.py"):
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.ImportFrom) and (node.module or "").startswith(
-                "harnessed.core"
+                "harnessed.runtime"
             ):
                 found.update((node.module, alias.name) for alias in node.names)
     assert found == set()

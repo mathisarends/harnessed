@@ -1,12 +1,12 @@
 import pytest
 
 from harnessed import Agent, Plugin, PolicyDecision, ToolCall, tool
-from harnessed.core.tools import ToolRegistry
 from harnessed.events import PolicySource, ToolPolicyAppliedEvent
 from harnessed.hooks import ToolPolicy
 from harnessed.plugins import Approvals
-from harnessed.services import SessionContext
+from harnessed.sessions import SessionContext
 from harnessed.testing import ScriptedModel, call
+from harnessed.tools import ToolRegistry
 
 
 @pytest.mark.parametrize(

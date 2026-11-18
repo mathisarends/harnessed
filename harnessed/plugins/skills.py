@@ -18,10 +18,11 @@ from pydantic import (
     model_validator,
 )
 
-from harnessed.core.errors import ConfigError
-from harnessed.core.events import ToolCallFinishedEvent, ToolCallRequestedEvent
-from harnessed.core.hooks import PrepareRequest, SessionAppended
-from harnessed.core.messages import (
+from harnessed.errors import ConfigError
+from harnessed.events import ToolCallFinishedEvent, ToolCallRequestedEvent
+from harnessed.kernel import Key, Next, PluginScope, hook, needs
+from harnessed.models import ModelRequest
+from harnessed.models.messages import (
     AssistantMessage,
     ToolMessage,
     ToolStatus,
@@ -29,13 +30,12 @@ from harnessed.core.messages import (
     freeze,
     to_dict,
 )
-from harnessed.core.model import ModelRequest
-from harnessed.core.plugin import Plugin
-from harnessed.core.prompt.plugin_instructions import PluginInstructions
-from harnessed.core.prompt.values import Instructions, SystemPrompt
-from harnessed.core.session.session import SessionLog
-from harnessed.core.tools import ToolError, tool
-from harnessed.kernel import Key, Next, PluginScope, hook, needs
+from harnessed.prompts.plugin_instructions import PluginInstructions
+from harnessed.prompts.values import Instructions, SystemPrompt
+from harnessed.runtime.hooks import PrepareRequest, SessionAppended
+from harnessed.runtime.plugin import Plugin
+from harnessed.sessions.log import SessionLog
+from harnessed.tools import ToolError, tool
 
 
 def _skill_name(value: str) -> str:

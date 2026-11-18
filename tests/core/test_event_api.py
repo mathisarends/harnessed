@@ -1,22 +1,23 @@
 from importlib import import_module
-from typing import Annotated, get_args, get_origin
+from typing import Annotated, get_args
 
 import pytest
 from pydantic import Field, TypeAdapter
 
 from harnessed import Agent, Plugin, PolicyDecision, ToolCall, events, tool
-from harnessed.core.events import SESSION_EVENT_TYPES
-from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.events import (
     AssistantMessageEvent,
     DurableEvent,
     LogEvent,
     SessionEvent,
-    StreamEvent,
     ToolExecutionFinishedEvent,
     TransientEvent,
     TurnEndedEvent,
+    stream,
 )
+from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.registry import EventRegistry
+from harnessed.events.stream import StreamEvent, TurnResultEvent
 from harnessed.kernel import hook
 from harnessed.models import ModelChunk
 from harnessed.plugins import Approvals
@@ -44,35 +45,37 @@ def test_builtin_event_bases_describe_persistence(event_type: type) -> None:
 
 
 def test_public_event_exports_cover_every_builtin_with_one_canonical_class_name():
-    stream_types = {
-        get_origin(kind) or kind for kind in get_args(get_args(StreamEvent.__value__)[0])
-    }
-    kinds = set(SESSION_EVENT_TYPES.values()) | stream_types
+    kinds = builtin_event_types()
     assert kinds
     for kind in kinds:
         assert kind.__name__.endswith("Event")
-        assert getattr(events, kind.__name__) is kind
-        assert [name for name in events.__all__ if getattr(events, name) is kind] == [kind.__name__]
+        namespace = stream if kind is TurnResultEvent else events
+        assert getattr(namespace, kind.__name__) is kind
+        assert [name for name in vars(namespace) if getattr(namespace, name) is kind] == [
+            kind.__name__
+        ]
+
+
+def test_registry_recognizes_every_builtin_stream_and_log_event():
+    registry = EventRegistry()
+    kinds = builtin_event_types()
+    assert kinds
+    for kind in kinds:
+        assert registry.kind(default_tag(kind)) is kind
 
 
 @pytest.mark.parametrize(
     "namespace",
     [
         "approval",
-        "compaction",
         "context",
-        "inbox",
         "message",
-        "model",
-        "output",
         "reasoning",
         "rule",
-        "session",
         "spill",
         "step",
         "text",
         "tool",
-        "turn",
     ],
 )
 def test_short_name_event_namespaces_are_removed(namespace):
@@ -156,7 +159,7 @@ def test_namespaced_log_events_use_canonical_tags_only():
 
 
 def test_live_notifications_cannot_spoof_a_different_registered_discriminator():
-    registry = events.EventRegistry()
+    registry = EventRegistry()
     with pytest.raises(TypeError, match="registered"):
         registry.validate(events.TextDeltaEvent("message", "hello", type="reasoning.delta"))
 

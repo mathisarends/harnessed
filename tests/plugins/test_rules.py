@@ -2,21 +2,21 @@ import pytest
 
 from harnessed import Agent as Application
 from harnessed import Plugin, PolicyDecision, ToolCall, ToolResult, tool
-from harnessed.core.events import (
+from harnessed.errors import SessionFormatError
+from harnessed.events import (
     InboxAddedEvent,
     PluginInstructionsChangedEvent,
     ToolCallFinishedEvent,
 )
-from harnessed.core.messages import Role, ToolStatus
-from harnessed.core.model import ModelChunk
-from harnessed.core.prompt.plugin_instructions import PluginInstructions
-from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.session.session import SessionLog
-from harnessed.errors import SessionFormatError
+from harnessed.events.codec import decode_event, encode_event
 from harnessed.kernel import PluginStatus
+from harnessed.models import ModelChunk
+from harnessed.models.messages import Role, ToolStatus
 from harnessed.plugins import Approvals
 from harnessed.plugins.rules import RuleAction, Rules, RuleTriggeredEvent, when
 from harnessed.plugins.shell import ProcResult
+from harnessed.prompts.plugin_instructions import PluginInstructions
+from harnessed.sessions.log import SessionLog
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit, AuditProjection
 
@@ -223,11 +223,11 @@ async def test_size_predicate_and_missing_exit_code_and_tool_filters():
 
 
 async def test_process_return_values_are_normalized_with_exit_codes():
-    from harnessed.core.tools import ToolRegistry
     from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not a module.
         plugin,
     )
     from harnessed.plugins.shell import proc_result
+    from harnessed.tools import ToolRegistry
 
     @plugin(needs=[ToolRegistry])
     async def converters(scope):
@@ -268,9 +268,9 @@ def test_invalid_rule_options(kwargs):
 
 async def test_canonical_match_metadata_survives_output_limits_and_context_resets(tmp_path):
     from harnessed import Agent, Plugin
-    from harnessed.core.tools import tool
     from harnessed.plugins import ToolOutputLimit
     from harnessed.testing import ScriptedModel
+    from harnessed.tools import tool
 
     original = "original large output " * 10000
     source = [original]
@@ -333,7 +333,7 @@ def test_rule_option_constraints_reject_ambiguous_values(options):
 def test_rule_conditions_are_sync_and_must_return_booleans():
     from pydantic import ValidationError
 
-    from harnessed.core.tokens import ApproximateTokenCounter
+    from harnessed.runtime.tokens import ApproximateTokenCounter
 
     async def async_exit(code):
         return code != 0
@@ -354,11 +354,12 @@ def test_rule_conditions_are_sync_and_must_return_booleans():
 
 
 async def test_rule_and_observation_policies_mount_with_narrow_services_without_a_driver():
-    from harnessed.core.prompt.plugin_instructions import PluginInstructions
-    from harnessed.core.runtime import InboxWriter, SessionControl, SessionInbox
-    from harnessed.core.tokens import ApproximateTokenCounter, TokenCounter
     from harnessed.kernel import Scope
     from harnessed.plugins import LatestObservationOnly
+    from harnessed.prompts.plugin_instructions import PluginInstructions
+    from harnessed.runtime.control import SessionControl
+    from harnessed.runtime.inbox import InboxWriter, SessionInbox
+    from harnessed.runtime.tokens import ApproximateTokenCounter, TokenCounter
 
     async def unused_driver():
         pytest.fail("Mounting a policy started the driver")

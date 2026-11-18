@@ -1,5 +1,5 @@
-from harnessed.core.assets import AssetRef
-from harnessed.core.diagnostics import (
+from .assets import AssetRef
+from .diagnostics import (
     ModelAttemptFinished,
     ModelAttemptOutcome,
     ModelAttemptStarted,
@@ -11,7 +11,7 @@ from harnessed.core.diagnostics import (
     model_diagnostics,
     report_model_diagnostic,
 )
-from harnessed.core.messages import (
+from .messages import (
     AssistantMessage,
     ContentPart,
     ImagePart,
@@ -25,7 +25,7 @@ from harnessed.core.messages import (
     system,
     user,
 )
-from harnessed.core.model import (
+from .model import (
     GenerationSettings,
     Model,
     ModelChunk,
@@ -43,8 +43,6 @@ from harnessed.core.model import (
     ToolCallStart,
     ToolDefinition,
 )
-
-from .pydantic_ai import PydanticAIModel as PydanticAIModel
 
 __all__ = [
     "AssetRef",
@@ -70,7 +68,6 @@ __all__ = [
     "OutputMode",
     "OutputSchema",
     "ProviderState",
-    "PydanticAIModel",
     "RetryKind",
     "RetryReason",
     "StopReason",

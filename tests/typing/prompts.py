@@ -10,8 +10,8 @@ from harnessed import (
     Session,
     SystemPrompt,
 )
-from harnessed.core.prompt.values import PromptPart
 from harnessed.kernel import PluginScope
+from harnessed.prompts.values import PromptPart
 
 
 class PromptFeature(Plugin):

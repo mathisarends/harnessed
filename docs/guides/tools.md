@@ -302,7 +302,7 @@ parameter always belongs to the model. Plugin-owned service bindings normally us
 `session.tools.explain("lookup")` also inspects a registered tool hidden from that
 mapping. It returns a frozen `ToolExplanation` with `name`, `availability`,
 `definition` and `missing_services`. Import `ToolExplanation` and `ToolAvailability`
-from `harnessed.services`.
+from `harnessed.tools`.
 
 `ToolAvailability` distinguishes `AVAILABLE`, `MISSING_SERVICES`, `DISABLED` and
 `NOT_REGISTERED`. Missing required tool and enabled-predicate services are reported
@@ -730,7 +730,7 @@ the application `Session`. The context exposes `id`, `status`, `log`, `messages`
 `last(Event)`, `inbox`, `approvals`, `tools`, `observe()`, `append_message()` and
 `emit()`. It cannot start turns, mount plugins or close the session from inside
 its own loop. Plugins that need the same view outside a hook declare
-`SessionContext` from `harnessed.services` as a dependency; resolve other session
+`SessionContext` from `harnessed.sessions` as a dependency; resolve other session
 services through `Inject[T]`.
 
 Each dispatched event has its own result contract. A generic waterfall lets one

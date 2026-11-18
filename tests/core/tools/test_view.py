@@ -6,8 +6,8 @@ from harnessed import Agent, Plugin, PluginValidation, ToolContext, tool
 from harnessed.errors import PluginDependencyWarning
 from harnessed.kernel import Inject, InjectMarker, Key, PluginScope
 from harnessed.plugins import Service
-from harnessed.services import SessionTools, ToolAvailability
 from harnessed.testing import ScriptedModel
+from harnessed.tools import SessionTools, ToolAvailability
 
 
 class Switch:

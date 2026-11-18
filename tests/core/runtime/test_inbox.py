@@ -5,19 +5,18 @@ import pytest
 
 from harnessed import Agent as Application
 from harnessed import PolicyDecision
-from harnessed.core.events import (
+from harnessed.errors import SessionStateError
+from harnessed.events import (
     InboxAddedEvent,
     InboxMode,
     InboxRemovalReason,
     InboxRemovedEvent,
     UserMessageEvent,
 )
-from harnessed.core.messages import system, user
-from harnessed.core.model import ModelChunk
-from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.session.inbox import Inbox
-from harnessed.errors import SessionStateError
+from harnessed.events.codec import decode_event, encode_event
+from harnessed.models import ModelChunk, system, user
 from harnessed.plugins import Approvals
+from harnessed.sessions.inbox import Inbox
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit
 
@@ -129,7 +128,7 @@ async def test_steering_enters_the_running_turn_before_its_next_step():
 
 async def test_public_inbox_removal_discards_only_the_selected_queued_run():
     from harnessed import Agent, SessionStatus, StopReason
-    from harnessed.core.runtime import InboxKind
+    from harnessed.runtime.inbox import InboxKind
 
     async with Agent(model=ScriptedModel(["kept"])).session() as session:
         await session.pause()

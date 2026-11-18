@@ -2,9 +2,15 @@ from collections.abc import Hashable
 
 import pytest
 
-from harnessed.core.events import ModelRequestedEvent, ObservationRecordedEvent, TurnStartedEvent
-from harnessed.core.messages import AssistantMessage, ImagePart, TextPart, ToolCall, UserMessage
-from harnessed.core.model import ModelInfo, ModelRequest, ModelResponse, ModelUsage, ToolDefinition
+from harnessed.events import ModelRequestedEvent, ObservationRecordedEvent, TurnStartedEvent
+from harnessed.models import (
+    ModelInfo,
+    ModelRequest,
+    ModelResponse,
+    ModelUsage,
+    ToolDefinition,
+)
+from harnessed.models.messages import AssistantMessage, ImagePart, TextPart, ToolCall, UserMessage
 
 
 @pytest.mark.parametrize(

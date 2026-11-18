@@ -9,11 +9,9 @@ from pathlib import Path
 from pydantic import ConfigDict, Field, TypeAdapter, ValidationError
 from pydantic.dataclasses import dataclass
 
-from harnessed.core.errors import SessionFormatError, SessionWriteConflict
-from harnessed.core.session.checkpoint import SessionCheckpoint
-from harnessed.core.session.commit import SessionCommit
-from harnessed.core.session.store import StoredSession
+from harnessed.errors import SessionFormatError, SessionWriteConflict
 from harnessed.kernel import run_sync
+from harnessed.sessions import SessionCheckpoint, SessionCommit, StoredSession
 
 if os.name == "nt":
     import msvcrt

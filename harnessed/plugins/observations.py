@@ -1,9 +1,9 @@
 from typing import override
 
-from harnessed.core.events import ObservationPolicyAppliedEvent
-from harnessed.core.plugin import Plugin
-from harnessed.core.session.session import SessionLog
+from harnessed.events import ObservationPolicyAppliedEvent
 from harnessed.kernel import PluginScope, needs
+from harnessed.runtime.plugin import Plugin
+from harnessed.sessions.log import SessionLog
 
 
 class LatestObservationOnly(Plugin):

@@ -4,7 +4,6 @@ from contextlib import contextmanager
 
 import pytest
 
-from harnessed.core.plugin import Plugin
 from harnessed.kernel import (
     Bail,
     Emit,
@@ -18,6 +17,7 @@ from harnessed.kernel import (
     Waterfall,
     hook,
 )
+from harnessed.runtime.plugin import Plugin
 
 
 class Ping(Emit):

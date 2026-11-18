@@ -3,18 +3,13 @@ from pathlib import Path
 
 import pytest
 
-from harnessed.core.errors import SessionFormatError
-from harnessed.core.events import (
-    SESSION_EVENT_TYPES,
-    ModelRequestedEvent,
-    ToolCallRequestedEvent,
-    TurnStartedEvent,
-)
-from harnessed.core.events.registry import EventRegistry
-from harnessed.core.messages import ToolCall, UserMessage
-from harnessed.core.model import ModelRequest
-from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.models import ModelInfo
+from harnessed.errors import SessionFormatError
+from harnessed.events import ModelRequestedEvent, ToolCallRequestedEvent, TurnStartedEvent
+from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.registry import EventRegistry
+from harnessed.events.unions import SESSION_EVENT_TYPES
+from harnessed.models import ModelInfo, ModelRequest
+from harnessed.models.messages import ToolCall, UserMessage
 
 
 def test_canonical_tags_roundtrip_with_discriminated_schema():

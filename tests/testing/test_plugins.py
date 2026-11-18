@@ -9,10 +9,10 @@ from harnessed import (
     ToolCall,
     tool,
 )
-from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import PluginScope, PluginState, Scope, needs
 from harnessed.plugins import Service
 from harnessed.testing import mount_plugin
+from harnessed.tools import ToolRegistry
 
 
 class FeatureConfig(PluginConfig):

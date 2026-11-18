@@ -3,12 +3,12 @@ from collections.abc import Mapping
 import pytest
 
 from harnessed import Agent
-from harnessed.core.errors import ToolNameConflict
-from harnessed.core.messages import ToolCall, ToolResult
-from harnessed.core.model import ToolDefinition
-from harnessed.core.tools import ToolAvailability, ToolContext, ToolRegistry, ToolSpec
+from harnessed.errors import ToolNameConflict
 from harnessed.kernel import Scope
+from harnessed.models import ToolDefinition
+from harnessed.models.messages import ToolCall, ToolResult
 from harnessed.testing import ScriptedModel
+from harnessed.tools import ToolAvailability, ToolContext, ToolRegistry, ToolSpec
 
 
 async def test_external_registration_owns_definition_execution_and_planning():

@@ -5,8 +5,7 @@ import pytest
 from pydantic import BaseModel, TypeAdapter
 
 from harnessed import Agent, Plugin, PolicyDecision, Session, ToolCall, tool
-from harnessed.core.errors import ContextLengthExceeded, OutputValidationError, RateLimited
-from harnessed.core.session.codec import decode_event, encode_event
+from harnessed.errors import ContextLengthExceeded, OutputValidationError, RateLimited
 from harnessed.events import (
     ModelAttemptFinishedEvent,
     ModelAttemptOutcome,
@@ -17,8 +16,9 @@ from harnessed.events import (
     ModelRetryScheduledEvent,
     RetryKind,
     RetryReason,
-    StreamEvent,
 )
+from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.stream import StreamEvent
 from harnessed.models import (
     ModelAttemptFinished,
     ModelAttemptStarted,

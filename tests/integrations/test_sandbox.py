@@ -14,7 +14,6 @@ from harnessed import (
     ApprovalAnswer,
     ToolCall,
 )
-from harnessed.core.tools import ToolRegistry
 from harnessed.integrations.sandbox import (
     Sandbox,
     SandboxConfig,
@@ -33,6 +32,7 @@ from harnessed.plugins import Approvals, FilesystemTools, ShellTools
 from harnessed.plugins.filesystem import FileStat, FileSystemBackend, search_files
 from harnessed.plugins.shell import ProcResult, ShellBackend
 from harnessed.testing import ScriptedModel
+from harnessed.tools import ToolRegistry
 
 
 class MemoryServices:

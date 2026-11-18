@@ -7,8 +7,7 @@ from harnessed import (
     Agent as Application,
 )
 from harnessed import Plugin, PolicyDecision, ToolCall, ToolResult, tool
-from harnessed.core.compaction import ContextState, ModelSummarizer
-from harnessed.core.events import (
+from harnessed.events import (
     CompactionAppliedEvent,
     ModelUsageRecordedEvent,
     ObservationPolicyAppliedEvent,
@@ -18,15 +17,10 @@ from harnessed.core.events import (
     TurnStartedEvent,
     UserMessageEvent,
 )
-from harnessed.core.hooks import PreStep
-from harnessed.core.messages import AssistantMessage, ToolStatus, UserMessage
-from harnessed.core.model import ModelChunk, ModelUsage
-from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.session.files import SessionFiles
-from harnessed.core.session.session import SessionLog
-from harnessed.core.tokens import ApproximateTokenCounter
-from harnessed.core.tools import ToolError
+from harnessed.events.codec import decode_event, encode_event
 from harnessed.kernel import hook
+from harnessed.models import ModelChunk, ModelUsage
+from harnessed.models.messages import AssistantMessage, ToolStatus, UserMessage
 from harnessed.plugins import (
     AgentLoop,
     Approvals,
@@ -35,9 +29,15 @@ from harnessed.plugins import (
     at_ratio,
     every_turns,
 )
+from harnessed.plugins.compaction import CompactionContext, CompactionRequest, Summary
 from harnessed.plugins.spill import Spill, SpillStore
-from harnessed.services import CompactionContext, CompactionRequest, Summary
+from harnessed.runtime.compaction import ContextState, ModelSummarizer
+from harnessed.runtime.hooks import PreStep
+from harnessed.runtime.tokens import ApproximateTokenCounter
+from harnessed.sessions.files import SessionFiles
+from harnessed.sessions.log import SessionLog
 from harnessed.testing import ExtractiveSummarizer, ScriptedModel
+from harnessed.tools import ToolError
 from tests._audit import Audit, AuditProjection
 
 

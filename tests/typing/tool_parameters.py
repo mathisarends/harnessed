@@ -3,9 +3,9 @@ from typing import assert_type
 from pydantic import BaseModel, Field
 
 from harnessed import Plugin, tool
-from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import Inject
 from harnessed.testing import call
+from harnessed.tools import ToolRegistry
 
 
 class SearchParams(BaseModel):

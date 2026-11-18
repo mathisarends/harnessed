@@ -1,20 +1,27 @@
 import pytest
 
 from harnessed import Agent
-from harnessed.core.budget import ContextBudget
-from harnessed.core.errors import ConfigError
-from harnessed.core.events import MessageAppendedEvent
-from harnessed.core.messages import AssistantMessage, UserMessage
-from harnessed.core.model import ModelInfo, ModelRequest, ModelResponse, ModelUsage, StopReason
-from harnessed.core.plugin import Service
-from harnessed.core.tokens import CalibratedTokenCounter, TokenCounter
+from harnessed.errors import ConfigError
 from harnessed.events import (
     CompactionFinishedEvent,
     CompactionStartedEvent,
+    MessageAppendedEvent,
     ModelUsageRecordedEvent,
 )
+from harnessed.models import (
+    AssistantMessage,
+    ModelInfo,
+    ModelRequest,
+    ModelResponse,
+    ModelUsage,
+    StopReason,
+    UserMessage,
+)
 from harnessed.plugins import Compaction
-from harnessed.services import CompactionRequest, Summary
+from harnessed.plugins.compaction import CompactionRequest, Summary
+from harnessed.runtime.budget import ContextBudget
+from harnessed.runtime.plugin import Service
+from harnessed.runtime.tokens import CalibratedTokenCounter, TokenCounter
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit
 

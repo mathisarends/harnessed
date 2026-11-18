@@ -3,11 +3,11 @@ import asyncio
 import pytest
 
 from harnessed import Agent, Instructions, Plugin, SectionDelivery, SystemPrompt, tool
-from harnessed.core.events import PluginInstructionsChangedEvent
+from harnessed.events import PluginInstructionsChangedEvent
 from harnessed.hooks import PrepareRequest
 from harnessed.kernel import PluginScope, PluginStatus, needs
 from harnessed.models import ModelRequest
-from harnessed.services import SessionContext
+from harnessed.sessions import SessionContext
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit
 

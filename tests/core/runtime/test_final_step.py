@@ -4,7 +4,6 @@ import pytest
 from pydantic import BaseModel
 
 from harnessed import Agent, Plugin, StopReason, ToolCall, ToolStatus, tool
-from harnessed.core.model import ModelChunk, ModelInfo, ModelUsage, ToolDefinition
 from harnessed.errors import OutputUnavailable
 from harnessed.events import (
     ModelRequestedEvent,
@@ -14,6 +13,7 @@ from harnessed.events import (
 )
 from harnessed.hooks import PrepareRequest, PreStep, ToolPolicy, TurnStopping
 from harnessed.kernel import hook
+from harnessed.models import ModelChunk, ModelInfo, ModelUsage, ToolDefinition
 from harnessed.plugins import AgentLoop, FinalStepPolicy
 from harnessed.testing import ScriptedModel, call
 from tests._audit import Audit

@@ -7,12 +7,12 @@ from pydantic import PydanticSchemaGenerationError
 
 from harnessed import Agent as Application
 from harnessed import Plugin, PolicyDecision, Session, ToolCall, hook, plugin, tool
-from harnessed.core.prompt.system import SystemPromptStore
-from harnessed.core.runtime import RuntimeServices
-from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import Emit, PluginStatus, Scope, ScopeClosed
 from harnessed.plugins import Approvals
+from harnessed.prompts import SystemPromptStore
+from harnessed.runtime.services import RuntimeServices
 from harnessed.testing import ScriptedModel
+from harnessed.tools import ToolRegistry
 
 
 @dataclass

@@ -3,8 +3,8 @@
 import pytest
 
 from harnessed.agent import Agent
-from harnessed.core.prompt.values import SystemPrompt
 from harnessed.kernel import as_plugin_spec
+from harnessed.prompts.values import SystemPrompt
 
 from .models import ScriptedModel
 

@@ -2,8 +2,7 @@ import random
 
 import pytest
 
-from harnessed.core.approvals import ApprovalState
-from harnessed.core.events import (
+from harnessed.events import (
     ApprovalRequestedEvent,
     ApprovalResolvedEvent,
     ApprovalRevokedEvent,
@@ -19,17 +18,17 @@ from harnessed.core.events import (
     TurnStartedEvent,
     UserMessageEvent,
 )
-from harnessed.core.messages import (
+from harnessed.models import ModelInfo, ModelRequest
+from harnessed.models.messages import (
     ApprovalAnswer,
     AssistantMessage,
     ToolCall,
     UserMessage,
 )
-from harnessed.core.model import ModelRequest
-from harnessed.core.session.control import RunControl
-from harnessed.core.session.inbox import Inbox
-from harnessed.core.session.session import SessionLog, derive_messages, derive_requests
-from harnessed.models import ModelInfo
+from harnessed.runtime.approval_policy import ApprovalState
+from harnessed.sessions.control import RunControl
+from harnessed.sessions.inbox import Inbox
+from harnessed.sessions.log import SessionLog, derive_messages, derive_requests
 from tests._audit import derive_turns
 
 

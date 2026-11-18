@@ -6,19 +6,22 @@ from typing import Annotated
 from pydantic import AfterValidator, ConfigDict, Field
 from pydantic.dataclasses import dataclass
 
-from harnessed.core.compaction import (
+from harnessed.errors import ConfigError
+from harnessed.kernel import PluginScope
+from harnessed.models import Model
+from harnessed.models.pydantic_ai import PydanticAIModel
+from harnessed.runtime.compaction import (
+    CompactionContext,
     CompactionPolicy,
     CompactionPrompt,
+    CompactionRequest,
     CompactionSettings,
     ContextState,
     Summarizer,
+    Summary,
 )
-from harnessed.core.errors import ConfigError
-from harnessed.core.model import Model
-from harnessed.core.plugin import Plugin
-from harnessed.core.tokens import TokenCounter
-from harnessed.kernel import PluginScope
-from harnessed.models import PydanticAIModel
+from harnessed.runtime.plugin import Plugin
+from harnessed.runtime.tokens import TokenCounter
 
 _CONFIG = ConfigDict(strict=True, extra="forbid", allow_inf_nan=False, hide_input_in_errors=True)
 
@@ -125,3 +128,15 @@ class Compaction(Plugin[CompactionConfig], slot="compaction"):
                 self.config, self.config.trigger, self.summarizer, backend, self.prompt
             ),
         )
+
+
+__all__ = [
+    "Compaction",
+    "CompactionConfig",
+    "CompactionContext",
+    "CompactionRequest",
+    "Summarizer",
+    "Summary",
+    "at_ratio",
+    "every_turns",
+]

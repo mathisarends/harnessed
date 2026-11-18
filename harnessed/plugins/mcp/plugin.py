@@ -24,7 +24,9 @@ from pydantic import ValidationError as ModelValidationError
 from referencing import Registry
 from referencing.exceptions import NoSuchResource
 
-from harnessed.core.messages import (
+from harnessed.kernel import PluginScope, RegistrationState
+from harnessed.models import ToolDefinition
+from harnessed.models.messages import (
     ContentPart,
     ImagePart,
     TextPart,
@@ -32,9 +34,8 @@ from harnessed.core.messages import (
     ToolStatus,
     to_dict,
 )
-from harnessed.core.model import ToolDefinition
-from harnessed.core.plugin import Plugin, PluginConfig
-from harnessed.core.tools import (
+from harnessed.runtime.plugin import Plugin, PluginConfig
+from harnessed.tools import (
     ToolAnnotations,
     ToolContext,
     ToolError,
@@ -43,8 +44,7 @@ from harnessed.core.tools import (
     ToolRegistry,
     ToolSpec,
 )
-from harnessed.core.tools.enabled import BoundToolEnabled, ToolEnabled, bind_enabled
-from harnessed.kernel import PluginScope, RegistrationState
+from harnessed.tools.enabled import BoundToolEnabled, ToolEnabled, bind_enabled
 
 from .transport import HTTP, Connection, MCPTransport, Stdio
 

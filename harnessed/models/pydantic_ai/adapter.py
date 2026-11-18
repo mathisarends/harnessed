@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from types import TracebackType
 from typing import TYPE_CHECKING, Any, Self
 
-from harnessed.core.errors import ConfigError
-from harnessed.core.messages import to_dict
-from harnessed.core.model import (
+from harnessed.errors import ConfigError
+from harnessed.models.messages import to_dict
+from harnessed.models.model import (
     GenerationSettings,
     ModelChunk,
     ModelInfo,

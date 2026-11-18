@@ -3,9 +3,8 @@ from collections import deque
 from collections.abc import AsyncIterator, Callable, Iterable
 from contextlib import asynccontextmanager
 
-from harnessed.core.errors import HarnessedError
-from harnessed.core.messages import AssistantMessage, ToolCall
-from harnessed.core.model import (
+from harnessed.errors import HarnessedError
+from harnessed.models import (
     GenerationSettings,
     ModelChunk,
     ModelInfo,
@@ -14,7 +13,8 @@ from harnessed.core.model import (
     ModelUsage,
     StopReason,
 )
-from harnessed.core.tools.references import ToolSelector, call_arguments, tool_reference
+from harnessed.models.messages import AssistantMessage, ToolCall
+from harnessed.tools.references import ToolSelector, call_arguments, tool_reference
 
 
 class ScriptExhausted(HarnessedError, RuntimeError):

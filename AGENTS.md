@@ -28,11 +28,11 @@ The deliberate container rename to `Scope`/`ScopeClosed` is an accepted exceptio
 do not add compatibility aliases in the kernel or root facade.
 Kernel implementation modules may use sibling imports to avoid import cycles.
 
-Keep imports pointed at their owning layer. The target layers, from lowest to
-highest, are `kernel`, `core`, `plugins` / `models` / `integrations`, then
-`agent.py` and public facades. The standalone kernel uses only the standard
-library. Core may depend on kernel and Pydantic. Optional features depend on
-core, kernel and their own extras; features never import another plugin.
+Keep imports pointed at their owning layer. From lowest to highest, the layers
+are the standard-library-only `kernel`, model contracts and errors, the event
+vocabulary, the execution engine, optional features, and the application SDK.
+The engine includes `runtime`, `sessions`, `tools`, `prompts` and event stream
+and persistence modules. Features never import another plugin.
 Only `models/pydantic_ai/` imports PydanticAI; only `plugins/skills.py` imports
 YAML. Internal modules import their owning layer, not the root facade.
 
@@ -40,18 +40,15 @@ Follow `docs/reference/sdk.md`, the topic guides and the executable `smelt.yaml`
 policy. Its rationale lives in `docs/contributing/smelt.md`.
 Future scope belongs in `docs/contributing/roadmap.md`; those proposals are not
 implemented API contracts. Subagents use isolated, parent-owned child sessions
-through a core factory protocol. MCP and OTel are explicit optional integrations
+through a runtime factory protocol. MCP and OTel are explicit optional integrations
 with their own dependency extras.
-Do not restore `seams`,
-`adapters`, `app`, `llms` or `presets`, or add native provider clients. Prefer
-canonical `core.messages` / `core.model` imports inside the library. Outside
-`core.events`, `core.runtime` and `core.tools`, import their exported names
-through the package facade. A facade re-exports only members whose eager import
-adds no runtime cycle; the remaining modules and the cyclic `core.session` and
-`core.prompt` packages keep canonical submodule imports. Applications
-use the small root SDK, `harnessed.plugins`, `harnessed.models`, `harnessed.errors`
-and `harnessed.hooks`. Plugin service types are explicitly exported by
-`harnessed.services`; application tool inspection uses `session.tools`.
+Do not restore `core`, `services`, `seams`, `adapters`, `app`, `llms` or
+`presets`, or add native provider clients. Import exported model, event, session
+and tool types through their package facades. Import internal symbols from
+their canonical modules. Keep
+`harnessed.events.stream` and `harnessed.events.registry` explicit so the event
+vocabulary can load independently. Service types live with sessions, prompts,
+tools or the feature they extend. Applications inspect tools via `session.tools`.
 
 Ruff enforces the parent-relative import rule with `TID252` and
 `ban-relative-imports = "parents"`. Run `uv run ruff check .` before committing;
@@ -122,8 +119,8 @@ captures one `PreparedToolCall`; it must not silently follow replaced bindings.
 
 Use `Scope.register()` for owned registrations and `RegistrationState.active`
 for visibility; do not inspect private Scope state from higher layers. Public
-event classes use full names ending in `Event` and are exported directly from
-`harnessed.events`. Feature/model facades
+event classes use full names ending in `Event`. The domain vocabulary is
+exported by `harnessed.events` and stream completion by `harnessed.events.stream`. Feature/model facades
 use explicit re-exports; only the SDK root stays lazy to preserve kernel isolation,
 with its type stub checked against the runtime export table.
 

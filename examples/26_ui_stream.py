@@ -13,8 +13,8 @@ from harnessed.events import (
     ToolCallGenerationStartedEvent,
     ToolCallRequestedEvent,
     ToolProgressEvent,
-    TurnResultEvent,
 )
+from harnessed.events.stream import TurnResultEvent
 from harnessed.kernel import Inject
 from harnessed.models import ModelChunk, ToolCallDelta, ToolCallStart
 from harnessed.testing import ScriptedModel

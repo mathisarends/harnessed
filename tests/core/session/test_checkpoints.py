@@ -11,11 +11,11 @@ from harnessed.errors import SessionFormatError
 from harnessed.events import (
     ControlState,
     DurableEvent,
-    EventRegistry,
     SessionControlChangedEvent,
     TurnStartedEvent,
     UserMessageEvent,
 )
+from harnessed.events.registry import EventRegistry
 from harnessed.integrations.json import JsonSessionStore
 from harnessed.kernel import Inject
 from harnessed.models import UserMessage

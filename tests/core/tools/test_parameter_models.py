@@ -6,10 +6,10 @@ import pytest
 from pydantic import BaseModel, ConfigDict, Field, RootModel, ValidationError, model_validator
 
 from harnessed import Agent, Plugin, ToolCall, ToolContext, tool
-from harnessed.core.tools import ToolRegistry, ToolSpec
 from harnessed.kernel import Inject, Scope
 from harnessed.plugins import Service
 from harnessed.testing import ScriptedModel, call
+from harnessed.tools import ToolRegistry, ToolSpec
 
 
 class SearchParams(BaseModel):
@@ -242,7 +242,7 @@ def test_parameter_fields_cannot_be_combined_with_a_parameter_model():
 
 
 def test_external_tools_cannot_declare_a_python_parameter_model():
-    from harnessed.core.model import ToolDefinition
+    from harnessed.models import ToolDefinition
 
     async def handler(arguments, context):
         pytest.fail("Invalid external registration was invoked")

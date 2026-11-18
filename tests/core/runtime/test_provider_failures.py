@@ -3,9 +3,9 @@ from contextlib import asynccontextmanager
 import pytest
 
 from harnessed import Agent, SessionStatus
-from harnessed.core.errors import RateLimited
-from harnessed.core.events import TurnOutcome
-from harnessed.core.messages import UserMessage
+from harnessed.errors import RateLimited
+from harnessed.events import TurnOutcome
+from harnessed.models import UserMessage
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit
 

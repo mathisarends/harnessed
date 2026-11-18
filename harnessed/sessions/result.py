@@ -1,0 +1,193 @@
+from dataclasses import dataclass, field
+from typing import Annotated, Any, Literal
+
+from pydantic import PlainSerializer, PlainValidator, ValidationInfo, WithJsonSchema
+
+from harnessed.errors import OutputUnavailable
+from harnessed.events import (
+    AssistantMessageEvent,
+    CompactionAppliedEvent,
+    DurableEvent,
+    EventKind,
+    ModelUsageRecordedEvent,
+    OutputValidatedEvent,
+    OutputValidationFailedEvent,
+    ToolCallFinishedEvent,
+    ToolCallRequestedEvent,
+    TurnEndedEvent,
+    TurnOutcome,
+    TurnStartedEvent,
+)
+from harnessed.events.codec import CURRENT_VERSION, decode_event
+from harnessed.models.messages import (
+    Message,
+    ToolCall,
+    ToolResult,
+    to_dict,
+)
+from harnessed.models.model import ModelUsage, OutputSchema, StopReason, sum_usage
+from harnessed.runtime.outputs import OutputTypes, OutputValues
+
+from .history import derive_messages
+from .state import SessionState
+
+
+@dataclass(frozen=True)
+class _NoOutput:
+    type: Literal[EventKind.OUTPUT_UNAVAILABLE] = EventKind.OUTPUT_UNAVAILABLE
+
+
+_NO_OUTPUT = _NoOutput()
+
+
+def _result_event(value: Any, info: ValidationInfo) -> DurableEvent:
+    if isinstance(value, DurableEvent):
+        return value
+    if not isinstance(value, dict):
+        raise ValueError("Result events require tagged data")
+    body = dict(value)
+    tag = body.pop("type", None)
+    registry = info.context.get("events") if isinstance(info.context, dict) else None
+    return decode_event({"version": CURRENT_VERSION, "type": tag, "data": body}, registry=registry)
+
+
+type ResultEvent = Annotated[
+    DurableEvent,
+    PlainValidator(_result_event),
+    PlainSerializer(to_dict, when_used="json"),
+    WithJsonSchema(
+        {"type": "object", "required": ["type"], "properties": {"type": {"type": "string"}}}
+    ),
+]
+
+
+@dataclass(frozen=True)
+class RunResult[T]:
+    """The final answer and effects of one turn, including its typed output."""
+
+    __hash__ = None
+    text: str
+    events: tuple[ResultEvent, ...]
+    usage: Annotated[ModelUsage, PlainSerializer(to_dict, when_used="json")] = field(
+        default_factory=lambda: ModelUsage(0)
+    )
+    stop_reason: StopReason = StopReason.END
+    turn_id: str | None = None
+    messages: tuple[Message, ...] = ()
+    state: SessionState = field(default_factory=SessionState, kw_only=True)
+    _output: T | _NoOutput = field(default=_NO_OUTPUT, repr=False, kw_only=True)
+
+    @property
+    def completed(self) -> bool:
+        """Whether the turn ended with a final answer rather than a limit, stop or discard."""
+        return self.stop_reason is StopReason.END
+
+    @property
+    def output(self) -> T:
+        """Return the validated value; interrupted structured turns may have none."""
+        if isinstance(self._output, _NoOutput):
+            raise OutputUnavailable("This turn ended without a validated structured answer")
+        return self._output
+
+    def require_output(self) -> T:
+        """Return the output only after successful completion, or explain its absence.
+
+        Unstructured completed runs return None. Use text and stop_reason to
+        inspect partial answers without asserting successful completion.
+        """
+        if not self.completed or isinstance(self._output, _NoOutput):
+            raise OutputUnavailable(
+                f"Turn ended with {self.stop_reason.value}; a completed output is unavailable"
+            )
+        return self._output
+
+    @property
+    def tool_calls(self) -> tuple[tuple[ToolCall, ToolResult], ...]:
+        control_calls = {
+            e.call_id
+            for e in self.events
+            if isinstance(e, OutputValidatedEvent | OutputValidationFailedEvent)
+        }
+        calls = {
+            event.call.id: event.call
+            for event in self.events
+            if isinstance(event, ToolCallRequestedEvent) and event.call.id not in control_calls
+        }
+        return tuple(
+            (calls[event.call_id], event.result)
+            for event in self.events
+            if isinstance(event, ToolCallFinishedEvent) and event.call_id in calls
+        )
+
+
+def _result_from_events(
+    events: tuple[DurableEvent, ...], *, output: Any = None, state: SessionState | None = None
+) -> RunResult[Any]:
+    """Build a turn-scoped result, giving explicit termination precedence."""
+    final = next((e for e in reversed(events) if isinstance(e, AssistantMessageEvent)), None)
+    turn = next((e for e in events if isinstance(e, TurnEndedEvent)), None)
+    if turn is None:
+        reason = StopReason.DISCARDED
+    elif turn.reason != TurnOutcome.COMPLETED:
+        reason = (
+            StopReason.ABORTED
+            if turn.reason == TurnOutcome.INTERRUPTED
+            else StopReason(turn.reason)
+        )
+    else:
+        reason = final.stop_reason if final and final.stop_reason else StopReason.END
+        if reason == StopReason.TOOL_CALLS and any(
+            isinstance(e, OutputValidatedEvent)
+            and final is not None
+            and e.message_id == final.message.id
+            for e in events
+        ):
+            reason = StopReason.END
+    return RunResult(
+        final.message.text if final else "",
+        events,
+        sum_usage(e.usage for e in events if isinstance(e, ModelUsageRecordedEvent)),
+        reason,
+        turn.turn_id if turn else None,
+        derive_messages(
+            tuple(event for event in events if not isinstance(event, CompactionAppliedEvent))
+        ),
+        state=state if state is not None else SessionState(),
+        _output=output,
+    )
+
+
+class RunResults:
+    """Materialize turn answers using the application's registered output contracts."""
+
+    def __init__(self, outputs: OutputTypes, values: OutputValues) -> None:
+        self.outputs = outputs
+        self.values = values
+
+    def build(
+        self,
+        events: tuple[DurableEvent, ...],
+        *,
+        schema: OutputSchema | None = None,
+        state: SessionState | None = None,
+    ) -> RunResult[Any]:
+        start = next((e for e in events if isinstance(e, TurnStartedEvent)), None)
+        schema = start.output_schema if start is not None else schema
+        value = _NO_OUTPUT if schema is not None else None
+        final = next((e for e in reversed(events) if isinstance(e, AssistantMessageEvent)), None)
+        proof = next(
+            (
+                e
+                for e in reversed(events)
+                if isinstance(e, OutputValidatedEvent)
+                and final is not None
+                and e.message_id == final.message.id
+            ),
+            None,
+        )
+        if proof is not None and schema is not None:
+            if proof.id in self.values:
+                value = self.values.pop(proof.id)
+            else:
+                value, _ = self.outputs.resolve(schema).parse(dict(proof.data))
+        return _result_from_events(events, output=value, state=state)

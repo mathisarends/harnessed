@@ -10,18 +10,17 @@ from harnessed import (
     SessionStatus,
     hook,
 )
-from harnessed.core.compaction import ContextState
-from harnessed.core.errors import ConfigError, ContextLengthExceeded, SessionStateError
-from harnessed.core.events import (
+from harnessed.errors import ConfigError, ContextLengthExceeded, SessionStateError
+from harnessed.events import (
     CompactionAppliedEvent,
     CompactionStartedEvent,
     ModelRequestedEvent,
     ModelUsageRecordedEvent,
     TurnOutcome,
 )
-from harnessed.core.hooks import PrepareRequest
-from harnessed.core.messages import AssistantMessage, SystemMessage, ToolCall
-from harnessed.core.model import (
+from harnessed.events.codec import decode_event, encode_event
+from harnessed.models.messages import AssistantMessage, SystemMessage, ToolCall
+from harnessed.models.model import (
     Model,
     ModelChunk,
     ModelInfo,
@@ -30,11 +29,12 @@ from harnessed.core.model import (
     ModelUsage,
     UsagePurpose,
 )
-from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.tools import tool
 from harnessed.plugins import AgentLoop, Compaction, at_ratio, every_turns
-from harnessed.services import Summary
+from harnessed.plugins.compaction import Summary
+from harnessed.runtime.compaction import ContextState
+from harnessed.runtime.hooks import PrepareRequest
 from harnessed.testing import CallbackModel, ScriptedModel, reply
+from harnessed.tools import tool
 from tests._audit import Audit, AuditProjection
 
 

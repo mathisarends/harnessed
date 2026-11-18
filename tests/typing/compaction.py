@@ -12,7 +12,7 @@ from harnessed.plugins import (
     CompactionPrompt,
     ContextState,
 )
-from harnessed.services import CompactionContext, CompactionRequest, Summarizer, Summary
+from harnessed.plugins.compaction import CompactionContext, CompactionRequest, Summarizer, Summary
 
 
 class CustomSummarizer:

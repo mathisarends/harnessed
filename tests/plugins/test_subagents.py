@@ -14,11 +14,6 @@ from harnessed import (
     ToolContext,
     tool,
 )
-from harnessed.core.events import SubagentLinkedEvent
-from harnessed.core.messages import ToolStatus
-from harnessed.core.model import ModelChunk, ModelUsage
-from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.session.session import SessionLog
 from harnessed.errors import SessionWriteConflict
 from harnessed.events import (
     ApprovalNeededEvent,
@@ -26,15 +21,19 @@ from harnessed.events import (
     ApprovalStatus,
     SubagentApprovalRequestedEvent,
     SubagentFinishedEvent,
+    SubagentLinkedEvent,
     SubagentStartedEvent,
     SubagentStatus,
     ToolProgressEvent,
 )
+from harnessed.events.codec import decode_event, encode_event
 from harnessed.integrations.json import JsonSessionStore
 from harnessed.kernel import Inject, PluginScope
-from harnessed.models import UserMessage
+from harnessed.models import ModelChunk, ModelUsage, UserMessage
+from harnessed.models.messages import ToolStatus
 from harnessed.plugins import AgentLoop, Approvals, Subagents
 from harnessed.sessions import SessionCommit, StoredSession
+from harnessed.sessions.log import SessionLog
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit, AuditProjection
 from tests._checkpoints import checkpoint
@@ -462,7 +461,7 @@ async def test_configuration_and_link_validation():
     link = SubagentLinkedEvent("parent", "turn", "call", "review", 1, 1)
     assert decode_event(encode_event(link)) == link
     with pytest.raises(ValueError):
-        from harnessed.core.session.session import SessionLog
+        from harnessed.sessions.log import SessionLog
 
         await SessionLog("child").append(replace(link, depth=2))
 
@@ -670,9 +669,9 @@ async def test_repeated_cancellation_does_not_interrupt_child_cleanup():
 
 
 async def test_child_factory_rejects_existing_stored_conversation():
-    from harnessed.core.approvals import CallbackApprover
     from harnessed.errors import ConfigError
     from harnessed.plugins.subagents import ChildSessionRequest
+    from harnessed.runtime.approval_policy import CallbackApprover
 
     child = Agent(model=ScriptedModel(["Existing answer"]), store=RecordingStore())
     async with child.session(id="occupied") as session:

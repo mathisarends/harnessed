@@ -4,34 +4,34 @@ import pytest
 
 from harnessed import Agent as Application
 from harnessed import ApprovalAnswer, Plugin, ToolCall, ToolContext, tool
-from harnessed.core.approvals import (
+from harnessed.errors import ApprovalUnavailable
+from harnessed.events import (
+    ApprovalResolvedEvent,
+    ApprovalStatus,
+    ToolCallFinishedEvent,
+    ToolExecutionStartedEvent,
+)
+from harnessed.events.codec import decode_event, encode_event
+from harnessed.kernel import Inject, PluginStatus, hook
+from harnessed.models import ModelChunk
+from harnessed.models.messages import PolicyDecision, ToolStatus
+from harnessed.plugins import AgentLoop, Approvals, Service
+from harnessed.runtime.approval_policy import (
     ApprovalsConfig,
     ApprovalState,
     Approver,
     CallbackApprover,
     ToolApprovalGuard,
 )
-from harnessed.core.errors import ApprovalUnavailable
-from harnessed.core.events import (
-    ApprovalResolvedEvent,
-    ApprovalStatus,
-    ToolCallFinishedEvent,
-    ToolExecutionStartedEvent,
-)
-from harnessed.core.hooks import RequestApproval, ToolPolicy
-from harnessed.core.messages import PolicyDecision, ToolStatus
-from harnessed.core.model import ModelChunk
-from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.kernel import Inject, PluginStatus, hook
-from harnessed.plugins import AgentLoop, Approvals, Service
+from harnessed.runtime.hooks import RequestApproval, ToolPolicy
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit, AuditProjection
 
 
 async def test_removing_an_approver_never_removes_the_scoped_guard():
     from harnessed import Plugin, tool
-    from harnessed.core.approvals import CallbackApprover, ToolApprovalGuard
     from harnessed.plugins import Service
+    from harnessed.runtime.approval_policy import CallbackApprover, ToolApprovalGuard
     from harnessed.testing import call
 
     effects = []

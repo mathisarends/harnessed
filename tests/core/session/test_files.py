@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from harnessed.core.session.files import MemoryFiles
+from harnessed.sessions.files import MemoryFiles
 
 
 @pytest.fixture

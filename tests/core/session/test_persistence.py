@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel
 
-import harnessed.core.session.store as persistence_store
+import harnessed.sessions.store as persistence_store
 from harnessed import (
     Agent,
     ApprovalAnswer,
@@ -15,13 +15,13 @@ from harnessed import (
     ToolCall,
     tool,
 )
-from harnessed.core.messages import ImageReference, UserMessage
-from harnessed.core.prompt.plugin_instructions import PluginInstructions
 from harnessed.errors import ConfigError, SessionClosed, SessionFormatError, SessionWriteConflict
 from harnessed.events import ApprovalRequestedEvent, MessageAppendedEvent
 from harnessed.integrations.json import JsonSessionStore
+from harnessed.models import ImageReference, UserMessage
 from harnessed.plugins import Spill
 from harnessed.plugins.spill import SpillStore
+from harnessed.prompts.plugin_instructions import PluginInstructions
 from harnessed.sessions import SessionCheckpoint, SessionCommit, SessionStore, StoredSession
 from harnessed.testing import ScriptedModel, call
 
