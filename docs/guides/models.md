@@ -36,7 +36,8 @@ Choose the configuration form that fits your application:
 | Configure generation defaults or adapter options | `PydanticAIModel("provider:model", settings=GenerationSettings(...))` |
 | Configure a native provider or client | `PydanticAIModel(native_model)` |
 
-Import `PydanticAIModel` and `GenerationSettings` from `harnessed.models` when
+Import `PydanticAIModel` from `harnessed.models.pydantic_ai` and
+`GenerationSettings` from `harnessed.models` when
 you need them. `Agent` also accepts an object implementing the structural
 `harnessed.models.Model` contract for custom integrations and test models.
 
@@ -59,7 +60,8 @@ Configure immutable defaults on the model with `GenerationSettings`:
 
 ```python
 from harnessed import Agent
-from harnessed.models import GenerationSettings, PydanticAIModel
+from harnessed.models import GenerationSettings
+from harnessed.models.pydantic_ai import PydanticAIModel
 
 model = PydanticAIModel(
     "anthropic:claude-sonnet-5-5",
@@ -135,7 +137,7 @@ from pydantic_ai.models.openai import OpenAIResponsesModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from harnessed import Agent
-from harnessed.models import PydanticAIModel
+from harnessed.models.pydantic_ai import PydanticAIModel
 
 native_model = OpenAIResponsesModel(
     "gpt-6.1-terra",
@@ -158,7 +160,7 @@ execution. Pass PydanticAI's native tool objects to the adapter:
 ```python
 from pydantic_ai.native_tools import WebSearchTool
 
-from harnessed.models import PydanticAIModel
+from harnessed.models.pydantic_ai import PydanticAIModel
 
 model = PydanticAIModel("anthropic:claude-sonnet-5-5", native_tools=[WebSearchTool()])
 ```

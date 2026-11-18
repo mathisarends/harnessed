@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from harnessed.core.messages import ToolCall, ToolResult, freeze
+from harnessed.models.messages import ToolCall, ToolResult, freeze
 
 if TYPE_CHECKING:
-    from harnessed.core.result import RunResult
+    from harnessed.sessions.result import RunResult
 
 
 def assert_tool_called(result: RunResult, name: str, /, **arguments) -> tuple[ToolCall, ToolResult]:

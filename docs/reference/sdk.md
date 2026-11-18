@@ -136,14 +136,13 @@ itself yields names. Missing, disabled or inactive tools raise `KeyError` on
 lookup. Existing views reflect activation, removal and replacement, using the
 same visibility rules as model requests. Register tools through plugins.
 
-Plugin authors import `SessionContext`, `SystemPromptStore`
-and `ToolRegistry` from `harnessed.services`. `SessionContext` is the in-loop
+Plugin authors import `SessionContext` from `harnessed.sessions`,
+`SystemPromptStore` from `harnessed.prompts` and `ToolRegistry` from
+`harnessed.tools`. `SessionContext` is the in-loop
 session view carried by runtime hook events as `event.session`; it reads state,
 appends messages, records observations, emits events and requests approvals, but cannot run, mount or close.
 It is the only session service in a plugin scope; the application `Session` is
-not injectable, and applications obtain the same view from `session.plugin_context`. `SessionTools` is also exported there for annotations.
-These explicit service exports keep plugin code off deep internal import paths;
-the root SDK remains lazy and does not re-export the service catalog.
+not injectable, and applications obtain the same view from `session.plugin_context`. Use `harnessed.tools.SessionTools` when annotating the read-only tool view.
 
 Third-party decorators attach a `Registration` using
 `harnessed.kernel.registration(recipe)(callback)`. This preserves the callback's
@@ -338,8 +337,8 @@ and cannot be mounted with `session.use()`.
 See [library defaults](../guides/plugins.md#publish-library-defaults-with-pluginpack).
 
 Start with `Agent(model="openai-responses:gpt-6.1-terra")` to select a model.
-Provider strings automatically select the PydanticAI adapter. Use an explicit
-`PydanticAIModel` for generation defaults or adapter options; wrap a native
+Provider strings automatically select the PydanticAI adapter. Use `PydanticAIModel` from `harnessed.models.pydantic_ai` for generation defaults
+or adapter options; wrap a native
 PydanticAI model when configuring its provider or client. See
 [model configuration](../guides/models.md#choose-a-model).
 
@@ -595,7 +594,7 @@ Higher-level `Plugin.setup()` and `teardown()` require service fields instead of
 `Inject` parameters; standalone kernel lifecycle injection remains available.
 `session.tools.explain(name)` returns a frozen `ToolExplanation` distinguishing
 available, missing-service, disabled and not-registered states through
-`ToolAvailability`. Both types are exported by `harnessed.services`; the existing
+`ToolAvailability`. Both types are exported by `harnessed.tools`; the existing
 tool mapping continues to contain only model-visible definitions.
 Model-filled parameters become a strict Pydantic form; unknown fields and invalid
 values fail before invocation. `@tool(params=MyParams)` uses a Pydantic `BaseModel`
@@ -646,18 +645,18 @@ compaction requests bypass this hook. See
 
 `harnessed.events` exposes `TextDeltaEvent`, `ReasoningDeltaEvent`, `ToolCallRequestedEvent`,
 `ToolCallGenerationStartedEvent`, `ToolArgumentsDeltaEvent`, `ToolCallFinishedEvent`, `ApprovalNeededEvent`,
-`TurnResultEvent`, `CompactionAppliedEvent` and `SpillCreatedEvent`, among other
+`CompactionAppliedEvent` and `SpillCreatedEvent`, among other
 classes. Import these full names directly; they are the canonical class names,
 also used by `@hook`. `TurnEndedEvent` is the durable turn-end record;
-`TurnResultEvent[T]` carries the assembled result at the end of a UI stream.
+`TurnResultEvent[T]` from `harnessed.events.stream` carries the assembled result at the end of a UI stream.
 Every event has an explicit namespaced `type` discriminator.
 See [events and schemas](../guides/events.md).
 The [event reference](events.md) lists every built-in event, its discriminator
 and whether it is part of the UI stream or only the durable audit log.
 
-`StreamEvent[T]` describes the built-in UI union. `StreamItem[T]` includes the
+From `harnessed.events.stream`, `StreamEvent[T]` describes the built-in UI union and `StreamItem[T]` includes the
 application extension bases. Declare frozen dataclasses extending `DurableEvent`
-or `TransientEvent` and list them on `Plugin.events`. EventRegistry supplies
+or `TransientEvent` and list them on `Plugin.events`. `EventRegistry` from `harnessed.events.registry` supplies
 session-local validation, durable schemas and encode/decode operations.
 
 ### Stored images
@@ -723,7 +722,7 @@ Reuse the same immutable state for independent continuations. See
 | `max_summary_tokens` | `None` | Positive strict summary-text ceiling, measured by the session counter. |
 
 `CompactionPrompt` and `DEFAULT_COMPACTION_PROMPT` are exported by `harnessed.plugins`.
-`harnessed.services` exports frozen `CompactionContext`, `CompactionRequest`,
+`harnessed.plugins.compaction` exports frozen `CompactionContext`, `CompactionRequest`,
 `Summary` and the structural `Summarizer` protocol:
 
 ```python

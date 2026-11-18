@@ -8,10 +8,10 @@ from typing import Annotated, Protocol
 
 from pydantic import Field
 
-from harnessed.core.plugin import Plugin, PluginConfig
-from harnessed.core.prompt.values import Instructions, SystemPrompt
-from harnessed.core.tools import ToolError, ToolRegistry, tool
 from harnessed.kernel import Inject, PluginScope, run_sync
+from harnessed.prompts.values import Instructions, SystemPrompt
+from harnessed.runtime.plugin import Plugin, PluginConfig
+from harnessed.tools import ToolError, ToolRegistry, tool
 
 
 @dataclass(frozen=True, slots=True)

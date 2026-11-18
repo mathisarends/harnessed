@@ -8,15 +8,16 @@ from pathlib import Path
 import pytest
 
 from harnessed import Agent, Plugin, SessionState, tool
-from harnessed.core.errors import SessionClosed, SessionFormatError, SessionStateError
-from harnessed.core.messages import ImageReference, UserMessage
-from harnessed.core.prompt.plugin_instructions import PluginInstructions
-from harnessed.core.session.session import SessionLog
-from harnessed.events import TurnEndedEvent, TurnResultEvent, TurnStartedEvent
+from harnessed.errors import SessionClosed, SessionFormatError, SessionStateError
+from harnessed.events import TurnEndedEvent, TurnStartedEvent
+from harnessed.events.stream import TurnResultEvent
 from harnessed.kernel import PluginScope, Scope, needs
+from harnessed.models import ImageReference, UserMessage
 from harnessed.plugins import Compaction, LatestObservationOnly, Spill, every_turns
 from harnessed.plugins.spill import SpillStore
-from harnessed.services import SessionContext
+from harnessed.prompts.plugin_instructions import PluginInstructions
+from harnessed.sessions import SessionContext
+from harnessed.sessions.log import SessionLog
 from harnessed.testing import ExtractiveSummarizer, ScriptedModel, call
 
 

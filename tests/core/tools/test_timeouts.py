@@ -4,8 +4,8 @@ import pytest
 from pydantic import ValidationError
 
 from harnessed import Plugin, ToolCall, ToolStatus, tool
-from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import PluginScope, Scope, needs
+from harnessed.tools import ToolRegistry
 
 
 async def test_timeout_resolves_after_setup_once_per_activation() -> None:

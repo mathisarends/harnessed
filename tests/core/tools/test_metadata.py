@@ -4,12 +4,12 @@ from dataclasses import FrozenInstanceError, dataclass
 import pytest
 
 from harnessed import Agent, Plugin, ToolCall, ToolContext, ToolInfo, ToolMetadata, ToolResult, tool
-from harnessed.core.model import ToolDefinition
-from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.tools import ToolRegistry, ToolSpec
+from harnessed.events.codec import decode_event, encode_event
 from harnessed.hooks import ExecuteTool, ReviewToolResult, ToolPolicy
 from harnessed.kernel import hook
+from harnessed.models import ToolDefinition
 from harnessed.testing import ScriptedModel, call
+from harnessed.tools import ToolRegistry, ToolSpec
 
 
 @dataclass(frozen=True)

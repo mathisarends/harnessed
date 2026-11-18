@@ -8,11 +8,11 @@ from harnessed import (
     Agent,
     ToolCall,
 )
-from harnessed.core.messages import ToolStatus
-from harnessed.core.model import ModelChunk
-from harnessed.core.tools import ToolError, ToolRegistry
+from harnessed.models import ModelChunk
+from harnessed.models.messages import ToolStatus
 from harnessed.plugins.filesystem import Filesystem, LocalFileSystem
 from harnessed.testing import ScriptedModel
+from harnessed.tools import ToolError, ToolRegistry
 
 
 async def test_binary_reads_preserve_bytes_and_apply_byte_limits(tmp_path):

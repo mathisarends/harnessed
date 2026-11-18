@@ -6,14 +6,14 @@ from dataclasses import replace
 
 import pytest
 
-from harnessed.core.messages import (
+from harnessed.models import GenerationSettings
+from harnessed.models.messages import (
     AssistantMessage,
     ImageDetail,
     ToolCall,
     ToolMessage,
     UserMessage,
 )
-from harnessed.models import GenerationSettings
 from tests._audit import Audit, AuditProjection
 
 pytest.importorskip("pydantic_ai")
@@ -27,7 +27,7 @@ from harnessed import (
     Plugin,
     events,
 )
-from harnessed.core.errors import (
+from harnessed.errors import (
     AuthError,
     ConfigError,
     ContextBudgetExceeded,
@@ -35,13 +35,12 @@ from harnessed.core.errors import (
     ProviderUnavailable,
     RateLimited,
 )
-from harnessed.core.events import ModelUsageRecordedEvent
-from harnessed.core.messages import ImagePart, TextPart
-from harnessed.core.model import ModelRequest, StopReason, ToolArgumentsMode
-from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.core.tools import tool
-from harnessed.models import PydanticAIModel
+from harnessed.events import ModelUsageRecordedEvent
+from harnessed.events.codec import decode_event, encode_event
+from harnessed.models import ImagePart, ModelRequest, StopReason, TextPart, ToolArgumentsMode
+from harnessed.models.pydantic_ai import PydanticAIModel
 from harnessed.plugins import AgentLoop
+from harnessed.tools import tool
 
 
 def _stream_model(monkeypatch: pytest.MonkeyPatch, stream: object) -> PydanticAIModel:

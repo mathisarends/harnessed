@@ -1,10 +1,10 @@
 import pytest
 
-from harnessed.core.errors import ToolNameConflict
-from harnessed.core.messages import ToolCall
-from harnessed.core.prompt.system import SystemPromptStore
-from harnessed.core.tools import ToolError, ToolRegistry
+from harnessed.errors import ToolNameConflict
 from harnessed.kernel import Scope
+from harnessed.models.messages import ToolCall
+from harnessed.prompts import SystemPromptStore
+from harnessed.tools import ToolError, ToolRegistry
 
 
 async def test_explicit_owner_controls_tool_and_prompt_lifetime():

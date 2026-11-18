@@ -8,10 +8,10 @@ import pytest
 from pydantic import BaseModel, ConfigDict, Field
 
 from harnessed import Agent, Inject, Plugin, ToolCall, tool
-from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import Scope
 from harnessed.plugins import Service
 from harnessed.testing import ScriptedModel
+from harnessed.tools import ToolRegistry
 
 
 class Priority(StrEnum):

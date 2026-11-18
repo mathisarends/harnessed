@@ -1,9 +1,8 @@
 import pytest
 
 from harnessed import Agent, Plugin, tool
-from harnessed.core.compaction import CompactionManager, CompactionPolicy, CompactionSettings
-from harnessed.core.errors import ContextLengthExceeded
-from harnessed.core.events import (
+from harnessed.errors import ContextLengthExceeded
+from harnessed.events import (
     AssistantMessageEvent,
     CompactionAppliedEvent,
     MessageAppendedEvent,
@@ -16,7 +15,9 @@ from harnessed.core.events import (
     TurnStartedEvent,
     UserMessageEvent,
 )
-from harnessed.core.messages import (
+from harnessed.kernel import Scope
+from harnessed.models import ModelChunk, ModelInfo, ModelRequest, ModelResponse, ProviderState
+from harnessed.models.messages import (
     AssistantMessage,
     Message,
     SystemMessage,
@@ -25,14 +26,12 @@ from harnessed.core.messages import (
     ToolResult,
     UserMessage,
 )
-from harnessed.core.model import ModelChunk, ModelRequest, ModelResponse
-from harnessed.core.session.session import SessionLog
-from harnessed.core.session.state import SessionState
-from harnessed.core.tokens import ApproximateTokenCounter, TokenCounter
-from harnessed.kernel import Scope
-from harnessed.models import ModelInfo, ProviderState
 from harnessed.plugins import AgentLoop, Compaction
-from harnessed.services import Summary
+from harnessed.plugins.compaction import Summary
+from harnessed.runtime.compaction import CompactionManager, CompactionPolicy, CompactionSettings
+from harnessed.runtime.tokens import ApproximateTokenCounter, TokenCounter
+from harnessed.sessions import SessionState
+from harnessed.sessions.log import SessionLog
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit
 

@@ -8,9 +8,9 @@ from harnessed import (
     PluginPackPromptPolicy,
     ResolvedPluginPack,
 )
-from harnessed.core.composition import PluginDescription, PluginInput, PluginRemoval
 from harnessed.kernel import PluginLike, Scope, plugin
 from harnessed.plugins import AgentLoop
+from harnessed.runtime.composition import PluginDescription, PluginInput, PluginRemoval
 
 
 class OptionalFeature(Plugin):

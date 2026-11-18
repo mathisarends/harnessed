@@ -29,12 +29,12 @@ from starlette.routing import Route
 import harnessed.plugins.mcp.transport as mcp_transport
 from harnessed import Agent, ToolCall
 from harnessed import ToolAnnotations as LocalToolAnnotations
-from harnessed.core.messages import ToolStatus
-from harnessed.core.model import ModelChunk
-from harnessed.core.tools import ToolRegistry
 from harnessed.events import ToolProgressEvent
+from harnessed.models import ModelChunk
+from harnessed.models.messages import ToolStatus
 from harnessed.plugins.mcp import MCP
 from harnessed.testing import ScriptedModel
+from harnessed.tools import ToolRegistry
 
 
 @pytest.fixture(autouse=True)

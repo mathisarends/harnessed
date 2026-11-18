@@ -1,4 +1,5 @@
-from harnessed.core.hooks import (
+from harnessed.kernel import Priority
+from harnessed.runtime.hooks import (
     ExecuteTool,
     Next,
     OutputDecision,
@@ -15,7 +16,6 @@ from harnessed.core.hooks import (
     ToolPolicy,
     TurnStopping,
 )
-from harnessed.kernel import Priority
 
 __all__ = [
     "ExecuteTool",

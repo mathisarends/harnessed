@@ -6,16 +6,19 @@ import pytest
 from pydantic import BaseModel, field_validator
 
 from harnessed import Agent, Plugin, StopReason, ToolCall, tool
-from harnessed.core.errors import ConfigError, OutputUnavailable, OutputValidationError
-from harnessed.core.events import (
+from harnessed.errors import ConfigError, OutputUnavailable, OutputValidationError
+from harnessed.events import (
     OutputValidatedEvent,
     OutputValidationFailedEvent,
     TurnEndedEvent,
     TurnOutcome,
 )
-from harnessed.core.hooks import PrepareRequest, ToolPolicy
-from harnessed.core.messages import AssistantMessage, PolicyDecision
-from harnessed.core.model import (
+from harnessed.events.codec import decode_event, encode_event
+from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not a module.
+    Scope,
+    plugin,
+)
+from harnessed.models import (
     Model,
     ModelChunk,
     ModelInfo,
@@ -23,13 +26,10 @@ from harnessed.core.model import (
     ModelResponse,
     OutputMode,
 )
-from harnessed.core.outputs import OutputContract, OutputTypes
-from harnessed.core.runtime import AgentLoop
-from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not a module.
-    Scope,
-    plugin,
-)
+from harnessed.models.messages import AssistantMessage, PolicyDecision
+from harnessed.runtime.agent_loop import AgentLoop
+from harnessed.runtime.hooks import PrepareRequest, ToolPolicy
+from harnessed.runtime.outputs import OutputContract, OutputTypes
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit
 

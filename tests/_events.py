@@ -2,7 +2,8 @@ import re
 from dataclasses import fields
 from typing import get_args, get_origin
 
-from harnessed.events import LogEvent, StreamEvent
+from harnessed.events import LogEvent
+from harnessed.events.stream import StreamEvent
 
 
 def builtin_event_types() -> tuple[type, ...]:

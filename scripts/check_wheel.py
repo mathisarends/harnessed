@@ -24,12 +24,15 @@ from harnessed import (
     SystemPrompt, Instructions, tool,
 )
 from harnessed.models import ModelRequest, UserMessage
-from harnessed.events import TextDeltaEvent, TurnResultEvent
+from harnessed.events import TextDeltaEvent
+from harnessed.events.stream import TurnResultEvent
 from harnessed.plugins import Service, Skill, Skills
 from harnessed.integrations.json import JsonSessionStore
 from harnessed.integrations.sandbox.bundle import worker_source
-from harnessed.sessions import StoredSession
+from harnessed.prompts import SystemPromptStore
+from harnessed.sessions import SessionContext, StoredSession
 from harnessed.testing import ScriptedModel, call, reply, assert_tool_called, mount_plugin
+from harnessed.tools import SessionTools, ToolRegistry
 from pydantic import BaseModel
 from tempfile import TemporaryDirectory
 import harnessed
@@ -56,6 +59,9 @@ assert not requirements & {
     'mkdocs', 'prek', 'pytest', 'pytest-asyncio', 'ruff', 'smelt-cli', 'twine', 'ty',
 }
 assert not any(str(file).startswith(('docs/', 'build/', 'site/')) for file in installed.files or ())
+package_files = {str(file) for file in installed.files or ()}
+assert not package_files & {'harnessed/services.py', 'harnessed/sessions.py'}
+assert not any(file.startswith('harnessed/core/') for file in package_files)
 
 with TemporaryDirectory(prefix='harnessed-installed-worker-') as directory:
     worker = subprocess.run(
@@ -164,6 +170,10 @@ async def main():
                       Instructions(title='Role', text='Fixed instructions.'),
                       format=PromptFormat.MARKDOWN))
     async with agent.session() as session:
+        assert isinstance(session.plugin_context, SessionContext)
+        assert isinstance(session.tools, SessionTools)
+        assert isinstance(session.scope[SystemPromptStore], SystemPromptStore)
+        assert isinstance(session.scope[ToolRegistry], ToolRegistry)
         result = await session.run('Add')
         assert result.text == '42'
         assert assert_tool_called(result, 'add', a=19, b=23)[1].content == '42'

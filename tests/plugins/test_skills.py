@@ -10,13 +10,13 @@ from harnessed import (
     SystemPrompt,
     ToolCall,
 )
-from harnessed.core.errors import ConfigError
-from harnessed.core.messages import ToolStatus
-from harnessed.core.prompt.plugin_instructions import PluginInstructions
-from harnessed.core.tools import ToolRegistry
+from harnessed.errors import ConfigError
+from harnessed.models.messages import ToolStatus
 from harnessed.plugins import Compaction, Rules, Skill, Skills, Spill, ToolOutputLimit, when
 from harnessed.plugins.skills import SkillCatalog
+from harnessed.prompts.plugin_instructions import PluginInstructions
 from harnessed.testing import ExtractiveSummarizer, ScriptedModel, call
+from harnessed.tools import ToolRegistry
 
 
 def folder(

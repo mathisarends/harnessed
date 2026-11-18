@@ -8,9 +8,11 @@ from pydantic import TypeAdapter, ValidationError
 from pydantic.errors import PydanticInvalidForJsonSchema
 
 from harnessed import Agent, Plugin, ToolContext, events, tool
-from harnessed.core.errors import SessionFormatError
-from harnessed.core.result import RunResult
+from harnessed.errors import SessionFormatError
+from harnessed.events.registry import EventRegistry
+from harnessed.events.stream import StreamEvent, TurnResultEvent
 from harnessed.kernel import Inject
+from harnessed.sessions.result import RunResult
 from harnessed.testing import ScriptedModel, call
 from tests._audit import Audit
 
@@ -82,7 +84,7 @@ async def test_event_catalogs_are_isolated_between_configurations():
 
 
 def test_custom_event_schema_is_strict_and_registry_rejects_collisions_atomically():
-    registry = events.EventRegistry([ProjectIndexed])
+    registry = EventRegistry([ProjectIndexed])
     value = ProjectIndexed(5)
     assert registry.decode(registry.encode(value)) == value
     with pytest.raises(ValidationError):
@@ -103,21 +105,21 @@ def test_custom_event_schema_is_strict_and_registry_rejects_collisions_atomicall
 
 
 def test_full_builtin_and_application_unions_support_schemas_and_terminal_results():
-    annotation = events.LogEvent | events.StreamEvent[object] | ProjectIndexed
+    annotation = events.LogEvent | StreamEvent[object] | ProjectIndexed
     adapter = TypeAdapter(annotation)
     assert adapter.json_schema()["$defs"]["ProjectIndexed"]["properties"]["files"] == {
         "title": "Files",
         "type": "integer",
     }
     assert adapter.validate_json(adapter.dump_json(ProjectIndexed(3))) == ProjectIndexed(3)
-    registry = events.EventRegistry([ProjectIndexed])
-    value = events.TurnResultEvent(RunResult("done", (ProjectIndexed(3),), _output=None))
+    registry = EventRegistry([ProjectIndexed])
+    value = TurnResultEvent(RunResult("done", (ProjectIndexed(3),), _output=None))
     restored = adapter.validate_json(adapter.dump_json(value), context={"events": registry})
     assert restored.result.events == (ProjectIndexed(3),)
 
-    stream = TypeAdapter(events.StreamEvent[str])
+    stream = TypeAdapter(StreamEvent[str])
     assert stream.json_schema()["discriminator"]["propertyName"] == "type"
-    result = events.TurnResultEvent(RunResult("done", (), _output="typed output"))
+    result = TurnResultEvent(RunResult("done", (), _output="typed output"))
     assert stream.validate_json(stream.dump_json(result)).result.output == "typed output"
 
 
@@ -144,7 +146,7 @@ def test_mutable_untagged_and_builtin_subclass_events_are_not_extension_points()
 
     for kind in (Mutable, Untagged, Unsafe, RootOnly, UnsafeLive):
         with pytest.raises(TypeError):
-            events.EventRegistry([kind])
+            EventRegistry([kind])
 
 
 def test_non_json_event_schemas_fail_before_registration_is_committed():
@@ -153,7 +155,7 @@ def test_non_json_event_schemas_fail_before_registration_is_committed():
         callback: Callable[[], None]
         type: Literal["project.callback"] = field(default="project.callback", kw_only=True)
 
-    registry = events.EventRegistry()
+    registry = EventRegistry()
     with pytest.raises(PydanticInvalidForJsonSchema):
         registry.register([IndexProgress, CallbackEvent])
     with pytest.raises(TypeError, match="registered"):

@@ -10,7 +10,6 @@ from harnessed import (
     PluginPack,
     SystemPrompt,
 )
-from harnessed.core.composition import compose_plugins
 from harnessed.errors import PluginConflict, PluginDependencyError
 from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not a module.
     Bundle,
@@ -20,6 +19,7 @@ from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not
     plugin,
 )
 from harnessed.plugins import AgentLoop, Compaction
+from harnessed.runtime.composition import compose_plugins
 from harnessed.testing import ScriptedModel
 
 

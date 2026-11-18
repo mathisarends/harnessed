@@ -4,8 +4,7 @@ import pytest
 
 from harnessed import Agent as Application
 from harnessed import ApprovalAnswer, Inject, Plugin, Session, ToolCall, ToolContext, plugin, tool
-from harnessed.core.approvals import Approver, CallbackApprover, ToolApprovalGuard
-from harnessed.core.events import (
+from harnessed.events import (
     AssistantMessageEvent,
     ModelRequestedEvent,
     TextDeltaEvent,
@@ -15,14 +14,21 @@ from harnessed.core.events import (
     TurnOutcome,
     TurnStartedEvent,
 )
-from harnessed.core.hooks import ExecuteTool, PreStep, ReviewToolResult, StepDecision, ToolPolicy
-from harnessed.core.messages import PolicyDecision, Role, ToolStatus
-from harnessed.core.model import ModelChunk, ModelInfo, StopReason
-from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import hook
+from harnessed.models import ModelChunk, ModelInfo, StopReason
+from harnessed.models.messages import PolicyDecision, Role, ToolStatus
 from harnessed.plugins import AgentLoop, Approvals, Service
-from harnessed.services import SessionContext
+from harnessed.runtime.approval_policy import Approver, CallbackApprover, ToolApprovalGuard
+from harnessed.runtime.hooks import (
+    ExecuteTool,
+    PreStep,
+    ReviewToolResult,
+    StepDecision,
+    ToolPolicy,
+)
+from harnessed.sessions import SessionContext
 from harnessed.testing import CallbackModel, ScriptedModel
+from harnessed.tools import ToolRegistry
 from tests._audit import Audit
 
 

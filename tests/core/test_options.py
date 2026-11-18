@@ -1,13 +1,12 @@
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from harnessed.core.approvals import ToolApprovalGuard
-from harnessed.core.budget import ContextBudget
-from harnessed.core.model import ModelInfo, ModelRequest, ModelUsage
-from harnessed.core.runtime import AgentLoopConfig
-from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import Scope
-from harnessed.models import GenerationSettings
+from harnessed.models import GenerationSettings, ModelInfo, ModelRequest, ModelUsage
+from harnessed.runtime.approval_policy import ToolApprovalGuard
+from harnessed.runtime.budget import ContextBudget
+from harnessed.runtime.options import AgentLoopConfig
+from harnessed.tools import ToolRegistry
 
 
 @pytest.mark.parametrize(

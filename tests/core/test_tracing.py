@@ -6,14 +6,14 @@ from typing import Self
 import pytest
 
 from harnessed import Agent, ApprovalAnswer, Plugin, ToolCall
-from harnessed.core.model import ModelChunk
-from harnessed.core.tools import tool
-from harnessed.core.tracing import Tracer
 from harnessed.hooks import PreStep, SessionClosing, StepDecision
 from harnessed.kernel import Next, PluginScope, Scope, hook
+from harnessed.models import ModelChunk
 from harnessed.plugins import Approvals, Compaction, every_turns
-from harnessed.services import Summary
+from harnessed.plugins.compaction import Summary
+from harnessed.runtime.tracing import Tracer
 from harnessed.testing import ScriptedModel
+from harnessed.tools import tool
 from harnessed.tracing import current, record, span, traced
 
 

@@ -3,8 +3,7 @@ import asyncio
 import pytest
 
 from harnessed import Agent, Plugin, PolicyDecision, ToolCall, ToolStatus, tool
-from harnessed.core.errors import ContextLengthExceeded
-from harnessed.core.model import ModelChunk, ModelRequest, ModelUsage
+from harnessed.errors import ContextLengthExceeded
 from harnessed.events import (
     AssistantMessageEvent,
     ModelRequestedEvent,
@@ -15,6 +14,7 @@ from harnessed.events import (
     ToolExecutionStartedEvent,
 )
 from harnessed.kernel import hook
+from harnessed.models import ModelChunk, ModelRequest, ModelUsage
 from harnessed.plugins import Approvals
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit

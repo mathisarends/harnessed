@@ -1,8 +1,7 @@
 from collections.abc import Iterable
 
 from harnessed import Session
-from harnessed.core.approvals import ApprovalState
-from harnessed.core.events import (
+from harnessed.events import (
     DurableEvent,
     ModelUsageRecordedEvent,
     StepEndedEvent,
@@ -10,13 +9,14 @@ from harnessed.core.events import (
     TurnEndedEvent,
     TurnStartedEvent,
 )
-from harnessed.core.events.registry import EventRegistry
-from harnessed.core.hooks import SessionAppended
-from harnessed.core.model import ModelRequest, ModelUsage, sum_usage
-from harnessed.core.session.control import RunControl
-from harnessed.core.session.history import derive_messages, derive_requests
-from harnessed.core.session.inbox import Inbox
-from harnessed.core.session.turns import Step, Turn
+from harnessed.events.registry import EventRegistry
+from harnessed.models.model import ModelRequest, ModelUsage, sum_usage
+from harnessed.runtime.approval_policy import ApprovalState
+from harnessed.runtime.hooks import SessionAppended
+from harnessed.sessions.control import RunControl
+from harnessed.sessions.history import derive_messages, derive_requests
+from harnessed.sessions.inbox import Inbox
+from harnessed.sessions.turns import Step, Turn
 
 
 class Audit:

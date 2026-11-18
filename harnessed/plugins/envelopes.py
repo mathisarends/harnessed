@@ -1,7 +1,8 @@
 from pydantic import BaseModel
 
-from harnessed.core.plugin import Plugin
-from harnessed.core.tools import (
+from harnessed.kernel import PluginScope
+from harnessed.runtime.plugin import Plugin
+from harnessed.tools import (
     EnvelopePosition,
     EnvelopeSelector,
     InvalidEnvelope,
@@ -9,7 +10,6 @@ from harnessed.core.tools import (
     envelope_models,
     envelope_selector,
 )
-from harnessed.kernel import PluginScope
 
 
 class CallEnvelope(Plugin, needs=(ToolRegistry,)):

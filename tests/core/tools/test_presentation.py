@@ -13,12 +13,12 @@ from harnessed import (
     ToolPresentation,
     tool,
 )
-from harnessed.core.model import ToolDefinition
-from harnessed.core.tools import ToolRegistry, ToolSpec
 from harnessed.hooks import ExecuteTool
 from harnessed.kernel import hook
+from harnessed.models import ToolDefinition
 from harnessed.plugins import Approvals
 from harnessed.testing import ScriptedModel, call
+from harnessed.tools import ToolRegistry, ToolSpec
 
 
 async def test_decorator_captures_immutable_presentation_without_changing_model_or_permissions():

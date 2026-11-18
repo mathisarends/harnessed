@@ -10,7 +10,7 @@ from typing import Annotated, override
 
 from pydantic import Field
 
-from harnessed.core.plugin import PluginConfig
+from harnessed.runtime.plugin import PluginConfig
 
 from .process import ProcessSnapshot, ProcessState, ProcResult, ShellProcess
 

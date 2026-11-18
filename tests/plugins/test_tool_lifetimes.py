@@ -4,12 +4,12 @@ from pathlib import Path
 import pytest
 
 from harnessed import ToolCall, plugin
-from harnessed.core.runtime import RuntimeServices
-from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import PluginStatus, Scope
 from harnessed.plugins.filesystem import FileSystemBackend, FilesystemTools
 from harnessed.plugins.shell import ProcResult, ShellTools
 from harnessed.plugins.shell import ShellBackend as Shell
+from harnessed.runtime.services import RuntimeServices
+from harnessed.tools import ToolRegistry
 
 
 class MemoryFS:

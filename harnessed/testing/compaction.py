@@ -1,9 +1,9 @@
 import json
 
-from harnessed.core.budget import truncate
-from harnessed.core.compaction import CompactionRequest, Summary
-from harnessed.core.messages import to_dict
-from harnessed.core.tokens import ApproximateTokenCounter, TokenCounter
+from harnessed.models.messages import to_dict
+from harnessed.runtime.budget import truncate
+from harnessed.runtime.compaction import CompactionRequest, Summary
+from harnessed.runtime.tokens import ApproximateTokenCounter, TokenCounter
 
 
 class ExtractiveSummarizer:

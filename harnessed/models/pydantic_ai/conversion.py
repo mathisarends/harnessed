@@ -4,7 +4,7 @@ import json
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from harnessed.core.errors import (
+from harnessed.errors import (
     AuthError,
     ContextLengthExceeded,
     InvalidRequest,
@@ -12,7 +12,7 @@ from harnessed.core.errors import (
     ProviderUnavailable,
     RateLimited,
 )
-from harnessed.core.messages import (
+from harnessed.models.messages import (
     AssistantMessage,
     ContentPart,
     ImageReference,
@@ -25,7 +25,7 @@ from harnessed.core.messages import (
     ToolStatus,
     to_dict,
 )
-from harnessed.core.model import (
+from harnessed.models.model import (
     ModelInfo,
     ModelRequest,
     ModelResponse,

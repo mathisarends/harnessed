@@ -5,15 +5,9 @@ from typing import assert_type
 from harnessed import Agent, Session
 from harnessed.hooks import Next, StreamModel
 from harnessed.kernel import Scope, hook
-from harnessed.models import (
-    GenerationSettings,
-    Model,
-    ModelInfo,
-    ModelRequest,
-    ModelStream,
-    PydanticAIModel,
-)
-from harnessed.services import SessionContext
+from harnessed.models import GenerationSettings, Model, ModelInfo, ModelRequest, ModelStream
+from harnessed.models.pydantic_ai import PydanticAIModel
+from harnessed.sessions import SessionContext
 from harnessed.testing import ScriptedModel
 
 

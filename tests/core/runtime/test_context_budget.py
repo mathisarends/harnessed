@@ -6,9 +6,8 @@ import pytest
 
 from harnessed import Agent as Application
 from harnessed import Plugin, PolicyDecision, ToolCall, tool
-from harnessed.core.budget import ContextBudget
-from harnessed.core.errors import ContextBudgetExceeded, ContextLengthExceeded
-from harnessed.core.events import (
+from harnessed.errors import ContextBudgetExceeded, ContextLengthExceeded
+from harnessed.events import (
     AssistantMessageEvent,
     CompactionAppliedEvent,
     ModelRequestedEvent,
@@ -16,14 +15,14 @@ from harnessed.core.events import (
     ModelRequestOutcome,
     TurnOutcome,
 )
-from harnessed.core.hooks import PrepareRequest
-from harnessed.core.messages import Role, SystemMessage
-from harnessed.core.model import Model, ModelChunk, ModelInfo
-from harnessed.core.plugin import Bundle, Service
-from harnessed.core.session.codec import decode_event, encode_event
-from harnessed.models import GenerationSettings
+from harnessed.events.codec import decode_event, encode_event
+from harnessed.models import GenerationSettings, Model, ModelChunk, ModelInfo
+from harnessed.models.messages import Role, SystemMessage
 from harnessed.plugins import AgentLoop, Approvals, Compaction, at_ratio, every_turns
-from harnessed.services import Summary
+from harnessed.plugins.compaction import Summary
+from harnessed.runtime.budget import ContextBudget
+from harnessed.runtime.hooks import PrepareRequest
+from harnessed.runtime.plugin import Bundle, Service
 from harnessed.testing import CallbackModel, ExtractiveSummarizer, ScriptedModel
 from tests._audit import Audit, AuditProjection
 

@@ -1,9 +1,9 @@
 from dataclasses import replace
 
-from harnessed.core.assets import MemoryAssets
-from harnessed.core.messages import ImageDetail, ImagePart, ImageReference, UserMessage
-from harnessed.core.model import ModelRequest
-from harnessed.core.session.images import SessionImages
+from harnessed.models import ModelRequest
+from harnessed.models.assets import MemoryAssets
+from harnessed.models.messages import ImageDetail, ImagePart, ImageReference, UserMessage
+from harnessed.sessions.images import SessionImages
 from tests._images import inline
 
 

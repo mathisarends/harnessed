@@ -4,10 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
-from harnessed.core.errors import SessionClosed
-from harnessed.core.messages import ToolResult, ToolStatus, result_content, to_dict
-from harnessed.core.runtime import SessionInbox
-from harnessed.core.tools import ToolError
+from harnessed.errors import SessionClosed
+from harnessed.models.messages import ToolResult, ToolStatus, result_content, to_dict
+from harnessed.runtime.inbox import SessionInbox
+from harnessed.tools import ToolError
 
 from .process import BackgroundShellBackend, ProcessState, ShellProcess
 

@@ -16,13 +16,13 @@ from harnessed import (
     envelope_value,
     tool,
 )
-from harnessed.core.model import ToolDefinition
 from harnessed.events import ToolCallRequestedEvent
 from harnessed.hooks import ExecuteTool, ReviewToolResult, ToolPolicy
 from harnessed.kernel import hook
+from harnessed.models import ToolDefinition
 from harnessed.plugins import CallEnvelope, EnvelopePosition, InvalidEnvelope
-from harnessed.services import ToolRegistry
 from harnessed.testing import ScriptedModel, call
+from harnessed.tools import ToolRegistry
 
 
 class ActionLabel(BaseModel):
@@ -319,7 +319,7 @@ async def test_external_tool_conflicts_skip_the_envelope_with_a_warning(caplog):
         registry.register_external(
             remote_definition(parameter="action_label"), remote, owner=session.scope
         )
-        with caplog.at_level(logging.WARNING, logger="harnessed.core.tools.envelope"):
+        with caplog.at_level(logging.WARNING, logger="harnessed.tools.envelope"):
             parameters = session.tools["remote"].parameters
         plan = registry.plan(ToolCall("remote", {"action_label": "mine"}))
         result = await registry.execute(plan.call, _expected=plan.binding)

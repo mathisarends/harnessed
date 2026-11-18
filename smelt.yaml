@@ -22,46 +22,58 @@ architecture:
   modules:
     harnessed: sdk
     harnessed.kernel: kernel
-    harnessed.core: core
+    harnessed.errors: contracts
+    harnessed.models: contracts
+    harnessed.events: events
+    harnessed.events.codec: engine
+    harnessed.events.completion: engine
+    harnessed.events.registry: engine
+    harnessed.events.stream: engine
+    harnessed.runtime: engine
+    harnessed.prompts: engine
+    harnessed.sessions: engine
+    harnessed.tools: engine
     harnessed.plugins: plugins
-    harnessed.models: models
+    harnessed.models.pydantic_ai: model_adapters
     harnessed.integrations: integrations
     harnessed.testing: testing
-    harnessed.events: events
-    harnessed.services: sdk
     harnessed.tracing: sdk
   layers:
     kernel:
       path: kernel
       may_depend_on: []
       third_party: {default: deny}
-    core:
-      path: core
+    contracts:
+      path: models
       may_depend_on: [kernel]
+      third_party: {default: deny, allow: [pydantic]}
+    events:
+      path: events
+      may_depend_on: [kernel, contracts]
+      third_party: {default: deny, allow: [pydantic]}
+    engine:
+      path: runtime
+      may_depend_on: [kernel, contracts, events]
       third_party: {default: deny, allow: [pydantic]}
     plugins:
       path: plugins
-      may_depend_on: [kernel, core, models]
+      may_depend_on: [kernel, contracts, events, engine, model_adapters]
       third_party: {default: deny, allow: [pydantic, pydantic_ai, yaml, fastmcp, mcp, jsonschema, referencing, httpx2, anyio]}
-    models:
-      path: models
-      may_depend_on: [kernel, core]
+    model_adapters:
+      path: models.pydantic_ai
+      may_depend_on: [kernel, contracts]
       third_party: {default: deny, allow: [pydantic, pydantic_ai]}
     integrations:
       path: integrations
-      may_depend_on: [kernel, core, plugins]
+      may_depend_on: [kernel, contracts, events, engine, plugins]
       third_party: {default: deny, allow: [pydantic, opentelemetry]}
-    events:
-      path: events
-      may_depend_on: [kernel, core]
-      third_party: {default: deny, allow: [pydantic]}
     sdk:
       path: sdk
-      may_depend_on: [kernel, core, plugins, models, events]
+      may_depend_on: [kernel, contracts, events, engine, plugins, model_adapters]
       third_party: {default: deny, allow: [pydantic, pydantic_ai]}
     testing:
       path: testing
-      may_depend_on: [kernel, core, plugins, models, sdk]
+      may_depend_on: [kernel, contracts, events, engine, plugins, model_adapters, sdk]
       third_party: {default: deny, allow: [pydantic, pydantic_ai, pytest]}
   imports:
     type_checking: include
@@ -104,20 +116,8 @@ structure:
       rules:
         constructor-logic: error
         complex-comprehension: error
-    # Facades re-export only members whose eager import adds no runtime cycle;
-    # events.completion/registry/stream and tools.arguments/enabled/output_limit/
-    # references/view stay canonical. Session and prompt have no facade because
-    # their members take part in core runtime cycles.
-    event-facade:
-      match: harnessed.core.events
-      bundle_imports_at: 3
-      export_at: 3
-    runtime-facade:
-      match: harnessed.core.runtime
-      bundle_imports_at: 3
-      export_at: 3
     tool-facade:
-      match: harnessed.core.tools
+      match: harnessed.tools
       bundle_imports_at: 3
       export_at: 3
     kernel-api:
@@ -132,21 +132,20 @@ tests:
   max_patches_per_test: 3
 
 ignore:
+  - rule: unknown-layer
+    paths: [harnessed/prompts/__init__.py, harnessed/sessions/__init__.py, harnessed/tools/__init__.py]
+    reason: These packages are explicitly mapped to the engine layer; the directory check recognizes only that layer's primary path.
   - rule: package-only-dunder-all
     paths:
       - harnessed/errors.py
       - harnessed/hooks.py
-      - harnessed/services.py
-      - harnessed/sessions.py
       - harnessed/tracing.py
       - harnessed/integrations/bubblewrap.py
       - harnessed/integrations/json.py
       - harnessed/integrations/opentelemetry.py
+      - harnessed/plugins/compaction.py
       - harnessed/plugins/subagents.py
     reason: Single-module public facades are documented import paths; optional-extra modules cannot be re-exported eagerly from their package initializer.
-  - rule: package-import-fanout
-    paths: [harnessed/events/__init__.py, harnessed/core/runtime/streaming.py]
-    reason: Event completion, registry and stream modules cannot join the eager event facade without a core.result/session.codec import cycle.
   - rule: yaml-file-extension
     paths: [.github/workflows/release.yml]
     reason: PyPI trusted publishing is registered for this exact workflow filename.

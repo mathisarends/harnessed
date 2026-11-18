@@ -4,15 +4,15 @@ import pytest
 from pydantic import TypeAdapter
 
 from harnessed import Agent, Plugin, StopReason, ToolCall, events, tool
-from harnessed.core.events import (
+from harnessed.events import (
     AssistantMessageEvent,
     TextDeltaEvent,
     ToolArgumentsDeltaEvent,
     ToolCallRequestedEvent,
 )
-from harnessed.core.events.stream import coalesce_deltas
-from harnessed.core.model import ModelChunk, ToolArgumentsMode, ToolCallDelta, ToolCallStart
-from harnessed.core.session.codec import encode_event
+from harnessed.events.codec import encode_event
+from harnessed.events.stream import StreamEvent, coalesce_deltas
+from harnessed.models import ModelChunk, ToolArgumentsMode, ToolCallDelta, ToolCallStart
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit
 
@@ -143,7 +143,7 @@ async def test_valid_preview_json_alone_does_not_schedule_a_tool_call():
 
 
 def test_tool_previews_roundtrip_in_the_public_discriminated_stream_union():
-    adapter = TypeAdapter(events.StreamEvent[None])
+    adapter = TypeAdapter(StreamEvent[None])
     start = events.ToolCallGenerationStartedEvent("message", ToolCallStart(0, "add", "call"))
     delta = events.ToolArgumentsDeltaEvent(
         "message", ToolCallDelta(0, '{"a":1}', "add", "call", ToolArgumentsMode.REPLACE)

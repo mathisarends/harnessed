@@ -5,12 +5,12 @@ import pytest
 
 from harnessed import Agent as Application
 from harnessed import Plugin, PolicyDecision, StopReason, ToolCall, tool
-from harnessed.core.errors import OutputTokenLimit
-from harnessed.core.events import InboxAddedEvent, InboxMode, TextDeltaEvent, TurnLimits
-from harnessed.core.events.completion import TurnResultEvent
-from harnessed.core.messages import user
-from harnessed.core.model import ModelChunk, ModelUsage, TokenLimitBehavior
-from harnessed.core.session.codec import decode_event, encode_event
+from harnessed.errors import OutputTokenLimit
+from harnessed.events import InboxAddedEvent, InboxMode, TextDeltaEvent
+from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.stream import TurnResultEvent
+from harnessed.events.turn import TurnLimits
+from harnessed.models import ModelChunk, ModelUsage, TokenLimitBehavior, user
 from harnessed.plugins import Approvals
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit
@@ -99,8 +99,7 @@ async def test_public_max_token_policies_return_typed_stop_reasons_or_fail(
     import pytest
 
     from harnessed import Agent, StopReason
-    from harnessed.core.messages import AssistantMessage
-    from harnessed.core.model import ModelResponse
+    from harnessed.models import AssistantMessage, ModelResponse
     from harnessed.plugins import AgentLoop
     from harnessed.testing import ScriptedModel
 
@@ -123,8 +122,7 @@ async def test_public_max_token_policies_return_typed_stop_reasons_or_fail(
 
 async def test_step_limit_takes_precedence_over_the_last_model_finish_reason():
     from harnessed import Agent, StopReason
-    from harnessed.core.messages import AssistantMessage
-    from harnessed.core.model import ModelResponse
+    from harnessed.models import AssistantMessage, ModelResponse
     from harnessed.plugins import AgentLoop
     from harnessed.testing import ScriptedModel
 

@@ -7,8 +7,8 @@ from typing import override
 import pytest
 
 from harnessed import Plugin, PluginState, ToolCall, ToolResult, tool
-from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import Emit, PluginScope, PluginStatus, Scope, as_plugin_spec, needs
+from harnessed.tools import ToolRegistry
 
 
 class Ping(Emit):

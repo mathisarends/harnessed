@@ -34,14 +34,14 @@ from mcp.types import (
 
 import harnessed.plugins.mcp.transport as mcp_transport
 from harnessed import Agent, ToolCall
-from harnessed.core.errors import ToolNameConflict
-from harnessed.core.messages import ToolStatus, to_dict
-from harnessed.core.model import ModelChunk
-from harnessed.core.tools import ToolError, ToolRegistry
+from harnessed.errors import ToolNameConflict
 from harnessed.events import ToolProgressEvent
+from harnessed.models import ModelChunk
+from harnessed.models.messages import ToolStatus, to_dict
 from harnessed.plugins import Approvals, ToolApprovalGuard, ToolOutputLimit
 from harnessed.plugins.mcp import MCP
 from harnessed.testing import ScriptedModel
+from harnessed.tools import ToolError, ToolRegistry
 
 SCHEMA = {
     "type": "object",

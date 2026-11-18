@@ -28,17 +28,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from harnessed import Agent, ApprovalAnswer, Plugin, ToolCall, tool
-from harnessed.core.events import ControlState, SessionControlChangedEvent
-from harnessed.core.hooks import SessionAppended, SessionClosing
-from harnessed.core.messages import AssistantMessage, ToolResult, ToolStatus, UserMessage
-from harnessed.core.model import (
-    GenerationSettings,
-    ModelChunk,
-    ModelRequest,
-    ModelUsage,
-    StopReason,
-)
-from harnessed.core.tracing import Tracer
+from harnessed.events import ControlState, SessionControlChangedEvent
 from harnessed.integrations.opentelemetry import (
     ContentCapture,
     OpenTelemetryTracer,
@@ -47,7 +37,17 @@ from harnessed.integrations.opentelemetry import (
     otlp_provider,
 )
 from harnessed.kernel import Next, Waterfall, hook
+from harnessed.models import (
+    GenerationSettings,
+    ModelChunk,
+    ModelRequest,
+    ModelUsage,
+    StopReason,
+)
+from harnessed.models.messages import AssistantMessage, ToolResult, ToolStatus, UserMessage
 from harnessed.plugins import Approvals, Compaction, every_turns
+from harnessed.runtime.hooks import SessionAppended, SessionClosing
+from harnessed.runtime.tracing import Tracer
 from harnessed.testing import CallbackModel, ScriptedModel, reply
 from harnessed.tracing import record, traced
 from harnessed.tracing import span as library_span
@@ -1297,7 +1297,7 @@ import harnessed.plugins
 import harnessed.models
 import harnessed.integrations
 from harnessed import Agent
-from harnessed.core.tracing import NoopTracer
+from harnessed.runtime.tracing import NoopTracer
 from harnessed.tracing import current, record, span, traced
 @traced
 def work(value: int) -> int:

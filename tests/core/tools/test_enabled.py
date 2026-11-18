@@ -15,12 +15,12 @@ from harnessed import (
     ToolContext,
     tool,
 )
-from harnessed.core.tools import ToolRegistry, ToolSpec
 from harnessed.events import ApprovalRequestedEvent, ToolCallFinishedEvent
 from harnessed.kernel import Inject, InjectMarker, Key, Scope
 from harnessed.models import AssistantMessage, ModelResponse
 from harnessed.plugins import AgentLoop, Approvals, Service
 from harnessed.testing import ScriptedModel, call, reply
+from harnessed.tools import ToolRegistry, ToolSpec
 from tests._audit import Audit
 
 

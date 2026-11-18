@@ -7,10 +7,10 @@ from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
-from harnessed.core.plugin import Plugin
 from harnessed.kernel import Key, PluginScope, run_sync
 from harnessed.plugins.filesystem import FileSystemBackend
 from harnessed.plugins.shell import ShellBackend
+from harnessed.runtime.plugin import Plugin
 
 from .process import finish
 from .types import NetworkAccess as NetworkAccess
@@ -24,7 +24,7 @@ from .types import workspace_path
 from .workspace import export_file
 
 if TYPE_CHECKING:
-    from harnessed.core.runtime import Session
+    from harnessed.runtime.session import Session
 
 
 class SandboxServices(NamedTuple):

@@ -6,9 +6,8 @@ from typing import Literal
 import pytest
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
-import harnessed.core.session.store as persistence_store
+import harnessed.sessions.store as persistence_store
 from harnessed import Agent, Plugin
-from harnessed.core.prompt.plugin_instructions import PluginInstructions
 from harnessed.errors import SessionWriteConflict
 from harnessed.events import (
     CompactionAppliedEvent,
@@ -22,7 +21,8 @@ from harnessed.events import (
 from harnessed.hooks import SessionAppended
 from harnessed.models import ModelChunk, ModelRequest, ToolCallDelta, UserMessage
 from harnessed.plugins import Compaction, every_turns
-from harnessed.services import CompactionRequest, Summary
+from harnessed.plugins.compaction import CompactionRequest, Summary
+from harnessed.prompts.plugin_instructions import PluginInstructions
 from harnessed.sessions import (
     CheckpointExtension,
     SessionChange,

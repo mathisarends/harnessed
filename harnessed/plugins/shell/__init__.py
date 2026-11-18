@@ -8,13 +8,13 @@ from typing import Annotated, Self
 from pydantic import Field, model_validator
 from pydantic.fields import FieldInfo
 
-from harnessed.core.hooks import SessionClosing
-from harnessed.core.messages import ToolResult, ToolStatus, result_content, to_dict
-from harnessed.core.plugin import Plugin, PluginConfig
-from harnessed.core.prompt.values import Instructions, SystemPrompt
-from harnessed.core.runtime import SessionInbox
-from harnessed.core.tools import ToolError, ToolRegistry, tool
 from harnessed.kernel import Inject, PluginScope
+from harnessed.models.messages import ToolResult, ToolStatus, result_content, to_dict
+from harnessed.prompts.values import Instructions, SystemPrompt
+from harnessed.runtime.hooks import SessionClosing
+from harnessed.runtime.inbox import SessionInbox
+from harnessed.runtime.plugin import Plugin, PluginConfig
+from harnessed.tools import ToolError, ToolRegistry, tool
 
 from .background import BackgroundCommands, command_result
 from .background import CommandInfo as CommandInfo

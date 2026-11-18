@@ -3,14 +3,14 @@ from contextlib import aclosing
 
 import pytest
 
-from harnessed.core.events import (
+from harnessed.events import (
     ToolCallFinishedEvent,
     ToolExecutionFinishedEvent,
     UserMessageEvent,
 )
-from harnessed.core.messages import ToolCall, ToolResult, UserMessage
-from harnessed.core.session.session import SessionLog
 from harnessed.kernel import Scope
+from harnessed.models.messages import ToolCall, ToolResult, UserMessage
+from harnessed.sessions.log import SessionLog
 
 
 @pytest.mark.parametrize("event_type", [ToolExecutionFinishedEvent, ToolCallFinishedEvent])

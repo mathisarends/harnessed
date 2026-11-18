@@ -111,8 +111,8 @@ max-complexity = 12
 [tool.ruff.lint.flake8-bugbear]
 # Frozen value objects are safe shared dataclass defaults.
 extend-immutable-calls = [
-    "harnessed.core.tools.info.ToolEnvelope",
-    "harnessed.core.tools.info.ToolPresentation",
+    "harnessed.tools.info.ToolEnvelope",
+    "harnessed.tools.info.ToolPresentation",
 ]
 
 [tool.ruff.lint.flake8-tidy-imports]

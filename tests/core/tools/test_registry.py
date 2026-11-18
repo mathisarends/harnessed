@@ -5,15 +5,14 @@ import pytest
 from pydantic import Field
 
 from harnessed import Agent, Plugin, ToolCall
-from harnessed.core.messages import ToolResult
-from harnessed.core.model import ModelChunk
-from harnessed.core.plugin import Bundle
-from harnessed.core.tools import ToolContext, ToolRegistry, tool
 from harnessed.kernel import Inject, InjectMarker, PluginStatus, Scope
-from harnessed.models import UserMessage
-from harnessed.services import SessionContext
+from harnessed.models import ModelChunk, UserMessage
+from harnessed.models.messages import ToolResult
+from harnessed.runtime.plugin import Bundle
+from harnessed.sessions import SessionContext
 from harnessed.testing import ScriptedModel
 from harnessed.testing import call as scripted_call
+from harnessed.tools import ToolContext, ToolRegistry, tool
 
 
 class Backend(Protocol):

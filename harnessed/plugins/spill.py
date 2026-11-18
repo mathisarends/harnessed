@@ -8,17 +8,17 @@ from typing import Annotated, Protocol
 
 from pydantic import Field
 
-from harnessed.core.budget import truncate
-from harnessed.core.events import SpillCreatedEvent, SpillExpirationReason, SpillExpiredEvent
-from harnessed.core.hooks import Next, ReviewToolResult, SessionAppended
-from harnessed.core.messages import SpillRef, ToolResult
-from harnessed.core.plugin import Plugin, PluginConfig
-from harnessed.core.prompt.values import Instructions, SystemPrompt
-from harnessed.core.session.files import FileOffset, ReadLimit, SessionFiles
-from harnessed.core.session.session import SessionLog
-from harnessed.core.tokens import TokenCounter
-from harnessed.core.tools import ToolError, tool
+from harnessed.events import SpillCreatedEvent, SpillExpirationReason, SpillExpiredEvent
 from harnessed.kernel import Inject, PluginScope, Priority, hook, needs
+from harnessed.models.messages import SpillRef, ToolResult
+from harnessed.prompts.values import Instructions, SystemPrompt
+from harnessed.runtime.budget import truncate
+from harnessed.runtime.hooks import Next, ReviewToolResult, SessionAppended
+from harnessed.runtime.plugin import Plugin, PluginConfig
+from harnessed.runtime.tokens import TokenCounter
+from harnessed.sessions.files import FileOffset, ReadLimit, SessionFiles
+from harnessed.sessions.log import SessionLog
+from harnessed.tools import ToolError, tool
 
 logger = logging.getLogger(__name__)
 

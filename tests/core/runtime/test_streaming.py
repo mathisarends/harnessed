@@ -19,13 +19,11 @@ from harnessed import (
     ToolContext,
     tool,
 )
-from harnessed.core.errors import ApprovalUnavailable, OutputUnavailable, SessionClosed
-from harnessed.core.events import ApprovalStatus
-from harnessed.core.messages import ToolStatus
-from harnessed.core.model import ModelChunk, ModelRequest
+from harnessed.errors import ApprovalUnavailable, OutputUnavailable, SessionClosed
 from harnessed.events import (
     ApprovalNeededEvent,
     ApprovalResolvedEvent,
+    ApprovalStatus,
     AssistantMessageEvent,
     DurableEvent,
     InboxAddedEvent,
@@ -35,15 +33,16 @@ from harnessed.events import (
     ModelRequestOutcome,
     ReasoningDeltaEvent,
     SessionStatusChangedEvent,
-    StreamItem,
     TextDeltaEvent,
     ToolCallFinishedEvent,
     ToolCallRequestedEvent,
     ToolExecutionStartedEvent,
     ToolProgressEvent,
-    TurnResultEvent,
 )
+from harnessed.events.stream import StreamItem, TurnResultEvent
 from harnessed.kernel import Inject
+from harnessed.models import ModelChunk, ModelRequest
+from harnessed.models.messages import ToolStatus
 from harnessed.plugins import Approvals
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit

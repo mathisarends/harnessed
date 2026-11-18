@@ -6,10 +6,10 @@ from typing import Protocol, Self
 
 from pydantic import Field, model_validator
 
-from harnessed.core.errors import SandboxError as SandboxError
-from harnessed.core.plugin import PluginConfig
+from harnessed.errors import SandboxError as SandboxError
 from harnessed.plugins.filesystem import FileSystemBackend
 from harnessed.plugins.shell import ShellBackend
+from harnessed.runtime.plugin import PluginConfig
 
 
 class NetworkAccess(StrEnum):

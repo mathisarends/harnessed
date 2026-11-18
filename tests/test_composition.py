@@ -21,7 +21,7 @@ from harnessed.events import DurableEvent
 from harnessed.kernel import PluginScope, Scope, needs
 from harnessed.models import Model
 from harnessed.plugins import AgentLoop, Filesystem, PromptRenderer, Service, Shell
-from harnessed.services import SessionContext
+from harnessed.sessions import SessionContext
 from harnessed.testing import ScriptedModel, call
 
 

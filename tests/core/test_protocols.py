@@ -10,20 +10,20 @@ from harnessed import (
     ToolCall,
     plugin,
 )
-from harnessed.core.approvals import Approver
-from harnessed.core.compaction import Summarizer
-from harnessed.core.events import ToolCallFinishedEvent
-from harnessed.core.hooks import ToolPolicy
-from harnessed.core.messages import ApprovalAnswer, PolicyDecision
-from harnessed.core.model import Model, ModelChunk
-from harnessed.core.runtime import AgentFactory
-from harnessed.core.tokens import TokenCounter
+from harnessed.events import ToolCallFinishedEvent
 from harnessed.kernel import Scope
+from harnessed.models import Model, ModelChunk
+from harnessed.models.messages import ApprovalAnswer, PolicyDecision
 from harnessed.plugins import Approvals
 from harnessed.plugins.filesystem import FileSystemBackend, FilesystemTools
 from harnessed.plugins.shell import ProcResult, ShellTools
 from harnessed.plugins.shell import ShellBackend as Shell
 from harnessed.plugins.spill import SpillStore
+from harnessed.runtime.agent_loop import AgentFactory
+from harnessed.runtime.approval_policy import Approver
+from harnessed.runtime.compaction import Summarizer
+from harnessed.runtime.hooks import ToolPolicy
+from harnessed.runtime.tokens import TokenCounter
 from harnessed.testing import ScriptedModel
 
 

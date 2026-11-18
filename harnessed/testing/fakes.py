@@ -4,9 +4,9 @@ from fnmatch import fnmatchcase
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 from typing import Self
 
-from harnessed.core.tools import ToolError
 from harnessed.plugins.filesystem import FileStat, Filesystem, SearchResult, search_files
 from harnessed.plugins.shell import ProcResult, Shell
+from harnessed.tools import ToolError
 
 
 def _path(path: PurePath | str) -> str:

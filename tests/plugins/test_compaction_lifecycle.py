@@ -3,16 +3,17 @@ import asyncio
 import pytest
 
 from harnessed import Agent, Plugin
-from harnessed.core.events import SessionPublished, TransientEvent
 from harnessed.events import (
     CompactionAppliedEvent,
     CompactionFinishedEvent,
     CompactionOutcome,
     CompactionStartedEvent,
+    TransientEvent,
 )
 from harnessed.kernel import hook
 from harnessed.plugins import Compaction, every_turns
-from harnessed.services import Summary
+from harnessed.plugins.compaction import Summary
+from harnessed.sessions.publishing import SessionPublished
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit
 

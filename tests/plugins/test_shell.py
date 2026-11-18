@@ -8,10 +8,10 @@ from harnessed import (
     Agent,
     ToolCall,
 )
-from harnessed.core.tools import ToolRegistry
 from harnessed.plugins import AgentLoop
 from harnessed.plugins.shell import LocalShell, ProcResult, Shell, ShellBackend, ShellTools
 from harnessed.testing import ScriptedModel
+from harnessed.tools import ToolRegistry
 
 
 @pytest.mark.parametrize("options", [{"env": {}}, {"max_output_bytes": 256}])

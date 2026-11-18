@@ -4,11 +4,11 @@ from dataclasses import dataclass
 import pytest
 
 from harnessed import Plugin, ToolCall, plugin
-from harnessed.core.plugin import Bundle
-from harnessed.core.prompt.system import SystemPromptStore
-from harnessed.core.runtime import RuntimeServices
-from harnessed.core.tools import ToolRegistry, tool
 from harnessed.kernel import Emit, MissingService, PluginScope, PluginStatus, Scope, needs
+from harnessed.prompts import SystemPromptStore
+from harnessed.runtime.plugin import Bundle
+from harnessed.runtime.services import RuntimeServices
+from harnessed.tools import ToolRegistry, tool
 
 
 @dataclass

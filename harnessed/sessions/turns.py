@@ -1,0 +1,198 @@
+from collections.abc import Iterable
+from dataclasses import dataclass
+
+from harnessed.errors import SessionFormatError
+from harnessed.events import (
+    AssistantMessageEvent,
+    DurableEvent,
+    ModelRequestedEvent,
+    OutputValidatedEvent,
+    OutputValidationFailedEvent,
+    StepEndedEvent,
+    StepOutcome,
+    StepStartedEvent,
+    TurnEndedEvent,
+    TurnOutcome,
+    TurnStartedEvent,
+)
+from harnessed.models import ModelRequest
+
+
+@dataclass(frozen=True)
+class Step:
+    __hash__ = None
+    turn_id: str
+    number: int
+    events: tuple[DurableEvent, ...]
+    reason: StepOutcome | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "events", tuple(self.events))
+        count = sum(isinstance(event, ModelRequestedEvent) for event in self.events)
+        if count > 1 or (
+            self.reason in (StepOutcome.COMPLETED, StepOutcome.CONTEXT_LIMIT) and count != 1
+        ):
+            raise ValueError("A completed step must contain exactly one model request")
+
+    @property
+    def request(self) -> ModelRequest | None:
+        return next(
+            (event.request for event in self.events if isinstance(event, ModelRequestedEvent)), None
+        )
+
+    @property
+    def closed(self) -> bool:
+        return self.reason is not None
+
+
+@dataclass(frozen=True)
+class Turn:
+    __hash__ = None
+    id: str
+    events: tuple[DurableEvent, ...]
+    steps: tuple[Step, ...]
+    reason: TurnOutcome | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "events", tuple(self.events))
+        object.__setattr__(self, "steps", tuple(self.steps))
+
+    @property
+    def closed(self) -> bool:
+        return self.reason is not None
+
+    @property
+    def start(self) -> TurnStartedEvent:
+        """The event that opened this turn."""
+        event = self.events[0]
+        if not isinstance(event, TurnStartedEvent):
+            raise SessionFormatError("A turn must begin with TurnStartedEvent")
+        return event
+
+
+class TurnProjection:
+    """Incremental builder; immutable snapshots never reference its mutable buffers."""
+
+    def __init__(self, events: Iterable[DurableEvent] = ()) -> None:
+        self._closed: list[Turn] = []
+        self._turn: str | None = None
+        self._events: list[DurableEvent] = []
+        self._steps: list[Step] = []
+        self._step: list[DurableEvent] | None = None
+        self._requests = 0
+        self._open_snapshot: Turn | None = None
+        self._snapshot: tuple[Turn, ...] | None = None
+        for event in events:
+            self.validate(event)
+            self.apply(event)
+
+    def release_closed(self) -> None:
+        self._closed.clear()
+        self._snapshot = None
+
+    @property
+    def closed_count(self) -> int:
+        return len(self._closed)
+
+    def validate(self, event: DurableEvent) -> None:
+        if isinstance(event, OutputValidatedEvent | OutputValidationFailedEvent):
+            self._validate_output_verdict(event)
+        if isinstance(event, StepStartedEvent | StepEndedEvent):
+            self._validate_step(event)
+        elif isinstance(event, TurnStartedEvent):
+            if self._turn is not None:
+                raise ValueError("A turn cannot start inside an open turn")
+        elif isinstance(event, TurnEndedEvent):
+            if self._turn is None or event.turn_id != self._turn or self._step is not None:
+                raise ValueError("TurnEndedEvent must close the current turn after its last step")
+        elif isinstance(event, ModelRequestedEvent) and self._step is not None and self._requests:
+            raise ValueError("A completed step must contain exactly one model request")
+
+    def _validate_step(self, event: StepStartedEvent | StepEndedEvent) -> None:
+        if isinstance(event, StepStartedEvent):
+            if self._turn is None or event.turn_id != self._turn or self._step is not None:
+                raise ValueError("A step must start inside its turn, after the previous step")
+            if type(event.step) is not int or event.step != len(self._steps) + 1:
+                raise ValueError("Steps must be numbered consecutively from one within each turn")
+        elif isinstance(event, StepEndedEvent):
+            if self._step is None or (event.turn_id, event.step) != (
+                self._turn,
+                len(self._steps) + 1,
+            ):
+                raise ValueError("StepEndedEvent must close the current step")
+            if (
+                event.reason in (StepOutcome.COMPLETED, StepOutcome.CONTEXT_LIMIT)
+                and self._requests != 1
+            ):
+                raise ValueError("A completed step must contain exactly one model request")
+
+    def _validate_output_verdict(
+        self, event: OutputValidatedEvent | OutputValidationFailedEvent
+    ) -> None:
+        start = self._events[0] if self._events else None
+        answer = next(
+            (e for e in reversed(self._step or ()) if isinstance(e, AssistantMessageEvent)),
+            None,
+        )
+        if (
+            not isinstance(start, TurnStartedEvent)
+            or start.output_schema is None
+            or event.turn_id != self._turn
+            or event.schema_id != start.output_schema.id
+            or answer is None
+            or event.message_id != answer.message.id
+            or (
+                event.call_id is not None
+                and not any(call.id == event.call_id for call in answer.message.tool_calls)
+            )
+        ):
+            raise ValueError("An output verdict must match the current structured answer")
+
+    def apply(self, event: DurableEvent) -> None:
+        if isinstance(event, TurnStartedEvent):
+            self._turn = event.turn_id
+            self._events = []
+            self._steps = []
+        if self._turn is None:
+            return
+        self._snapshot = None
+        self._open_snapshot = None
+        self._events.append(event)
+        if isinstance(event, StepStartedEvent):
+            self._step = []
+            self._requests = 0
+        if self._step is not None:
+            self._step.append(event)
+            if isinstance(event, ModelRequestedEvent):
+                self._requests += 1
+        if isinstance(event, StepEndedEvent):
+            assert self._step is not None
+            self._steps.append(Step(self._turn, event.step, tuple(self._step), event.reason))
+            self._step = None
+        if isinstance(event, TurnEndedEvent):
+            self._closed.append(
+                Turn(self._turn, tuple(self._events), tuple(self._steps), event.reason)
+            )
+            self._turn = None
+            self._events = []
+            self._steps = []
+
+    @property
+    def open_turn(self) -> Turn | None:
+        if self._turn is None:
+            return None
+        if self._open_snapshot is None:
+            steps = tuple(self._steps)
+            if self._step is not None:
+                steps = (*steps, Step(self._turn, len(steps) + 1, tuple(self._step)))
+            self._open_snapshot = Turn(self._turn, tuple(self._events), steps)
+        return self._open_snapshot
+
+    @property
+    def snapshot(self) -> tuple[Turn, ...]:
+        if self._snapshot is None:
+            current = self.open_turn
+            self._snapshot = (
+                (*self._closed, current) if current is not None else tuple(self._closed)
+            )
+        return self._snapshot

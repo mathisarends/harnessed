@@ -16,33 +16,26 @@ under `.claude/worktrees/` are excluded from this checkout's inventory, includin
 the YAML filename scan. They contain runtime data or separate repositories, not
 this checkout's maintained source or configuration.
 
-The kernel accepts only standard-library dependencies. Core additionally accepts
-Pydantic. Feature, model and integration layers declare their optional imports.
-Compaction may delegate model selection to the model integration; sandbox
-integrations may publish the shell/filesystem backend contracts. SDK and testing
-layers may reach their declared lower layers. Production never imports testing.
+The kernel accepts only standard-library dependencies. Model contracts and event
+values sit below the execution engine. The engine adds session persistence, tools,
+prompts and turn orchestration and accepts Pydantic. Features and adapters declare
+their optional imports. Production never imports testing.
 
-Import analysis includes `TYPE_CHECKING` edges and transitive paths. An allowed
-facade must not provide a route around a lower layer's restrictions. The kernel
-has a facade-only package contract: higher layers import its exported operations,
-including DI binding plans and plugin-spec normalization, through
-`harnessed.kernel`. Kernel implementations retain sibling imports.
+Import analysis includes `TYPE_CHECKING` edges and transitive paths. Higher
+layers use the public `harnessed.kernel` API, including DI binding plans and
+plugin-spec normalization. Kernel implementations retain sibling imports.
+`harnessed.prompts`, `harnessed.sessions` and `harnessed.tools` are explicitly
+mapped to the engine layer along with `harnessed.runtime`. Smelt's directory
+check recognizes only the primary layer path. The three package initializers
+have a narrow directory-check exception and remain covered by layer and cycle
+rules.
 
-`harnessed.core.events`, `harnessed.core.runtime` and `harnessed.core.tools`
-have package facades (`event-facade`, `runtime-facade`, `tool-facade`). A module
-outside such a package that imports three or more of its modules raises
-`package-import-fanout` as a warning, and `prefer-package-import` then requires
-the facade for every fully re-exported name. A submodule import initializes its
-package first, so an eager facade would join every runtime cycle that passes
-through one of its members. The facades therefore re-export only members whose
-import adds no runtime cycle. `events.completion`, `events.registry` and
-`events.stream` would cycle through `core.result` and `session.codec`, and
-`tools.arguments`, `enabled`, `output_limit`, `references` and `view` through
-`core.plugin`; they keep canonical imports. `facade-export-gap` stays a hint
-because it reports these deliberately excluded names. `core.session` and
-`core.prompt` have no facade: almost all of their members take part in such
-cycles. Two reasoned config entries accept fan-out for `harnessed.events` and
-`core.runtime.streaming`, which need the excluded event modules.
+The `harnessed.events` initializer exposes the event vocabulary. Event streams
+and registration use explicit modules because the terminal event carries the
+typed run result, which in turn needs the durable event codec and session state.
+The tool package bundles the exported tool types. Its fan-out rule warns when a
+consumer reaches into three or more tool modules and prefers the facade for
+fully exported names. The internal runtime package has an empty initializer.
 
 The architecture tests additionally enforce relationships that the layer map
 does not express: plugin independence and the individual modules permitted to
@@ -80,8 +73,8 @@ necessary for deferred names under the supported Python 3.12 minimum.
 
 Public definitions precede implementation helpers. Module dunder assignments
 follow those definitions. Only package initializers declare `__all__`; the
-single-module public facades (`errors`, `hooks`, `services`, `sessions`,
-`tracing`, the optional integrations and `plugins.subagents`)
+single-module public facades (`errors`, `hooks`, `tracing`, the optional integrations,
+`plugins.compaction` and `plugins.subagents`)
 have a reasoned config exception because their module path is the documented
 import, and optional extras cannot be re-exported eagerly from a package. Class initializers and dunders precede public/private methods.
 Ordering fixes use `safe-only`; reflection-sensitive sections require manual
@@ -110,11 +103,8 @@ The configuration deliberately leaves these optional policies unselected:
 - Relative-import enforcement can prefer one-dot imports of *child packages*;
   that does not express this repository's sibling-only preference. Ruff enforces
   the ban on parent-relative imports; cross-package imports remain absolute.
-- Import-count/export-gap thresholds are not applied to the root SDK or to
-  `core` as a whole: frequency alone does not justify extending the SDK, and a
-  trial produced 162 hints that mostly contradicted the canonical
-  `core.messages` / `core.model` module imports. They apply only to the scoped
-  core package facades described below.
+- Import-count and export-gap thresholds apply to the tool package. Import
+  frequency alone does not justify extending the root SDK.
 - `caller-before-callee` would reorder 78 methods away from their lifecycle and
   protocol grouping; `public-definitions-first` already fixes the outer order.
 - `prefer-callable-instance` reports protocol implementations such as approvers,
@@ -152,7 +142,7 @@ codes; a preceding standalone comment does not suppress the following statement.
 ## Working loop
 
 ```bash
-uv run smelt context harnessed.core.runtime.session
+uv run smelt context harnessed.runtime.session
 uv run smelt check --changed --base origin/main --format json
 uv run smelt check --show-hints --fail-on warning
 uv run prek run --all-files

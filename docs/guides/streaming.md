@@ -57,9 +57,10 @@ imply an idle session: another queued turn may have started. Compaction, spill a
 [declared custom events](events.md) also pass through the UI stream.
 
 Tags are namespaced, for example `text.delta`, `reasoning.delta` and `turn.result`.
+Import `StreamEvent`, `StreamItem` and `TurnResultEvent` from `harnessed.events.stream`.
 `StreamEvent[T]` is a Pydantic-compatible discriminated union of the built-in UI
 variants. The open `StreamItem[T]` adds custom-event bases. With structured
-output, a class pattern or `isinstance(event, events.TurnResultEvent)` preserves
+output, a class pattern or `isinstance(event, TurnResultEvent)` preserves
 `RunResult[T]`, including its typed output. Define an explicit application union
 when you want exhaustive static knowledge of your custom variants.
 

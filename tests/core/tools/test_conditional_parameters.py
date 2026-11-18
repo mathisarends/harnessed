@@ -16,10 +16,10 @@ from harnessed import (
     ToolParameter,
     tool,
 )
-from harnessed.core.tools import ToolRegistry
 from harnessed.kernel import Inject, PluginScope, PluginState, Scope, needs
 from harnessed.plugins import Service
 from harnessed.testing import ScriptedModel, call
+from harnessed.tools import ToolRegistry
 
 
 @dataclass

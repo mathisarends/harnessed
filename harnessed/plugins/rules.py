@@ -12,16 +12,17 @@ from typing import Annotated, Literal, Self, override
 from pydantic import AfterValidator, ConfigDict, Field, StringConstraints, TypeAdapter
 from pydantic.dataclasses import dataclass
 
-from harnessed.core.events import DurableEvent, Identifier
-from harnessed.core.hooks import PrepareRequest, ReviewToolResult
-from harnessed.core.messages import ToolCall, ToolResult, UserMessage, to_dict, user
-from harnessed.core.model import ModelRequest
-from harnessed.core.plugin import Plugin
-from harnessed.core.prompt.plugin_instructions import PluginInstructions
-from harnessed.core.runtime import SessionInbox
-from harnessed.core.session.session import SessionLog
-from harnessed.core.tokens import TokenCounter, count_content
+from harnessed.events import DurableEvent
+from harnessed.events.base import Identifier
 from harnessed.kernel import Inject, Next, PluginScope, PluginState, hook, needs
+from harnessed.models import ModelRequest
+from harnessed.models.messages import ToolCall, ToolResult, UserMessage, to_dict, user
+from harnessed.prompts.plugin_instructions import PluginInstructions
+from harnessed.runtime.hooks import PrepareRequest, ReviewToolResult
+from harnessed.runtime.inbox import SessionInbox
+from harnessed.runtime.plugin import Plugin
+from harnessed.runtime.tokens import TokenCounter, count_content
+from harnessed.sessions.log import SessionLog
 
 
 class RuleEventKind(StrEnum):

@@ -5,15 +5,15 @@ import pytest
 
 from harnessed import Agent as Application
 from harnessed import File, Image, Inject, Plugin, PolicyDecision, SessionState, ToolCall, tool
-from harnessed.core.events import ModelRequestedEvent, ObservationRecordedEvent
-from harnessed.core.hooks import PrepareRequest, PreStep
-from harnessed.core.messages import ImageDetail, ImagePart, Role, TextPart, UserMessage, user
-from harnessed.core.model import ModelChunk
-from harnessed.core.session.codec import decode_event, encode_event
 from harnessed.errors import SessionClosed
+from harnessed.events import ModelRequestedEvent, ObservationRecordedEvent
+from harnessed.events.codec import decode_event, encode_event
 from harnessed.kernel import hook
+from harnessed.models import ModelChunk
+from harnessed.models.messages import ImageDetail, ImagePart, Role, TextPart, UserMessage, user
 from harnessed.plugins import Approvals, Service
 from harnessed.plugins.filesystem import FileSystemBackend, LocalFileSystem
+from harnessed.runtime.hooks import PrepareRequest, PreStep
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit, AuditProjection
 

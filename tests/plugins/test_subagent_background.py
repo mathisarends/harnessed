@@ -11,7 +11,6 @@ from harnessed import (
     ToolCall,
     tool,
 )
-from harnessed.core.messages import ToolMessage, ToolStatus
 from harnessed.events import (
     InboxAddedEvent,
     SubagentFinishedEvent,
@@ -24,6 +23,7 @@ from harnessed.hooks import SessionAppended
 from harnessed.integrations.json import JsonSessionStore
 from harnessed.kernel import PluginScope
 from harnessed.models import ModelChunk
+from harnessed.models.messages import ToolMessage, ToolStatus
 from harnessed.plugins import Approvals, Subagents
 from harnessed.plugins.subagents import ChildActivity, ChildReportState
 from harnessed.testing import CallbackModel, ScriptedModel
