@@ -131,13 +131,13 @@ class SessionImages:
 
     async def resolve(self, request: ModelRequest) -> ModelRequest:
         """Materialize transport images without placing their bytes in the log."""
-        references = {
-            part.asset
-            for message in request.messages
-            if not isinstance(message.content, str)
-            for part in message.content
-            if isinstance(part, ImageReference)
-        }
+        references: set[AssetRef] = set()
+        for message in request.messages:
+            content = message.content
+            if not isinstance(content, str):
+                references.update(
+                    part.asset for part in content if isinstance(part, ImageReference)
+                )
         if not references:
             return request
         # Preserve warm entries needed by this request even if earlier cache misses

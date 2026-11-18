@@ -39,6 +39,7 @@ from harnessed.models.model import (
     resolve_request_settings,
     sum_usage,
 )
+from harnessed.sessions import HistoryEntry
 from harnessed.sessions.log import SessionLog
 
 from .budget import ContextBudget
@@ -506,18 +507,7 @@ def _plan_compaction(session: SessionLog, keep_last_steps: int) -> _CompactionPl
     inputs = tuple(
         entry.position
         for entry in entries
-        if entry.position < through
-        and (
-            (
-                isinstance(entry.message, SystemMessage)
-                and not entry.message.id.startswith("compaction:")
-            )
-            or (
-                entry.turn_id in protected_turns
-                and (entry.is_input or isinstance(entry.message, UserMessage))
-                and entry.observation is None
-            )
-        )
+        if entry.position < through and _is_protected_input(entry, protected_turns)
     )
     messages = frozenset(
         entry.message.id
@@ -541,6 +531,17 @@ def _plan_compaction(session: SessionLog, keep_last_steps: int) -> _CompactionPl
         )
         if messages
         else None
+    )
+
+
+def _is_protected_input(entry: HistoryEntry, protected_turns: set[str]) -> bool:
+    message = entry.message
+    if isinstance(message, SystemMessage) and not message.id.startswith("compaction:"):
+        return True
+    return (
+        entry.turn_id in protected_turns
+        and (entry.is_input or isinstance(message, UserMessage))
+        and entry.observation is None
     )
 
 
@@ -687,12 +688,9 @@ def _summary_budget(
 def _with_summary(request: ModelRequest, applied: CompactionAppliedEvent) -> ModelRequest:
     """Replace the projected summary placeholder with the applied summary text."""
     summary_id = f"compaction:{applied.id}"
-    return replace(
-        request,
-        messages=tuple(
-            SystemMessage(f"Conversation summary:\n{applied.summary}", id=summary_id)
-            if message.id == summary_id
-            else message
-            for message in request.messages
-        ),
-    )
+    messages: list[Message] = []
+    for message in request.messages:
+        if message.id == summary_id:
+            message = SystemMessage(f"Conversation summary:\n{applied.summary}", id=summary_id)
+        messages.append(message)
+    return replace(request, messages=tuple(messages))

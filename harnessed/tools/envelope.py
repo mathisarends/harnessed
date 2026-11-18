@@ -13,7 +13,7 @@ from typing import Any, NamedTuple, Self
 from pydantic import BaseModel, RootModel
 
 from harnessed.models import ToolDefinition
-from harnessed.models.messages import ToolCall, to_dict
+from harnessed.models.messages import ToolCall, freeze, to_dict
 
 from .info import ToolEnvelope, ToolInfo
 
@@ -142,7 +142,10 @@ class EnvelopeLayout:
             logger.warning("Skipping registry envelopes: %s", error)
             return cls(definition)
         own: dict[str, Any] = parameters.get("properties", {})
-        claims = _Claims(definition.name, set(own) | reserved_names, parameters.get("$defs", {}))
+        # Compare tool and envelope definitions in the same frozen JSON form.
+        claims = _Claims(
+            definition.name, set(own) | reserved_names, definition.parameters.get("$defs", {})
+        )
         declared = [EnvelopePart(model, InvalidEnvelope.ERROR) for model in models]
         for part in declared:
             if (conflict := claims.admit(part.model)) is not None:
@@ -198,6 +201,7 @@ class EnvelopeLayout:
         if not self.bindings:
             return ToolEnvelope(), arguments
         values: list[BaseModel] = []
+        envelope_names: set[str] = set()
         for binding in self.bindings:
             try:
                 values.append(_validate(binding.model, arguments, binding.names))
@@ -205,7 +209,7 @@ class EnvelopeLayout:
                 if binding.on_invalid is InvalidEnvelope.ERROR:
                     raise
                 logger.debug("Dropped invalid envelope %s", binding.model.__name__, exc_info=True)
-        envelope_names = {name for binding in self.bindings for name in binding.names}
+            envelope_names.update(binding.names)
         remaining = {name: value for name, value in arguments.items() if name not in envelope_names}
         return ToolEnvelope(tuple(values)), MappingProxyType(remaining)
 
@@ -219,7 +223,7 @@ class _EnvelopeBinding(NamedTuple):
 class _Claims:
     """Field and `$defs` names already used by one tool's merged schema."""
 
-    def __init__(self, tool: str, names: set[str], definitions: dict[str, Any]) -> None:
+    def __init__(self, tool: str, names: set[str], definitions: Mapping[str, Any]) -> None:
         self._tool = tool
         self._parameters = frozenset(names)
         self._names = set(names)
@@ -285,19 +289,23 @@ def _validate[T: BaseModel](
 
 @dataclass(frozen=True)
 class _EnvelopeSchema:
-    properties: dict[str, Any]
+    """Read-only snapshot of the fields and shared definitions owned by one model."""
+
+    properties: Mapping[str, Any]
     required: tuple[str, ...]
-    definitions: dict[str, Any]
+    definitions: Mapping[str, Any]
 
 
 @cache
 def _envelope_schema(model: type[BaseModel]) -> _EnvelopeSchema:
     schema = model.model_json_schema(by_alias=True)
-    definitions: dict[str, Any] = schema.pop("$defs", {})
+    definitions: dict[str, Any] = schema.get("$defs", {})
     if "$ref" in schema:
         # Recursive models put their root object in $defs instead of at the root.
         schema = dict(definitions[schema["$ref"].removeprefix("#/$defs/")])
     properties: dict[str, Any] = schema.get("properties", {})
     if schema.get("type") != "object" or not properties:
         raise TypeError(f"Envelope {model.__name__} must define object fields")
-    return _EnvelopeSchema(properties, tuple(schema.get("required", ())), definitions)
+    return _EnvelopeSchema(
+        freeze(properties), tuple(schema.get("required", ())), freeze(definitions)
+    )

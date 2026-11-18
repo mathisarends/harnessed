@@ -66,7 +66,7 @@ class IndexedEvent(DurableEvent):
 
 
 async def test_token_deltas_are_live_without_scheduling_or_entering_commits(monkeypatch):
-    monkeypatch.setattr(persistence_store, "_CHECKPOINT_INTERVAL", 0.01)
+    monkeypatch.setattr(persistence_store, "_CHECKPOINT_INTERVAL_SECONDS", 0.01)
     store = RecordingStore()
     entered, start = asyncio.Event(), asyncio.Event()
     ready, release = asyncio.Event(), asyncio.Event()
@@ -157,7 +157,7 @@ async def test_commits_cover_each_live_event_once_even_after_compaction_and_reop
 
 
 async def test_coalescing_retains_ordered_changes_and_empty_flush_does_not_write(monkeypatch):
-    monkeypatch.setattr(persistence_store, "_CHECKPOINT_INTERVAL", 60.0)
+    monkeypatch.setattr(persistence_store, "_CHECKPOINT_INTERVAL_SECONDS", 60.0)
     store = RecordingStore()
     async with Agent(model=ScriptedModel([]), store=store).session(id="batch") as session:
         await session.scope[PluginInstructions].set("seed", "ready")

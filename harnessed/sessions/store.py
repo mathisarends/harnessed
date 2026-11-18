@@ -177,7 +177,7 @@ class SessionPersistence:
     async def _deferred(self) -> None:
         try:
             with contextlib.suppress(TimeoutError):
-                await asyncio.wait_for(self._wake.wait(), timeout=_CHECKPOINT_INTERVAL)
+                await asyncio.wait_for(self._wake.wait(), timeout=_CHECKPOINT_INTERVAL_SECONDS)
             flush = self._flush
             if flush is not None:
                 await flush()
@@ -193,4 +193,4 @@ class SessionPersistence:
                 self._schedule()
 
 
-_CHECKPOINT_INTERVAL = 0.1
+_CHECKPOINT_INTERVAL_SECONDS = 0.1

@@ -125,7 +125,7 @@ class Connection:
 async def _bound_http_shutdown(request: httpx2.Request) -> None:
     # SSE reads may stay open indefinitely; the SDK's session DELETE must not.
     if request.method == "DELETE":
-        request.extensions["timeout"] = httpx2.Timeout(_HTTP_CLOSE_TIMEOUT).as_dict()
+        request.extensions["timeout"] = httpx2.Timeout(_HTTP_CLOSE_TIMEOUT_SECONDS).as_dict()
 
 
 async def _check_http_response(response: httpx2.Response) -> None:
@@ -196,4 +196,4 @@ class _MonitoredTransport(ClientTransport):
         await self.transport.close()
 
 
-_HTTP_CLOSE_TIMEOUT = 5.0
+_HTTP_CLOSE_TIMEOUT_SECONDS = 5.0

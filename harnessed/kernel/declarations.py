@@ -100,7 +100,7 @@ class Bundle:
         return PluginSpec(self.name, mount, tuple(dict.fromkeys(needs)), (), {})
 
 
-class PluginBase:  # smelt: ignore[SMT326] -- Stable kernel facade name; core Plugin extends it.
+class PluginBase:  # smelt: ignore[SMT323] -- Stable kernel facade name; the SDK Plugin extends it.
     """Reusable recipe reconstructed from explicit constructor inputs per activation.
 
     Constructors must only describe configuration and capabilities. Inputs retain

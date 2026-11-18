@@ -1,9 +1,8 @@
 # Smelt policy and adoption feedback
 
-Harnessed pins [`smelt-cli` 0.12.0](https://github.com/mathisarends/smelt)
-in the development group. The executable policy is
-[`smelt.yaml`](https://github.com/mathisarends/harnessed/blob/main/smelt.yaml).
-It complements Ruff, ty, runtime tests and the architecture suite.
+Harnessed pins `smelt-cli` 0.13.0 in the development group. The executable
+policy in `smelt.yaml` complements Ruff, ty, runtime tests and the architecture
+suite. [Smelt 0.13.0 release](https://github.com/mathisarends/smelt/releases/tag/v0.13.0)
 
 ## Architecture policy
 
@@ -51,20 +50,18 @@ aggregation stays disabled because it does not prove a concrete module cycle.
 
 ## Source and test conventions
 
-The requested checks are explicit in the config:
+The config declares package APIs under `architecture.packages` and dependency
+analysis under `architecture.import_graph`. Shared source conventions live
+under `style`, with package-specific limits and exceptions under
+`style.overrides`. Rule selectors use canonical `family/finding` names.
 
-| Severity | Rules |
+| Severity | Policy |
 | --- | --- |
-| Error | `import-cycle`, `public-definitions-first`, `bundled-instance-assignment`, `prefer-package-import`, `internal-static-helper`, `unnecessary-future-annotations`, `prefer-match-type-dispatch`, `implicit-optional-default` |
-| Error | `package-only-dunder-all`, `private-symbol-import`, `private-class-constant`, `await-in-call-argument`, `deprecated-async-contextmanager-return`, `redundant-module-name`, `redundant-private-delegate`, `redundant-name-alias`, `prefer-deferred-annotations` |
-| Error | `no-base-class-prefix`, `no-base-class-suffix`, `redundant-str-enum-value`, `str-enum-explicit-values`, `prefer-str-enum-discriminator`, `duplicate-literal-type`, `anonymous-tuple-type` |
-| Error | `information-hiding` group: `internal-public-member`, `internal-public-module-symbol`, `internal-public-attribute`, `test-only-public-function`, `test-only-public-attribute` |
-| Error | `private-test-access`, `string-patch-target`, `test-without-outcome-check`, `test-only-checks-possibly-empty-data`, `unbounded-test-wait`, `async-mock-without-await-check`, `nondeterministic-test-data`; at most three patches per test |
-| Error | `missing-interface-docstring`, `missing-broad-except-reason`, `duplicate-function`, `duplicate-class-name`, `duplicate-narrowing-assert`, `prefer-named-duration`, `nested-conditional-expression`, `parallel-record-fields` |
-| Error | `cross-module-private-attribute`, `comprehension-in-call-argument`, `excess-private-definitions` (limit 12) |
-| Error (policy) | `max_positional_parameters: 3` (`excess-positional-parameters`), `yaml_extension: yaml` (`yaml-file-extension`) |
-| Error (package policy) | `complex-comprehension` (one loop) and `constructor-logic` (two decisions) in `models.pydantic_ai`, `plugins.mcp` and `integrations.sandbox.worker` |
-| Hint | `independent-test-case-loop`, `deep-object-navigation`, `stateful-dataclass`, `mutable-field-in-frozen-dataclass`, `loop-invariant-collection`; `complex-comprehension` and `constructor-logic` outside those packages |
+| Error | Import cycles, foreign private access, unused public surface and source conventions such as explicit enum values, YAML filenames, named inline calculations, no mutable collection fields in frozen dataclasses and at most twelve private top-level definitions per module. |
+| Error | Test quality checks cover private access, patch targets, observable outcomes, bounded waits, awaited mocks and deterministic data. At most three patches per test. |
+| Error (package policy) | `complexity/excess-comprehension-loops` allows one loop and `complexity/excess-constructor-decisions` allows two decisions in `models.pydantic_ai`, `plugins.mcp` and `integrations.sandbox.worker`. |
+| Warning | `imports/excess-package-imports`, parameters beyond the third positional one, and unused inline suppressions. |
+| Hint | Attribute depth, mutation in stateful dataclasses, duration units, loop-invariant collections, independent test cases, and comprehension and constructor complexity outside the stricter packages. |
 
 Hooks and CI use `--fail-on warning`, so metadata warnings such as unused
 suppressions fail too. Optional defaults select a fallback only for `None`;
@@ -77,7 +74,7 @@ single-module public facades (`errors`, `hooks`, `tracing`, the optional integra
 `plugins.compaction` and `plugins.subagents`)
 have a reasoned config exception because their module path is the documented
 import, and optional extras cannot be re-exported eagerly from a package. Class initializers and dunders precede public/private methods.
-Ordering fixes use `safe-only`; reflection-sensitive sections require manual
+Ordering fixes use `safe-only`. Reflection-sensitive sections require manual
 review and behavioral verification. Production names such as `utils` and
 `helpers` are forbidden in favor of responsibilities with concrete names.
 
@@ -96,7 +93,7 @@ reason because callers pass plain `(event, callback[, priority])` literals.
 a wire value. YAML files use `.yaml`; `.github/workflows/release.yml` keeps its
 name because PyPI trusted publishing is registered for it.
 
-The configuration deliberately leaves these optional policies unselected:
+The configuration deliberately leaves these optional policies unselected.
 
 - Blanket private-module or module-docstring bans would conflict with intentional
   worker internals and useful module documentation.
@@ -105,18 +102,16 @@ The configuration deliberately leaves these optional policies unselected:
   the ban on parent-relative imports; cross-package imports remain absolute.
 - Import-count and export-gap thresholds apply to the tool package. Import
   frequency alone does not justify extending the root SDK.
-- `caller-before-callee` would reorder 78 methods away from their lifecycle and
-  protocol grouping; `public-definitions-first` already fixes the outer order.
-- `prefer-callable-instance` reports protocol implementations such as approvers,
+- `layout/callee-before-caller` would reorder methods away from their lifecycle
+  and protocol grouping. `layout/definition-order` already fixes the outer order.
+- `idioms/prefer-callable-instance` reports protocol implementations such as approvers,
   summarizers and responders whose named method is the contract.
-- `str-enum-auto-values` contradicts the explicit wire-value convention, and
-  `secret-settings-field` / `redundant-dishka-provider` target frameworks this
-  repository does not use.
+- `frameworks/prefer-secret-type` and `frameworks/redundant-dishka-provider`
+  target frameworks outside this repository.
 
 ## Reviewed exceptions
 
-There is no debt baseline. The full check covers 168 modules with no
-errors or warnings. Inline exceptions carry a reason at the reported statement.
+Inline exceptions carry a reason at the reported statement.
 The import fan-out exception is described under the architecture policy. Another config exception permits private access only in
 `tests/core/session/test_image_cache.py`, whose purpose is to measure byte and
 entry limits, eviction and reuse. Public asset behavior remains in separate tests.
@@ -160,6 +155,33 @@ uv run smelt config schema > .smelt.schema.json
 If a bundled Smelt agent skill is installed locally, refresh it with
 `uv run smelt skill install --force`, preserving its custom destination and any
 local edits first. This repository does not vendor a generated skill copy.
+
+## Review after the 0.13.0 upgrade
+
+The migration keeps strict coverage, the existing layer and cycle checks, the
+kernel facade, and each package's thresholds. The locked development dependency
+also controls the version used by prek and CI.
+[Upstream migration guide](https://github.com/mathisarends/smelt/blob/v0.13.0/docs/upgrading.md#012-to-013)
+
+- SMT340 checks awaited values, eager comprehensions and generator reductions used
+  directly as call arguments. The two new findings in `sum_usage` are resolved
+  by naming the input and output totals before constructing `ModelUsage`.
+- SMT339 checks private module symbols and private attributes. Kernel attribute
+  cooperation retains its immediate-package boundary with the reason recorded
+  beside the override.
+- SMT360 now fails checks. The tool argument name map owns a read-only copy and
+  the envelope schema cache freezes nested definitions and properties before
+  sharing them. A regression test mutates a model-owned schema and verifies
+  that later tool registration still uses the declared fields and definitions.
+- SMT363 remains a hint outside the stricter packages. Named values and explicit
+  loops clarify event registration, shell snapshots, tool selection, compaction
+  and image retention where comprehensions previously combined several steps.
+- SMT357 combines duration names and inline waits. The initial report contains
+  70 duration-name findings and zero inline waits. Two internal constants now
+  include seconds in their names. The rule stays advisory because its remaining
+  findings cover established timeout parameters and fields, including public and
+  protocol contracts. Use named durations for waits and explicit units for new
+  internal duration constants.
 
 ## Review after the 0.12.0 upgrade
 

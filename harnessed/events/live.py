@@ -25,8 +25,13 @@ type LiveEvent[T] = (
 )
 
 
-LIVE_EVENT_TYPES: dict[str, type] = {
-    str(next(field.default for field in fields(kind) if field.name == "type")): kind
-    for item in get_args(LiveEvent.__value__)
-    for kind in (get_origin(item) or item,)
-}
+def _live_event_types() -> dict[str, type]:
+    events: dict[str, type] = {}
+    for item in get_args(LiveEvent.__value__):
+        kind = get_origin(item) or item
+        tag = next(field.default for field in fields(kind) if field.name == "type")
+        events[str(tag)] = kind
+    return events
+
+
+LIVE_EVENT_TYPES = _live_event_types()
