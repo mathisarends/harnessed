@@ -615,13 +615,12 @@ class ToolRegistry:
         return tuple(dict.fromkeys(missing))
 
     def visible_definitions(self, scope: Scope | PluginScope) -> tuple[ToolDefinition, ...]:
-        return tuple(
-            self._layout(tool).definition
-            for entries in self._tools.values()
-            if (tool := self._visible(entries)) is not None
-            and self._available(tool, scope)
-            and tool.enabled(scope)
-        )
+        definitions: list[ToolDefinition] = []
+        for entries in self._tools.values():
+            tool = self._visible(entries)
+            if tool is not None and self._available(tool, scope) and tool.enabled(scope):
+                definitions.append(self._layout(tool).definition)
+        return tuple(definitions)
 
     def _visible(self, entries: list[_Tool]) -> _Tool | None:
         return next((tool for tool in reversed(entries) if tool.registration.active), None)

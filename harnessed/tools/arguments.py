@@ -4,6 +4,7 @@ from collections.abc import Callable, Mapping
 from copy import copy
 from dataclasses import dataclass, replace
 from functools import cached_property
+from types import MappingProxyType
 from typing import Annotated, Any, Self, TypeAliasType, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, create_model
@@ -42,10 +43,13 @@ class _ConditionalParameter:
 @dataclass(frozen=True)
 class ToolArguments:
     model: type[BaseModel]
-    names: dict[str, str]
+    names: Mapping[str, str]
     model_parameter: str | None = None
     conditions: tuple[_ConditionalParameter, ...] = ()
     disabled: frozenset[str] = frozenset()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "names", MappingProxyType(dict(self.names)))
 
     @classmethod
     def from_signature(

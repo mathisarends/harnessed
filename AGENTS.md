@@ -150,8 +150,8 @@ preserving evaluation order. Duplicate functions, class names and repeated
 attribute-narrowing assertions are errors. Use named durations for waits and
 include units in new internal duration constants.
 Store related envelope metadata as named records instead of parallel sequences.
-Review `modeling/dataclass-field-mutation` and
-`modeling/mutable-field-in-frozen-dataclass` hints against actual ownership.
+Review `modeling/dataclass-field-mutation` hints against actual ownership.
+Frozen dataclasses with shared collections must own a read-only snapshot.
 Review `idioms/loop-invariant-collection` hints without changing guards, empty-loop
 behavior or the timing of evaluation.
 Name awaited results, eager comprehensions and built-in reductions of generators

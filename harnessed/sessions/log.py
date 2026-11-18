@@ -377,14 +377,10 @@ class SessionLog:
     def _retain_resources(self) -> None:
         entries = self._history.items()
         refs = image_refs(entries)
-        refs.update(
-            part.asset
-            for event in self._inbox.pending
-            for message in (event.message,)
-            if not isinstance(message.content, str)
-            for part in message.content
-            if isinstance(part, ImageReference)
-        )
+        for event in self._inbox.pending:
+            content = event.message.content
+            if not isinstance(content, str):
+                refs.update(part.asset for part in content if isinstance(part, ImageReference))
         self._assets.retain(refs)
         paths = {ref.path for entry in entries for ref in entry.resources}
         self._files.retain(paths)

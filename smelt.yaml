@@ -192,6 +192,7 @@ rules:
   modeling/duplicate-class-name: error
   idioms/duplicate-narrowing-assert: error
   modeling/parallel-record-fields: error
+  modeling/mutable-field-in-frozen-dataclass: error
   visibility/excess-private-definitions: error
   # Naming and types
   modeling/forbidden-base-class-affix: error
@@ -218,7 +219,6 @@ rules:
   complexity/excess-attribute-depth: hint
   tests/independent-case-loop: hint
   modeling/dataclass-field-mutation: hint
-  modeling/mutable-field-in-frozen-dataclass: hint
   modeling/implicit-duration-unit:
     severity: hint
     reason: SMT357 combines literal waits with existing asyncio-style timeout names whose unit is defined by their API contracts.

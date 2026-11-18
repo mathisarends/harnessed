@@ -3,6 +3,7 @@ from typing import Annotated
 
 import pytest
 from pydantic import BaseModel, Field, RootModel
+from pydantic.json_schema import JsonSchemaValue, model_json_schema
 
 from harnessed import Agent, Plugin, ToolCall, ToolContext, ToolEnvelope, ToolInfo, ToolResult, tool
 from harnessed.events.codec import decode_event, encode_event
@@ -140,6 +141,35 @@ async def test_envelopes_apply_to_parameter_models_and_external_tools():
     assert received == [{"path": "a.txt"}]
     assert plan.envelope.get(Reason) == Reason()
     assert plan.envelope.get(ActionLabel) == ActionLabel(action_label="Read")
+
+
+async def test_envelope_schema_is_isolated_from_model_owned_schema() -> None:
+    class SearchLabel(BaseModel):
+        label: Search
+
+        @classmethod
+        def model_json_schema(cls, *_args: object, **_kwargs: object) -> JsonSchemaValue:
+            return schema
+
+    schema = model_json_schema(SearchLabel)
+    label_schema = schema["properties"]["label"]
+    search_schema = schema["$defs"]["Search"]
+
+    class LabelledSearch(Plugin):
+        @tool(readonly=True, envelope=(SearchLabel,))
+        async def lookup(self, criteria: Search) -> str:
+            return criteria.query
+
+    label_schema["description"] = "Changed after declaration"
+    search_schema["required"].append("changed")
+
+    async with Agent(
+        model=ScriptedModel(["unused"]), plugins=[LabelledSearch()]
+    ).session() as session:
+        parameters = session.tools["lookup"].parameters
+        assert parameters["properties"]["label"] == {"$ref": "#/$defs/Search"}
+        assert parameters["properties"]["criteria"] == {"$ref": "#/$defs/Search"}
+        assert parameters["$defs"]["Search"]["required"] == ("query",)
 
 
 class OtherLabel(BaseModel):

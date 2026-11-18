@@ -57,11 +57,11 @@ under `style`, with package-specific limits and exceptions under
 
 | Severity | Policy |
 | --- | --- |
-| Error | Import cycles, foreign private access, unused public surface and source conventions such as explicit enum values, YAML filenames, named inline calculations and at most twelve private top-level definitions per module. |
+| Error | Import cycles, foreign private access, unused public surface and source conventions such as explicit enum values, YAML filenames, named inline calculations, no mutable collection fields in frozen dataclasses and at most twelve private top-level definitions per module. |
 | Error | Test quality checks cover private access, patch targets, observable outcomes, bounded waits, awaited mocks and deterministic data. At most three patches per test. |
 | Error (package policy) | `complexity/excess-comprehension-loops` allows one loop and `complexity/excess-constructor-decisions` allows two decisions in `models.pydantic_ai`, `plugins.mcp` and `integrations.sandbox.worker`. |
 | Warning | `imports/excess-package-imports`, parameters beyond the third positional one, and unused inline suppressions. |
-| Hint | Attribute depth, dataclass ownership, duration units, loop-invariant collections, independent test cases, and comprehension and constructor complexity outside the stricter packages. |
+| Hint | Attribute depth, mutation in stateful dataclasses, duration units, loop-invariant collections, independent test cases, and comprehension and constructor complexity outside the stricter packages. |
 
 Hooks and CI use `--fail-on warning`, so metadata warnings such as unused
 suppressions fail too. Optional defaults select a fallback only for `None`;
@@ -169,6 +169,13 @@ also controls the version used by prek and CI.
 - SMT339 checks private module symbols and private attributes. Kernel attribute
   cooperation retains its immediate-package boundary with the reason recorded
   beside the override.
+- SMT360 now fails checks. The tool argument name map owns a read-only copy and
+  the envelope schema cache freezes nested definitions and properties before
+  sharing them. A regression test mutates a model-owned schema and verifies
+  that later tool registration still uses the declared fields and definitions.
+- SMT363 remains a hint outside the stricter packages. Named values and explicit
+  loops clarify event registration, shell snapshots, tool selection, compaction
+  and image retention where comprehensions previously combined several steps.
 - SMT357 combines duration names and inline waits. The initial report contains
   70 duration-name findings and zero inline waits. Two internal constants now
   include seconds in their names. The rule stays advisory because its remaining

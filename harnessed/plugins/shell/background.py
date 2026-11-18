@@ -103,11 +103,13 @@ class BackgroundCommands:
             raise ToolError("Unknown command_id (another mount or evicted result)") from None
 
     def summaries(self) -> tuple[CommandInfo, ...]:
-        return tuple(
-            CommandInfo(command.id, command.argv, snapshot.state, snapshot.returncode)
-            for command in self._commands.values()
-            for snapshot in (command.process.snapshot(),)
-        )
+        summaries: list[CommandInfo] = []
+        for command in self._commands.values():
+            snapshot = command.process.snapshot()
+            summaries.append(
+                CommandInfo(command.id, command.argv, snapshot.state, snapshot.returncode)
+            )
+        return tuple(summaries)
 
     async def close(self) -> None:
         self._closing = True
