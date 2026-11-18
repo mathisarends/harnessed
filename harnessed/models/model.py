@@ -167,9 +167,11 @@ def sum_usage(usages: Iterable[ModelUsage]) -> ModelUsage:
             total += value
         return total
 
+    input_tokens = sum(value.input_tokens for value in values)
+    output_tokens = sum(value.output_tokens for value in values)
     return ModelUsage(
-        sum(value.input_tokens for value in values),
-        sum(value.output_tokens for value in values),
+        input_tokens,
+        output_tokens,
         optional(value.cache_read_tokens for value in values),
         optional(value.cache_write_tokens for value in values),
         optional(value.reasoning_tokens for value in values),

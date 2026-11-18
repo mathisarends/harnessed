@@ -76,7 +76,7 @@ architecture:
       path: testing
       may_depend_on: [kernel, contracts, events, engine, plugins, model_adapters, sdk]
       third_party: {default: deny, allow: [pydantic, pydantic_ai, pytest]}
-  imports:
+  import_graph:
     type_checking: include
     transitive: true
     # Exact module cycles catch runtime coupling without conflating subpackages.
@@ -84,59 +84,69 @@ architecture:
     cycles: [layers, modules]
     type_checking_cycles: ignore
 
-structure:
-  forbidden_names: [utils, helpers]
-  max_private_definitions: 12
-  file_naming:
-    yaml_extension: yaml
-  contracts:
-    conventions:
-      match: harnessed
-      future_annotations: when-needed
-      ordering:
-        module: [docstring, future-imports, imports, type-vars, public, private, dunder-assignments, main-guard]
-        fix: safe-only
-    keyword-arguments:
-      match: harnessed
-      max_positional_parameters: 3
-    model-adapter-structure:
+  packages:
+    model-adapter-api:
       match: harnessed.models.pydantic_ai
       required: [adapter, conversion]
-      rules:
-        constructor-logic: error
-        complex-comprehension: error
-    mcp-structure:
+    mcp-api:
       match: harnessed.plugins.mcp
       required: [plugin, transport]
-      rules:
-        constructor-logic: error
-        complex-comprehension: error
-    worker-structure:
+    worker-api:
       match: harnessed.integrations.sandbox.worker
       required: [models, filesystem, runtime, __main__]
-      rules:
-        constructor-logic: error
-        complex-comprehension: error
     tool-facade:
       match: harnessed.tools
-      bundle_imports_at: 3
-      export_at: 3
+      min_imports_to_bundle: 3
+      min_importers_to_export: 3
     kernel-api:
       match: harnessed.kernel
       public: ['.']
-      # Scope, PluginHandle, EventBus and descriptors share kernel-owned state;
-      # callers in higher layers still have only the public kernel operations.
-      private_attribute_boundary: package
+
+style:
+  forbidden_names: [utils, helpers]
+  max_private_definitions: 12
+  future_annotations: when-needed
+  ordering:
+    module: [docstring, future-imports, imports, type-vars, public, private, dunder-assignments, main-guard]
+    fix: safe-only
+  max_positional_parameters: 3
+  max_comprehension_loops: 1
+  max_constructor_decisions: 2
+  str_enum_values: explicit
+  call_argument_kinds: [await, comprehension, aggregate]
+  file_naming:
+    yaml_extension: yaml
+  overrides:
+    model-adapter-structure:
+      match: harnessed.models.pydantic_ai
+      rules:
+        complexity/excess-constructor-decisions: error
+        complexity/excess-comprehension-loops: error
+    mcp-structure:
+      match: harnessed.plugins.mcp
+      rules:
+        complexity/excess-constructor-decisions: error
+        complexity/excess-comprehension-loops: error
+    worker-structure:
+      match: harnessed.integrations.sandbox.worker
+      rules:
+        complexity/excess-constructor-decisions: error
+        complexity/excess-comprehension-loops: error
+    kernel-cooperation:
+      match: harnessed.kernel
+      private_attribute_boundary:
+        value: package
+        reason: Scope, PluginHandle, EventBus and descriptors share kernel-owned state. Higher layers use public kernel operations.
 
 tests:
   layout: none  # Topic groups and consumer typing contracts need not mirror modules.
   max_patches_per_test: 3
 
 ignore:
-  - rule: unknown-layer
+  - rule: architecture/unknown-layer
     paths: [harnessed/prompts/__init__.py, harnessed/sessions/__init__.py, harnessed/tools/__init__.py]
     reason: These packages are explicitly mapped to the engine layer; the directory check recognizes only that layer's primary path.
-  - rule: package-only-dunder-all
+  - rule: visibility/misplaced-dunder-all
     paths:
       - harnessed/errors.py
       - harnessed/hooks.py
@@ -147,68 +157,71 @@ ignore:
       - harnessed/plugins/compaction.py
       - harnessed/plugins/subagents.py
     reason: Single-module public facades are documented import paths; optional-extra modules cannot be re-exported eagerly from their package initializer.
-  - rule: yaml-file-extension
+  - rule: layout/file-name-convention
     paths: [.github/workflows/release.yml]
     reason: PyPI trusted publishing is registered for this exact workflow filename.
-  - rule: private-test-access
+  - rule: tests/private-access
     paths: [tests/core/session/test_image_cache.py]
     reason: Cache unit tests measure private byte/entry bounds and eviction; SDK behavior is tested separately in test_image_assets.py.
 
 # Adopted conventions fail checks; design review suggestions remain hints.
 rules:
   # Source structure
-  import-cycle: error
-  public-definitions-first: error
-  bundled-instance-assignment: error
-  prefer-package-import: error
-  package-import-fanout: warning
-  internal-static-helper: error
-  unnecessary-future-annotations: error
-  prefer-match-type-dispatch: error
-  implicit-optional-default: error
-  package-only-dunder-all: error
-  private-symbol-import: error
-  cross-module-private-attribute: error
-  private-class-constant: error
-  await-in-call-argument: error
-  deprecated-async-contextmanager-return: error
-  redundant-module-name: error
-  redundant-private-delegate: error
-  redundant-name-alias: error
-  prefer-deferred-annotations: error
-  nested-conditional-expression: error
-  missing-interface-docstring: error
-  missing-broad-except-reason: error
-  duplicate-function: error
-  duplicate-class-name: error
-  duplicate-narrowing-assert: error
-  prefer-named-duration: error
-  parallel-record-fields: error
-  comprehension-in-call-argument: error
-  excess-private-definitions: error
+  architecture/import-cycle: error
+  layout/definition-order: error
+  idioms/bundled-instance-assignment: error
+  imports/prefer-package-import: error
+  imports/excess-package-imports: warning
+  layout/misplaced-static-helper: error
+  typing/redundant-future-annotations: error
+  idioms/prefer-match-type-dispatch: error
+  typing/implicit-optional-default: error
+  visibility/misplaced-dunder-all: error
+  visibility/foreign-private-access: error
+  layout/misplaced-private-constant: error
+  complexity/inline-call-argument: error
+  typing/deprecated-async-contextmanager-return: error
+  layout/redundant-module-name: error
+  visibility/redundant-private-delegate: error
+  idioms/redundant-name-alias: error
+  typing/prefer-deferred-annotations: error
+  complexity/forbidden-nested-conditional: error
+  idioms/missing-interface-docstring: error
+  idioms/missing-broad-except-reason: error
+  complexity/duplicate-function: error
+  modeling/duplicate-class-name: error
+  idioms/duplicate-narrowing-assert: error
+  modeling/parallel-record-fields: error
+  visibility/excess-private-definitions: error
   # Naming and types
-  no-base-class-prefix: error
-  no-base-class-suffix: error
-  redundant-str-enum-value: error
-  str-enum-explicit-values: error
-  prefer-str-enum-discriminator: error
-  duplicate-literal-type: error
-  anonymous-tuple-type: error
+  modeling/forbidden-base-class-affix: error
+  modeling/redundant-str-enum-value: error
+  modeling/str-enum-value-convention: error
+  modeling/prefer-str-enum-discriminator: error
+  typing/duplicate-literal-type: error
+  typing/anonymous-tuple-type: error
   # Public API surface, including APIs exposed only for tests (SMT316/320/335/429/430)
-  information-hiding: error
+  visibility/internal-public-member: error
+  visibility/internal-public-module-symbol: error
+  visibility/internal-public-attribute: error
+  visibility/test-only-public-function: error
+  visibility/test-only-public-attribute: error
   # Tests
-  private-test-access: error
-  string-patch-target: error
-  test-without-outcome-check: error
-  test-only-checks-possibly-empty-data: error
-  unbounded-test-wait: error
-  async-mock-without-await-check: error
-  nondeterministic-test-data: error
+  tests/private-access: error
+  tests/string-patch-target: error
+  tests/missing-outcome-check: error
+  tests/vacuous-assertion: error
+  tests/unbounded-wait: error
+  tests/missing-await-assertion: error
+  tests/nondeterministic-data: error
   # Design reviews
-  deep-object-navigation: hint
-  independent-test-case-loop: hint
-  stateful-dataclass: hint
-  mutable-field-in-frozen-dataclass: hint
-  loop-invariant-collection: hint
-  complex-comprehension: hint
-  constructor-logic: hint
+  complexity/excess-attribute-depth: hint
+  tests/independent-case-loop: hint
+  modeling/dataclass-field-mutation: hint
+  modeling/mutable-field-in-frozen-dataclass: hint
+  modeling/implicit-duration-unit:
+    severity: hint
+    reason: SMT357 combines literal waits with existing asyncio-style timeout names whose unit is defined by their API contracts.
+  idioms/loop-invariant-collection: hint
+  complexity/excess-comprehension-loops: hint
+  complexity/excess-constructor-decisions: hint

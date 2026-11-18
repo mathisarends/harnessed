@@ -211,7 +211,7 @@ async def test_storage_failure_reaches_the_run_caller_without_returning_success(
 
 @pytest.mark.parametrize("operation", ["context", "flush"])
 async def test_cancelled_write_finishes_before_cancellation_is_delivered(monkeypatch, operation):
-    monkeypatch.setattr(persistence_store, "_CHECKPOINT_INTERVAL", 60.0)
+    monkeypatch.setattr(persistence_store, "_CHECKPOINT_INTERVAL_SECONDS", 60.0)
     entered = asyncio.Event()
     release = asyncio.Event()
 
@@ -347,7 +347,7 @@ async def test_images_and_spilled_text_survive_a_paused_turn(store):
 async def test_intermediate_changes_coalesce_and_restore_at_the_requested_boundary(
     monkeypatch, boundary
 ):
-    monkeypatch.setattr(persistence_store, "_CHECKPOINT_INTERVAL", 60.0)
+    monkeypatch.setattr(persistence_store, "_CHECKPOINT_INTERVAL_SECONDS", 60.0)
     repository = ConversationRepository()
     agent = Agent(model=ScriptedModel([]), store=repository)
     async with agent.session(id="batch") as session:

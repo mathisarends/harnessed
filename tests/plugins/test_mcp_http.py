@@ -265,7 +265,7 @@ async def test_http_startup_rejection_releases_connection(serve_http, status):
 
 
 async def test_http_shutdown_does_not_wait_forever_for_delete(serve_http, monkeypatch):
-    monkeypatch.setattr(mcp_transport, "_HTTP_CLOSE_TIMEOUT", 0.05)
+    monkeypatch.setattr(mcp_transport, "_HTTP_CLOSE_TIMEOUT_SECONDS", 0.05)
     server = MCPServer("http")
     inner = server.streamable_http_app()
     deleting = asyncio.Event()

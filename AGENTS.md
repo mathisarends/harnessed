@@ -130,7 +130,11 @@ workflows and bump the key when Python validation behavior changes.
 
 ## Architecture and convention checks
 
-`smelt.yaml` is the executable policy; `uv.lock` pins Smelt CLI 0.12.0.
+`smelt.yaml` is the executable policy and `uv.lock` pins Smelt CLI 0.13.0.
+Package APIs live under `architecture.packages`. Shared source conventions
+live under `style` and package exceptions under `style.overrides`. Use canonical
+`family/finding` rule names in configuration and stable SMT codes in inline
+suppressions.
 Before editing, run `uv run smelt context <module-or-path>` to inspect its role.
 After editing, run `uv run smelt check --changed --base origin/main --format json`.
 Before finishing, run `uv run smelt check --show-hints --fail-on warning`,
@@ -139,17 +143,19 @@ Before finishing, run `uv run smelt check --show-hints --fail-on warning`,
 and the relevant tests. Prek and CI run the same static checks. Smelt also checks
 concrete runtime module cycles; annotation imports still count for boundaries.
 Unnecessary future imports and implicit truthiness defaults are errors. Review
-`deep-object-navigation` hints against ownership and public API contracts.
+`complexity/excess-attribute-depth` hints against ownership and public API contracts.
 Document placeholder Protocol/abstract methods and the reason for broad exception
 handlers. Expand nested conditional expressions into explicit branches while
 preserving evaluation order. Duplicate functions, class names and repeated
-attribute-narrowing assertions are errors; use named durations for waits.
+attribute-narrowing assertions are errors. Use named durations for waits and
+include units in new internal duration constants.
 Store related envelope metadata as named records instead of parallel sequences.
-Review `stateful-dataclass` and `mutable-field-in-frozen-dataclass` hints against
-actual ownership: frozen fields do not make referenced containers immutable.
-Review `loop-invariant-collection` hints without changing guards, empty-loop
+Review `modeling/dataclass-field-mutation` and
+`modeling/mutable-field-in-frozen-dataclass` hints against actual ownership.
+Review `idioms/loop-invariant-collection` hints without changing guards, empty-loop
 behavior or the timing of evaluation.
-Name collection comprehensions before passing them to calls. Smelt checks private
+Name awaited results, eager comprehensions and built-in reductions of generators
+before passing them to calls. Smelt checks private
 member access across module boundaries; only cooperating kernel implementations
 share an immediate-package boundary. Modules contain at most twelve private
 top-level definitions; split cohesive responsibilities into packages while keeping
