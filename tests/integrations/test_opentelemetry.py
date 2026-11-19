@@ -33,6 +33,7 @@ from harnessed.events import ControlState, SessionControlChangedEvent
 from harnessed.integrations.opentelemetry import (
     ContentCapture,
     OpenTelemetryTracer,
+    OTLPTracing,
     TraceContent,
     TraceContentKind,
     otlp_provider,
@@ -1556,7 +1557,7 @@ import sys
 class NoOtel(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
         if fullname.startswith('opentelemetry'):
-            raise ImportError('optional dependency not installed')
+            raise ModuleNotFoundError('optional dependency not installed', name=fullname)
 sys.meta_path.insert(0, NoOtel())
 import harnessed
 import harnessed.plugins
@@ -1573,6 +1574,15 @@ assert work(1) == 2
 with span('library.noop'), current().span('library.also_noop'):
     pass
 assert not any(n.startswith('opentelemetry') for n in sys.modules)
+from harnessed.integrations.opentelemetry import OTLPTracing
+enabled = False
+Agent(plugins=[OTLPTracing() if enabled else None])
+try:
+    OTLPTracing()
+except ImportError as error:
+    assert 'harnessed[otel]' in str(error)
+else:
+    raise AssertionError('Enabling OTLP tracing requires the extra')
 """
     result = subprocess.run(
         [sys.executable, "-c", code], capture_output=True, text=True, timeout=10
@@ -1610,6 +1620,54 @@ async def test_real_otlp_http_export_to_local_collector(
         assert names == ["harnessed.model", "harnessed.step", "harnessed.turn"]
     finally:
         provider.shutdown()
+
+
+@pytest.mark.parametrize("explicit", [False, True])
+async def test_otlp_plugin_owns_each_session_export(
+    otlp_collector: Collector,
+    monkeypatch: pytest.MonkeyPatch,
+    shutdown_threads: list[int],
+    explicit: bool,
+) -> None:
+    base_url, requests = otlp_collector
+    monkeypatch.setenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", f"{base_url}/v1/traces")
+    monkeypatch.setenv("OTEL_SERVICE_NAME", "env-service")
+    monkeypatch.setenv(
+        "OTEL_RESOURCE_ATTRIBUTES", "openinference.project.name=env-project,deployment.region=eu"
+    )
+    monkeypatch.setenv("OTEL_BSP_SCHEDULE_DELAY", "60000")
+    monkeypatch.setenv("OTEL_TRACES_SAMPLER", "always_on")
+    global_provider = trace.get_tracer_provider()
+    plugin = (
+        OTLPTracing(
+            service_name="explicit-service",
+            endpoint=f"{base_url}/explicit",
+            resource_attributes={"openinference.project.name": "my-project"},
+        )
+        if explicit
+        else OTLPTracing()
+    )
+    agent = Agent(model=ScriptedModel(["inner done", "outer done"]), plugins=[plugin])
+    async with agent.session() as first:
+        await agent.run("inner")
+        assert len(shutdown_threads) == 1
+        assert requests
+        await first.run("outer")
+    assert len(shutdown_threads) == 2
+    assert get_ident() not in shutdown_threads
+    assert trace.get_tracer_provider() is global_provider
+    names = []
+    for path, _, body in requests:
+        assert path == ("/explicit" if explicit else "/v1/traces")
+        for resource in ExportTraceServiceRequest.FromString(body).resource_spans:
+            attributes = {a.key: a.value.string_value for a in resource.resource.attributes}
+            assert attributes["service.name"] == ("explicit-service" if explicit else "env-service")
+            assert attributes["openinference.project.name"] == (
+                "my-project" if explicit else "env-project"
+            )
+            assert attributes["deployment.region"] == "eu"
+            names.extend(span.name for scope in resource.scope_spans for span in scope.spans)
+    assert names.count("harnessed.turn") == 2
 
 
 @pytest.mark.parametrize("endpoint_source", ["explicit", "traces_env", "base_env"])

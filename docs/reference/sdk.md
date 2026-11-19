@@ -25,12 +25,19 @@ and does nothing outside a span. It restores the parent after nested work,
 exceptions and cancellation and isolates concurrent or untraced session contexts.
 Explicitly recorded attributes are outside content filtering/redaction.
 
-`harnessed.integrations.opentelemetry.otlp_provider(*, service_name,
+`harnessed.integrations.opentelemetry.OTLPTracing(*, service_name=None,
+endpoint=None, resource_attributes=None, capture_content=False, max_content_length=16384,
+max_image_bytes=5242880, full_input_messages=False, content_filter=None, trace_hooks=False)`
+fills the `tracer` slot with a session-owned batched OTLP/HTTP exporter. Each session
+closes its provider and waits for shutdown. Exporter and resource settings follow
+the precedence below. Span content and hook options match `OpenTelemetryTracer`.
+
+`harnessed.integrations.opentelemetry.otlp_provider(*, service_name=None,
 endpoint=None, resource_attributes=None)` is an async context manager yielding an
 SDK `TracerProvider` with batched OTLP/HTTP export. It requires `harnessed[otel]`.
 Open once around all agents and sessions using the provider; exiting shuts down
 only that provider outside the event loop, including on errors and cancellation.
-It never installs a global provider. `service_name` must contain non-whitespace
+It never installs a global provider. When supplied, `service_name` must contain non-whitespace
 characters and overrides `service.name` in resources and environment variables.
 `resource_attributes` accepts a mapping of OTel attribute values; explicit values
 override resource environment attributes without mutating the mapping. `endpoint`
