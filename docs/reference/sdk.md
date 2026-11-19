@@ -39,8 +39,8 @@ Headers, timeouts and sampling remain configured through standard OTel settings.
 Shutdown attempts to drain batches and does not confirm destination ingestion.
 
 `harnessed.integrations.opentelemetry.OpenTelemetryTracer(*, tracer_provider=None,
-capture_content=False, max_content_length=16384, content_filter=None,
-trace_hooks=False)` replaces the `tracer` slot and
+capture_content=False, max_content_length=16384, max_image_bytes=5242880,
+full_input_messages=False, content_filter=None, trace_hooks=False)` replaces the `tracer` slot and
 requires `harnessed[otel]`. It emits nested runtime spans through the application's
 OpenTelemetry provider, without owning its exporters or shutdown. Import the
 integration explicitly; public SDK facades remain usable without the extra.
@@ -72,12 +72,21 @@ limits. Filter and redaction failures omit the field, set a content-free marker
 and preserve the agent's original outcome. Capture must be enabled; metadata
 remains outside content filtering and redaction. `ContentCapture` and
 `SecretText` are exported by the optional integration alongside the filter types.
-Each content field has its own serialized character budget. Truncated content
-remains valid JSON and reports original length and omitted-item counts after
-filtering/redaction. Turn summaries contain accepted user input and the last
-assistant message, including validated structured output and partial-result
-metadata. Model request details live in independently bounded
-`request.tools.value`, `request.settings.value` and `request.output_schema.value`.
+Model spans export OpenInference `llm.input_messages`, `llm.output_messages`,
+`llm.tools` and `llm.invocation_parameters` attributes instead of JSON blobs.
+`max_content_length` limits each text part and tool-argument string, with an
+explicit truncation marker. Each distinct image is exported whole on the first
+model span of the session that includes it, up to `max_image_bytes`; later or
+oversized occurrences become text placeholders. By default a model span lists
+only messages that earlier model spans of the session did not show and records
+the omitted count in `harnessed.input_messages.inherited`;
+`full_input_messages=True` lists every request message. Filters see images as
+digest stand-ins and can drop them but never read their data.
+On turn and tool spans, each content field has its own serialized character
+budget. Truncated content remains valid JSON and reports original length and
+omitted-item counts after filtering/redaction. Turn summaries contain accepted
+user input and the last assistant message, including validated structured output
+and partial-result metadata.
 
 `trace_hooks=True` opts into `harnessed.hook` spans for invoked listeners, with
 identity metadata and inclusive Waterfall timing. Hook dispatch binds the

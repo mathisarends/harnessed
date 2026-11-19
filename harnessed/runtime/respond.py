@@ -43,7 +43,6 @@ class ModelResponder:
             model=model.info.name,
             request_id=request_id,
         ) as current:
-            current.set_attribute("request", request)
             diagnostics = RequestDiagnostics(self.log, request_id)
             try:
                 with model_diagnostics(diagnostics.receive):
@@ -87,6 +86,8 @@ class ModelResponder:
 
         try:
             transport = await self.log.resolve_request(request)
+            # Trace the transport request: stored image references are resolved to data.
+            trace.set_attribute("request", transport)
             manager = await self.scope.dispatch(
                 StreamModel(self.context, transport, model, request_id=request_id),
                 default=lambda: model.stream(transport),
