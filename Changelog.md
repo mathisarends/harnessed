@@ -5,6 +5,47 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## 0.21.0 (Unreleased)
+
+### Added
+
+- `OTLPTracing` from `harnessed.integrations.opentelemetry` exports spans over
+  OTLP/HTTP. Each session owns its provider and drains pending batches when it
+  closes. The plugin reads standard OpenTelemetry settings by default and
+  accepts explicit overrides. Content capture is off by default.
+- `TurnEndedEvent.usage` exposes the turn's recorded `ModelUsage`, including
+  compaction and usage from steps recorded before a resume. The same turn total
+  is available in `RunResult.usage`.
+- OpenTelemetry step and turn spans report aggregate input, output and total
+  tokens under `harnessed.usage.*`, including recorded usage before an
+  interruption. Cache tokens, reasoning tokens and provider-reported cost
+  appear when every usage record in the aggregate supplies the corresponding
+  value. These attributes are available with content capture off.
+
+### Upgrade from 0.20.0
+
+- Update your dependency to `harnessed==0.21.0`, keeping any extras you already
+  use. For a pip installation, run
+  `python -m pip install --upgrade "harnessed==0.21.0"`. For a uv project,
+  update the constraint in `pyproject.toml` and run `uv sync`.
+- To enable session-owned tracing, install `harnessed[otel]==0.21.0` alongside
+  any existing extras and add `OTLPTracing()` to the agent's plugins.
+  Set `OTEL_SERVICE_NAME` and
+  `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` to configure the service and collector,
+  or pass `service_name=` and `endpoint=` to the plugin. To switch an existing
+  agent to session-owned export, replace its `OpenTelemetryTracer(...)` plugin
+  with `OTLPTracing(...)`. Keep `OpenTelemetryTracer` when the application
+  owns a shared provider. See [tracing setup](docs/guides/tracing.md#trace-an-agent).
+- For turn-level usage tracking, read `TurnEndedEvent.usage` in event consumers
+  or continue using `RunResult.usage`. Keep using `ModelUsageRecordedEvent` for
+  per-call usage and historical totals. Older `turn.ended` audit records omit
+  `usage` and decode with empty counters. For billing from traces, sum the model
+  and compaction spans to count each call once.
+- No storage migration is required. Conversation state, checkpoints and JSON
+  stores use format **3**, and standalone audit envelopes use version **6**.
+  In a staged rollout, upgrade standalone audit readers before writers.
+  The 0.20.0 decoder rejects the new `usage` field in `turn.ended` records.
+
 ## 0.20.0 (2026-11-19)
 
 ### Added

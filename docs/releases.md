@@ -4,6 +4,19 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
+## 0.21.0 (Unreleased)
+
+`OTLPTracing` adds session-owned OTLP/HTTP export through the optional
+`otel` extra. `TurnEndedEvent.usage` exposes recorded turn totals, and
+OpenTelemetry step and turn spans include token usage and provider-reported
+cost when available. See the [tracing guide](guides/tracing.md).
+
+**Upgrade.** Update the package version and opt in to session-owned export
+where needed. Existing stored sessions need no migration. Upgrade standalone
+audit readers before writers during a staged rollout. See the
+[0.20.0 upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0200)
+for installation, tracing setup and historical usage records.
+
 ## 0.20.0 (2026-11-19)
 
 The SDK now groups session, prompt, tool and event APIs by domain.

@@ -8,9 +8,8 @@ Harnessed 0.x is alpha software. Read the
 [release notes and compatibility policy](releases.md) before depending on its
 public APIs or persisted session formats.
 
-Harnessed 0.20.0 moves several SDK imports to their owning packages and adds
-OpenInference model messages to OpenTelemetry traces. See the
-[release overview](releases.md) for upgrade steps and earlier releases.
+Harnessed 0.21.0 adds session-owned OTLP tracing and turn-level token usage.
+See the [release overview](releases.md) for upgrade steps and earlier releases.
 
 | I want to... | Read |
 | --- | --- |
