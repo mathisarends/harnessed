@@ -352,6 +352,38 @@ separately. A longer value keeps its prefix followed by
 `… [truncated, original length N]`, and the span gets
 `harnessed.input.truncated` or `harnessed.output.truncated`.
 
+The OpenTelemetry SDK caps the number of attributes per span and evicts the
+oldest ones when a span exceeds the cap. Model spans therefore budget their
+input messages: after the span's correlation and request attributes, and a
+reserve for the response, they export the newest messages that fit and omit
+older messages whole. `harnessed.input_messages.omitted` records how many were
+left out, and the span gets `harnessed.input.truncated`. The latest observation
+always takes priority over older history, and the images of omitted messages
+are exported by the next span that shows them. This matters most when history
+is re-exported, such as after trimming older screenshots or with
+`full_input_messages=True`.
+
+The budget follows `OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT` (or
+`OTEL_ATTRIBUTE_COUNT_LIMIT`), otherwise the SDK default of 128. The provider's
+own limits are not readable through the OpenTelemetry API, so pass
+`max_span_attributes` to the tracer when the provider uses explicit
+`SpanLimits`; `otlp_provider()` and `OTLPTracing` accept the same option and
+apply it to their provider. Setting the environment variable configures both
+sides at once:
+
+```python
+async with otlp_provider(max_span_attributes=1_024) as provider:
+    tracer = OpenTelemetryTracer(
+        tracer_provider=provider,
+        capture_content=True,
+        max_span_attributes=1_024,
+    )
+```
+
+Correlation attributes such as `openinference.span.kind`, `session.id`,
+`harnessed.step` and `harnessed.request_id` are set again just before a span
+ends, so they survive even if the provider's real limit is below the budget.
+
 Images are never truncated or exported as text. The tracer receives the model
 transport request, so images stored in the session's asset store are resolved.
 Each distinct image is identified by the SHA-256 of its bytes, which equals its

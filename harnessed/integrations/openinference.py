@@ -154,6 +154,9 @@ class MessageAttributes:
     marker. Images are exported whole, once per conversation, or replaced by a
     text placeholder. Claimed images are recorded only by ``commit()``, after
     every attribute was built successfully.
+
+    An attribute budget keeps the newest messages that fit and omits older ones
+    whole, so a span never exports a partial message.
     """
 
     def __init__(
@@ -173,15 +176,26 @@ class MessageAttributes:
         self._attributes: dict[str, AttributeScalar] = {}
         self._claimed: dict[str, str] = {}
         self._truncated = False
+        self._omitted = 0
 
     @property
     def truncated(self) -> bool:
-        return self._truncated
+        return self._truncated or self._omitted > 0
 
-    def messages(self, prefix: str, value: JsonValue) -> dict[str, AttributeScalar]:
+    @property
+    def omitted(self) -> int:
+        """Older messages left out because they did not fit the attribute budget."""
+        return self._omitted
+
+    def messages(
+        self, prefix: str, value: JsonValue, *, budget: int | None = None
+    ) -> dict[str, AttributeScalar]:
+        """Flatten messages, keeping the newest ones that fit within ``budget`` attributes."""
         if not isinstance(value, list):
             raise TypeError("Trace messages must be a list")
-        for index, message in enumerate(value):
+        kept = len(value) if budget is None else self._fitting(prefix, value, budget)
+        self._omitted = len(value) - kept
+        for index, message in enumerate(value[self._omitted :]):
             self._message(f"{prefix}.{index}.message", message)
         return dict(self._attributes)
 
@@ -195,6 +209,27 @@ class MessageAttributes:
 
     def json(self, value: JsonValue) -> str:
         return self.text(json.dumps(value, ensure_ascii=False, allow_nan=False))
+
+    def _fitting(self, prefix: str, messages: list[JsonValue], budget: int) -> int:
+        """Count the newest messages whose attributes fit together within ``budget``.
+
+        A scratch builder measures them without claiming images, because image
+        placeholders and image URLs use the same number of attributes.
+        """
+        scratch = MessageAttributes(
+            text_limit=self._text_limit,
+            image_limit=self._image_limit,
+            images=self._images,
+            conversation=self._conversation,
+            span_id=self._span_id,
+        )
+        kept = 0
+        for message in reversed(messages):
+            scratch._message(f"{prefix}.{kept}.message", message)
+            if len(scratch._attributes) > budget:
+                break
+            kept += 1
+        return kept
 
     def _message(self, prefix: str, message: JsonValue) -> None:
         if not isinstance(message, dict) or not isinstance(role := message.get("role"), str):
