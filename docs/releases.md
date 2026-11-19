@@ -4,7 +4,7 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
-## 0.20.0 (Unreleased)
+## 0.20.0 (2026-11-19)
 
 The SDK now groups session, prompt, tool and event APIs by domain.
 OpenTelemetry model spans use OpenInference attributes so Phoenix can display
