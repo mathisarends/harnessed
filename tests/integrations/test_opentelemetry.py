@@ -142,6 +142,16 @@ async def test_runtime_tree_usage_and_backend_attributes(telemetry):
     assert model.attributes["llm.token_count.completion"] == 7
     assert model.attributes["llm.token_count.total"] == 27
     assert model.attributes["gen_ai.usage.cost"] == 0.01
+    for aggregate in (step, turn):
+        attributes = aggregate.attributes
+        assert attributes["harnessed.usage.input_tokens"] == 20
+        assert attributes["harnessed.usage.output_tokens"] == 7
+        assert attributes["harnessed.usage.total_tokens"] == 27
+        assert attributes["harnessed.usage.cache_read_tokens"] == 4
+        assert attributes["harnessed.usage.reasoning_tokens"] == 2
+        assert attributes["harnessed.usage.cost"] == 0.01
+        assert "harnessed.usage.cache_write_tokens" not in attributes
+        assert "llm.cost.total" not in attributes
     assert model.attributes["harnessed.request_id"]
     assert turn.attributes["harnessed.outcome"] == "completed"
     for span in (turn, step, model):
@@ -195,7 +205,11 @@ async def test_turn_summaries_include_steering_and_exclude_queued_followups(tele
     async with asyncio.timeout(5):
         async with Agent(
             model=ScriptedModel(
-                [[ModelChunk(tool_call=ToolCall("wait"))], "first answer", "followup answer"]
+                [
+                    [ModelChunk(tool_call=ToolCall("wait"), usage=ModelUsage(2, 3, cost=0.0))],
+                    reply("first answer", usage=ModelUsage(7, 1, cost=0.25)),
+                    reply("followup answer", usage=ModelUsage(3, 1)),
+                ]
             ),
             plugins=[Work(), OpenTelemetryTracer(tracer_provider=provider, capture_content=True)],
         ).session() as session:
@@ -207,7 +221,12 @@ async def test_turn_summaries_include_steering_and_exclude_queued_followups(tele
             assert (await first.result()).text == "first answer"
             assert (await followup.result()).text == "followup answer"
     turns = [item for item in exporter.get_finished_spans() if item.name == "harnessed.turn"]
-    assert len(turns) == 2
+    steps = [item for item in exporter.get_finished_spans() if item.name == "harnessed.step"]
+    assert [item.attributes["harnessed.usage.total_tokens"] for item in steps] == [5, 8, 4]
+    assert steps[0].attributes["harnessed.usage.cost"] == 0.0
+    assert [item.attributes["harnessed.usage.total_tokens"] for item in turns] == [13, 4]
+    assert turns[0].attributes["harnessed.usage.cost"] == 0.25
+    assert "harnessed.usage.cost" not in turns[1].attributes
     assert [item["content"] for item in json.loads(turns[0].attributes["input.value"])] == [
         "initial question",
         "steering question",
@@ -1473,6 +1492,7 @@ async def test_abort_closes_spans_and_preserves_partial_usage(telemetry):
     assert len(spans) == 3
     assert all(s.attributes["harnessed.cancelled"] for s in spans)
     assert spans[0].attributes["llm.token_count.total"] == 6
+    assert [span.attributes["harnessed.usage.total_tokens"] for span in spans[1:]] == [6, 6]
 
 
 async def test_graceful_stop_is_not_recorded_as_an_exception(telemetry):
@@ -1536,7 +1556,14 @@ async def test_sessions_are_isolated_and_plugin_does_not_shutdown_provider(telem
 async def test_compaction_span_records_its_usage(telemetry):
     provider, exporter = telemetry
     agent = Agent(
-        model=ScriptedModel(["first", "kept", reply("summary", usage=ModelUsage(9, 2)), "second"]),
+        model=ScriptedModel(
+            [
+                "first",
+                "kept",
+                reply("summary", usage=ModelUsage(9, 2, cost=0.1)),
+                reply("second", usage=ModelUsage(3, 1)),
+            ]
+        ),
         plugins=[
             Compaction(trigger=every_turns(1), keep_last_steps=1),
             OpenTelemetryTracer(tracer_provider=provider),
@@ -1548,6 +1575,10 @@ async def test_compaction_span_records_its_usage(telemetry):
         await session.run("next")
     compact = next(s for s in exporter.get_finished_spans() if s.name == "harnessed.compaction")
     assert compact.attributes["llm.token_count.total"] == 11
+    for name in ("harnessed.step", "harnessed.turn"):
+        last = next(item for item in reversed(exporter.get_finished_spans()) if item.name == name)
+        assert last.attributes["harnessed.usage.total_tokens"] == 15
+        assert "harnessed.usage.cost" not in last.attributes
 
 
 def test_core_and_public_facades_import_without_otel():
@@ -1604,20 +1635,24 @@ async def test_real_otlp_http_export_to_local_collector(
     )
     try:
         await Agent(
-            model=ScriptedModel(["done"]), plugins=[OpenTelemetryTracer(tracer_provider=provider)]
+            model=ScriptedModel([reply("done", usage=ModelUsage(8, 3, cost=0.02))]),
+            plugins=[OpenTelemetryTracer(tracer_provider=provider)],
         ).run("go")
         provider.force_flush()
         assert len(requests) == 3
-        names = []
+        costs = {}
         for request_path, headers, body in requests:
             assert request_path == path
             assert headers["x-test"] == "harnessed"
             assert headers["Content-Type"] == "application/x-protobuf"
             data = ExportTraceServiceRequest.FromString(body)
-            names.extend(
-                s.name for r in data.resource_spans for scope in r.scope_spans for s in scope.spans
-            )
-        assert names == ["harnessed.model", "harnessed.step", "harnessed.turn"]
+            [resource] = data.resource_spans
+            [scope] = resource.scope_spans
+            [span] = scope.spans
+            attributes = {entry.key: entry.value for entry in span.attributes}
+            key = "llm.cost.total" if span.name == "harnessed.model" else "harnessed.usage.cost"
+            costs[span.name] = attributes[key].double_value
+        assert costs == {"harnessed.model": 0.02, "harnessed.step": 0.02, "harnessed.turn": 0.02}
     finally:
         provider.shutdown()
 

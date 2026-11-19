@@ -124,7 +124,18 @@ def test_current_record_format_roundtrips_the_turn_end_payload():
     record = {
         "version": 6,
         "type": "turn.ended",
-        "data": {"turn_id": "turn", "reason": "completed"},
+        "data": {
+            "turn_id": "turn",
+            "reason": "completed",
+            "usage": {
+                "input_tokens": 15,
+                "output_tokens": 4,
+                "cache_read_tokens": 10,
+                "cache_write_tokens": None,
+                "reasoning_tokens": 2,
+                "cost": 0.01,
+            },
+        },
     }
     event = decode_event(record)
     assert type(event) is TurnEndedEvent

@@ -15,6 +15,7 @@ from pydantic import Field, JsonValue, SecretBytes
 from harnessed.events import (
     AssistantMessageEvent,
     OutputValidatedEvent,
+    TurnEndedEvent,
     TurnOutcome,
     UserMessageEvent,
 )
@@ -29,7 +30,7 @@ from harnessed.models.messages import (
 from harnessed.runtime.control import StopAtBoundary
 from harnessed.runtime.plugin import Plugin, PluginConfig
 from harnessed.runtime.tracing import HookTracing, Span, Tracer
-from harnessed.sessions.turns import Turn
+from harnessed.sessions.turns import Step, Turn, recorded_usage
 
 from .openinference import (
     ConversationExport,
@@ -408,6 +409,8 @@ class _Span:
         match value:
             case ModelRequest():
                 self._request(value)
+            case Step():
+                self._aggregate_usage(recorded_usage(value.events))
             case Turn():
                 self._turn(value)
             case ModelUsage():
@@ -593,7 +596,23 @@ class _Span:
         elif name == "tool":
             self._native.set_attribute("tool.name", value)
 
+    def _aggregate_usage(self, usage: ModelUsage) -> None:
+        for key, value in {
+            "input_tokens": usage.input_tokens,
+            "output_tokens": usage.output_tokens,
+            "total_tokens": usage.total_tokens,
+            "cache_read_tokens": usage.cache_read_tokens,
+            "cache_write_tokens": usage.cache_write_tokens,
+            "reasoning_tokens": usage.reasoning_tokens,
+            "cost": usage.cost,
+        }.items():
+            if value is not None:
+                self._native.set_attribute(f"harnessed.usage.{key}", value)
+
     def _turn(self, turn: Turn) -> None:
+        end = turn.events[-1]
+        usage = end.usage if isinstance(end, TurnEndedEvent) else recorded_usage(turn.events)
+        self._aggregate_usage(usage)
         if turn.reason is not None:
             self._native.set_attribute("harnessed.outcome", turn.reason.value)
         if not self.config.capture_content:

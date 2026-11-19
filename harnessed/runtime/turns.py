@@ -1,10 +1,11 @@
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import replace
 from uuid import uuid4
 
 from harnessed.errors import OutputTokenLimit
 from harnessed.events import (
     AssistantMessageEvent,
-    ModelUsageRecordedEvent,
     OutputValidatedEvent,
     OutputValidationFailedEvent,
     StepOutcome,
@@ -14,10 +15,10 @@ from harnessed.events import (
 )
 from harnessed.events.turn import FinalStepPolicy, TurnLimits
 from harnessed.kernel import Scope
-from harnessed.models.model import GenerationSettings, StopReason, TokenLimitBehavior, sum_usage
+from harnessed.models import GenerationSettings, StopReason, TokenLimitBehavior
 from harnessed.sessions import SessionContext
 from harnessed.sessions.log import SessionLog
-from harnessed.sessions.turns import Step, Turn
+from harnessed.sessions.turns import Step, Turn, recorded_usage
 
 from .control import SessionControl
 from .hooks import TurnStopping
@@ -94,9 +95,7 @@ class TurnRunner:
                 await self.log.append(TurnEndedEvent(turn, TurnOutcome.TOKEN_BUDGET))
                 return True
             final = step == max_steps and start.final_step is FinalStepPolicy.SUMMARIZE
-            with span(
-                "harnessed.step", scope=self.scope, session_id=self.log.id, turn_id=turn, step=step
-            ):
+            with self._step_span(turn, step):
                 if not await self.steps.run(turn, step, settings, max_steps=max_steps, final=final):
                     return True
             await self.control.checkpoint()
@@ -109,6 +108,18 @@ class TurnRunner:
             return True
         await self.log.append(TurnEndedEvent(turn, TurnOutcome.MAX_STEPS))
         return True
+
+    @contextmanager
+    def _step_span(self, turn: str, step: int) -> Generator[None]:
+        with span(
+            "harnessed.step", scope=self.scope, session_id=self.log.id, turn_id=turn, step=step
+        ) as current:
+            try:
+                yield
+            finally:
+                opened = self.log.open_turn
+                if opened is not None and opened.id == turn and len(opened.steps) == step:
+                    current.set_attribute("step_snapshot", opened.steps[-1])
 
     async def _end_resumed(self, turn: str, previous: Turn) -> bool:
         """End a resumed turn whose last step already exhausted or finished it."""
@@ -128,7 +139,7 @@ class TurnRunner:
     def _spent_tokens(self) -> int:
         """Input and output tokens billed so far in the open turn, compaction included."""
         events = self.log.current_turn().events
-        usage = sum_usage(e.usage for e in events if isinstance(e, ModelUsageRecordedEvent))
+        usage = recorded_usage(events)
         return usage.total_tokens
 
     async def _continue_from(self, step: Step) -> bool:

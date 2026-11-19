@@ -9,7 +9,6 @@ from harnessed.events import (
     CompactionAppliedEvent,
     DurableEvent,
     EventKind,
-    ModelUsageRecordedEvent,
     OutputValidatedEvent,
     OutputValidationFailedEvent,
     ToolCallFinishedEvent,
@@ -19,17 +18,18 @@ from harnessed.events import (
     TurnStartedEvent,
 )
 from harnessed.events.codec import CURRENT_VERSION, decode_event
+from harnessed.models import ModelUsage, OutputSchema, StopReason
 from harnessed.models.messages import (
     Message,
     ToolCall,
     ToolResult,
     to_dict,
 )
-from harnessed.models.model import ModelUsage, OutputSchema, StopReason, sum_usage
 from harnessed.runtime.outputs import OutputTypes, OutputValues
 
 from .history import derive_messages
 from .state import SessionState
+from .turns import recorded_usage
 
 
 @dataclass(frozen=True)
@@ -146,7 +146,7 @@ def _result_from_events(
     return RunResult(
         final.message.text if final else "",
         events,
-        sum_usage(e.usage for e in events if isinstance(e, ModelUsageRecordedEvent)),
+        turn.usage if turn is not None else recorded_usage(events),
         reason,
         turn.turn_id if turn else None,
         derive_messages(

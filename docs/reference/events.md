@@ -95,7 +95,7 @@ turn are also included in its final `RunResult.events`.
 | `InboxAddedEvent` | `inbox.added` | Yes | No | Queued input `message.id` with its target, context and turn options |
 | `InboxRemovedEvent` | `inbox.removed` | Yes | No | Input `message_id` removed for the given `reason` |
 | `TurnStartedEvent` | `turn.started` | Yes | No | Turn `turn_id` started from queued `input_id` |
-| `TurnEndedEvent` | `turn.ended` | Yes | No | Durable outcome of `turn_id` |
+| `TurnEndedEvent` | `turn.ended` | Yes | No | Outcome of `turn_id` and aggregate `usage` (`ModelUsage`), including compaction |
 | `StepStartedEvent` | `step.started` | Yes | No | Step `(turn_id, step)` started |
 | `StepEndedEvent` | `step.ended` | Yes | No | Outcome of step `(turn_id, step)` |
 | `SessionControlChangedEvent` | `session.control.changed` | Yes | No | Committed control `state` and inbox retention policy |

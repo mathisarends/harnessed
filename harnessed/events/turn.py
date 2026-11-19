@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 
 from pydantic import Field
 
-from harnessed.models import GenerationSettings, OutputSchema
+from harnessed.models import GenerationSettings, ModelUsage, OutputSchema
 
 from .base import DurableEvent, Identifier, StepNumber
 from .kinds import EventKind
@@ -70,13 +70,14 @@ class TurnStartedEvent(DurableEvent):
 
 @dataclass(frozen=True)
 class TurnEndedEvent(DurableEvent):
-    """Durably close a turn with its outcome; the UI result is a separate event."""
+    """Close a turn with its outcome and aggregate provider-reported usage."""
 
     __hash__ = None
 
     type: Literal[EventKind.TURN_ENDED] = field(default=EventKind.TURN_ENDED, kw_only=True)
     turn_id: Identifier
     reason: TurnOutcome = TurnOutcome.COMPLETED
+    usage: ModelUsage = field(default_factory=lambda: ModelUsage(0), kw_only=True)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "reason", TurnOutcome(self.reason))

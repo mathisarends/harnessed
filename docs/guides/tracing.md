@@ -193,6 +193,16 @@ The integration emits OpenInference span kinds, model names and token/cost
 attributes for Phoenix, plus Langfuse observation types and recognized usage
 attributes. Unknown cache/reasoning counters and cost remain absent; zero values
 remain zero. Provider costs are reported only when supplied by the model.
+Step and turn spans expose their recorded totals under `harnessed.usage.input_tokens`,
+`output_tokens`, `total_tokens`, `cache_read_tokens`, `cache_write_tokens`,
+`reasoning_tokens` and `cost` (all with the same `harnessed.usage.` prefix).
+These attributes are available with the default `OTLPTracing()` configuration.
+They include compaction within the step or turn and partial usage recorded before an
+interruption. A resumed turn includes usage from its previous steps. Each optional
+total is present only when every usage record in scope supplies that field.
+Use step or turn totals to inspect individual spans. For billing across traces,
+sum the model and compaction spans, which carry the per-call usage attributes.
+
 Compaction has a separate span and usage counters. Tool timing starts after
 approval and scheduler waits; denied calls have no execution span. A returned
 tool error or nonzero exit code marks the tool span as failed even when the
