@@ -4,7 +4,7 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
-## 0.21.0 (Unreleased)
+## 0.21.0 (2026-11-19)
 
 `OTLPTracing` adds session-owned OTLP/HTTP export through the optional
 `otel` extra. `TurnEndedEvent.usage` exposes recorded turn totals, and

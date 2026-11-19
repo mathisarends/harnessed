@@ -5,7 +5,7 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
-## 0.21.0 (Unreleased)
+## 0.21.0 (2026-11-19)
 
 ### Added
 
