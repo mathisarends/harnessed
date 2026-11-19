@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import inspect
 import json
 import os
@@ -38,11 +39,14 @@ from harnessed.integrations.opentelemetry import (
 )
 from harnessed.kernel import Next, Waterfall, hook
 from harnessed.models import (
+    AssetRef,
     GenerationSettings,
+    ImageReference,
     ModelChunk,
     ModelRequest,
     ModelUsage,
     StopReason,
+    TextPart,
 )
 from harnessed.models.messages import AssistantMessage, ToolResult, ToolStatus, UserMessage
 from harnessed.plugins import Approvals, Compaction, every_turns
@@ -51,6 +55,7 @@ from harnessed.runtime.tracing import Tracer
 from harnessed.testing import CallbackModel, ScriptedModel, reply
 from harnessed.tracing import record, traced
 from harnessed.tracing import span as library_span
+from tests._images import inline
 
 type Collector = tuple[str, list[tuple[str, HTTPMessage, bytes]]]
 
@@ -92,6 +97,17 @@ def shutdown_threads(monkeypatch: pytest.MonkeyPatch) -> list[int]:
 
     monkeypatch.setattr(TracerProvider, "shutdown", shutdown)
     return threads
+
+
+def exported_messages(attributes, direction: str = "input") -> list[dict[str, object]]:
+    """Group flat OpenInference message attributes by message, keyed below `.message.`."""
+    prefix = f"llm.{direction}_messages."
+    messages: dict[int, dict[str, object]] = {}
+    for key, value in attributes.items():
+        if key.startswith(prefix):
+            index, _, field = key.removeprefix(prefix).partition(".message.")
+            messages.setdefault(int(index), {})[field] = value
+    return [messages[index] for index in sorted(messages)]
 
 
 @pytest.fixture
@@ -282,13 +298,18 @@ async def test_model_request_details_and_validated_turn_output_are_filterable(te
     }
     assert model_span.attributes["gen_ai.request.max_tokens"] == 50
     assert model_span.attributes["gen_ai.request.temperature"] == 0.2
-    tools = json.loads(model_span.attributes["request.tools.value"])
+    tools = [
+        json.loads(value)
+        for key, value in model_span.attributes.items()
+        if key.startswith("llm.tools.") and key.endswith(".tool.json_schema")
+    ]
     assert any(
         item["name"] == "lookup" and "key" in item["parameters"]["properties"] for item in tools
     )
     schema = json.loads(model_span.attributes["request.output_schema.value"])
     assert "value" in schema["json_schema"]["properties"]
-    assert "request.settings.value" not in model_span.attributes
+    assert "llm.invocation_parameters" not in model_span.attributes
+    assert "input.value" not in model_span.attributes
     assert TraceContentKind.MODEL_SETTINGS in seen
     assert TraceContentKind.MODEL_TOOLS in seen
     assert TraceContentKind.MODEL_OUTPUT_SCHEMA in seen
@@ -344,11 +365,233 @@ async def test_large_observations_do_not_hide_later_messages(telemetry):
                 ),
             )
     captured = exporter.get_finished_spans()[0]
-    messages = json.loads(captured.attributes["input.value"])
+    messages = exported_messages(captured.attributes)
     assert len(messages) == 3
     assert messages[-1] == {"role": "user", "content": "latest question"}
     assert messages[1] == {"role": "assistant", "content": "previous answer"}
-    assert len(captured.attributes["input.value"]) <= 500
+    large = messages[0]["content"]
+    assert large.startswith("large observation ")
+    assert large.endswith(f"… [truncated, original length {len('large observation ') * 1000}]")
+    assert len(large) <= 600
+    assert captured.attributes["harnessed.input.truncated"] is True
+
+
+class Screens(Plugin):
+    """Return the next scripted screenshot from each call."""
+
+    def __init__(self, *screens: bytes) -> None:
+        super().__init__()
+        self.screens = list(screens)
+
+    @tool(readonly=True)
+    def screenshot(self) -> ToolResult:
+        """Capture the screen."""
+        return ToolResult((TextPart("screen"), inline(self.screens.pop(0))))
+
+
+def screenshot_script(count: int) -> ScriptedModel:
+    calls = [[ModelChunk(tool_call=ToolCall("screenshot", {}))] for _ in range(count)]
+    return ScriptedModel([*calls, "done"])
+
+
+def image_parts(span) -> list[tuple[str, str]]:
+    """List (url or placeholder text, type) for every image-derived content part."""
+    parts = []
+    for message in exported_messages(span.attributes):
+        index = 0
+        while (kind := message.get(f"contents.{index}.message_content.type")) is not None:
+            if kind == "image":
+                parts.append(
+                    ("image", message[f"contents.{index}.message_content.image.image.url"])
+                )
+            elif str(text := message[f"contents.{index}.message_content.text"]).startswith(
+                "[image"
+            ):
+                parts.append(("placeholder", text))
+            index += 1
+    return parts
+
+
+async def test_tool_screenshots_are_exported_once_per_session(telemetry):
+    provider, exporter = telemetry
+    first, second = b"first screen", b"second screen"
+    await Agent(
+        model=screenshot_script(3),
+        plugins=[
+            Screens(first, second, first),
+            OpenTelemetryTracer(tracer_provider=provider, capture_content=True),
+        ],
+    ).run("look")
+    models = [span for span in exporter.get_finished_spans() if span.name == "harnessed.model"]
+    assert len(models) == 4
+    assert image_parts(models[0]) == []
+    assert image_parts(models[1]) == [("image", inline(first).url)]
+    assert image_parts(models[2]) == [("image", inline(second).url)]
+    first_span = format(models[1].context.span_id, "016x")
+    digest = hashlib.sha256(first).hexdigest()
+    assert image_parts(models[3]) == [
+        ("placeholder", f"[image {digest}, first sent in span {first_span}]")
+    ]
+    tool_message = exported_messages(models[1].attributes)[0]
+    assert tool_message["role"] == "tool"
+    assert tool_message["contents.0.message_content.text"] == "screen"
+    assert tool_message["tool_call_id"]
+    for index, span in enumerate(models):
+        # Each request repeats the previous request and its visible assistant output.
+        assert span.attributes["harnessed.input_messages.inherited"] == 2 * index
+        roles = [message["role"] for message in exported_messages(span.attributes)]
+        assert roles == (["user"] if index == 0 else ["tool"])
+    tool_spans = [span for span in exporter.get_finished_spans() if span.name == "harnessed.tool"]
+    assert json.loads(tool_spans[0].attributes["output.value"]) == [
+        {"type": "text", "text": "screen"},
+        {"type": "image", "image": digest},
+    ]
+    assert "base64" not in str([span.attributes for span in tool_spans])
+
+
+async def test_full_input_messages_repeat_history_without_repeating_images(telemetry):
+    provider, exporter = telemetry
+    screen = b"only screen"
+    await Agent(
+        model=screenshot_script(2),
+        plugins=[
+            Screens(screen, screen),
+            OpenTelemetryTracer(
+                tracer_provider=provider, capture_content=True, full_input_messages=True
+            ),
+        ],
+    ).run("look")
+    models = [span for span in exporter.get_finished_spans() if span.name == "harnessed.model"]
+    roles = [message["role"] for message in exported_messages(models[-1].attributes)]
+    assert roles == ["user", "assistant", "tool", "assistant", "tool"]
+    assert models[-1].attributes["harnessed.input_messages.inherited"] == 0
+    exported = [part for span in models for part in image_parts(span)]
+    assert [kind for kind, _ in exported] == ["image", "placeholder", "placeholder"]
+    data = inline(screen).url
+    assert sum(str(span.attributes).count(data) for span in models) == 1
+
+
+async def test_stored_image_references_resolve_through_the_session_assets(telemetry):
+    provider, exporter = telemetry
+    plugin = OpenTelemetryTracer(tracer_provider=provider, capture_content=True)
+    async with Agent(model=ScriptedModel(["seen"]), plugins=[plugin]).session() as session:
+        ref = await session.assets.put(b"stored pixels", media_type="image/png")
+        await session.run(UserMessage((TextPart("describe"), ImageReference(ref))))
+    model = next(span for span in exporter.get_finished_spans() if span.name == "harnessed.model")
+    assert image_parts(model) == [("image", inline(b"stored pixels").url)]
+    assert hashlib.sha256(b"stored pixels").hexdigest() == ref.sha256
+
+
+async def test_inline_and_oversized_images_are_whole_or_placeholders(telemetry):
+    provider, exporter = telemetry
+    small, large = b"tiny", b"far too large"
+    await Agent(
+        model=ScriptedModel(["seen"]),
+        plugins=[
+            OpenTelemetryTracer(tracer_provider=provider, capture_content=True, max_image_bytes=8)
+        ],
+    ).run(UserMessage((inline(small), inline(large))))
+    model = next(span for span in exporter.get_finished_spans() if span.name == "harnessed.model")
+    digest = hashlib.sha256(large).hexdigest()
+    assert image_parts(model) == [
+        ("image", inline(small).url),
+        ("placeholder", f"[image {digest}, 13 bytes exceeds the 8-byte trace image limit]"),
+    ]
+
+
+async def test_unresolved_references_in_library_spans_are_placeholders(telemetry):
+    provider, exporter = telemetry
+    ref = AssetRef("a" * 64, "image/png", 3)
+    async with Agent(
+        model=ScriptedModel([]),
+        plugins=[OpenTelemetryTracer(tracer_provider=provider, capture_content=True)],
+    ).session() as session:
+        with library_span("harnessed.model", scope=session.scope) as active:
+            active.set_attribute("request", ModelRequest((UserMessage((ImageReference(ref),)),)))
+    assert image_parts(exporter.get_finished_spans()[0]) == [
+        ("placeholder", f"[image {'a' * 64}, data unavailable to the tracer]")
+    ]
+
+
+async def test_filters_see_image_stand_ins_and_drop_images_whole(telemetry):
+    provider, exporter = telemetry
+    seen: list[JsonValue] = []
+    screen = b"secret screen"
+
+    def drop_images(content: TraceContent) -> TraceContent:
+        if content.kind is not TraceContentKind.MODEL_INPUT:
+            return content
+        seen.append(json.loads(json.dumps(content.value)))
+        assert isinstance(content.value, list)
+        for message in content.value:
+            if isinstance(message["content"], list):
+                message["content"] = [part for part in message["content"] if part["type"] == "text"]
+        return content
+
+    await Agent(
+        model=ScriptedModel(["seen"]),
+        plugins=[
+            OpenTelemetryTracer(
+                tracer_provider=provider,
+                capture_content=ContentCapture.redacted("hunter2"),
+                content_filter=drop_images,
+                max_content_length=12,
+            )
+        ],
+    ).run(UserMessage((TextPart("password hunter2 shown"), inline(screen), TextPart("ok"))))
+    digest = hashlib.sha256(screen).hexdigest()
+    assert seen == [
+        [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "password hunter2 shown"},
+                    {"type": "image", "image": digest},
+                    {"type": "text", "text": "ok"},
+                ],
+            }
+        ]
+    ]
+    model = next(span for span in exporter.get_finished_spans() if span.name == "harnessed.model")
+    message = exported_messages(model.attributes)[0]
+    assert message == {
+        "role": "user",
+        "contents.0.message_content.type": "text",
+        "contents.0.message_content.text": ("password [re… [truncated, original length 25]"),
+        "contents.1.message_content.type": "text",
+        "contents.1.message_content.text": "ok",
+    }
+    assert "hunter2" not in str(model.attributes)
+    assert "base64" not in str(model.attributes)
+
+
+async def test_malformed_filtered_messages_are_omitted_without_claiming_images(telemetry):
+    provider, exporter = telemetry
+    calls = 0
+
+    def corrupt_once(content: TraceContent) -> TraceContent:
+        nonlocal calls
+        if content.kind is not TraceContentKind.MODEL_INPUT:
+            return content
+        calls += 1
+        if calls == 1:
+            assert isinstance(content.value, list)
+            content.value[0]["content"].append({"type": "audio"})
+        return content
+
+    screen = b"retry screen"
+    tracer = OpenTelemetryTracer(
+        tracer_provider=provider,
+        capture_content=True,
+        content_filter=corrupt_once,
+        full_input_messages=True,
+    )
+    await Agent(model=ScriptedModel(["one", "two"]), plugins=[tracer]).run(
+        UserMessage((inline(screen),))
+    )
+    first = next(span for span in exporter.get_finished_spans() if span.name == "harnessed.model")
+    assert first.attributes["harnessed.input.serialization_error"] is True
+    assert exported_messages(first.attributes) == []
 
 
 @pytest.mark.parametrize("trace_hooks", [False, True])
@@ -671,11 +914,10 @@ async def test_content_is_explicit_bounded_and_excludes_opaque_state(telemetry):
         with tracer.span("harnessed.model", session_id=session.id) as span:
             span.set_attribute("output", native)
     model_spans = [s for s in exporter.get_finished_spans() if s.name == "harnessed.model"]
-    assert json.loads(model_spans[0].attributes["input.value"])[0]["content"] == "secret prompt"
-    assert json.loads(model_spans[1].attributes["output.value"]) == {
-        "role": "assistant",
-        "content": "answer",
-    }
+    assert exported_messages(model_spans[0].attributes)[0]["content"] == "secret prompt"
+    assert exported_messages(model_spans[1].attributes, "output") == [
+        {"role": "assistant", "content": "answer"}
+    ]
     assert "opaque" not in str(model_spans[1].attributes)
     assert "private reasoning" not in str(model_spans[1].attributes)
     await Agent(
@@ -687,10 +929,11 @@ async def test_content_is_explicit_bounded_and_excludes_opaque_state(telemetry):
         ],
     ).run("long prompt")
     model = [s for s in exporter.get_finished_spans() if s.name == "harnessed.model"][-1]
-    assert len(model.attributes["input.value"]) <= 8
-    json.loads(model.attributes["input.value"])
+    assert exported_messages(model.attributes)[0]["content"] == (
+        "long pro… [truncated, original length 11]"
+    )
     assert model.attributes["harnessed.input.truncated"] is True
-    assert model.attributes["input.mime_type"] == "application/json"
+    assert "input.value" not in model.attributes
 
 
 async def test_content_filter_redacts_model_history_and_tool_fields(telemetry):
@@ -734,10 +977,15 @@ async def test_content_filter_redacts_model_history_and_tool_fields(telemetry):
     tool_span = next(span for span in spans if span.name == "harnessed.tool")
     assert json.loads(tool_span.attributes["input.value"]) == {"api_key": "[redacted]"}
     models = [span for span in spans if span.name == "harnessed.model"]
-    history = json.loads(models[-1].attributes["input.value"])
-    assistant = next(message for message in history if message["role"] == "assistant")
-    assert assistant["tool_calls"][0]["arguments"] == {"api_key": "[redacted]"}
-    assert json.loads(models[-1].attributes["output.value"])["content"] == "[redacted] answer"
+    calls = exported_messages(models[0].attributes, "output")[0]
+    assert json.loads(calls["tool_calls.0.tool_call.function.arguments"]) == {
+        "api_key": "[redacted]"
+    }
+    assert calls["tool_calls.0.tool_call.function.name"] == "work"
+    history = exported_messages(models[-1].attributes)
+    assert [message["role"] for message in history] == ["tool"]
+    assert history[0]["content"] == "tool result [redacted]"
+    assert exported_messages(models[-1].attributes, "output")[0]["content"] == "[redacted] answer"
 
 
 async def test_content_filter_can_mutate_a_detached_copy(telemetry):
@@ -880,13 +1128,22 @@ async def test_registered_secrets_are_redacted_across_runtime_and_history(teleme
         "INV-42: paid; Authorization: Bearer [redacted]"
     )
     models = [span for span in spans if span.name == "harnessed.model"]
-    assert json.loads(models[0].attributes["input.value"])[0]["content"] == (
-        "Check INV-42 with [redacted]"
+    assert exported_messages(models[0].attributes)[0]["content"] == ("Check INV-42 with [redacted]")
+    call = exported_messages(models[0].attributes, "output")[0]
+    arguments = json.loads(call["tool_calls.0.tool_call.function.arguments"])
+    assert arguments["authorization"] == "Bearer [redacted]"
+    history = exported_messages(models[-1].attributes)
+    assert models[-1].attributes["harnessed.input_messages.inherited"] == 2
+    assert history == [
+        {
+            "role": "tool",
+            "content": "INV-42: paid; Authorization: Bearer [redacted]",
+            "tool_call_id": call["tool_calls.0.tool_call.id"],
+        }
+    ]
+    assert exported_messages(models[-1].attributes, "output")[0]["content"] == (
+        "Paid using [redacted]"
     )
-    history = json.loads(models[-1].attributes["input.value"])
-    assert history[1]["tool_calls"][0]["arguments"]["authorization"] == "Bearer [redacted]"
-    assert history[2]["content"] == "INV-42: paid; Authorization: Bearer [redacted]"
-    assert json.loads(models[-1].attributes["output.value"])["content"] == ("Paid using [redacted]")
 
 
 async def test_custom_secret_wrapper_is_snapshotted_and_hidden(telemetry):
@@ -908,7 +1165,7 @@ async def test_custom_secret_wrapper_is_snapshotted_and_hidden(telemetry):
     assert "original-token" not in repr(tracer.config.model_dump())
     await Agent(model=ScriptedModel(["answer"]), plugins=[tracer]).run("original-token")
     model = next(span for span in exporter.get_finished_spans() if span.name == "harnessed.model")
-    assert json.loads(model.attributes["input.value"])[0]["content"] == "[redacted]"
+    assert exported_messages(model.attributes)[0]["content"] == "[redacted]"
 
 
 @pytest.mark.parametrize(
@@ -931,7 +1188,7 @@ async def test_redaction_is_literal_and_covers_overlapping_values(
     )
     await Agent(model=ScriptedModel([text]), plugins=[tracer]).run("question")
     model = next(span for span in exporter.get_finished_spans() if span.name == "harnessed.model")
-    assert json.loads(model.attributes["output.value"])["content"] == expected
+    assert exported_messages(model.attributes, "output")[0]["content"] == expected
 
 
 @pytest.mark.parametrize("include_exception_messages", [False, True])
@@ -961,20 +1218,29 @@ async def test_redaction_covers_filter_output_and_runs_before_limits(telemetry):
     provider, exporter = telemetry
 
     def transform(content: TraceContent) -> TraceContent:
-        return replace(content, value={"secret-token": ["prefix secret-token suffix"]})
+        if content.kind is not TraceContentKind.MODEL_OUTPUT:
+            return content
+        return replace(
+            content,
+            value={
+                "role": "assistant",
+                "content": "prefix secret-token suffix",
+                "tool_calls": [{"id": "1", "name": "pay", "arguments": {"secret-token": 1}}],
+            },
+        )
 
     tracer = OpenTelemetryTracer(
         tracer_provider=provider,
         capture_content=ContentCapture.redacted("secret-token"),
         content_filter=transform,
-        max_content_length=28,
+        max_content_length=17,
     )
     await Agent(model=ScriptedModel(["answer"]), plugins=[tracer]).run("question")
     model = next(span for span in exporter.get_finished_spans() if span.name == "harnessed.model")
-    assert "secret-token" not in model.attributes["output.value"]
-    assert len(model.attributes["output.value"]) <= 28
-    json.loads(model.attributes["output.value"])
-    assert model.attributes["output.mime_type"] == "application/json"
+    output = exported_messages(model.attributes, "output")[0]
+    assert "secret-token" not in str(model.attributes)
+    assert output["content"] == "prefix [redacted]… [truncated, original length 24]"
+    assert output["tool_calls.0.tool_call.function.arguments"] == '{"[redacted]": 1}'
     assert model.attributes["harnessed.output.truncated"] is True
 
 
@@ -1043,10 +1309,10 @@ async def test_redacted_content_is_exported_without_registered_secret(otlp_colle
     assert len(spans) == 3
     model = next(span for span in spans if span.name == "harnessed.model")
     attributes = {attribute.key: attribute.value.string_value for attribute in model.attributes}
-    assert json.loads(attributes["input.value"])[0]["content"] == (
+    assert exported_messages(attributes)[0]["content"] == (
         "INV-42; Authorization: Bearer [redacted]"
     )
-    assert json.loads(attributes["output.value"])["content"] == "Paid using [redacted]"
+    assert exported_messages(attributes, "output")[0]["content"] == "Paid using [redacted]"
     assert "wire-secret-token" not in str(spans)
 
 

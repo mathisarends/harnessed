@@ -26,7 +26,6 @@ from harnessed.kernel import HookInstrumentation, PluginScope
 from harnessed.models import ModelRequest, ModelUsage, StopReason
 from harnessed.models.messages import (
     AssistantMessage,
-    Message,
     ToolCall,
     ToolResult,
     ToolStatus,
@@ -35,6 +34,15 @@ from harnessed.runtime.control import StopAtBoundary
 from harnessed.runtime.plugin import Plugin, PluginConfig
 from harnessed.runtime.tracing import HookTracing, Span, Tracer
 from harnessed.sessions.turns import Turn
+
+from .openinference import (
+    ConversationExport,
+    MessageAttributes,
+    TraceImage,
+    limit_text,
+    portable_message,
+    portable_part,
+)
 
 _correlation: ContextVar[dict[str, str | int] | None] = ContextVar(
     "harnessed_trace_scope", default=None
@@ -200,6 +208,8 @@ class ContentCapture:
 class OpenTelemetryConfig(PluginConfig):
     capture_content: bool = False
     max_content_length: int = Field(default=16_384, ge=1)
+    max_image_bytes: int = Field(default=5 * 1024 * 1024, ge=0)
+    full_input_messages: bool = False
     trace_hooks: bool = False
 
 
@@ -209,7 +219,15 @@ class OpenTelemetryTracer(Plugin[OpenTelemetryConfig], slot="tracer"):
     Import this module explicitly after installing ``harnessed[otel]``. The
     application configures exporters, batching and sampling and owns provider
     shutdown. Omitting the provider uses OpenTelemetry's global provider without
-    replacing it. Content capture is opt-in and bounded per input/output field.
+    replacing it.
+
+    Content capture is opt-in. Model spans carry OpenInference message
+    attributes: each text part and tool argument is limited to
+    ``max_content_length`` characters, and each distinct image is exported once
+    per session, up to ``max_image_bytes``. By default a model span lists only
+    the messages that earlier model spans of the session did not show;
+    ``full_input_messages`` exports the whole request instead. Turn and tool
+    spans export one JSON value per field, bounded by ``max_content_length``.
     """
 
     def __init__(
@@ -218,6 +236,8 @@ class OpenTelemetryTracer(Plugin[OpenTelemetryConfig], slot="tracer"):
         tracer_provider: trace.TracerProvider | None = None,
         capture_content: bool | ContentCapture = False,
         max_content_length: int = 16_384,
+        max_image_bytes: int = 5 * 1024 * 1024,
+        full_input_messages: bool = False,
         content_filter: TraceContentFilter | None = None,
         trace_hooks: bool = False,
     ) -> None:
@@ -227,10 +247,13 @@ class OpenTelemetryTracer(Plugin[OpenTelemetryConfig], slot="tracer"):
                 if isinstance(capture_content, ContentCapture)
                 else capture_content,
                 max_content_length=max_content_length,
+                max_image_bytes=max_image_bytes,
+                full_input_messages=full_input_messages,
                 trace_hooks=trace_hooks,
             )
         )
         self.tracer_provider = tracer_provider
+        self._conversations: dict[str, ConversationExport] = {}
         self._capture_policy = (
             capture_content if isinstance(capture_content, ContentCapture) else None
         )
@@ -240,6 +263,9 @@ class OpenTelemetryTracer(Plugin[OpenTelemetryConfig], slot="tracer"):
 
     async def setup(self, scope: PluginScope) -> None:
         self._tracer = trace.get_tracer("harnessed", tracer_provider=self.tracer_provider)
+        # Each session sets up its own plugin copy; never share export state.
+        self._conversations = {}
+        scope.effect(self._conversations.clear)
         scope.provide(Tracer, self)
         scope.provide(HookInstrumentation, HookTracing(trace_hooks=self.config.trace_hooks))
 
@@ -264,12 +290,19 @@ class OpenTelemetryTracer(Plugin[OpenTelemetryConfig], slot="tracer"):
                 native.set_attribute("openinference.span.kind", kind)
                 native.set_attribute("langfuse.observation.type", observation)
                 tool_name = attributes.get("tool")
+                session_id = correlation.get("session_id")
+                conversation = (
+                    self._conversations.setdefault(session_id, ConversationExport())
+                    if isinstance(session_id, str)
+                    else None
+                )
                 current = _Span(
                     native,
                     self.config,
                     self.content_filter,
-                    self._capture_policy,
+                    capture_policy=self._capture_policy,
                     tool_name=tool_name if isinstance(tool_name, str) else None,
+                    conversation=conversation,
                 )
                 for key, value in {**correlation, **attributes}.items():
                     current.set_attribute(key, value)
@@ -298,15 +331,18 @@ class _Span:
         native: trace.Span,
         config: OpenTelemetryConfig,
         content_filter: TraceContentFilter | None,
-        capture_policy: ContentCapture | None,
         *,
+        capture_policy: ContentCapture | None,
         tool_name: str | None,
+        conversation: ConversationExport | None,
     ) -> None:
         self._native = native
         self.config = config
         self.content_filter = content_filter
         self.tool_name = tool_name
         self._capture_policy = capture_policy
+        # Spans outside a session export their whole request, each image at most once.
+        self._conversation = conversation if conversation is not None else ConversationExport()
 
     def set_attribute(self, name: str, value: Any) -> None:
         if not self._native.is_recording():
@@ -320,7 +356,7 @@ class _Span:
                 self.usage(value)
             case AssistantMessage():
                 if self.config.capture_content:
-                    self.content("output", TraceContentKind.MODEL_OUTPUT, _message(value))
+                    self._output_message(value)
             case ToolCall():
                 if self.config.capture_content:
                     self.content("input", TraceContentKind.TOOL_ARGUMENTS, value.arguments)
@@ -389,10 +425,19 @@ class _Span:
             self._native.set_attribute("gen_ai.request.temperature", request.settings.temperature)
         if not self.config.capture_content:
             return
-        messages = [_message(message) for message in request.messages]
-        self.content("input", TraceContentKind.MODEL_INPUT, messages)
-        self.content("request.tools", TraceContentKind.MODEL_TOOLS, request.tools)
-        self.content("request.settings", TraceContentKind.MODEL_SETTINGS, request.settings)
+        inherited = self._conversation.advance(
+            request.messages, full=self.config.full_input_messages
+        )
+        self._native.set_attribute("harnessed.input_messages.inherited", inherited)
+        images: dict[str, TraceImage] = {}
+        messages = [portable_message(message, images) for message in request.messages[inherited:]]
+        self._messages("input", TraceContentKind.MODEL_INPUT, messages, images=images)
+        self._tools(request)
+        settings = self._capture(
+            TraceContentKind.MODEL_SETTINGS, request.settings, field="request.settings"
+        )
+        if settings is not None:
+            self._set_json("llm.invocation_parameters", settings.value, field="request.settings")
         if request.output_schema is not None:
             self.content(
                 "request.output_schema",
@@ -411,7 +456,73 @@ class _Span:
             )
             self._native.set_status(trace.StatusCode.ERROR, description)
         if self.config.capture_content:
-            self.content("output", TraceContentKind.TOOL_RESULT, result.content)
+            content = result.content
+            if not isinstance(content, str):
+                # Tool spans name images by digest; their data belongs to model spans.
+                images: dict[str, TraceImage] = {}
+                content = [portable_part(part, images) for part in content]
+            self.content("output", TraceContentKind.TOOL_RESULT, content)
+
+    def _output_message(self, message: AssistantMessage) -> None:
+        self._conversation.seen(message)
+        images: dict[str, TraceImage] = {}
+        self._messages(
+            "output",
+            TraceContentKind.MODEL_OUTPUT,
+            portable_message(message, images),
+            images=images,
+        )
+
+    def _messages(
+        self,
+        direction: str,
+        kind: TraceContentKind,
+        value: Any,
+        *,
+        images: dict[str, TraceImage],
+    ) -> None:
+        """Export filtered messages as OpenInference attributes, all or nothing."""
+        captured = self._capture(kind, value, field=direction)
+        if captured is None:
+            return
+        builder = MessageAttributes(
+            text_limit=self.config.max_content_length,
+            image_limit=self.config.max_image_bytes,
+            images=images,
+            conversation=self._conversation,
+            span_id=format(self._native.get_span_context().span_id, "016x"),
+        )
+        messages = captured.value if kind is TraceContentKind.MODEL_INPUT else [captured.value]
+        try:
+            attributes = builder.messages(f"llm.{direction}_messages", messages)
+        except (TypeError, ValueError, RecursionError):
+            self._native.set_attribute(f"harnessed.{direction}.serialization_error", True)
+            return
+        builder.commit()
+        self._native.set_attributes(attributes)
+        if builder.truncated:
+            self._native.set_attribute(f"harnessed.{direction}.truncated", True)
+
+    def _tools(self, request: ModelRequest) -> None:
+        captured = self._capture(TraceContentKind.MODEL_TOOLS, request.tools, field="request.tools")
+        if captured is None:
+            return
+        if not isinstance(captured.value, list):
+            self._native.set_attribute("harnessed.request.tools.serialization_error", True)
+            return
+        for index, definition in enumerate(captured.value):
+            self._set_json(f"llm.tools.{index}.tool.json_schema", definition, field="request.tools")
+
+    def _set_json(self, name: str, value: JsonValue, *, field: str) -> None:
+        try:
+            serialized = json.dumps(value, ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError, RecursionError):
+            self._native.set_attribute(f"harnessed.{field}.serialization_error", True)
+            return
+        limited = limit_text(serialized, self.config.max_content_length)
+        self._native.set_attribute(name, limited.text)
+        if limited.truncated:
+            self._native.set_attribute(f"harnessed.{field}.truncated", True)
 
     def _scalar(self, name: str, value: AttributeValue) -> None:
         """Record a scalar under its harnessed name and the conventional aliases."""
@@ -430,7 +541,9 @@ class _Span:
         if not self.config.capture_content:
             return
         messages = [
-            _message(event.message) for event in turn.events if isinstance(event, UserMessageEvent)
+            portable_message(event.message, {})
+            for event in turn.events
+            if isinstance(event, UserMessageEvent)
         ]
         self.content("input", TraceContentKind.TURN_INPUT, messages)
         final = next(
@@ -439,7 +552,7 @@ class _Span:
         )
         if final is None:
             return
-        output = _message(final.message)
+        output = portable_message(final.message, {})
         proof = next(
             (
                 event
@@ -503,20 +616,6 @@ def _trace_value(value: Any) -> Any:
         return {key: _trace_value(item) for key, item in value.items()}
     if isinstance(value, list | tuple):
         return [_trace_value(item) for item in value]
-    return value
-
-
-def _message(message: Message) -> dict[str, Any]:
-    # Provider state and reasoning can include opaque or signed payloads; capture
-    # only the portable conversation and tool arguments.
-    value: dict[str, Any] = {"role": message.role.value, "content": message.content}
-    if message.tool_calls:
-        value["tool_calls"] = [
-            {"id": call.id, "name": call.name, "arguments": call.arguments}
-            for call in message.tool_calls
-        ]
-    if message.tool_call_id is not None:
-        value["tool_call_id"] = message.tool_call_id
     return value
 
 

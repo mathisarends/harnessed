@@ -24,6 +24,18 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   their owning domains. Use the public import paths in the
   [SDK reference](docs/reference/sdk.md) when updating consumers. Event tags and
   persisted session formats retain their existing versions.
+- `OpenTelemetryTracer` exports model input and output as OpenInference message
+  attributes (`llm.input_messages`, `llm.output_messages`, `llm.tools`,
+  `llm.invocation_parameters`), so Phoenix shows text, tool calls and images.
+  Images, including those stored in the session asset store, are exported whole
+  once per session and later referenced by a placeholder; `max_image_bytes`
+  bounds each image. By default each model span lists only messages that earlier
+  model spans did not show; pass `full_input_messages=True` for the whole
+  request. `max_content_length` now limits each text part on model spans.
+  Model spans no longer set `input.value`, `output.value`,
+  `request.tools.value` or `request.settings.value`. Content filters receive
+  model and tool content with images as `{"type": "image", "image": "<sha256>"}`
+  stand-ins and model input limited to the new messages.
 
 ## 0.19.0 (2026-11-17)
 

@@ -228,8 +228,11 @@ the same literal redaction before its length limit. `capture_content=True`
 retains the plain boolean opt-in, including exception text, with no registered
 literal secrets. Both forms mask wrapped secrets encountered during conversion.
 
-The limit counts characters separately for each serialized content field and
-exception message. Content fields always contain valid `application/json`.
+Model spans export messages as OpenInference attributes, described in
+[model messages and images](#model-messages-and-images); there the limit applies
+to each text part and tool-argument string. On turn and tool spans, the limit
+counts characters separately for each serialized content field and exception
+message. These content fields always contain valid `application/json`.
 After filtering and redaction, structural truncation shares the budget across
 sibling values, shortens strings and omits array items or object fields. Arrays
 retain their most recent items in order when all items cannot fit. This keeps a
@@ -263,20 +266,62 @@ model stream can therefore retain a redacted partial answer without presenting
 it as a completed result. Turn summaries pass through the same content policy
 and length limits as model/tool content.
 
-Model spans retain the message list in `input.value` and expose these separate,
-independently bounded JSON fields:
+Model spans expose request details as separate attributes. Tool definitions and
+settings are JSON strings limited like text parts:
 
-| Field | Captured value |
+| Attribute | Captured value |
 | --- | --- |
-| `request.tools.value` | Portable tool names, descriptions and parameter schemas. |
-| `request.settings.value` | Resolved `max_tokens`, `temperature` and JSON provider options. |
+| `llm.tools.<k>.tool.json_schema` | One portable tool name, description and parameter schema. |
+| `llm.invocation_parameters` | Resolved `max_tokens`, `temperature` and JSON provider options. |
 | `request.output_schema.value` | Output contract identity, schema and mode, when configured. |
 
-Each field also has a `.mime_type` and uses the truncation/error markers above.
 Numeric `gen_ai.request.max_tokens` and `gen_ai.request.temperature` remain
 metadata even without content capture. The settings describe Harnessed's
 resolved request, not additional defaults or transformations inside a provider
 SDK. Native client configuration and raw HTTP bodies are not captured.
+
+### Model messages and images
+
+Model spans carry the conversation as OpenInference message attributes, which
+Phoenix renders as messages with images and tool calls. There is no
+`input.value` or `output.value` JSON blob on model spans.
+
+```text
+llm.input_messages.<i>.message.role
+llm.input_messages.<i>.message.content                                   # text-only messages
+llm.input_messages.<i>.message.contents.<j>.message_content.type         # "text" or "image"
+llm.input_messages.<i>.message.contents.<j>.message_content.text
+llm.input_messages.<i>.message.contents.<j>.message_content.image.image.url
+llm.input_messages.<i>.message.tool_call_id
+llm.input_messages.<i>.message.tool_calls.<k>.tool_call.id
+llm.input_messages.<i>.message.tool_calls.<k>.tool_call.function.name
+llm.input_messages.<i>.message.tool_calls.<k>.tool_call.function.arguments
+llm.output_messages.0.message...                                         # same shape
+```
+
+By default a model span lists only the messages that earlier model spans of the
+same session have not shown, as input or as output. `harnessed.input_messages.inherited`
+records how many leading request messages were omitted because an earlier span
+already showed them. The first span of a session, and every span after history
+was compacted or rewritten, lists the full request. Pass
+`full_input_messages=True` to list the full request on every span; images remain
+deduplicated.
+
+`max_content_length` limits each text part and each tool-argument string
+separately. A longer value keeps its prefix followed by
+`… [truncated, original length N]`, and the span gets
+`harnessed.input.truncated` or `harnessed.output.truncated`.
+
+Images are never truncated or exported as text. The tracer receives the model
+transport request, so images stored in the session's asset store are resolved.
+Each distinct image is identified by the SHA-256 of its bytes, which equals its
+`AssetRef.sha256`, and exported as its data URL on the first model span of the
+session that includes it. Later occurrences become a text part such as
+`[image <sha256>, first sent in span <span-id>]`, so exported image data grows
+with the number of distinct images rather than the number of steps. An image
+larger than `max_image_bytes` (5 MiB of decoded data by default) is replaced by a
+placeholder that names its size. Images on turn and tool spans appear only as
+`{"type": "image", "image": "<sha256>"}`.
 
 ### Application filtering
 
@@ -321,7 +366,7 @@ and is distinct from returning `None` to omit a field.
 | --- | --- |
 | `TURN_INPUT` (`turn.input`) | User messages accepted within this turn |
 | `TURN_OUTPUT` (`turn.output`) | Last assistant message, with `validated_output` when available |
-| `MODEL_INPUT` (`model.input`) | Portable message list, including historical tool-call arguments and tool results |
+| `MODEL_INPUT` (`model.input`) | Portable messages new to this span (or all with `full_input_messages`), including tool-call arguments and tool results |
 | `MODEL_OUTPUT` (`model.output`) | Portable assistant message, including tool-call arguments |
 | `MODEL_TOOLS` (`model.tools`) | Portable tool-definition list |
 | `MODEL_SETTINGS` (`model.settings`) | Resolved generation settings and JSON provider options |
@@ -329,6 +374,14 @@ and is distinct from returning `None` to omit a field.
 | `TOOL_ARGUMENTS` (`tool.arguments`) | Arguments object; `tool_name` identifies the executing tool |
 | `TOOL_RESULT` (`tool.result`) | Tool content; `tool_name` identifies the executing tool |
 | `EXCEPTION_MESSAGE` (`exception.message`) | Full exception message before truncation |
+
+Portable messages have a `role`, a `content` string or part list, and optional
+`tool_calls` (`id`, `name`, `arguments`) and `tool_call_id`. Text parts are
+`{"type": "text", "text": ...}`. Images are `{"type": "image", "image": "<sha256>"}`
+stand-ins: filters and redaction never see image data. Remove a stand-in to drop
+that image; the tracer attaches data only to stand-ins left after filtering.
+Model message values must keep this shape. Otherwise the field is omitted and
+`harnessed.<field>.serialization_error` is set.
 
 Each captured field passes through the filter independently, so tool arguments
 can appear in both a model message and a tool span. The filter sees the complete
