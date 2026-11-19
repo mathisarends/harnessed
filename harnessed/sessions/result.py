@@ -29,7 +29,7 @@ from harnessed.runtime.outputs import OutputTypes, OutputValues
 
 from .history import derive_messages
 from .state import SessionState
-from .turns import turn_usage
+from .turns import recorded_usage
 
 
 @dataclass(frozen=True)
@@ -146,7 +146,7 @@ def _result_from_events(
     return RunResult(
         final.message.text if final else "",
         events,
-        turn.usage if turn is not None else turn_usage(events),
+        turn.usage if turn is not None else recorded_usage(events),
         reason,
         turn.turn_id if turn else None,
         derive_messages(

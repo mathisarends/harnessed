@@ -78,7 +78,7 @@ from .state import (
     image_refs,
 )
 from .store import SessionPersistence
-from .turns import Turn, TurnProjection, turn_usage
+from .turns import Turn, TurnProjection, recorded_usage
 
 
 class SessionLog:
@@ -580,7 +580,7 @@ class SessionLog:
             self._turns.validate(event)
             self._children.validate(event)
             if isinstance(event, TurnEndedEvent):
-                event = replace(event, usage=turn_usage(self.current_turn().events))
+                event = replace(event, usage=recorded_usage(self.current_turn().events))
             seq = self._sequence
             if isinstance(event, TurnStartedEvent):
                 self._turn_state = self.snapshot()
