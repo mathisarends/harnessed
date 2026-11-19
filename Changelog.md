@@ -5,6 +5,18 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## Unreleased
+
+### Fixed
+
+- With content capture enabled, OpenTelemetry model spans no longer lose
+  correlation metadata such as `harnessed.step` and `harnessed.request_id`
+  when re-exported history exceeds the SDK's span attribute limit. Model spans
+  export the newest input messages that fit, omit older messages whole, and
+  record `harnessed.input_messages.omitted` with `harnessed.input.truncated`.
+  `OpenTelemetryTracer`, `OTLPTracing` and `otlp_provider()` accept
+  `max_span_attributes`; the default follows `OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT`.
+
 ## 0.21.0 (2026-11-19)
 
 ### Added

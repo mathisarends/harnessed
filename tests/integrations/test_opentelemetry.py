@@ -24,7 +24,7 @@ pytest.importorskip("opentelemetry.sdk")
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
-from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace import SpanLimits, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
@@ -394,6 +394,155 @@ async def test_large_observations_do_not_hide_later_messages(telemetry):
     assert large.endswith(f"… [truncated, original length {len('large observation ') * 1000}]")
     assert len(large) <= 600
     assert captured.attributes["harnessed.input.truncated"] is True
+
+
+def limited_telemetry(limit: int) -> tuple[TracerProvider, InMemorySpanExporter]:
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider(span_limits=SpanLimits(max_span_attributes=limit))
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    return provider, exporter
+
+
+def long_history(count: int) -> tuple[UserMessage | AssistantMessage, ...]:
+    """Alternate observations and answers, ending with the latest observation."""
+    messages: list[UserMessage | AssistantMessage] = []
+    for index in range(count):
+        if index % 2 == 0:
+            messages.append(UserMessage(f"observation {index}"))
+        else:
+            messages.append(AssistantMessage(f"answer {index}"))
+    messages.append(UserMessage("latest observation"))
+    return tuple(messages)
+
+
+IDENTITY = {
+    "openinference.span.kind": "LLM",
+    "langfuse.observation.type": "generation",
+    "harnessed.step": 7,
+    "harnessed.request_id": "request-7",
+    "session.id": None,
+}
+
+
+def assert_identity(attributes, session_id: str) -> None:
+    for key, value in {**IDENTITY, "session.id": session_id}.items():
+        assert attributes[key] == value, key
+
+
+async def trace_model_request(plugin: OpenTelemetryTracer, request: ModelRequest) -> str:
+    async with Agent(model=ScriptedModel([]), plugins=[plugin]).session() as session:
+        with library_span(
+            "harnessed.model",
+            scope=session.scope,
+            session_id=session.id,
+            step=7,
+            request_id="request-7",
+        ) as active:
+            active.set_attribute("request", request)
+        return session.id
+
+
+async def test_history_beyond_the_attribute_budget_omits_older_messages_whole():
+    provider, exporter = limited_telemetry(128)
+    plugin = OpenTelemetryTracer(tracer_provider=provider, capture_content=True)
+    session_id = await trace_model_request(plugin, ModelRequest(long_history(100)))
+    provider.shutdown()
+
+    captured = exporter.get_finished_spans()[0]
+    assert captured.dropped_attributes == 0
+    assert len(captured.attributes) <= 128
+    assert_identity(captured.attributes, session_id)
+    messages = exported_messages(captured.attributes)
+    assert messages[-1] == {"role": "user", "content": "latest observation"}
+    assert messages[-2] == {"role": "assistant", "content": "answer 99"}
+    # Every exported message is complete, and the omitted ones are the oldest.
+    assert all(set(message) == {"role", "content"} for message in messages)
+    omitted = captured.attributes["harnessed.input_messages.omitted"]
+    assert omitted == 101 - len(messages)
+    assert messages[0]["content"].endswith(f" {omitted}")
+    assert captured.attributes["harnessed.input.truncated"] is True
+
+
+async def test_history_within_the_attribute_budget_is_exported_unmarked():
+    provider, exporter = limited_telemetry(128)
+    plugin = OpenTelemetryTracer(tracer_provider=provider, capture_content=True)
+    await trace_model_request(plugin, ModelRequest(long_history(10)))
+    provider.shutdown()
+
+    captured = exporter.get_finished_spans()[0]
+    assert len(exported_messages(captured.attributes)) == 11
+    assert "harnessed.input_messages.omitted" not in captured.attributes
+    assert "harnessed.input.truncated" not in captured.attributes
+
+
+async def test_identity_survives_a_provider_limit_below_the_configured_budget():
+    provider, exporter = limited_telemetry(40)
+    plugin = OpenTelemetryTracer(
+        tracer_provider=provider, capture_content=True, max_span_attributes=1_000
+    )
+    session_id = await trace_model_request(plugin, ModelRequest(long_history(100)))
+    provider.shutdown()
+
+    captured = exporter.get_finished_spans()[0]
+    assert captured.dropped_attributes > 0
+    assert_identity(captured.attributes, session_id)
+
+
+async def test_images_of_omitted_messages_remain_unclaimed():
+    provider, exporter = limited_telemetry(64)
+    plugin = OpenTelemetryTracer(tracer_provider=provider, capture_content=True)
+    screen = inline(b"old screen")
+    old = UserMessage((TextPart("old"), screen))
+    async with Agent(model=ScriptedModel([]), plugins=[plugin]).session() as session:
+        for request in (
+            ModelRequest((old, *long_history(60))),
+            ModelRequest((UserMessage("changed history"), old)),
+        ):
+            with library_span(
+                "harnessed.model", scope=session.scope, session_id=session.id
+            ) as active:
+                active.set_attribute("request", request)
+    provider.shutdown()
+
+    first, second = exporter.get_finished_spans()
+    assert image_parts(first) == []
+    assert first.attributes["harnessed.input_messages.omitted"] > 0
+    assert image_parts(second) == [("image", screen.url)]
+
+
+async def test_trimmed_screenshot_history_keeps_step_correlation_on_model_spans():
+    provider, exporter = limited_telemetry(128)
+    screens = [f"screen {index}".encode() for index in range(20)]
+    await Agent(
+        model=screenshot_script(len(screens)),
+        plugins=[
+            Screens(*screens),
+            OpenTelemetryTracer(
+                tracer_provider=provider, capture_content=True, full_input_messages=True
+            ),
+        ],
+    ).run("look")
+    provider.shutdown()
+
+    models = [span for span in exporter.get_finished_spans() if span.name == "harnessed.model"]
+    assert len(models) == len(screens) + 1
+    assert [span.attributes["harnessed.step"] for span in models] == list(range(1, len(models) + 1))
+    assert all(span.dropped_attributes == 0 for span in models)
+    assert all("harnessed.request_id" in span.attributes for span in models)
+    assert models[-1].attributes["harnessed.input_messages.omitted"] > 0
+    assert exported_messages(models[-1].attributes)[-1]["role"] == "tool"
+
+
+async def test_otlp_provider_applies_the_span_attribute_limit():
+    exporter = InMemorySpanExporter()
+    async with otlp_provider(
+        endpoint="http://127.0.0.1:9/v1/traces", max_span_attributes=4
+    ) as provider:
+        provider.add_span_processor(SimpleSpanProcessor(exporter))
+        with provider.get_tracer("test").start_as_current_span("bounded") as native:
+            for index in range(6):
+                native.set_attribute(f"key.{index}", index)
+    assert len(exporter.get_finished_spans()[0].attributes) == 4
 
 
 class Screens(Plugin):
