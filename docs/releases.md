@@ -4,6 +4,20 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
+## 0.20.0 (Unreleased)
+
+The SDK now groups session, prompt, tool and event APIs by domain.
+OpenTelemetry model spans use OpenInference attributes so Phoenix can display
+messages, tool calls and images. The
+[tracing guide](guides/tracing.md#model-messages-and-images) covers message
+inheritance, image limits and content capture.
+
+**Upgrade.** Update imports from `harnessed.services` and moved event and model
+types. Update any consumers or filters of model-span content using the
+[0.19.0 upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0190).
+Existing conversation state, checkpoints, JSON stores and audit envelopes can
+be read directly.
+
 ## 0.19.0 (2026-11-17)
 
 `ToolParameter(enabled=...)` makes individual `Annotated` tool parameters

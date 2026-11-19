@@ -8,12 +8,9 @@ Harnessed 0.x is alpha software. Read the
 [release notes and compatibility policy](releases.md) before depending on its
 public APIs or persisted session formats.
 
-The [0.18.0 release](releases.md#0180-2026-11-16) adds registry-wide call
-envelopes for every selected tool. Tool call envelopes and the runtime refactoring
-upgrade steps arrived in [0.17.0](releases.md#0170-2026-11-14). Upgrading from
-before 0.16.0 also requires the
-[Compaction API migration](releases.md#0160-2026-11-10). Earlier checklists are
-linked from the [release overview](releases.md#earlier-releases).
+Harnessed 0.20.0 moves several SDK imports to their owning packages and adds
+OpenInference model messages to OpenTelemetry traces. See the
+[release overview](releases.md) for upgrade steps and earlier releases.
 
 | I want to... | Read |
 | --- | --- |

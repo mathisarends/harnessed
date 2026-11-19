@@ -5,37 +5,58 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
-## Unreleased
+## 0.20.0 (Unreleased)
 
-### Breaking changes
+### Added
 
-- The `harnessed.services` module was removed. Import `SessionContext` from
-  `harnessed.sessions`, `SystemPromptStore` from `harnessed.prompts`, and
-  `SessionTools`, `ToolAvailability`, `ToolExplanation`, and `ToolRegistry` from
-  `harnessed.tools`. Import `CompactionContext`, `CompactionRequest`, `Summary`,
-  and `Summarizer` from `harnessed.plugins.compaction`.
-- Import `StreamEvent`, `StreamItem`, and `TurnResultEvent` from
-  `harnessed.events.stream`. Import `EventRegistry` from
-  `harnessed.events.registry`. Use `EventRegistry.kind(tag)` to look up a
-  registered class. The registry's `builtin_types` attribute is now internal.
-- Import `PydanticAIModel` from `harnessed.models.pydantic_ai`.
-  Provider-independent model and message types remain in `harnessed.models`.
-- The internal `harnessed.core` package was removed. Its modules now live with
-  their owning domains. Use the public import paths in the
-  [SDK reference](docs/reference/sdk.md) when updating consumers. Event tags and
-  persisted session formats retain their existing versions.
-- `OpenTelemetryTracer` exports model input and output as OpenInference message
-  attributes (`llm.input_messages`, `llm.output_messages`, `llm.tools`,
-  `llm.invocation_parameters`), so Phoenix shows text, tool calls and images.
-  Images, including those stored in the session asset store, are exported whole
-  once per session and later referenced by a placeholder; `max_image_bytes`
-  bounds each image. By default each model span lists only messages that earlier
-  model spans did not show; pass `full_input_messages=True` for the whole
-  request. `max_content_length` now limits each text part on model spans.
-  Model spans no longer set `input.value`, `output.value`,
-  `request.tools.value` or `request.settings.value`. Content filters receive
-  model and tool content with images as `{"type": "image", "image": "<sha256>"}`
-  stand-ins and model input limited to the new messages.
+- Model spans with content capture enabled export OpenInference messages,
+  tools and invocation parameters. Phoenix can display text, tool calls and
+  images inline. Each distinct image, including a stored session asset, is
+  exported once per session. Later occurrences reference the first span.
+  `max_image_bytes` caps each image at 5 MiB of decoded data by default.
+  See [model messages and images](docs/guides/tracing.md#model-messages-and-images).
+
+### Changed
+
+- The SDK organizes services and implementation modules by domain. The
+  `harnessed.services` module and `harnessed.core` package were removed. The event
+  registry now takes its built-in live notifications from the event vocabulary
+  independently of the UI stream projection.
+- Tool schemas and envelope fields use immutable snapshots.
+  Plugin activation and dependency tracking use one runtime per scope tree,
+  shared by its owners.
+- Development checks pin Smelt 0.13.0 and use its package and style policy
+  structure. See the [Smelt policy](docs/contributing/smelt.md).
+
+### Upgrade from 0.19.0
+
+| Import from 0.19.0 | Import in 0.20.0 |
+| --- | --- |
+| `harnessed.services.SessionContext` | `harnessed.sessions.SessionContext` |
+| `harnessed.services.SystemPromptStore` | `harnessed.prompts.SystemPromptStore` |
+| `SessionTools`, `ToolAvailability`, `ToolExplanation`, `ToolRegistry` from `harnessed.services` | `harnessed.tools` |
+| `CompactionContext`, `CompactionRequest`, `Summary`, `Summarizer` from `harnessed.services` | `harnessed.plugins.compaction` |
+| `StreamEvent`, `StreamItem`, `TurnResultEvent` from `harnessed.events` | `harnessed.events.stream` |
+| `harnessed.events.EventRegistry` | `harnessed.events.registry.EventRegistry` |
+| `harnessed.models.PydanticAIModel` | `harnessed.models.pydantic_ai.PydanticAIModel` |
+
+- Replace imports from the former internal `harnessed.core` package with the
+  public paths in the [SDK reference](docs/reference/sdk.md). Use
+  `EventRegistry.kind(tag)` for class lookup. `builtin_types` is now internal.
+- Update model-span consumers to read `llm.input_messages`,
+  `llm.output_messages`, `llm.tools`, and `llm.invocation_parameters` in place
+  of `input.value`, `output.value`, `request.tools.value`, and
+  `request.settings.value`. Model input contains only newly shown messages by
+  default. Set `full_input_messages=True` to include the full request on each
+  span. `max_content_length` now applies to each message text part and
+  tool-argument string on model spans.
+- Review any trace content filters. Model and tool content represents images
+  as `{"type": "image", "image": "<sha256>"}` and model input filters see the
+  messages selected for the span. Remove image stand-ins in the filter to omit
+  those images from export.
+- Existing conversation state, checkpoints and JSON stores use version **3**.
+  Standalone audit envelopes use version **6**. Existing event tags and storage
+  formats carry forward from 0.19.0.
 
 ## 0.19.0 (2026-11-17)
 
