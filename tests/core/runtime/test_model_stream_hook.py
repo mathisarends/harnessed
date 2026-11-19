@@ -337,6 +337,8 @@ async def test_wrapped_stream_releases_resources_and_retains_partial_usage(
         ]
         assert len(terminals) == 1 and terminals[0].request_id == record.request_id
         terminal = terminals[0]
+        expected_usage = ModelUsage(5, 1) if partial else ModelUsage(0)
+        assert session.last(TurnEndedEvent).usage == expected_usage
         if partial:
             assert isinstance(terminal, AssistantMessageEvent)
             assert terminal.interrupted and terminal.message.text == "visible"

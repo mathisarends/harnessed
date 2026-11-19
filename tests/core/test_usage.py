@@ -1,5 +1,5 @@
 from harnessed import Agent
-from harnessed.events import ModelUsageRecordedEvent
+from harnessed.events import ModelUsageRecordedEvent, TurnEndedEvent
 from harnessed.events.codec import decode_event, encode_event
 from harnessed.models.model import ModelChunk, ModelUsage, sum_usage
 from harnessed.testing import ScriptedModel
@@ -15,7 +15,7 @@ def test_cache_hit_rate_and_optional_totals_use_canonical_counters():
 
 
 async def test_final_usage_is_recorded_once_and_session_totals_survive_replay():
-    partial, final = ModelUsage(10, 2), ModelUsage(10, 5)
+    partial, final = ModelUsage(10, 2), ModelUsage(10, 5, cache_read_tokens=8, cost=0.01)
     model = ScriptedModel(
         [
             [ModelChunk(text="first", usage=partial), ModelChunk(usage=final)],
@@ -27,6 +27,9 @@ async def test_final_usage_is_recorded_once_and_session_totals_survive_replay():
         first = await session.run("Go")
         assert first.usage == final
         await session.run("Again")
+        ends = [event for event in session_audit.events if isinstance(event, TurnEndedEvent)]
+        assert [event.usage for event in ends] == [final, ModelUsage(20, 3)]
+        assert decode_event(encode_event(ends[0])).usage == final
         recorded = [
             event for event in session_audit.events if isinstance(event, ModelUsageRecordedEvent)
         ]

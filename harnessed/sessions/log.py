@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 from collections.abc import AsyncIterator, Callable
+from dataclasses import replace
 from functools import partial
 from typing import cast
 
@@ -77,7 +78,7 @@ from .state import (
     image_refs,
 )
 from .store import SessionPersistence
-from .turns import Turn, TurnProjection
+from .turns import Turn, TurnProjection, turn_usage
 
 
 class SessionLog:
@@ -578,6 +579,8 @@ class SessionLog:
             approval = self._approvals.transition(event)
             self._turns.validate(event)
             self._children.validate(event)
+            if isinstance(event, TurnEndedEvent):
+                event = replace(event, usage=turn_usage(self.current_turn().events))
             seq = self._sequence
             if isinstance(event, TurnStartedEvent):
                 self._turn_state = self.snapshot()

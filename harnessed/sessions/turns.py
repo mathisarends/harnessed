@@ -6,6 +6,7 @@ from harnessed.events import (
     AssistantMessageEvent,
     DurableEvent,
     ModelRequestedEvent,
+    ModelUsageRecordedEvent,
     OutputValidatedEvent,
     OutputValidationFailedEvent,
     StepEndedEvent,
@@ -15,7 +16,13 @@ from harnessed.events import (
     TurnOutcome,
     TurnStartedEvent,
 )
-from harnessed.models import ModelRequest
+from harnessed.models import ModelRequest, ModelUsage
+from harnessed.models.model import sum_usage
+
+
+def turn_usage(events: Iterable[DurableEvent]) -> ModelUsage:
+    """Sum all model usage records in a turn, including compaction."""
+    return sum_usage(event.usage for event in events if isinstance(event, ModelUsageRecordedEvent))
 
 
 @dataclass(frozen=True)

@@ -4,7 +4,6 @@ from uuid import uuid4
 from harnessed.errors import OutputTokenLimit
 from harnessed.events import (
     AssistantMessageEvent,
-    ModelUsageRecordedEvent,
     OutputValidatedEvent,
     OutputValidationFailedEvent,
     StepOutcome,
@@ -14,10 +13,10 @@ from harnessed.events import (
 )
 from harnessed.events.turn import FinalStepPolicy, TurnLimits
 from harnessed.kernel import Scope
-from harnessed.models.model import GenerationSettings, StopReason, TokenLimitBehavior, sum_usage
+from harnessed.models import GenerationSettings, StopReason, TokenLimitBehavior
 from harnessed.sessions import SessionContext
 from harnessed.sessions.log import SessionLog
-from harnessed.sessions.turns import Step, Turn
+from harnessed.sessions.turns import Step, Turn, turn_usage
 
 from .control import SessionControl
 from .hooks import TurnStopping
@@ -128,7 +127,7 @@ class TurnRunner:
     def _spent_tokens(self) -> int:
         """Input and output tokens billed so far in the open turn, compaction included."""
         events = self.log.current_turn().events
-        usage = sum_usage(e.usage for e in events if isinstance(e, ModelUsageRecordedEvent))
+        usage = turn_usage(events)
         return usage.total_tokens
 
     async def _continue_from(self, step: Step) -> bool:

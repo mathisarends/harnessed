@@ -16,6 +16,7 @@ from harnessed.events import (
     CompactionStartedEvent,
     ModelRequestedEvent,
     ModelUsageRecordedEvent,
+    TurnEndedEvent,
     TurnOutcome,
 )
 from harnessed.events.codec import decode_event, encode_event
@@ -187,7 +188,7 @@ async def test_compaction_usage_is_counted_and_replayed_even_when_no_summary_is_
             reply("first", usage=ModelUsage(28, 4)),
             "retained",
             reply(summary, usage=ModelUsage(123, 12)),
-            "next",
+            reply("next", usage=ModelUsage(7, 3)),
         ]
     )
     async with Agent(
@@ -198,8 +199,8 @@ async def test_compaction_usage_is_counted_and_replayed_even_when_no_summary_is_
         await session.run("x" * 4000)
         await session.run("retained")
         result = await session.run("current")
-        assert session.usage.input_tokens == 151 and session.usage.output_tokens == 16
-        assert result.usage.input_tokens == 123 and result.usage.output_tokens == 12
+        assert session.usage.input_tokens == 158 and session.usage.output_tokens == 19
+        assert session.last(TurnEndedEvent).usage == result.usage == ModelUsage(130, 15)
         summaries = [
             event
             for event in session_audit.events
