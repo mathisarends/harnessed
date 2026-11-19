@@ -6,15 +6,45 @@ Install the optional integration:
 uv add 'harnessed[otel]'
 ```
 
-`OpenTelemetryTracer` replaces the default `NoopTracer` in the `tracer` slot.
-Import it from `harnessed.integrations.opentelemetry`; importing the core SDK or
-`harnessed.plugins` does not import OpenTelemetry or require this extra.
+## Trace an agent
+
+Add `OTLPTracing()` to the agent's plugins to export spans over OTLP/HTTP.
+Each session opens a provider and drains its pending batches on close.
+An `agent.run()` call opens and closes its own session. Multiple turns inside
+`agent.session()` share one exporter. Content capture is off by default.
+
+```python
+from harnessed import Agent
+from harnessed.integrations.opentelemetry import OTLPTracing
+
+agent = Agent(model="openai:gpt-4.1-mini", plugins=[OTLPTracing()])
+```
+
+With no arguments, the plugin uses standard OpenTelemetry settings such as
+`OTEL_SERVICE_NAME`, `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` and
+`OTEL_RESOURCE_ATTRIBUTES`. You can also pass any of these settings directly,
+for example when sending traces to a local Phoenix project:
+
+```python
+tracing = OTLPTracing(
+    service_name="my-app",
+    endpoint="http://127.0.0.1:6006/v1/traces",
+    resource_attributes={"openinference.project.name": "my-agent"},
+)
+agent = Agent(model="openai:gpt-4.1-mini", plugins=[tracing])
+```
+
+Explicit values take precedence. Resource attributes merge by key, so an
+environment-supplied deployment name still applies when Python supplies the
+project name. To enable tracing conditionally, pass
+`plugins=[OTLPTracing() if enabled else None]`. You can import the class
+without the extra and install `harnessed[otel]` wherever you enable tracing.
 
 ## Open a provider for your application
 
-Use `otlp_provider()` when the application does not already have an OpenTelemetry
-provider. Open it once around all agents, sessions and other instrumentation that
-share its export pipeline. The helper creates a provider with a batch processor
+Use `otlp_provider()` to share a single export pipeline across many short
+sessions, several agents or other application instrumentation. Open it once
+around their common lifespan. The helper creates a provider with a batch processor
 and an OTLP/HTTP exporter; it never installs or replaces the global provider.
 
 ```python

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import json
 import re
@@ -8,12 +10,6 @@ from dataclasses import dataclass, field, fields, is_dataclass, replace
 from enum import StrEnum
 from typing import Any, Protocol, Self, runtime_checkable
 
-from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.util.types import AttributeValue
 from pydantic import Field, JsonValue, SecretBytes
 
 from harnessed.events import (
@@ -44,6 +40,20 @@ from .openinference import (
     portable_part,
 )
 
+try:
+    import opentelemetry.trace as trace
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.util.types import AttributeValue
+except ModuleNotFoundError as error:
+    if error.name is None or error.name.partition(".")[0] != "opentelemetry":
+        raise
+    _HAS_OTEL = False
+else:
+    _HAS_OTEL = True
+
 _correlation: ContextVar[dict[str, str | int] | None] = ContextVar(
     "harnessed_trace_scope", default=None
 )
@@ -58,7 +68,7 @@ _KINDS = {
 @asynccontextmanager
 async def otlp_provider(
     *,
-    service_name: str,
+    service_name: str | None = None,
     endpoint: str | None = None,
     resource_attributes: Mapping[str, AttributeValue] | None = None,
 ) -> AsyncGenerator[TracerProvider]:
@@ -73,15 +83,14 @@ async def otlp_provider(
     the event loop, including when setup or application work raises. Shutdown
     attempts to export pending batches; it does not confirm backend ingestion.
     """
-    if not service_name.strip():
-        raise ValueError("service_name must not be empty")
+    _require_otel()
+    attributes = dict(resource_attributes) if resource_attributes is not None else {}
+    if service_name is not None:
+        if not service_name.strip():
+            raise ValueError("service_name must not be empty")
+        attributes["service.name"] = service_name
     provider = TracerProvider(
-        resource=Resource.create(
-            {
-                **(resource_attributes if resource_attributes is not None else {}),
-                "service.name": service_name,
-            }
-        ),
+        resource=Resource.create(attributes),
         shutdown_on_exit=False,
     )
     try:
@@ -89,6 +98,11 @@ async def otlp_provider(
         yield provider
     finally:
         await asyncio.to_thread(provider.shutdown)
+
+
+def _require_otel() -> None:
+    if not _HAS_OTEL:
+        raise ImportError("Install the OpenTelemetry tracing extra with: uv add 'harnessed[otel]'")
 
 
 class TraceContentKind(StrEnum):
@@ -241,6 +255,7 @@ class OpenTelemetryTracer(Plugin[OpenTelemetryConfig], slot="tracer"):
         content_filter: TraceContentFilter | None = None,
         trace_hooks: bool = False,
     ) -> None:
+        _require_otel()
         super().__init__(
             config=OpenTelemetryConfig(
                 capture_content=True
@@ -323,6 +338,49 @@ class OpenTelemetryTracer(Plugin[OpenTelemetryConfig], slot="tracer"):
                     raise
         finally:
             _correlation.reset(token)
+
+
+class OTLPTracing(OpenTelemetryTracer):
+    """Export spans through a batched OTLP/HTTP provider owned by each session.
+
+    With no arguments the OpenTelemetry SDK configures the service and exporter
+    from the environment. Each activation drains its own batch queue on exit.
+    """
+
+    def __init__(
+        self,
+        *,
+        service_name: str | None = None,
+        endpoint: str | None = None,
+        resource_attributes: Mapping[str, AttributeValue] | None = None,
+        capture_content: bool | ContentCapture = False,
+        max_content_length: int = 16_384,
+        max_image_bytes: int = 5 * 1024 * 1024,
+        full_input_messages: bool = False,
+        content_filter: TraceContentFilter | None = None,
+        trace_hooks: bool = False,
+    ) -> None:
+        super().__init__(
+            capture_content=capture_content,
+            max_content_length=max_content_length,
+            max_image_bytes=max_image_bytes,
+            full_input_messages=full_input_messages,
+            content_filter=content_filter,
+            trace_hooks=trace_hooks,
+        )
+        self.service_name = service_name
+        self.endpoint = endpoint
+        self.resource_attributes = resource_attributes
+
+    async def setup(self, scope: PluginScope) -> None:
+        self.tracer_provider = await scope.enter(
+            otlp_provider(
+                service_name=self.service_name,
+                endpoint=self.endpoint,
+                resource_attributes=self.resource_attributes,
+            )
+        )
+        await super().setup(scope)
 
 
 class _Span:
@@ -702,6 +760,7 @@ def _limit_object(value: dict[str, JsonValue], budget: int) -> tuple[str, int]:
 
 __all__ = [
     "ContentCapture",
+    "OTLPTracing",
     "OpenTelemetryConfig",
     "OpenTelemetryTracer",
     "SecretText",
