@@ -4,7 +4,7 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
-## 0.22.0 (Unreleased)
+## 0.22.0 (2026-11-20)
 
 `Agent` takes loop, context and approval settings directly. Plugins declare
 explicit capabilities, workspace providers and stable action keys for approval
