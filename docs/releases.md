@@ -4,11 +4,18 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
-## Unreleased
+## 0.22.0 (Unreleased)
 
-Execution checkpoints use format **4** and standalone audit envelopes use version
-**7** for the new approval records. See the [breaking SDK changes](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#breaking-sdk-changes)
-for the developer API and upgrade steps.
+`Agent` takes loop, context and approval settings directly. Plugins declare
+explicit capabilities, workspace providers and stable action keys for approval
+rules. Tools run by default unless the application configures restrictions.
+
+**Upgrade.** Update agent configuration and approval rules. Export saved JSON
+conversations as snapshots with `0.21.0` and import them into a fresh store with
+`0.22.0`. Execution checkpoints now use format **4** and standalone audit
+envelopes use version **7**. See the
+[0.21.0 upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0210)
+for the migration steps.
 
 ## 0.21.0 (2026-11-19)
 

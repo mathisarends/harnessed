@@ -5,7 +5,7 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
-## Unreleased
+## 0.22.0 (Unreleased)
 
 ### Breaking SDK changes
 
@@ -51,8 +51,6 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   `await session.approvals.allow(id, remember=True)` or `deny(id)`.
   Approval audit events store the decision and a separate remember flag.
   Standalone audit envelopes use version 7 and execution checkpoints use version 4.
-  Finish or export stored work with its original SDK before upgrading. Plain
-  conversation snapshots and the outer JSON store envelope retain version 3.
 - Move `AgentLoop(context_window=..., max_tool_output=...)` to
   `Context(max_tokens=..., max_tool_output_chars=...)`. Enable history summaries
   with `Context(compaction=Compaction(at=0.8))`. `fallback_tokens=` supplies the
@@ -102,6 +100,26 @@ agent = Agent(
   record `harnessed.input_messages.omitted` with `harnessed.input.truncated`.
   `OpenTelemetryTracer`, `OTLPTracing` and `otlp_provider()` accept
   `max_span_attributes`; the default follows `OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT`.
+
+### Upgrade from 0.21.0
+
+1. Update agent composition, imports and plugin declarations as described above.
+   For apps that require confirmation, set `approvals=Approvals(default=Decision.ASK)`
+   and provide an approver or an answering stream. Add explicit allow rules for
+   any actions that should run without confirmation.
+2. Before upgrading, back up your JSON session store. Using Harnessed `0.21.0`,
+   open each conversation by ID, finish any open turn and export its idle
+   conversation with `session.snapshot().to_json()`. Keep the backup and the
+   original SDK for access to the old execution history and approval records.
+3. Install `harnessed==0.22.0`, keeping any extras you use. Load the export with
+   `SessionState.from_json(payload)` and pass it as `state=` when opening the
+   conversation by ID with a fresh `JsonSessionStore` root. The next turn writes
+   the new checkpoint. Both releases use version 3 for standalone conversation
+   snapshots and the outer JSON store envelope. The old store entries contain
+   version 3 checkpoints, which raise `SessionFormatError` under `0.22.0`,
+   including entries for completed conversations.
+4. Keep a `0.21.0` reader for archived version 6 audit envelopes. Switch producers
+   and consumers of live audit envelopes together to version 7.
 
 ## 0.21.0 (2026-11-19)
 
