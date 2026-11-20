@@ -20,6 +20,7 @@ class CompactionAppliedEvent(DurableEvent):
     preserve_turns pins full turns; retained_turns is temporary sliding retention.
     preserve_inputs holds event offsets of task/context inputs kept verbatim.
     Occupancy ratios measure the whole input request, excluding output reserve.
+    accepted_note_keys identifies the plugin notes included in the summary.
     This is an applied history change, not a notification for every attempted
     summary; failed or non-reducing summaries do not produce this record.
     """
@@ -41,6 +42,7 @@ class CompactionAppliedEvent(DurableEvent):
     id: str | None = None
     preserve_inputs: tuple[int, ...] = ()
     retained_turns: tuple[str, ...] = ()
+    accepted_note_keys: tuple[str, ...] = field(default=(), kw_only=True)
 
     def __post_init__(self) -> None:
         if self.id is not None and (not isinstance(self.id, str) or not self.id):
@@ -63,6 +65,12 @@ class CompactionAppliedEvent(DurableEvent):
         ) != len(retained):
             raise ValueError("Retained turn ids must be unique non-empty strings")
         object.__setattr__(self, "retained_turns", retained)
+        note_keys = tuple(self.accepted_note_keys)
+        if any(not isinstance(key, str) or not key.strip() for key in note_keys) or len(
+            set(note_keys)
+        ) != len(note_keys):
+            raise ValueError("Accepted note keys must be unique non-empty strings")
+        object.__setattr__(self, "accepted_note_keys", note_keys)
         _validate_metrics(
             self.before_tokens, self.context_window, self.reserve_tokens, target=self.target_tokens
         )

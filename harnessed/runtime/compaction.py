@@ -39,6 +39,7 @@ from harnessed.sessions import HistoryEntry
 from harnessed.sessions.log import SessionLog
 
 from .budget import ContextBudget
+from .compaction_notes import CompactionNotes, FittedNotes, PrepareCompaction
 from .tokens import CalibratedTokenCounter, TokenCounter, count_request
 from .tracing import Span, span
 
@@ -380,6 +381,8 @@ class CompactionManager:
         if ceiling < 1:
             self._backoff(plan)
             return None, request
+        notes = CompactionNotes()
+        await self.scope.dispatch(PrepareCompaction(request, notes=notes))
         best: tuple[CompactionAppliedEvent, ModelRequest] | None = None
         usage: ModelUsage | None = None
         with span(
@@ -389,19 +392,33 @@ class CompactionManager:
             through=plan.through,
         ) as trace:
             for attempt in range(2):
+                fitted = notes.fit(counter, ceiling)
                 text, usage = await self._summarize(
-                    summarizer, CompactionRequest(context, ceiling), trace=trace, usage=usage
+                    summarizer,
+                    CompactionRequest(context, fitted.summary_tokens),
+                    trace=trace,
+                    usage=usage,
                 )
                 if text is None:
                     # Reasoning may consume the first generation allowance.
                     if attempt == 0 and isinstance(summarizer, ModelSummarizer):
                         summarizer = _model_summarizer(
-                            selected, policy, counter, generation_allowance=ceiling * 2
+                            selected,
+                            policy,
+                            counter,
+                            generation_allowance=fitted.summary_tokens * 2,
                         )
                     continue
-                applied = replace(template, summary=text)
-                candidate = _with_summary(base, applied)
-                after = await count_request(counter, candidate)
+                applied, candidate = await _measure_candidate(
+                    template,
+                    base,
+                    text,
+                    notes=fitted,
+                    counter=counter,
+                    ceiling=ceiling,
+                    feasible_target=budget.feasible_target,
+                )
+                after = applied.after_tokens
                 size = counter.count_text(applied.summary)
                 valid = settings.max_summary_tokens is None or size <= settings.max_summary_tokens
                 if (
@@ -409,7 +426,7 @@ class CompactionManager:
                     and after < state.input_tokens
                     and (best is None or after < best[0].after_tokens)
                 ):
-                    best = replace(applied, after_tokens=after), candidate
+                    best = applied, candidate
                 missed_target = budget.feasible_target and target is not None and after > target
                 if valid and size <= ceiling and not missed_target:
                     break
@@ -701,3 +718,31 @@ def _with_summary(request: ModelRequest, applied: CompactionAppliedEvent) -> Mod
             message = SystemMessage(f"Conversation summary:\n{applied.summary}", id=summary_id)
         messages.append(message)
     return replace(request, messages=tuple(messages))
+
+
+async def _measure_candidate(
+    template: CompactionAppliedEvent,
+    base: ModelRequest,
+    text: str,
+    *,
+    notes: FittedNotes,
+    counter: TokenCounter,
+    ceiling: int,
+    feasible_target: bool,
+) -> tuple[CompactionAppliedEvent, ModelRequest]:
+    combined = notes.prefix + text
+    if notes.keys and counter.count_text(combined) <= ceiling:
+        applied = replace(template, summary=combined, accepted_note_keys=notes.keys)
+        candidate = _with_summary(base, applied)
+        after = await count_request(counter, candidate)
+        window = template.context_window
+        target = template.target_tokens if feasible_target else None
+        fits_window = window is None or after + template.reserve_tokens <= window
+        fits_target = target is None or after <= target
+        if after < template.before_tokens and fits_window and fits_target:
+            return replace(applied, after_tokens=after), candidate
+    # Token boundaries and whole-request counts can differ from the reservation.
+    applied = replace(template, summary=text)
+    candidate = _with_summary(base, applied)
+    after = await count_request(counter, candidate)
+    return replace(applied, after_tokens=after), candidate

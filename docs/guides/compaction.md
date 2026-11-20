@@ -125,6 +125,42 @@ steps in the active turn. Forced and manual attempts bypass backoff. A provider
 projection and a new step, within the normal step limit. This recovery never
 re-executes completed tools and remains limited to one per turn.
 
+## Add a plugin handover note
+
+`PrepareCompaction` runs once before generating candidates for an eligible
+automatic, recovery or manual compaction. A plugin can inspect the effective
+agent request and offer text to prepend to the committed summary.
+
+```python
+from harnessed import Plugin
+from harnessed.hooks import PrepareCompaction
+from harnessed.kernel import hook
+
+
+class TaskMemory(Plugin):
+    @hook(PrepareCompaction)
+    def _handover(self, event: PrepareCompaction) -> None:
+        if any(tool.name == "read_file" for tool in event.request.tools):
+            event.add_note(
+                key="my-plugin.task-memory",
+                text='Read the checkpoint with read_file(path="task.md") before continuing.',
+                min_summary_tokens=64,
+            )
+```
+
+Keys must be unique within a compaction. Notes are considered in hook order
+(lower priority values first, then registration order) and in the order each
+hook adds them. Harnessed budgets notes separately for each candidate and gives
+the remaining text budget to the configured summarizer. A note can reserve
+space only if the remaining budget meets every selected note's
+`min_summary_tokens` (default `1`). If the combined text or the measured request
+exceeds its budget, the runtime evaluates the generated summary by itself.
+
+Treat `add_note` as a proposal. Use `CompactionAppliedEvent.accepted_note_keys`
+to update durable plugin state after commit. The first automatic request that
+uses the compacted history includes the accepted notes in its summary. The
+same summary text is retained when the session is reopened.
+
 ## Display compaction activity
 
 `CompactionStartedEvent`, durable `CompactionAppliedEvent`, and
