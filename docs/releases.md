@@ -4,6 +4,19 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
+## 0.23.0 (Unreleased)
+
+Override or omit a plugin's prompt block with `with_instructions()` and
+`without_instructions()`. Use `PrepareCompaction` to preserve plugin handover
+notes in a compacted conversation. See the [context guide](guides/context.md)
+and [plugin handover notes](guides/compaction.md#add-a-plugin-handover-note).
+
+**Upgrade.** Existing saved sessions need no migration. Update audit and
+checkpoint readers before writers to handle the new `accepted_note_keys` field.
+Use the new module paths in the [examples learning path](guides/examples.md).
+See the
+[0.22.0 upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0220).
+
 ## 0.22.0 (2026-11-20)
 
 `Agent` takes loop, context and approval settings directly. Plugins declare
