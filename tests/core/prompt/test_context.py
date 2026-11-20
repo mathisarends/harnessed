@@ -19,8 +19,8 @@ from harnessed.models import (
     UserMessage,
     user,
 )
-from harnessed.plugins import Service
-from harnessed.plugins.filesystem import FileSystemBackend, LocalFileSystem
+from harnessed.plugins import LocalWorkspace
+from harnessed.plugins.filesystem import FileSystemBackend
 from harnessed.runtime.hooks import PrepareRequest, PreStep
 from harnessed.sessions import SessionState
 from harnessed.testing import ScriptedModel
@@ -174,7 +174,7 @@ async def test_explicit_class_needs_and_injected_dynamic_project_context(tmp_pat
     async with Application(
         model=model,
         approvals=Approvals(default=Decision.ALLOW),
-        plugins=[Service(FileSystemBackend, LocalFileSystem(tmp_path)), Project()],
+        plugins=[LocalWorkspace(root=tmp_path), Project()],
     ).session() as agent:
         await agent.run("one")
         instructions.write_text("second rules", encoding="utf-8")

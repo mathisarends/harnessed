@@ -1,18 +1,18 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from functools import partial
-from itertools import islice
-from pathlib import Path, PurePath
-from tempfile import NamedTemporaryFile
-from typing import Annotated, Protocol
+from pathlib import Path
+from typing import Annotated
 
 from pydantic import Field
 
-from harnessed.kernel import Inject, PluginScope, run_sync
+from harnessed.kernel import needs
 from harnessed.prompts import Instructions, SystemPrompt
 from harnessed.runtime.plugin import Plugin, PluginConfig
-from harnessed.tools import ToolError, ToolRegistry, tool
+from harnessed.tools import tool
+from harnessed.tools.workspace import FileStat, FileSystemBackend, SearchResult
+from harnessed.tools.workspace import LocalFileSystem as LocalFileSystem
+from harnessed.tools.workspace import search_files as search_files
 
 
 class FilesystemAction(StrEnum):
@@ -27,230 +27,9 @@ class FilesystemAction(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
-class FileStat:
-    """Metadata for one workspace-relative path."""
-
-    path: str
-    size: int
-    is_dir: bool
-    modified: float
-
-
-@dataclass(frozen=True, slots=True)
 class PathMatches:
     paths: tuple[str, ...]
     truncated: bool
-
-
-@dataclass(frozen=True, slots=True)
-class SearchResult:
-    matches: tuple[str, ...]
-    scanned_files: int
-    notes: tuple[str, ...] = ()
-
-
-class FileSystemBackend(Protocol):
-    """Workspace operations with character-based text ranges and byte-based binary limits.
-
-    Invalid UTF-8 raises UnicodeError. A read returns the requested range up to
-    EOF or raises ValueError if a backend's byte budget cannot hold that range;
-    it must never silently shorten the requested character or byte limit.
-    """
-
-    async def read(self, path: PurePath, *, offset: int = 0, limit: int | None = None) -> str:
-        """Read UTF-8 text using character offsets and limits; never truncate for a byte budget."""
-        ...
-
-    async def read_bytes(self, path: PurePath, *, limit: int | None = None) -> bytes:
-        """Read up to limit bytes, or the complete file when limit is None."""
-        ...
-
-    async def write(self, path: PurePath, text: str) -> None:
-        """Create or replace a UTF-8 text file in the workspace."""
-        ...
-
-    async def list(self, path: PurePath) -> Sequence[FileStat]:
-        """List the immediate children of a workspace directory with their metadata."""
-        ...
-
-    async def glob(self, pattern: str, *, limit: int = 1000) -> Sequence[PurePath]:
-        """Return matching workspace paths up to the requested result limit."""
-        ...
-
-    async def grep(self, query: str, *, pattern: str = "**/*", limit: int = 100) -> SearchResult:
-        """Search at most 1000 paths and 200000 characters per UTF-8 file.
-
-        Skip invalid UTF-8, report path/match/preview limits in notes, and raise
-        ValueError if a byte budget cannot hold a preview or the search result.
-        Backends can use search_files as a fallback without remote batching.
-        """
-        ...
-
-    async def stat(self, path: PurePath) -> FileStat:
-        """Return metadata for a workspace path, failing when it does not exist."""
-        ...
-
-    async def exists(self, path: PurePath) -> bool:
-        """Report whether a workspace path exists."""
-        ...
-
-    async def delete(self, path: PurePath) -> None:
-        """Delete the addressed workspace file."""
-        ...
-
-    async def replace(self, path: PurePath, old: str, new: str) -> None:
-        """Replace exactly one literal match in a UTF-8 file; fail on zero or multiple matches."""
-        ...
-
-
-async def search_files(
-    fs: FileSystemBackend, query: str, *, pattern: str = "**/*", limit: int = 100
-) -> SearchResult:
-    """Implement the bounded literal-search contract using individual filesystem calls.
-
-    Remote backends should implement grep in their runtime to avoid round trips
-    per file. This fallback propagates read errors except invalid UTF-8.
-    """
-    if not query or not 1 <= limit <= 500:
-        raise ValueError("Search requires a non-empty query and a limit in [1, 500]")
-    hits: list[str] = []
-    notes: list[str] = []
-    scanned = 0
-    paths = await fs.glob(pattern, limit=1001)
-    if len(paths) > 1000:
-        notes.append("Path limit reached; narrow the glob pattern to search further.")
-    for path in paths[:1000]:
-        if (await fs.stat(path)).is_dir:
-            continue
-        try:
-            text = await fs.read(path, limit=200_001)
-        except UnicodeError:
-            continue
-        scanned += 1
-        if len(text) > 200_000:
-            notes.append(f"{path.as_posix()}: only the first 200000 characters were searched.")
-        for number, line in enumerate(text[:200_000].splitlines(), 1):
-            if query in line:
-                preview = line[:1000] + (" [line truncated]" if len(line) > 1000 else "")
-                hits.append(f"{path.as_posix()}:{number}: {preview}")
-                if len(hits) == limit:
-                    notes.append("Match limit reached; narrow the query or pattern.")
-                    return SearchResult(tuple(hits), scanned, tuple(notes))
-    return SearchResult(tuple(hits), scanned, tuple(notes))
-
-
-class LocalFileSystem:
-    """Threaded UTF-8 filesystem with workspace containment and atomic writes."""
-
-    def __init__(self, root: str | Path) -> None:
-        self.root = Path(root).resolve()
-
-    async def read(self, path: PurePath, *, offset: int = 0, limit: int | None = None) -> str:
-        if offset < 0 or (limit is not None and limit < 0):
-            raise ValueError("File ranges must be non-negative")
-
-        def read() -> str:
-            with self._path(path).open(encoding="utf-8", newline="") as stream:
-                remaining = offset
-                while remaining:
-                    chunk = stream.read(min(remaining, 65_536))
-                    if not chunk:
-                        return ""
-                    remaining -= len(chunk)
-                return stream.read() if limit is None else stream.read(limit)
-
-        return await run_sync(read)
-
-    async def read_bytes(self, path: PurePath, *, limit: int | None = None) -> bytes:
-        """Read at most limit bytes, or the complete file when no limit is set."""
-        if limit is not None and limit < 0:
-            raise ValueError("File ranges must be non-negative")
-
-        def read() -> bytes:
-            with self._path(path).open("rb") as stream:
-                return stream.read() if limit is None else stream.read(limit)
-
-        return await run_sync(read)
-
-    async def write(self, path: PurePath, text: str) -> None:
-        await run_sync(partial(self._write, path, text))
-
-    async def stat(self, path: PurePath) -> FileStat:
-        return await run_sync(lambda: self._stat(self._path(path)))
-
-    def _path(self, path: PurePath) -> Path:
-        resolved = (self.root / path).resolve()
-        if not resolved.is_relative_to(self.root):
-            raise ValueError(f"Path is outside the workspace: {path}")
-        return resolved
-
-    def _write(self, path: PurePath, text: str) -> None:
-        resolved = self._path(path)
-        resolved.parent.mkdir(parents=True, exist_ok=True)
-        temporary = None
-        try:
-            with NamedTemporaryFile(
-                mode="w", encoding="utf-8", newline="", dir=resolved.parent, delete=False
-            ) as stream:
-                temporary = Path(stream.name)
-                stream.write(text)
-            if resolved.exists():
-                temporary.chmod(resolved.stat().st_mode)
-            temporary.replace(resolved)
-        finally:
-            if temporary is not None:
-                temporary.unlink(missing_ok=True)
-
-    def _stat(self, path: Path) -> FileStat:
-        info = path.stat()
-        return FileStat(
-            path.relative_to(self.root).as_posix(), info.st_size, path.is_dir(), info.st_mtime
-        )
-
-    async def list(self, path: PurePath = Path()) -> tuple[FileStat, ...]:
-        def entries() -> tuple[FileStat, ...]:
-            return tuple(
-                self._stat(self._path(item)) for item in sorted(self._path(path).iterdir())
-            )
-
-        return await run_sync(entries)
-
-    async def glob(self, pattern: str, *, limit: int = 1000) -> tuple[PurePath, ...]:
-        if Path(pattern).is_absolute() or ".." in Path(pattern).parts:
-            raise ValueError("Glob patterns must stay inside the workspace")
-        if limit < 1:
-            raise ValueError("Glob limit must be positive")
-
-        def matches() -> tuple[PurePath, ...]:
-            items = islice(self.root.glob(pattern), limit)
-            return tuple(self._path(item).relative_to(self.root) for item in sorted(items))
-
-        return await run_sync(matches)
-
-    async def grep(self, query: str, *, pattern: str = "**/*", limit: int = 100) -> SearchResult:
-        return await search_files(self, query, pattern=pattern, limit=limit)
-
-    async def exists(self, path: PurePath) -> bool:
-        return await run_sync(lambda: self._path(path).exists())
-
-    async def delete(self, path: PurePath) -> None:
-        await run_sync(lambda: self._path(path).unlink())
-
-    async def replace(self, path: PurePath, old: str, new: str) -> None:
-        if not old:
-            raise ToolError("The text to replace must not be empty.")
-
-        def edit() -> None:
-            with self._path(path).open(encoding="utf-8", newline="") as stream:
-                text = stream.read()
-            count = text.count(old)
-            if count != 1:
-                raise ToolError(
-                    f"Expected one match; found {count}. Read a more specific range first."
-                )
-            self._write(path, text.replace(old, new, 1))
-
-        await run_sync(edit)
 
 
 _FILESYSTEMTOOLS_INSTRUCTIONS = Instructions(
@@ -261,10 +40,10 @@ _FILESYSTEMTOOLS_INSTRUCTIONS = Instructions(
 )
 
 
-class FilesystemTools[ConfigT: PluginConfig](
-    Plugin[ConfigT], needs=(FileSystemBackend, ToolRegistry)
-):
+class Filesystem(Plugin[PluginConfig], slot="filesystem"):
     """Expose workspace tools through a separately owned FileSystemBackend service."""
+
+    files = needs(FileSystemBackend)
 
     def instructions(self) -> SystemPrompt:
         return SystemPrompt(_FILESYSTEMTOOLS_INSTRUCTIONS)
@@ -277,11 +56,9 @@ class FilesystemTools[ConfigT: PluginConfig](
         limit: Annotated[
             int, Field(ge=1, le=16_000, description="Maximum Unicode characters to read")
         ] = 8000,
-        *,
-        fs: Inject[FileSystemBackend],
     ) -> str:
         """Read a UTF-8 character range; use offset/limit for large files."""
-        text = await fs.read(Path(path), offset=offset, limit=limit + 1)
+        text = await self.files.read(Path(path), offset=offset, limit=limit + 1)
         content = text[:limit]
         if len(text) > limit:
             content += (
@@ -290,28 +67,24 @@ class FilesystemTools[ConfigT: PluginConfig](
         return content
 
     @tool(action=FilesystemAction.WRITE)
-    async def write_file(self, path: str, text: str, *, fs: Inject[FileSystemBackend]) -> str:
+    async def write_file(self, path: str, text: str) -> str:
         """Atomically replace a UTF-8 file, creating parent directories if needed."""
-        await fs.write(Path(path), text)
+        await self.files.write(Path(path), text)
         return f"Wrote {path}"
 
     @tool(action=FilesystemAction.LIST, readonly=True, parallel=True)
-    async def list_dir(
-        self, path: str = ".", *, fs: Inject[FileSystemBackend]
-    ) -> Sequence[FileStat]:
+    async def list_dir(self, path: str = ".") -> Sequence[FileStat]:
         """List direct children with file sizes and kinds."""
-        return await fs.list(Path(path))
+        return await self.files.list(Path(path))
 
     @tool(action=FilesystemAction.SEARCH, readonly=True, parallel=True)
     async def glob(
         self,
         pattern: str,
         limit: Annotated[int, Field(ge=1, le=1000)] = 200,
-        *,
-        fs: Inject[FileSystemBackend],
     ) -> PathMatches:
         """Find workspace paths using a glob pattern; results are bounded by limit."""
-        paths = await fs.glob(pattern, limit=limit + 1)
+        paths = await self.files.glob(pattern, limit=limit + 1)
         return PathMatches(tuple(path.as_posix() for path in paths[:limit]), len(paths) > limit)
 
     @tool(action=FilesystemAction.SEARCH, readonly=True, parallel=True)
@@ -320,11 +93,9 @@ class FilesystemTools[ConfigT: PluginConfig](
         query: Annotated[str, Field(min_length=1)],
         pattern: str = "**/*",
         limit: Annotated[int, Field(ge=1, le=500)] = 100,
-        *,
-        fs: Inject[FileSystemBackend],
     ) -> SearchResult:
         """Find literal text in bounded UTF-8 previews; narrow patterns for large trees."""
-        return await fs.grep(query, pattern=pattern, limit=limit)
+        return await self.files.grep(query, pattern=pattern, limit=limit)
 
     @tool(action=FilesystemAction.EDIT)
     async def edit(
@@ -332,37 +103,13 @@ class FilesystemTools[ConfigT: PluginConfig](
         path: str,
         old: Annotated[str, Field(min_length=1)],
         new: str,
-        *,
-        fs: Inject[FileSystemBackend],
     ) -> str:
         """Replace exactly one matching text fragment; ambiguous edits fail."""
-        await fs.replace(Path(path), old, new)
+        await self.files.replace(Path(path), old, new)
         return f"Edited {path}"
 
     @tool(action=FilesystemAction.DELETE)
-    async def delete_file(self, path: str, *, fs: Inject[FileSystemBackend]) -> str:
+    async def delete_file(self, path: str) -> str:
         """Delete one workspace file."""
-        await fs.delete(Path(path))
+        await self.files.delete(Path(path))
         return f"Deleted {path}"
-
-
-class FilesystemConfig(PluginConfig):
-    root: Path = Path()
-
-
-class Filesystem(FilesystemTools[FilesystemConfig], slot="filesystem"):
-    """Own a local or application-supplied backend and its workspace tools."""
-
-    needs = (ToolRegistry,)
-
-    def __init__(
-        self, root: str | Path = ".", *, implementation: FileSystemBackend | None = None
-    ) -> None:
-        super().__init__(config=FilesystemConfig(root=Path(root)))
-        self.implementation = implementation
-
-    async def setup(self, scope: PluginScope) -> None:
-        implementation = self.implementation
-        if implementation is None:
-            implementation = await run_sync(partial(LocalFileSystem, self.config.root))
-        scope.provide(FileSystemBackend, implementation)

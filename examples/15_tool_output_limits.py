@@ -6,22 +6,22 @@ from tempfile import TemporaryDirectory
 
 from harnessed import Agent, Context, Plugin, tool
 from harnessed.events import ToolCallFinishedEvent
-from harnessed.kernel import Inject
+from harnessed.kernel import needs
 from harnessed.models import Role, ToolResult, ToolStatus
-from harnessed.plugins import Service
-from harnessed.plugins.filesystem import FileSystemBackend, FilesystemTools, LocalFileSystem
+from harnessed.plugins import LocalWorkspace
+from harnessed.plugins.filesystem import Filesystem, FileSystemBackend
 from harnessed.testing import ScriptedModel, call
 
 MAX_TOOL_OUTPUT_CHARS = 1024
 
 
 class LargeResultsTools(Plugin):
-    needs = (FileSystemBackend,)
+    fs = needs(FileSystemBackend)
 
     @tool
-    async def cat_log(self, fs: Inject[FileSystemBackend]) -> ToolResult:
+    async def cat_log(self) -> ToolResult:
         """Return a deliberately unbounded log, like cat without a range."""
-        return ToolResult(await fs.read(Path("large.log")), ToolStatus.ERROR, exit_code=3)
+        return ToolResult(await self.fs.read(Path("large.log")), ToolStatus.ERROR, exit_code=3)
 
 
 tools = LargeResultsTools()
@@ -34,16 +34,16 @@ async def main():
         model = ScriptedModel(
             [
                 call(LargeResultsTools.cat_log),
-                call(FilesystemTools.read_file, path="large.log", offset=0, limit=40),
-                call(FilesystemTools.read_file, path="large.log", offset=40, limit=40),
+                call(Filesystem.read_file, path="large.log", offset=0, limit=40),
+                call(Filesystem.read_file, path="large.log", offset=40, limit=40),
                 "Read bounded outputs and continued with explicit character ranges.",
             ]
         )
         agent = Agent(
             model=model,
             plugins=[
-                Service(FileSystemBackend, LocalFileSystem(directory)),
-                FilesystemTools(),
+                LocalWorkspace(root=directory),
+                Filesystem(),
                 tools,
             ],
             context=Context(max_tool_output_chars=MAX_TOOL_OUTPUT_CHARS),

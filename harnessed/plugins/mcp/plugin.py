@@ -25,7 +25,7 @@ from pydantic import ValidationError as ModelValidationError
 from referencing import Registry
 from referencing.exceptions import NoSuchResource
 
-from harnessed.kernel import PluginScope, RegistrationState
+from harnessed.kernel import PluginScope, RegistrationState, needs
 from harnessed.models import (
     ContentPart,
     ImagePart,
@@ -59,7 +59,7 @@ class MCPConfig(PluginConfig):
     parallel: bool = False
 
 
-class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
+class MCP(Plugin[MCPConfig]):
     """Consume one external MCP server's tools through the Harnessed runtime.
 
     Construction performs no I/O. Each session or runtime mount owns a fresh
@@ -68,6 +68,8 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
     """
 
     _check_enabled: BoundToolEnabled
+
+    registry = needs(ToolRegistry)
 
     def __init__(
         self,
@@ -197,7 +199,7 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
         requested = set(selected or ()) | set(self.config.readonly_tools) | self.actions.keys()
         if missing := requested - catalog.keys():
             raise ValueError(f"MCP server omitted configured tools: {sorted(missing)}")
-        registry = scope[ToolRegistry]
+        registry = self.registry
         for name, tool in catalog.items():
             if selected is not None and name not in selected:
                 continue

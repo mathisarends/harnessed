@@ -9,7 +9,7 @@ from typing import Annotated, Protocol
 from pydantic import Field
 
 from harnessed.events import SpillCreatedEvent, SpillExpirationReason, SpillExpiredEvent
-from harnessed.kernel import Inject, PluginScope, Priority, hook, needs
+from harnessed.kernel import PluginScope, Priority, hook, needs
 from harnessed.models import ToolResult
 from harnessed.models.messages import SpillRef
 from harnessed.prompts import Instructions, SystemPrompt
@@ -137,9 +137,10 @@ _SPILL_INSTRUCTIONS = Instructions(
 )
 
 
-class Spill(Plugin[SpillConfig], slot="spill", needs=(TokenCounter,)):
+class Spill(Plugin[SpillConfig], slot="spill"):
     """Spill large text, preserve images, and expire oldest files within a hard quota."""
 
+    counter = needs(TokenCounter)
     session = needs(SessionLog)
     files = needs(SessionFiles)
 
@@ -180,14 +181,11 @@ class Spill(Plugin[SpillConfig], slot="spill", needs=(TokenCounter,)):
         self,
         event: ReviewToolResult,
         next_: Next[ToolResult],
-        *,
-        counter: Inject[TokenCounter],
-        session: Inject[SessionLog],
     ) -> ToolResult:
         result = await next_()
         if event.output_limit is None:
             return result
-        tokens = counter.count_text(result.text)
+        tokens = self.counter.count_text(result.text)
         if (
             tokens <= self.config.threshold_tokens
             or result.spill is not None
@@ -201,9 +199,9 @@ class Spill(Plugin[SpillConfig], slot="spill", needs=(TokenCounter,)):
         except OSError:
             logger.exception("Session spill write failed")
             return result.with_note("Spill storage unavailable.")
-        await session.append(SpillCreatedEvent(event.call.id, ref, tokens))
+        await self.session.append(SpillCreatedEvent(event.call.id, ref, tokens))
         preview = truncate(
-            result.text, min(self.config.preview_tokens, self.config.threshold_tokens), counter
+            result.text, min(self.config.preview_tokens, self.config.threshold_tokens), self.counter
         )
         text = (
             f"Tool output stored at {ref.path} ({tokens} estimated tokens; sha256={ref.sha256}).\n"

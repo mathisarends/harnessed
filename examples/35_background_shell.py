@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 
 from harnessed import Agent, Approvals
 from harnessed.models import Decision, ModelChunk, ModelRequest, ToolCall, ToolMessage
-from harnessed.plugins import BackgroundShell, Shell
+from harnessed.plugins import BackgroundShell, LocalWorkspace, Shell
 from harnessed.testing import CallbackModel
 
 
@@ -71,7 +71,7 @@ async def main() -> None:
         agent = Agent(
             model=CallbackModel(respond),
             approvals=Approvals(default=Decision.ASK, approver=lambda _: Decision.ALLOW),
-            plugins=[Shell(workspace), BackgroundShell(workspace, timeout=10)],
+            plugins=[LocalWorkspace(root=workspace), Shell(), BackgroundShell(timeout=10)],
         )
         async with agent.session() as session:
             result = await session.run("Demonstrate background shell control.")

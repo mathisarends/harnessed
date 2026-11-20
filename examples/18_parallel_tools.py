@@ -8,9 +8,9 @@ from typing import override
 
 from harnessed import Agent, AgentLoop, Plugin, tool
 from harnessed.events import ToolCallFinishedEvent
-from harnessed.kernel import Inject, PluginScope
+from harnessed.kernel import PluginScope, needs
 from harnessed.models import ModelChunk, Role, ToolCall
-from harnessed.plugins import Filesystem
+from harnessed.plugins import Filesystem, LocalWorkspace
 from harnessed.plugins.filesystem import FileSystemBackend
 from harnessed.testing import ScriptedModel
 
@@ -62,13 +62,13 @@ async def writes_with_resource_keys(root: Path):
         return (f"file:{os.path.normcase(str(path))}",)
 
     class DocumentsTools(Plugin):
-        needs = (FileSystemBackend,)
+        fs = needs(FileSystemBackend)
 
         @tool(parallel=True, resources=resources)
-        async def save_document(self, path: str, text: str, fs: Inject[FileSystemBackend]) -> str:
+        async def save_document(self, path: str, text: str) -> str:
             """Save one document in the workspace."""
             writes.append(text)
-            await fs.write(Path(path), text)
+            await self.fs.write(Path(path), text)
             return f"Saved {path}"
 
     tools = DocumentsTools()
@@ -79,8 +79,10 @@ async def writes_with_resource_keys(root: Path):
         ToolCall("save_document", {"path": "./a.txt", "text": "second version"}),
     ]
     model = ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "Documents saved."])
-    filesystem = Filesystem(root)
-    async with Agent(model=model, plugins=[filesystem, tools]).session() as session:
+    filesystem = Filesystem()
+    async with Agent(
+        model=model, plugins=[LocalWorkspace(root=root), filesystem, tools]
+    ).session() as session:
         result = await session.run("Save both documents and then update a.txt.")
         returned = [event for event in result.events if isinstance(event, ToolCallFinishedEvent)]
         assert all(not event.result.is_error for event in returned)

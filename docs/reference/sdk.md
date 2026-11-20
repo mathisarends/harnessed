@@ -189,11 +189,19 @@ The default depth is one; children cannot raise an inherited limit.
 See [subagents](../guides/subagents.md) for approvals, limits,
 recovery and ownership.
 
+## Workspace providers and tools
+
+Import `LocalWorkspace`, `WorkspaceBackends`, `Filesystem` and `Shell` from
+`harnessed.plugins`. Local agents use `[LocalWorkspace(root=path), Filesystem(), Shell()]`.
+To bring an existing file store use `[WorkspaceBackends(filesystem=storage), Filesystem()]`.
+A provider exposes services. Tool plugins declare which operations reach the model.
+A missing required backend fails default session startup validation.
+
 ## Sandbox integrations
 
 Import `DockerSandbox` from `harnessed.integrations.docker`, or
 `BubblewrapSandbox` from `harnessed.integrations.bubblewrap`. Both own shared
-shell/filesystem backends; compose them with `ShellTools()` and `FilesystemTools()`.
+shell/filesystem backends; compose them with `Shell()` and `Filesystem()`.
 Docker requires an explicit `image`; Bubblewrap requires a dedicated `rootfs`.
 Both accept `workspace=Workspace.copy_from(path)` or `Workspace.mount(path,
 readonly=True)`, `network=NetworkAccess.NONE`, explicit `env`, `SandboxLimits`,
@@ -210,7 +218,7 @@ returns typed `SandboxServices`: assign `shell = services.shell` and
 `SearchResult(matches, scanned_files, notes)` and executes in one built-in worker
 request. Text ranges count Unicode characters; a range that exceeds the transfer
 byte budget raises `ValueError`. Invalid UTF-8 raises `UnicodeError`.
-`ShellTools` accepts only `cwd`, `timeout` and `max_timeout`; configure `env` and
+`Shell` accepts only `cwd`, `timeout` and `max_timeout`; configure `env` and
 `max_output_bytes` on the sandbox/backend. Shell deadlines include queueing and
 launcher startup, and expired sandbox startup raises `TimeoutError`.
 `Sandbox(backend=MyBackend, workspace=...)` accepts a zero-argument constructor or
@@ -223,12 +231,12 @@ runtime requirements and the extension protocol.
 ## Background shell commands
 
 Import `BackgroundShell` from `harnessed.plugins` and register it explicitly with
-`Shell(cwd)` or `Service(ShellBackend, LocalShell(...))` in `Agent(plugins=...)`.
+`LocalWorkspace(root=...)`, a sandbox, or `WorkspaceBackends(shell=backend)` in `Agent(plugins=...)`.
 `BackgroundShell(cwd=".", *, timeout=600.0, max_timeout=600.0,
 max_background_commands=32)` requires an existing shell backend and a live session.
 It adds `start_command(argv, timeout=None)`, `read_command(command_id, wait=0.0)`,
 `write_command(command_id, text="", *, eof=False)`, `terminate_command(command_id)` and
-`list_commands()`. `Shell` and `ShellTools` retain their foreground-only tool set.
+`list_commands()`. `Shell` exposes the foreground command tool.
 
 `start_command` returns a mount-scoped ID promptly. Completion, failure, timeout
 or cancellation queues one durable session-inbox notification and wakes an idle

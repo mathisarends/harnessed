@@ -4,16 +4,19 @@ import asyncio
 from typing import override
 
 from harnessed import Agent, Plugin
-from harnessed.kernel import Key, PluginScope, Scope
+from harnessed.kernel import Key, PluginScope, Scope, needs
 from harnessed.plugins.rules import Rules, when
 from harnessed.testing import ScriptedModel
 
 backend = Key[str]("backend")
 
 
-class Feature(Plugin, needs=[backend]):
+class Feature(Plugin):
+    value = needs(backend)
+
+    @override
     async def setup(self, scope: PluginScope) -> None:
-        print(f"Independent kernel setup: {scope[backend]}")
+        print(f"Independent kernel setup: {self.value}")
 
     @override
     async def teardown(self, scope: PluginScope) -> None:

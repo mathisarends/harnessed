@@ -159,3 +159,9 @@ async def test_custom_instance_factory_preserves_bound_tool_references_and_isola
         assert len(mounts) == 2 and mounts[0] is not mounts[1]
     assert len(approvals) == 3
     assert all(value is client for value in clients)
+
+
+@pytest.mark.parametrize("keyword", ["hooks", "needs", "registrations"])
+def test_sdk_plugin_rejects_kernel_constructor_options(keyword):
+    with pytest.raises(TypeError, match=keyword):
+        Plugin(**{keyword: ()})

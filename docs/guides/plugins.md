@@ -6,6 +6,14 @@ instance: constructors describe configuration, `setup()` acquires resources, and
 instance; use `mount_plugin()` in plugin tests. Post-construction recipe attribute
 assignments are not replayed into activations.
 
+Pass `name=` and typed `config=` to the SDK base constructor as needed. Declare
+static tools and hooks on methods with `@tool` and `@hook`. Register dynamically
+in `setup(scope)` so the activation owns cleanup. Use `field = needs(T)` for
+a service the plugin reads throughout activation. A class-level `needs=(T,)`
+can express an activation prerequisite without a corresponding field.
+`observes(T)` tracks an optional service across restarts. `Inject[T]` on a
+method parameter resolves a value at call time, such as the current `ToolContext`.
+
 Class lifecycle methods have one signature: `async def setup(self, scope:
 PluginScope) -> None` and `async def teardown(self, scope: PluginScope) -> None`.
 Import `PluginScope` from `harnessed.kernel`. It is the resource and registration
@@ -21,11 +29,11 @@ Choose a model with `model=`, supply text or a structured document through
 
 ```python
 from harnessed import Agent, AgentLoop, Approvals, Context
-from harnessed.plugins import Filesystem, FilesystemAction
+from harnessed.plugins import Filesystem, FilesystemAction, LocalWorkspace
 
 agent = Agent(
     model=model,
-    plugins=[Filesystem(root=".")],
+    plugins=[LocalWorkspace(root="."), Filesystem()],
     approvals=Approvals(ask=[FilesystemAction.DELETE]),
     context=Context(max_tool_output_chars=16_000),
     loop=AgentLoop(max_steps=50, max_parallel_tools=4),
@@ -38,13 +46,13 @@ agent = Agent(
 from pathlib import Path
 
 from harnessed import Plugin
-from harnessed.plugins import Filesystem, Shell
+from harnessed.plugins import Filesystem, LocalWorkspace, Shell
 
 
 def workspace(root: Path, *, shell: bool = False) -> list[Plugin]:
-    plugins: list[Plugin] = [Filesystem(root)]
+    plugins: list[Plugin] = [LocalWorkspace(root=root), Filesystem()]
     if shell:
-        plugins.append(Shell(root))
+        plugins.append(Shell())
     return plugins
 ```
 
@@ -411,29 +419,30 @@ plugin's needs in its own mount scope.
 
 ## Separate a backend from its tools
 
-`Filesystem` and `Shell` own their backend and tools together. Use
-`FilesystemTools` or `ShellTools` when a separate service owns the backend:
+Choose a provider for the execution environment and add the tools the agent may
+use. The tool configuration is the same for local, sandbox and custom backends.
 
 ```python
-from harnessed.plugins import Service, ShellTools
-from harnessed.plugins.shell import LocalShell, ShellBackend
+from harnessed.plugins import Filesystem, LocalWorkspace, Shell, WorkspaceBackends
 
-plugins = [Service(ShellBackend, LocalShell()), ShellTools(".")]
+local = [LocalWorkspace(root=project), Filesystem(), Shell()]
+isolated = [sandbox, Filesystem(), Shell()]
+custom = [WorkspaceBackends(filesystem=storage), Filesystem()]
 ```
 
-The tool plugin explicitly needs the backend. Removing its provider suspends the
-tools, and a replacement provider restarts them. Injection resolves the current
-backend for every call. `FilesystemTools` exposes the same bounded reading,
-writing, discovery, editing and deletion tools as `Filesystem`. For shared isolated
-backends, see [sandbox integrations](sandboxes.md).
+`LocalWorkspace` supplies a filesystem and a shell rooted at the same directory.
+`Shell(cwd="nested")` runs commands in a subdirectory. Local commands run as the
+host user. Use a [sandbox](sandboxes.md) for isolation. Configure local process
+environment and output capture on `LocalWorkspace(env=..., max_output_bytes=...)`.
+`Shell(timeout=..., max_timeout=...)` controls the tool's timeout schema.
 
-`ShellTools` accepts `cwd`, `timeout` and `max_timeout`. Set `env` and
-`max_output_bytes` on `LocalShell` or the selected sandbox instead. `Shell` can
-configure these options for its owned local backend; when passing an explicit
-`implementation`, configure that backend directly. Filesystem backends implement
-`grep(query, *, pattern="**/*", limit=100) -> SearchResult` so remote services can
-batch searches. `harnessed.plugins.filesystem.search_files` provides a fallback
-for backends using separate glob, stat and read operations.
+`WorkspaceBackends` accepts an existing `filesystem=`, `shell=`, or both. The
+caller owns those objects and their lifetime. A provider by itself publishes
+services only. With default validation, requesting tools whose backend is
+missing raises `PluginDependencyError` at session startup. At runtime, the tools
+suspend when their provider disappears and reactivate when it returns. There is
+no implicit host fallback. `BackgroundShell()` opts into a separate tool set
+for interactive process control.
 
 ## Typed configuration without duplicate declarations
 
@@ -487,7 +496,7 @@ class FailureNudge(Plugin[FailureNudgeConfig]):
 ```
 
 Built-in features retain their typed constructors, such as
-`Compaction(keep_last_steps=4)` and `Shell(root)`, and use this pattern internally.
+`Compaction(keep_last_steps=4)` and `Shell(timeout=30)`, and use this pattern internally.
 Callers of a custom constructor follow that class's explicit signature.
 Allocate mutable per-mount state with `PluginState` or in setup; constructors
 describe reusable recipes and acquire no resources.

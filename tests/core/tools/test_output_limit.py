@@ -9,9 +9,7 @@ from harnessed.events import ToolCallFinishedEvent, ToolExecutionFinishedEvent
 from harnessed.events.codec import decode_event, encode_event
 from harnessed.kernel import hook
 from harnessed.models import ModelChunk, ToolCall, ToolResult, ToolStatus
-from harnessed.plugins import Service, Spill
-from harnessed.plugins.filesystem import FileSystemBackend, FilesystemTools, LocalFileSystem
-from harnessed.plugins.shell import LocalShell, ShellBackend, ShellTools
+from harnessed.plugins import Filesystem, LocalWorkspace, Shell, Spill
 from harnessed.runtime.hooks import ReviewToolResult
 from harnessed.runtime.tool_output_limit import ToolOutputLimit
 from harnessed.sessions.files import SessionFiles
@@ -173,7 +171,7 @@ async def test_read_file_supports_bounded_unicode_character_ranges_and_continuat
     async with Application(
         model=ScriptedModel([]),
         approvals=Approvals(default=Decision.ALLOW),
-        plugins=[Service(FileSystemBackend, LocalFileSystem(tmp_path)), FilesystemTools()],
+        plugins=[LocalWorkspace(root=tmp_path), Filesystem()],
     ).session() as agent:
         registry = agent.scope[ToolRegistry]
         result = await registry.execute(ToolCall("read_file", {"path": "large.txt"}))
@@ -218,7 +216,7 @@ async def test_large_shell_stdout_stderr_and_exit_code_remain_bounded(tmp_path):
     async with Application(
         model=model,
         approvals=Approvals(default=Decision.ALLOW),
-        plugins=[Service(ShellBackend, LocalShell()), ShellTools(tmp_path)],
+        plugins=[LocalWorkspace(root=tmp_path), Shell()],
         context=Context(max_tool_output_chars=1024),
     ).session() as agent:
         agent_audit = Audit(agent)

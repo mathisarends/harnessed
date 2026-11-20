@@ -82,13 +82,13 @@ and policy components at their intended list positions.
 ```python
 from harnessed import Agent, SystemPrompt
 from harnessed.prompts import PromptFormat
-from harnessed.plugins import Filesystem, Shell
+from harnessed.plugins import Filesystem, LocalWorkspace, Shell
 
 agent = Agent(
     instructions=SystemPrompt.from_plugins(
         "Help with the workspace.", format=PromptFormat.MARKDOWN
     ),
-    plugins=[Filesystem(), Shell()],
+    plugins=[LocalWorkspace(root="."), Filesystem(), Shell()],
 )
 ```
 

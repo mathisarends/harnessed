@@ -25,7 +25,7 @@ from harnessed.integrations.sandbox.worker import filesystem as worker_filesyste
 from harnessed.integrations.sandbox.workspace import seed_archive
 from harnessed.kernel import MissingService
 from harnessed.models import Decision, ToolCall
-from harnessed.plugins import FilesystemTools, ShellTools
+from harnessed.plugins import Filesystem, Shell
 from harnessed.plugins.filesystem import FileStat, FileSystemBackend, search_files
 from harnessed.plugins.shell import ProcResult, ShellBackend
 from harnessed.testing import ScriptedModel
@@ -135,7 +135,7 @@ def app(sandbox):
     return Agent(
         model=ScriptedModel([]),
         approvals=Approvals(default=Decision.ASK, approver=lambda _: Decision.ALLOW),
-        plugins=[sandbox, ShellTools(), FilesystemTools()],
+        plugins=[sandbox, Shell(), Filesystem()],
     )
 
 

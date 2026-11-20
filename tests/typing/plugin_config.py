@@ -1,9 +1,8 @@
 from typing import assert_type
 
 from harnessed import Plugin, PluginConfig
-from harnessed.plugins import Filesystem, Shell, ShellTools
-from harnessed.plugins.filesystem import FilesystemConfig
-from harnessed.plugins.shell import ShellConfig, ShellToolsConfig
+from harnessed.plugins import Filesystem, Shell
+from harnessed.plugins.shell import ShellConfig
 
 
 class FileToolsConfig(PluginConfig):
@@ -45,6 +44,5 @@ class ExtendedTools(GenericTools[ExtendedConfig]):
 
 assert_type(ExtendedTools(config=ExtendedConfig()).config, ExtendedConfig)
 assert_type(files.create_instance(), FileTools)
-assert_type(Filesystem().config, FilesystemConfig)
+assert_type(Filesystem().config, PluginConfig)
 assert_type(Shell().config, ShellConfig)
-assert_type(ShellTools().config, ShellToolsConfig)

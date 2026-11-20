@@ -7,7 +7,7 @@ from typing import Protocol, override
 from harnessed import Agent, Approvals, Plugin, SystemPrompt, tool
 from harnessed.events import TurnEndedEvent
 from harnessed.hooks import ExecuteTool, SessionAppended
-from harnessed.kernel import Inject, PluginScope, PluginState
+from harnessed.kernel import PluginScope, PluginState, needs
 from harnessed.models import Decision, ModelChunk, ToolCall
 from harnessed.testing import ScriptedModel
 
@@ -38,7 +38,9 @@ class NotesConfig:
     instruction: str = "Use save_note to save notes."
 
 
-class NotesTools(Plugin, needs=(Notes,)):
+class NotesTools(Plugin):
+    notes = needs(Notes)
+
     saved = PluginState[int](int)
 
     def __init__(self, config: NotesConfig):
@@ -49,9 +51,9 @@ class NotesTools(Plugin, needs=(Notes,)):
         return SystemPrompt(self._instruction)
 
     @tool
-    async def save_note(self, text: str, notes: Inject[Notes]) -> str:
+    async def save_note(self, text: str) -> str:
         """Save a note."""
-        result = await notes.save(text)
+        result = await self.notes.save(text)
         self.saved += 1
         return result
 

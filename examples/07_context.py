@@ -8,7 +8,7 @@ from typing import Protocol, override
 
 from harnessed import Agent, File, Image, Plugin, SystemPrompt, tool
 from harnessed.hooks import PrepareRequest
-from harnessed.kernel import Inject, PluginScope, hook
+from harnessed.kernel import PluginScope, hook, needs
 from harnessed.models import ModelChunk, ToolCall, UserMessage
 from harnessed.prompts import Instructions
 from harnessed.testing import ScriptedModel
@@ -29,9 +29,11 @@ class MemoryBackend(Plugin):
         scope.provide(Memory, DemoMemory())
 
 
-class RelevantMemories(Plugin, needs=(Memory,)):
+class RelevantMemories(Plugin):
+    memory = needs(Memory)
+
     @hook(PrepareRequest)
-    async def recall(self, _event: PrepareRequest, next_, memory: Inject[Memory]):
+    async def recall(self, _event: PrepareRequest, next_):
         request = await next_()
         query = next(
             (
@@ -41,19 +43,19 @@ class RelevantMemories(Plugin, needs=(Memory,)):
             ),
             "project",
         )
-        hits = await memory.search(query, k=3)
+        hits = await self.memory.search(query, k=3)
         for hit in hits:
             request = request.append_message(UserMessage(hit))
         return request
 
 
 class MemoryTools(Plugin):
-    needs = (Memory,)
+    memory = needs(Memory)
 
     @tool(readonly=True)
-    async def recall(self, query: str, memory: Inject[Memory]) -> list[str]:
+    async def recall(self, query: str) -> list[str]:
         """Search long-term memory for relevant project information."""
-        return await memory.search(query, k=5)
+        return await self.memory.search(query, k=5)
 
 
 memory_tools = MemoryTools()

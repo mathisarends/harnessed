@@ -7,17 +7,17 @@ from pathlib import Path
 from harnessed import Agent, AgentLoop, Approvals, SystemPrompt
 from harnessed.events import ApprovalNeededEvent, TextDeltaEvent, ToolCallRequestedEvent
 from harnessed.models import Decision
-from harnessed.plugins import Filesystem
+from harnessed.plugins import Filesystem, LocalWorkspace
 from harnessed.prompts import Instructions
 
 
 async def main():
     workspace = Path.cwd()
-    filesystem = Filesystem(root=workspace)
+    filesystem = Filesystem()
     agent = Agent(
         approvals=Approvals(default=Decision.ASK),
         model=f"deepseek:{os.environ.get('DEEPSEEK_MODEL', 'deepseek-chat')}",
-        plugins=[filesystem],
+        plugins=[LocalWorkspace(root=workspace), filesystem],
         loop=AgentLoop(max_steps=8),
         instructions=SystemPrompt.from_plugins(
             Instructions(text="Help the user understand this Python project. Answer in English."),

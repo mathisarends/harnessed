@@ -15,10 +15,9 @@ from harnessed.integrations.sandbox.process import WorkerProcess
 from harnessed.integrations.sandbox.types import ProcessOutput
 from harnessed.integrations.sandbox.worker import filesystem as worker_filesystem
 from harnessed.integrations.sandbox.worker import runtime as worker_runtime
-from harnessed.plugins import Service
+from harnessed.plugins import WorkspaceBackends
 from harnessed.plugins.filesystem import (
-    FileSystemBackend,
-    FilesystemTools,
+    Filesystem,
     LocalFileSystem,
     search_files,
 )
@@ -91,9 +90,9 @@ async def test_grep_skips_invalid_utf8_and_still_searches_later_text_files(tmp_p
     (tmp_path / "b.txt").write_text("needle", encoding="utf-8")
     for files in (LocalFileSystem(tmp_path), worker_files):
         async with mount_plugin(
-            FilesystemTools(), services=(Service(FileSystemBackend, files),)
+            Filesystem(), services=(WorkspaceBackends(filesystem=files),)
         ) as tools:
-            result = await tools.grep("needle", pattern="*", fs=files)
+            result = await tools.grep("needle", pattern="*")
         assert result.matches == ("b.txt:1: needle",)
         assert result.scanned_files == 1
         assert result.notes == ()
@@ -113,11 +112,11 @@ async def test_text_reads_fail_explicitly_when_byte_budget_is_too_small(
 async def test_read_file_never_returns_silently_shortened_content(tmp_path, worker_files):
     (tmp_path / "large.txt").write_text("x" * 2000, encoding="utf-8")
     async with mount_plugin(
-        FilesystemTools(), services=(Service(FileSystemBackend, worker_files),)
+        Filesystem(), services=(WorkspaceBackends(filesystem=worker_files),)
     ) as tools:
         with pytest.raises(ValueError, match="max_transfer_bytes"):
-            await tools.read_file("large.txt", limit=1000, fs=worker_files)
-        page = await tools.read_file("large.txt", limit=255, fs=worker_files)
+            await tools.read_file("large.txt", limit=1000)
+        page = await tools.read_file("large.txt", limit=255)
     assert page.startswith("x" * 255)
     assert "offset=255, limit=255" in page
 
@@ -220,9 +219,9 @@ async def test_docker_grep_for_1000_files_uses_one_exec_and_caches_worker_source
         await backend.start(worker_files.config)
         assert operations == ["stat"]  # Mount readiness.
         async with mount_plugin(
-            FilesystemTools(), services=(Service(FileSystemBackend, backend.file_system),)
+            Filesystem(), services=(WorkspaceBackends(filesystem=backend.file_system),)
         ) as tools:
-            result = await tools.grep("needle", pattern="*", fs=backend.file_system)
+            result = await tools.grep("needle", pattern="*")
         assert result.matches == () and result.scanned_files == 1000
         assert result.notes == ()
         assert operations == ["stat", "grep"]

@@ -8,9 +8,8 @@ from harnessed import Approvals, Plugin
 from harnessed.events import ToolCallFinishedEvent
 from harnessed.kernel import PluginScope
 from harnessed.models import Decision, Model, ModelChunk, ToolCall
-from harnessed.plugins.filesystem import FileSystemBackend, FilesystemTools
-from harnessed.plugins.shell import ProcResult, ShellTools
-from harnessed.plugins.shell import ShellBackend as Shell
+from harnessed.plugins.filesystem import Filesystem, FileSystemBackend
+from harnessed.plugins.shell import ProcResult, Shell, ShellBackend
 from harnessed.plugins.spill import SpillStore
 from harnessed.runtime.approval_policy import Approver
 from harnessed.runtime.compaction import Summarizer
@@ -24,7 +23,7 @@ from harnessed.testing import ScriptedModel
     [
         FileSystemBackend,
         Model,
-        Shell,
+        ShellBackend,
         Approver,
         TokenCounter,
         Summarizer,
@@ -79,7 +78,7 @@ async def test_foreign_fs_and_model_work_through_di_without_framework_inheritanc
     async with Application(
         model=model,
         approvals=Approvals(default=Decision.ALLOW),
-        plugins=[FilesProvider(), FilesystemTools()],
+        plugins=[FilesProvider(), Filesystem()],
     ).session() as agent:
         result = await agent.run("Write and read the note.")
         assert result.text == "done"
@@ -121,7 +120,7 @@ async def test_foreign_shell_and_approver_are_accepted_structurally(tmp_path):
 
     class ForeignServices(Plugin):
         async def setup(self, scope: PluginScope) -> None:
-            scope.provide(Shell, shell)
+            scope.provide(ShellBackend, shell)
             scope.provide(Approver, approver)
 
     class Policy(Plugin, needs=[Approver]):
@@ -135,7 +134,7 @@ async def test_foreign_shell_and_approver_are_accepted_structurally(tmp_path):
     harness = Application(
         model=model,
         approvals=Approvals(default=Decision.ALLOW),
-        plugins=[ForeignServices(), ShellTools(tmp_path), Policy()],
+        plugins=[ForeignServices(), Shell(tmp_path), Policy()],
     )
     async with harness.session() as agent:
         result = await agent.run("Run the tests.")

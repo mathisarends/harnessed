@@ -91,15 +91,18 @@ async def test_priority_flows_through_all_sdk_declaration_and_imperative_hook_ap
         def observe(self, event):
             seen.append("class")
 
-    explicit = Plugin(hooks=[(Ping, lambda ev: seen.append("tuple"), -20)])
-    harness = Application(model=ScriptedModel([]), plugins=[Feature(), explicit])
+    class Explicit(Plugin):
+        async def setup(self, scope):
+            scope.on(Ping, lambda ev: seen.append("setup"), priority=-20)
+
+    harness = Application(model=ScriptedModel([]), plugins=[Feature(), Explicit()])
     async with harness.session() as agent:
         agent.on(Ping, lambda ev: seen.append("agent-decorator"), priority=20)
         dispose = agent.on(Ping, lambda ev: seen.append("agent-imperative"), priority=30)
         await agent.scope.dispatch(Ping())
         assert seen == [
             "class",
-            "tuple",
+            "setup",
             "agent-decorator",
             "agent-imperative",
         ]

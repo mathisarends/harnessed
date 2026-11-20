@@ -14,7 +14,7 @@ from pydantic.dataclasses import dataclass
 
 from harnessed.events import DurableEvent
 from harnessed.events.base import Identifier
-from harnessed.kernel import Inject, Next, PluginScope, PluginState, hook, needs
+from harnessed.kernel import Next, PluginScope, PluginState, hook, needs
 from harnessed.models import ModelRequest, ToolCall, ToolResult, UserMessage, user
 from harnessed.models.messages import to_dict
 from harnessed.prompts.plugin_instructions import PluginInstructions
@@ -141,7 +141,10 @@ def when(
     return Rule(tools, command_contains, exit_code, repeated, result_tokens_over, predicate)
 
 
-class Rules(Plugin, needs=(SessionLog, TokenCounter, SessionInbox)):
+class Rules(Plugin):
+    session = needs(SessionLog)
+    counter = needs(TokenCounter)
+    inbox = needs(SessionInbox)
     context = needs(PluginInstructions)
 
     events = (RuleTriggeredEvent,)
@@ -167,7 +170,6 @@ class Rules(Plugin, needs=(SessionLog, TokenCounter, SessionInbox)):
         call: ToolCall,
         *,
         result: ToolResult,
-        counter: TokenCounter,
         matched: bool | None = None,
     ) -> tuple[tuple[int, str] | None, int]:
         if rule.tools and call.name not in rule.tools:
@@ -175,7 +177,7 @@ class Rules(Plugin, needs=(SessionLog, TokenCounter, SessionInbox)):
         arguments = call.command or json.dumps(to_dict(call.arguments), sort_keys=True)
         key = (index, json.dumps([call.name, arguments], ensure_ascii=False))
         if matched is None:
-            matched = rule.matches(call, result, counter)
+            matched = rule.matches(call, result, self.counter)
         self._counts[key] = self._counts[key] + 1 if matched else 0
         self._last_counts[index] = self._counts[key]
         return key, self._counts[key]
@@ -185,16 +187,11 @@ class Rules(Plugin, needs=(SessionLog, TokenCounter, SessionInbox)):
         self,
         event: ReviewToolResult,
         next_: Next[ToolResult],
-        *,
-        session: Inject[SessionLog],
-        context: Inject[PluginInstructions],
-        inbox: Inject[SessionInbox],
-        counter: Inject[TokenCounter],
     ) -> ToolResult:
         result = await next_()
         matches = list(result.rule_matches)
         for index, rule in enumerate(self.rules):
-            key, count = self._count(index, rule, event.call, result=event.result, counter=counter)
+            key, count = self._count(index, rule, event.call, result=event.result)
             if key is not None:
                 rule_id = f"{self.name}:{index}"
                 if any(name == rule_id for name, _ in matches):
@@ -206,9 +203,9 @@ class Rules(Plugin, needs=(SessionLog, TokenCounter, SessionInbox)):
                     and count == 0
                     and any(kind is RuleAction.CONTEXT for kind, _ in rule.actions)
                 ):
-                    await context.remove(f"rule:{self.name}:{index}")
+                    await self.context.remove(f"rule:{self.name}:{index}")
                 continue
-            await session.append(
+            await self.session.append(
                 RuleTriggeredEvent(
                     f"{self.name}:{index}",
                     event.call.id,
@@ -220,9 +217,9 @@ class Rules(Plugin, needs=(SessionLog, TokenCounter, SessionInbox)):
                 if kind is RuleAction.NOTE:
                     result = result.with_note(text)
                 elif kind is RuleAction.CONTEXT:
-                    await context.set(f"rule:{self.name}:{index}", text)
+                    await self.context.set(f"rule:{self.name}:{index}", text)
                 else:
-                    await inbox.steer(user(text))
+                    await self.inbox.steer(user(text))
         return replace(result, rule_matches=tuple(matches))
 
     @override
@@ -236,13 +233,12 @@ class Rules(Plugin, needs=(SessionLog, TokenCounter, SessionInbox)):
         self,
         _event: PrepareRequest,
         next_: Next[ModelRequest],
-        context: Inject[PluginInstructions],
     ) -> ModelRequest:
         request = await next_()
         for index, rule in enumerate(self.rules):
             name = f"rule:{self.name}:{index}"
             if any(kind is RuleAction.CONTEXT for kind, _ in rule.actions):
-                text = context.values.get(name)
+                text = self.context.values.get(name)
                 if text is not None:
                     request = request.append_message(UserMessage(text, id=name))
         return request

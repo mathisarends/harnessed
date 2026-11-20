@@ -14,7 +14,7 @@ from harnessed.events import (
 from harnessed.events.codec import decode_event, encode_event
 from harnessed.kernel import Inject, PluginScope, hook
 from harnessed.models import Decision, ModelChunk, Role, ToolCall
-from harnessed.plugins.filesystem import FileSystemBackend, FilesystemTools, LocalFileSystem
+from harnessed.plugins.filesystem import Filesystem, FileSystemBackend, LocalFileSystem
 from harnessed.runtime.hooks import ReviewToolResult
 from harnessed.testing import ScriptedModel
 from harnessed.tools import ToolRegistry
@@ -180,7 +180,7 @@ async def test_builtin_writes_are_barriers_between_read_groups_and_same_file_ali
     for name in ("a.txt", "b.txt"):
         await asyncio.to_thread((tmp_path / name).write_text, name)
 
-    class Filesystem(Plugin):
+    class TrackedProvider(Plugin):
         async def setup(self, scope: PluginScope) -> None:
             scope.provide(FileSystemBackend, ObservedFS(tmp_path))
 
@@ -195,7 +195,7 @@ async def test_builtin_writes_are_barriers_between_read_groups_and_same_file_ali
     async with Application(
         model=model,
         approvals=Approvals(default=Decision.ALLOW),
-        plugins=[Filesystem(), FilesystemTools()],
+        plugins=[TrackedProvider(), Filesystem()],
     ).session() as agent:
         agent_audit = Audit(agent)
         running = asyncio.create_task(agent.run("go"))

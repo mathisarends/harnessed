@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Callable, Iterable
 from contextlib import AbstractAsyncContextManager
 from types import get_original_bases
 from typing import Any, ClassVar, Self, TypeVar, cast, get_args, get_origin, overload
@@ -10,13 +9,10 @@ from pydantic import BaseModel, ConfigDict
 
 from harnessed.events import DurableEvent, TransientEvent
 from harnessed.kernel import (
-    HookEntry,
     Key,
     PluginScope,
     PluginSpec,
-    Registration,
     Scope,
-    ServiceKey,
     as_plugin_spec,
     binding_plan,
 )
@@ -53,9 +49,6 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         *,
         config: None = None,
         name: str | None = None,
-        hooks: Iterable[HookEntry] = (),
-        needs: Iterable[ServiceKey[Any]] | None = None,
-        registrations: Iterable[tuple[Registration, Callable]] = (),
     ) -> None: ...
 
     @overload
@@ -64,9 +57,6 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         *,
         config: ConfigT,
         name: str | None = None,
-        hooks: Iterable[HookEntry] = (),
-        needs: Iterable[ServiceKey[Any]] | None = None,
-        registrations: Iterable[tuple[Registration, Callable]] = (),
     ) -> None: ...
 
     def __init__(
@@ -74,11 +64,8 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         *,
         config: ConfigT | None = None,
         name: str | None = None,
-        hooks: Iterable[HookEntry] = (),
-        needs: Iterable[ServiceKey[Any]] | None = None,
-        registrations: Iterable[tuple[Registration, Callable]] = (),
     ) -> None:
-        super().__init__(name=name, hooks=hooks, needs=needs, registrations=registrations)
+        super().__init__(name=name)
         schema = self._configuration_type
         if config is None:
             if schema is not None and schema is not PluginConfig:

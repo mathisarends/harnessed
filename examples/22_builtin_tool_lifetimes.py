@@ -4,30 +4,20 @@ import asyncio
 from pathlib import Path
 from typing import override
 
-from harnessed import Agent, Plugin, PluginValidation
-from harnessed.kernel import PluginScope
+from harnessed import Agent, PluginValidation
 from harnessed.models import ModelChunk, ToolCall
-from harnessed.plugins.shell import ProcResult, ShellTools
-from harnessed.plugins.shell import ShellBackend as Shell
+from harnessed.plugins import WorkspaceBackends
+from harnessed.plugins.shell import ProcResult, Shell, ShellBackend
 from harnessed.testing import ScriptedModel
 
 
-class DemoShell(Shell):
+class DemoShell(ShellBackend):
     def __init__(self, name: str):
         self.name = name
 
     @override
     async def run(self, argv: list[str], *, cwd: Path, timeout: float) -> ProcResult:
         return ProcResult(0, f"{self.name}: {' '.join(argv)}", "")
-
-
-class ShellBackend(Plugin):
-    def __init__(self, name: str) -> None:
-        super().__init__()
-        self.name = name
-
-    async def setup(self, scope: PluginScope) -> None:
-        scope.provide(Shell, DemoShell(self.name))
 
 
 async def main():
@@ -43,14 +33,14 @@ async def main():
     agent = Agent(
         model=model,
         plugin_validation=PluginValidation.WARN,
-        plugins=[ShellTools()],
+        plugins=[Shell()],
     )
     outputs = []
     async with agent.session() as session:
         tools = session.tools
         assert tools.names == frozenset()
         print("Before a backend: no shell tools")
-        first = await session.mount(ShellBackend("local"))
+        first = await session.mount(WorkspaceBackends(shell=DemoShell("local")))
         assert list(tools) == ["run_command"]
         first_result = await session.run("Say hello using the shell.")
         print(first_result.text)
@@ -58,7 +48,7 @@ async def main():
         await first.aclose()
         assert tools.names == frozenset()
         print("Backend removed: no shell tools")
-        await session.mount(ShellBackend("remote"))
+        await session.mount(WorkspaceBackends(shell=DemoShell("remote")))
         assert list(tools) == ["run_command"]
         second_result = await session.run("Run another command.")
         print(second_result.text)

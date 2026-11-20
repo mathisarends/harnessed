@@ -116,7 +116,7 @@ def write_bytes(path: str, data: bytes, maximum: int) -> None:
 
 
 def grep(request: Request) -> dict[str, list[str] | int]:
-    """Search inside the runtime, with the FilesystemTools preview and result limits."""
+    """Search inside the runtime, with the file tools? preview and result limits."""
     limit = request.limit if request.limit is not None else 100
     if not request.text or not 1 <= limit <= 500:
         raise ValueError("Search requires a non-empty query and a limit in [1, 500]")

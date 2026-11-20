@@ -34,7 +34,7 @@ class SandboxServices(NamedTuple):
     file_system: FileSystemBackend
 
 
-class Sandbox(Plugin[SandboxConfig], slot="sandbox"):
+class Sandbox(Plugin[SandboxConfig], slot="workspace"):
     """Own a fresh backend and publish filesystem/shell services for each mount.
 
     backend is a synchronous factory, never a running shared resource. It is

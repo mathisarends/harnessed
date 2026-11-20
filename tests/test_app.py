@@ -107,10 +107,13 @@ async def test_removed_runtime_plugins_are_collectable_while_the_session_stays_o
     class Missing:
         pass
 
+    class Waiting(Plugin, needs=(Missing,)):
+        pass
+
     async with Agent(model=ScriptedModel([])).session() as session:
         references = []
         for index in range(10):
-            recipe = Plugin(needs=(Missing,) if index % 2 else ())
+            recipe = Waiting() if index % 2 else Plugin()
             handle = await session.mount(recipe)
             references.extend((weakref.ref(handle), weakref.ref(recipe)))
             await handle.aclose()

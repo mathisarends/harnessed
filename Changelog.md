@@ -16,6 +16,22 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   The `@plugin` decorator was removed from both the SDK and the kernel. Move setup
   and cleanup into a `Plugin` subclass. Two plugins claiming one slot raise
   `PluginConflict`. `agent.describe()` lists the model, loop and configured plugins.
+- Select a workspace provider and install the tool plugins separately. Replace
+  `Filesystem(root=path)` or `Shell(cwd=path)` as local providers with
+  `[LocalWorkspace(root=path), Filesystem(), Shell()]`, listing only the desired
+  tools. Put local shell `env` and `max_output_bytes` on `LocalWorkspace`.
+  With a sandbox use `[sandbox, Filesystem(), Shell()]`. For existing backends
+  use `WorkspaceBackends(filesystem=storage, shell=runner)`. The previous
+  `implementation=` option, `FilesystemTools`, `ShellTools` and their redundant
+  configuration models were removed. Migrate `InMemoryFS` and `FakeShell` to
+  `WorkspaceBackends(filesystem=..., shell=...)` in tests. Providers share the
+  workspace slot. `BackgroundShell` remains an explicit capability.
+- The SDK `Plugin` constructor accepts `name=` and `config=`. Migrate constructor
+  `hooks=` and `registrations=` to decorated methods or dynamic registration in
+  `setup(scope)`. Replace constructor `needs=` with `field = needs(T)` when the
+  plugin uses the service, or a class-level prerequisite when it only gates
+  activation. Built-in file and shell tools take model arguments directly and
+  bind their backends as fields for each activation.
 - `Agent(instructions="...")` prepends text to collected plugin instructions.
   `instructions=SystemPrompt(...)` supplies the whole document.
   `instructions=SystemPrompt.from_plugins(..., format=...)` collects plugin

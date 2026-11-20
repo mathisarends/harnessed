@@ -2,10 +2,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
-from typing import Self
 
-from harnessed.plugins.filesystem import FileStat, Filesystem, SearchResult, search_files
-from harnessed.plugins.shell import ProcResult, Shell
+from harnessed.plugins.filesystem import FileStat, SearchResult, search_files
+from harnessed.plugins.shell import ProcResult
 from harnessed.tools import ToolError
 
 
@@ -32,9 +31,13 @@ def _matches(path: tuple[str, ...], pattern: tuple[str, ...]) -> bool:
     return bool(path and fnmatchcase(path[0], pattern[0]) and _matches(path[1:], pattern[1:]))
 
 
-class _MemoryFiles:
-    def __init__(self, files: dict[str, str]) -> None:
-        self.files = files
+class InMemoryFS:
+    """An observable in-memory filesystem for WorkspaceBackends."""
+
+    def __init__(self, files: Mapping[str, str] | None = None) -> None:
+        self.files = {
+            _path(path): text for path, text in (files if files is not None else {}).items()
+        }
 
     def _entries(self) -> dict[str, FileStat]:
         entries = {"": FileStat(".", 0, is_dir=True, modified=0)}
@@ -115,23 +118,6 @@ class _MemoryFiles:
         await self.write(path, text.replace(old, new, 1))
 
 
-class InMemoryFS(Filesystem):
-    """Replace Filesystem's slot and tools with an observable virtual workspace."""
-
-    def __init__(self, files: Mapping[str, str] | None = None, **options) -> None:
-        self.files = {
-            _path(path): text for path, text in (files if files is not None else {}).items()
-        }
-        super().__init__(implementation=_MemoryFiles(self.files), **options)
-
-    def create_instance(self) -> Self:
-        """Share the fake's observable store explicitly across its activations."""
-        instance = super().create_instance()
-        instance.files = self.files
-        instance.implementation = _MemoryFiles(self.files)
-        return instance
-
-
 @dataclass(frozen=True, slots=True)
 class CommandCall:
     argv: tuple[str, ...]
@@ -139,10 +125,12 @@ class CommandCall:
     timeout: float
 
 
-class _FakeCommands:
-    def __init__(self, responses, calls) -> None:
-        self.responses = responses
-        self.calls = calls
+class FakeShell:
+    """Record argv calls and return scripted responses without starting a process."""
+
+    def __init__(self, responses: Mapping[str, str | ProcResult] | None = None) -> None:
+        self.responses = dict(responses if responses is not None else {})
+        self.calls: list[CommandCall] = []
 
     async def run(self, argv: list[str], *, cwd: Path, timeout: float) -> ProcResult:
         self.calls.append(CommandCall(tuple(argv), cwd, timeout))
@@ -151,20 +139,3 @@ class _FakeCommands:
             raise ToolError(f"No fake command configured: {key}")
         value = self.responses[key]
         return ProcResult(0, value, "") if isinstance(value, str) else value
-
-
-class FakeShell(Shell):
-    """Replace Shell's slot; unexpected commands fail without launching a process."""
-
-    def __init__(self, responses: Mapping[str, str | ProcResult] | None = None, **options) -> None:
-        self.responses = dict(responses if responses is not None else {})
-        self.calls: list[CommandCall] = []
-        super().__init__(implementation=_FakeCommands(self.responses, self.calls), **options)
-
-    def create_instance(self) -> Self:
-        """Keep command observations on the caller-owned fake recipe."""
-        instance = super().create_instance()
-        instance.responses = self.responses
-        instance.calls = self.calls
-        instance.implementation = _FakeCommands(self.responses, self.calls)
-        return instance

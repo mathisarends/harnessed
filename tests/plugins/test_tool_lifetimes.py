@@ -4,11 +4,10 @@ from pathlib import Path
 import pytest
 
 from harnessed import Plugin
-from harnessed.kernel import PluginScope, PluginStatus, Scope
+from harnessed.kernel import PluginScope, PluginStatus, Scope, as_plugin_spec
 from harnessed.models import ToolCall
-from harnessed.plugins.filesystem import FileSystemBackend, FilesystemTools
-from harnessed.plugins.shell import ProcResult, ShellTools
-from harnessed.plugins.shell import ShellBackend as Shell
+from harnessed.plugins.filesystem import Filesystem, FileSystemBackend
+from harnessed.plugins.shell import ProcResult, Shell, ShellBackend
 from harnessed.runtime.services import RuntimeServices
 from harnessed.tools import ToolRegistry
 
@@ -34,12 +33,12 @@ class MemoryShell:
 
 FEATURES = [
     (
-        FilesystemTools,
+        Filesystem,
         FileSystemBackend,
         MemoryFS,
         {"read_file", "write_file", "list_dir", "glob", "grep", "edit", "delete_file"},
     ),
-    (ShellTools, Shell, MemoryShell, {"run_command"}),
+    (Shell, ShellBackend, MemoryShell, {"run_command"}),
 ]
 
 
@@ -59,7 +58,7 @@ async def test_builtin_features_declare_lifetime_needs_and_wait_for_the_backend(
     names,
 ):
     spec = feature()
-    assert spec.needs == (key, ToolRegistry)
+    assert as_plugin_spec(spec).needs == (key, ToolRegistry)
 
     class Provider(Plugin):
         def __init__(self, label: str) -> None:

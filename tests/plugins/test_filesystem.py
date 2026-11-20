@@ -6,6 +6,7 @@ import pytest
 
 from harnessed import Agent, Approvals, Decision
 from harnessed.models import ModelChunk, ToolCall, ToolStatus
+from harnessed.plugins import LocalWorkspace
 from harnessed.plugins.filesystem import Filesystem, LocalFileSystem
 from harnessed.testing import ScriptedModel
 from harnessed.tools import ToolError, ToolRegistry
@@ -77,10 +78,10 @@ async def test_edits_are_unambiguous_and_failed_atomic_replace_preserves_origina
 async def test_filesystem_plugin_schema_bounds_search_notices_and_safe_approvals(tmp_path):
     (tmp_path / "large.txt").write_text("match\n" + "x" * 200_001, encoding="utf-8")
     (tmp_path / "other.txt").write_text("match", encoding="utf-8")
-    filesystem = Filesystem(tmp_path)
+    filesystem = Filesystem()
     app = Agent(
         model=ScriptedModel([]),
-        plugins=[filesystem],
+        plugins=[LocalWorkspace(root=tmp_path), filesystem],
     )
     async with app.session() as session:
         registry = session.scope[ToolRegistry]
@@ -104,9 +105,11 @@ async def test_filesystem_plugin_schema_bounds_search_notices_and_safe_approvals
             "blocked",
         ]
     )
-    filesystem_2 = Filesystem(tmp_path)
+    filesystem_2 = Filesystem()
     result = await Agent(
-        model=model, approvals=Approvals(default=Decision.ASK), plugins=[filesystem_2]
+        model=model,
+        approvals=Approvals(default=Decision.ASK),
+        plugins=[LocalWorkspace(root=tmp_path), filesystem_2],
     ).run("Write")
     assert result.tool_calls[0][1].status == ToolStatus.UNAVAILABLE
     assert not (tmp_path / "denied.txt").exists()
