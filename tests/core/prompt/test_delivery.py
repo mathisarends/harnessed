@@ -59,6 +59,26 @@ async def test_context_delivery_is_mount_owned_and_leaves_system_text_fixed():
         assert any("Runtime guidance." in m.text for m in first.messages)
 
 
+async def test_mount_delivers_replacement_and_accepts_a_recipe_without_instructions():
+    model = ScriptedModel(["replacement", "empty"])
+    feature = Feature()
+    async with Agent(model=model).session() as session:
+        async with session.mount(feature.with_instructions("Custom guidance.")):
+            await session.run("Use the tool")
+            messages = [message.text for message in model.requests[-1].messages]
+            assert "Custom guidance." in messages
+            assert "Runtime guidance." not in messages
+            assert "inspect" in session.tools
+        async with session.mount(
+            feature.without_instructions(), section_delivery=SectionDelivery.ERROR
+        ):
+            await session.run("Use the tool again")
+            messages = [message.text for message in model.requests[-1].messages]
+            assert "Custom guidance." not in messages
+            assert "Runtime guidance." not in messages
+            assert "inspect" in session.tools
+
+
 async def test_context_delivery_suspends_and_restarts_with_the_plugin():
     class Backend:
         pass

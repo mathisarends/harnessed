@@ -13,6 +13,10 @@ class PromptFeature(Plugin):
 
 feature = PromptFeature()
 assert_type(feature.instructions(), SystemPrompt)
+assert_type(feature.with_instructions("Custom usage."), PromptFeature)
+assert_type(feature.with_instructions(SystemPrompt()), PromptFeature)
+assert_type(feature.without_instructions(), PromptFeature)
+feature.with_instructions(42)  # ty: ignore[invalid-argument-type]
 layout = SystemPrompt.from_plugins(format=PromptFormat.MARKDOWN)
 Agent(instructions=layout, plugins=[feature])
 Agent(instructions=layout)

@@ -5,6 +5,13 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## Unreleased
+
+- Use `Plugin.with_instructions(...)` to replace a plugin's prompt block or
+  `Plugin.without_instructions()` to omit it. Both methods return a new recipe of
+  the same plugin type and apply when composing an agent or mounting a plugin at
+  runtime.
+
 ## 0.22.0 (2026-11-20)
 
 ### Breaking SDK changes
