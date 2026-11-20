@@ -170,7 +170,7 @@ See [approval configuration and response timeouts](../guides/approvals.md).
 
 `@tool(presentation=ToolPresentation(...))` attaches
 immutable display and JSON integration metadata to native tools. Import
-`ToolAnnotations`, `ToolIcon` and `ToolPresentation` from `harnessed`. Policy,
+`ToolAnnotations`, `ToolIcon` and `ToolPresentation` from `harnessed.tools`. Policy,
 execution and review hooks expose the captured `ToolInfo.presentation`; display
 values do not change model argument schemas or grant approval. See
 [tool display and integration metadata](../guides/tools.md#tool-display-and-integration-metadata).
