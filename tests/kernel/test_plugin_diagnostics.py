@@ -1,17 +1,12 @@
-from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not a module.
-    Key,
-    PluginBase,
-    PluginStatus,
-    Scope,
-    plugin,
-)
+from harnessed.kernel import Key, PluginBase, PluginStatus, Scope
+from tests._kernel_recipe import kernel_recipe
 
 
 async def test_diagnostics_preserve_service_identity_and_allow_later_activation():
     first, second = Key[str]("backend"), Key[str]("backend")
     mounted = []
 
-    @plugin(needs=(first, second))
+    @kernel_recipe(needs=(first, second))
     async def feature(scope: Scope):
         mounted.append((scope[first], scope[second]))
         yield
@@ -38,11 +33,11 @@ async def test_diagnostics_preserve_service_identity_and_allow_later_activation(
 async def test_diagnostics_include_nested_installs_and_respect_scope_visibility():
     backend = Key[str]("backend")
 
-    @plugin(needs=(backend,))
+    @kernel_recipe(needs=(backend,))
     async def feature(scope: Scope):
         yield
 
-    @plugin
+    @kernel_recipe
     async def owner(scope: Scope):
         await scope.plugin(feature())
         yield

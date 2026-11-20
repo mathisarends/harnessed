@@ -5,13 +5,9 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from harnessed import (
-    Agent,
-    ApprovalAnswer,
-    ToolCall,
-)
-from harnessed.models import ModelChunk, ModelRequest, ToolMessage
-from harnessed.plugins import Approvals, BackgroundShell, Shell
+from harnessed import Agent, Approvals
+from harnessed.models import Decision, ModelChunk, ModelRequest, ToolCall, ToolMessage
+from harnessed.plugins import BackgroundShell, Shell
 from harnessed.testing import CallbackModel
 
 
@@ -74,11 +70,8 @@ async def main() -> None:
         workspace = Path(temporary)
         agent = Agent(
             model=CallbackModel(respond),
-            plugins=[
-                Shell(workspace),
-                BackgroundShell(workspace, timeout=10),
-                Approvals(approver=lambda _: ApprovalAnswer.ALLOW),
-            ],
+            approvals=Approvals(default=Decision.ASK, approver=lambda _: Decision.ALLOW),
+            plugins=[Shell(workspace), BackgroundShell(workspace, timeout=10)],
         )
         async with agent.session() as session:
             result = await session.run("Demonstrate background shell control.")

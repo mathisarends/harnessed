@@ -97,12 +97,11 @@ name missing from the complete paginated catalog fails startup before a model
 request. Schemas are checked at mount time; arguments are validated without
 coercion before network execution. Schema references never trigger downloads.
 
-Server annotations such as `readOnlyHint` do not grant local trust. Set
-`readonly_tools` only for tools your application trusts as read-only. Other
-tools follow the existing [approval policy](approvals.md); with the default
-policy they need a callback or a UI approval responder. Rules such as
-`Approvals(ask=["docs__search"])` use the model-facing, namespaced name.
-Required approval still takes precedence over `readonly_tools`.
+Server annotations and `readonly_tools` describe tool behavior. The application
+sets its policy on the agent. Bind a remote name at the client boundary with
+`actions={"search": DocumentAction.SEARCH}` and refer to the enum in
+`Approvals(ask=[DocumentAction.SEARCH])`. An omitted policy permits remote tools.
+See [approvals](approvals.md).
 
 `enabled=` accepts the same bool or synchronous injectable predicate as
 [`@tool(enabled=...)`](tools.md#conditional-tools). It controls all selected

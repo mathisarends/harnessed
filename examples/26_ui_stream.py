@@ -2,7 +2,7 @@ import asyncio
 
 from pydantic import BaseModel
 
-from harnessed import Agent, ApprovalAnswer, Plugin, ToolCall, ToolContext, tool
+from harnessed import Agent, Plugin, ToolContext, tool
 from harnessed.events import (
     ApprovalNeededEvent,
     ReasoningDeltaEvent,
@@ -16,7 +16,7 @@ from harnessed.events import (
 )
 from harnessed.events.stream import TurnResultEvent
 from harnessed.kernel import Inject
-from harnessed.models import ModelChunk, ToolCallDelta, ToolCallStart
+from harnessed.models import ModelChunk, ToolCall, ToolCallDelta, ToolCallStart
 from harnessed.testing import ScriptedModel
 
 
@@ -76,7 +76,7 @@ async def main():
                 case ApprovalNeededEvent(request_id=request_id, call=call):
                     # A UI would present this choice; the demo explicitly approves.
                     print("Approving:", call.name)
-                    await session.approvals.answer(request_id, ApprovalAnswer.ALLOW)
+                    await session.approvals.allow(request_id)
                 case TurnResultEvent(result=result):
                     print("Report:", result.output.summary)
                     print("Stop reason:", result.stop_reason)

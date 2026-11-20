@@ -138,5 +138,5 @@ class ToolInfo:
     parallel: bool
     chain: ToolChain
     presentation: ToolPresentation = ToolPresentation()
-    confirm: bool = field(default=False, kw_only=True)
+    action: StrEnum | None = field(default=None, kw_only=True)
     envelope: tuple[type[BaseModel], ...] = field(default=(), kw_only=True)

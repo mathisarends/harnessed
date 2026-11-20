@@ -3,8 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from harnessed import Agent, AgentLoop, ToolCall
-from harnessed.models import ModelChunk
+from harnessed import Agent, AgentLoop
+from harnessed.models import ModelChunk, ToolCall
 from harnessed.testing import ScriptedModel
 
 

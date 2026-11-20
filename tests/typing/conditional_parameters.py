@@ -1,7 +1,8 @@
 from typing import Annotated, assert_type
 
-from harnessed import Plugin, PluginConfig, ToolParameter, tool
+from harnessed import Plugin, PluginConfig, tool
 from harnessed.kernel import Inject
+from harnessed.tools import ToolParameter
 
 
 class SearchOptions(PluginConfig):

@@ -3,8 +3,9 @@ import asyncio
 import pytest
 from pydantic import ValidationError
 
-from harnessed import Plugin, ToolCall, ToolStatus, tool
+from harnessed import Plugin, tool
 from harnessed.kernel import PluginScope, Scope, needs
+from harnessed.models import ToolCall, ToolStatus
 from harnessed.tools import ToolRegistry
 
 

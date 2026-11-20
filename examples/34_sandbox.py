@@ -3,14 +3,12 @@ import asyncio
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from harnessed import (
-    Agent,
-    ApprovalAnswer,
-)
+from harnessed import Agent, Approvals
 from harnessed.integrations.bubblewrap import BubblewrapSandbox
 from harnessed.integrations.docker import DockerSandbox
 from harnessed.integrations.sandbox import Sandbox, Workspace
-from harnessed.plugins import Approvals, FilesystemTools, ShellTools
+from harnessed.models import Decision
+from harnessed.plugins import FilesystemTools, ShellTools
 from harnessed.testing import ScriptedModel, call, reply
 
 
@@ -26,12 +24,8 @@ async def exercise(sandbox: Sandbox, directory: Path) -> None:
     )
     agent = Agent(
         model=model,
-        plugins=[
-            sandbox,
-            FilesystemTools(),
-            ShellTools(),
-            Approvals(approver=lambda _: ApprovalAnswer.ALLOW),
-        ],
+        approvals=Approvals(default=Decision.ASK, approver=lambda _: Decision.ALLOW),
+        plugins=[sandbox, FilesystemTools(), ShellTools()],
     )
     async with agent.session() as session:
         result = await session.run("Create a file and read it through the shell.")

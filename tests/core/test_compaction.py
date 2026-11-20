@@ -1,15 +1,22 @@
 import pytest
 
+from harnessed.context import (
+    DEFAULT_COMPACTION_PROMPT,
+    CompactionContext,
+    CompactionRequest,
+    ContextState,
+)
 from harnessed.errors import ContextBudgetExceeded
-from harnessed.models import ModelInfo, ModelResponse, ModelUsage, StopReason
-from harnessed.models.messages import (
+from harnessed.models import (
     AssistantMessage,
+    ModelInfo,
+    ModelResponse,
+    ModelUsage,
+    StopReason,
     SystemMessage,
     ToolCall,
     UserMessage,
 )
-from harnessed.plugins import DEFAULT_COMPACTION_PROMPT, ContextState
-from harnessed.plugins.compaction import CompactionContext, CompactionRequest
 from harnessed.runtime.compaction import ModelSummarizer, SummaryError
 from harnessed.runtime.tokens import ApproximateTokenCounter
 from harnessed.testing import ScriptedModel

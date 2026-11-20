@@ -3,11 +3,11 @@ import asyncio
 import pytest
 from pydantic import ValidationError
 
-from harnessed import Agent, AgentLoop, Plugin, PolicyDecision, ToolStatus, tool
-from harnessed.errors import ConfigError, PluginConflict
+from harnessed import Agent, AgentLoop, Approvals, Context, Decision, Plugin, tool
+from harnessed.errors import ConfigError
 from harnessed.events import ModelRequestedEvent
-from harnessed.models import ModelChunk, ModelInfo, ModelUsage
-from harnessed.plugins import Approvals, Service
+from harnessed.models import ModelChunk, ModelInfo, ModelUsage, ToolStatus
+from harnessed.plugins import Service
 from harnessed.runtime.budget import ContextBudget
 from harnessed.runtime.tokens import ApproximateTokenCounter, CalibratedTokenCounter, TokenCounter
 from harnessed.runtime.tool_output_limit import ToolOutputLimit
@@ -15,26 +15,27 @@ from harnessed.testing import ScriptedModel, call
 
 
 def test_composition_contains_exactly_the_configured_plugins():
-    approvals = Approvals(default=PolicyDecision.ALLOW)
+    approvals = Approvals(default=Decision.ALLOW)
     app = Agent(
         model=ScriptedModel([]),
-        plugins=[approvals],
-        loop=AgentLoop(max_steps=9, max_tool_output=512),
+        loop=AgentLoop(max_steps=9),
+        approvals=approvals,
+        context=Context(max_tool_output_chars=512),
     )
-    assert [type(value) for value in app.plugins] == [Service, Approvals]
-    assert app.plugins[1] is approvals
-    assert [plugin.name for plugin in app.describe().plugins] == ["Service", "Approvals"]
+    assert app.plugins == ()
+    assert app.approvals is approvals
+    assert [plugin.name for plugin in app.describe().plugins] == []
     assert app.loop.max_steps == 9
-    assert app.loop.max_tool_output == 512
+    assert app.context.max_tool_output_chars == 512
     assert [type(value) for value in Agent().plugins] == []
-    with pytest.raises(PluginConflict, match="approvals"):
-        Agent(plugins=[Approvals(), Approvals()])
+    with pytest.raises(TypeError, match="Plugin instance"):
+        Agent(approvals=Approvals(), plugins=[Approvals()])
     with pytest.raises(ConfigError, match="AgentLoop"):
         Agent(loop=Approvals())  # ty: ignore[invalid-argument-type]
     with pytest.raises(ValidationError):
         AgentLoop(max_steps=True)
     with pytest.raises(ValidationError):
-        AgentLoop(max_tool_output=255)
+        Context(max_tool_output_chars=255)
 
 
 async def test_session_limits_tool_output_from_loop_settings():
@@ -44,7 +45,7 @@ async def test_session_limits_tool_output_from_loop_settings():
             return "x" * 2_000
 
     model = ScriptedModel([call("dump"), "done"])
-    agent = Agent(model=model, plugins=[Large()], loop=AgentLoop(max_tool_output=512))
+    agent = Agent(model=model, plugins=[Large()], context=Context(max_tool_output_chars=512))
     async with agent.session() as session:
         assert session.scope[ToolOutputLimit].max_chars == 512
         result = await session.run("dump")
@@ -58,10 +59,9 @@ async def test_session_limits_tool_output_from_loop_settings():
     [
         ({"readonly": True}, ToolStatus.OK),
         ({}, ToolStatus.OK),
-        ({"confirm": True}, ToolStatus.UNAVAILABLE),
     ],
 )
-async def test_tools_run_without_an_approval_policy_unless_they_require_confirmation(flags, status):
+async def test_default_policy_allows_tools_without_a_responder(flags, status):
     class Tools(Plugin):
         @tool(**flags)
         def act(self) -> str:
@@ -80,13 +80,14 @@ async def test_confirmed_tools_ask_once_under_a_permissive_policy():
         return True
 
     class Tools(Plugin):
-        @tool(confirm=True)
+        @tool
         def act(self) -> str:
             return "acted"
 
     result = await Agent(
         model=ScriptedModel([call("act"), "done"]),
-        plugins=[Tools(), Approvals(default=PolicyDecision.ALLOW, approver=approve)],
+        approvals=Approvals(default=Decision.ALLOW, ask=[Tools.act], approver=approve),
+        plugins=[Tools()],
     ).run("go")
     ((_, output),) = result.tool_calls
     assert output.text == "acted"

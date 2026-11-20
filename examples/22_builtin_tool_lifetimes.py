@@ -4,10 +4,9 @@ import asyncio
 from pathlib import Path
 from typing import override
 
-from harnessed import Agent, PluginValidation, PolicyDecision, ToolCall
-from harnessed.kernel import Scope, plugin
-from harnessed.models import ModelChunk
-from harnessed.plugins import Approvals
+from harnessed import Agent, Plugin, PluginValidation
+from harnessed.kernel import PluginScope
+from harnessed.models import ModelChunk, ToolCall
 from harnessed.plugins.shell import ProcResult, ShellTools
 from harnessed.plugins.shell import ShellBackend as Shell
 from harnessed.testing import ScriptedModel
@@ -22,10 +21,13 @@ class DemoShell(Shell):
         return ProcResult(0, f"{self.name}: {' '.join(argv)}", "")
 
 
-@plugin
-async def shell_backend(scope: Scope, name: str):
-    scope.provide(Shell, DemoShell(name))
-    yield
+class ShellBackend(Plugin):
+    def __init__(self, name: str) -> None:
+        super().__init__()
+        self.name = name
+
+    async def setup(self, scope: PluginScope) -> None:
+        scope.provide(Shell, DemoShell(self.name))
 
 
 async def main():
@@ -40,15 +42,15 @@ async def main():
     # This example deliberately opens before adding the shell backend at runtime.
     agent = Agent(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), ShellTools()],
         plugin_validation=PluginValidation.WARN,
+        plugins=[ShellTools()],
     )
     outputs = []
     async with agent.session() as session:
         tools = session.tools
         assert tools.names == frozenset()
         print("Before a backend: no shell tools")
-        first = await session.mount(shell_backend("local"))
+        first = await session.mount(ShellBackend("local"))
         assert list(tools) == ["run_command"]
         first_result = await session.run("Say hello using the shell.")
         print(first_result.text)
@@ -56,7 +58,7 @@ async def main():
         await first.aclose()
         assert tools.names == frozenset()
         print("Backend removed: no shell tools")
-        await session.mount(shell_backend("remote"))
+        await session.mount(ShellBackend("remote"))
         assert list(tools) == ["run_command"]
         second_result = await session.run("Run another command.")
         print(second_result.text)

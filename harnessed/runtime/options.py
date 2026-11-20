@@ -28,11 +28,9 @@ class AgentLoopConfig(PluginConfig):
     max_steps: Annotated[int, Field(ge=1)] = 32
     tool_timeout: Annotated[float, Field(gt=0)] = 30.0
     max_parallel_tools: Annotated[int, Field(ge=1)] = 4
-    context_window: Annotated[int, Field(ge=1)] | None = None
     on_max_tokens: TokenLimitBehavior = TokenLimitBehavior.ACCEPT
     output_retries: Annotated[int, Field(ge=0)] = 2
     final_step: FinalStepPolicy = FinalStepPolicy.NONE
-    max_tool_output: Annotated[int, Field(ge=256)] = 32_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,7 +39,6 @@ class AgentOptions:
 
     max_steps: int
     tool_timeout: float
-    context_window: int | None
     tool_output_limit: ToolOutputLimit
     max_parallel_tools: int
     error_formatter: ErrorFormatter | None
@@ -54,13 +51,13 @@ class AgentOptions:
         cls,
         config: AgentLoopConfig,
         *,
+        tool_output_limit: ToolOutputLimit,
         error_formatter: ErrorFormatter | None = None,
     ) -> Self:
         return cls(
             max_steps=config.max_steps,
             tool_timeout=config.tool_timeout,
-            context_window=config.context_window,
-            tool_output_limit=ToolOutputLimit(config.max_tool_output),
+            tool_output_limit=tool_output_limit,
             max_parallel_tools=config.max_parallel_tools,
             error_formatter=error_formatter,
             on_max_tokens=config.on_max_tokens,

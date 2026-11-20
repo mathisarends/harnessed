@@ -1,4 +1,5 @@
 from harnessed.kernel import Priority
+from harnessed.runtime.compaction import DeferCompaction
 from harnessed.runtime.hooks import (
     ExecuteTool,
     Next,
@@ -18,6 +19,7 @@ from harnessed.runtime.hooks import (
 )
 
 __all__ = [
+    "DeferCompaction",
     "ExecuteTool",
     "Next",
     "OutputDecision",

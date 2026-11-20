@@ -5,18 +5,11 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal, Protocol
 
-from harnessed import (
-    Agent,
-    Instructions,
-    Plugin,
-    PluginConfig,
-    SystemPrompt,
-    ToolContext,
-    tool,
-)
+from harnessed import Agent, Plugin, PluginConfig, SystemPrompt, ToolContext, tool
 from harnessed.events import DurableEvent
 from harnessed.kernel import Inject, PluginState, hook, needs, observes
 from harnessed.plugins import Service
+from harnessed.prompts import Instructions
 from harnessed.testing import ScriptedModel, call, mount_plugin
 
 
@@ -90,7 +83,7 @@ async def main() -> None:
     agent = Agent(
         model=ScriptedModel([call(files.read_document, name="README.md"), "Read the document."]),
         plugins=(*workspace(backend, files), ReadObserver()),
-        prompt=SystemPrompt.from_plugins("Help with documents.", "Answer concisely."),
+        instructions=SystemPrompt.from_plugins("Help with documents.", "Answer concisely."),
     )
     print(agent.describe())
     result = await agent.run("Read README.md")

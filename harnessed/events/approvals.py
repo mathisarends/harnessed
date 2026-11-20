@@ -2,7 +2,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal
 
-from harnessed.models.messages import ApprovalAnswer, ToolCall
+from harnessed.models import Decision, ToolCall
+from harnessed.models.messages import ApprovalResponse
 
 from .base import DurableEvent, Identifier, TransientEvent
 from .kinds import EventKind
@@ -32,6 +33,7 @@ class ApprovalRequestedEvent(DurableEvent):
     reason: str
     scope: str
     grant_id: str | None = None
+    identity: str | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -44,6 +46,12 @@ class ApprovalRequestedEvent(DurableEvent):
         if not isinstance(self.call, ToolCall):
             raise TypeError("Approvals require a ToolCall")
 
+    def allow(self, *, remember: bool = False) -> ApprovalResponse:
+        return ApprovalResponse(Decision.ALLOW, remember=remember)
+
+    def deny(self) -> Decision:
+        return Decision.DENY
+
 
 @dataclass(frozen=True)
 class ApprovalResolvedEvent(DurableEvent):
@@ -53,20 +61,24 @@ class ApprovalResolvedEvent(DurableEvent):
         default=EventKind.APPROVAL_RESOLVED, kw_only=True
     )
     request_id: Identifier
-    decision: ApprovalAnswer | None = None
+    decision: Decision | None = None
+    remember: bool = field(default=False, kw_only=True)
     status: ApprovalStatus = ApprovalStatus.ANSWERED
     reason: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "status", ApprovalStatus(self.status))
         if self.decision is not None:
-            object.__setattr__(self, "decision", ApprovalAnswer(self.decision))
+            object.__setattr__(self, "decision", Decision(self.decision))
+        if type(self.remember) is not bool or (
+            self.remember and self.decision is not Decision.ALLOW
+        ):
+            raise ValueError("Only allow decisions can be remembered")
         if self.reason is not None and not isinstance(self.reason, str):
             raise TypeError("Approval resolution reason must be a string")
         if self.status == ApprovalStatus.ANSWERED and self.decision in (
-            ApprovalAnswer.ALLOW,
-            ApprovalAnswer.DENY,
-            ApprovalAnswer.ALWAYS,
+            Decision.ALLOW,
+            Decision.DENY,
         ):
             return
         if (

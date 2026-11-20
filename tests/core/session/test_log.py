@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from harnessed import StreamOverflow, ToolCall, ToolResult
+from harnessed.errors import StreamOverflow
 from harnessed.events import (
     AssistantMessageEvent,
     InboxAddedEvent,
@@ -14,7 +14,15 @@ from harnessed.events import (
     UserMessageEvent,
 )
 from harnessed.events.codec import decode_event, encode_event
-from harnessed.models import AssistantMessage, ModelInfo, ModelRequest, ToolDefinition, UserMessage
+from harnessed.models import (
+    AssistantMessage,
+    ModelInfo,
+    ModelRequest,
+    ToolCall,
+    ToolDefinition,
+    ToolResult,
+    UserMessage,
+)
 from harnessed.sessions.log import SessionLog, derive_messages
 from tests._audit import AuditProjection
 

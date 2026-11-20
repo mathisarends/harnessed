@@ -1,6 +1,7 @@
 import pytest
 
-from harnessed import Agent
+from harnessed import Agent, Compaction, Context
+from harnessed.context import CompactionRequest, Summary
 from harnessed.errors import ConfigError
 from harnessed.events import (
     CompactionFinishedEvent,
@@ -17,8 +18,6 @@ from harnessed.models import (
     StopReason,
     UserMessage,
 )
-from harnessed.plugins import Compaction
-from harnessed.plugins.compaction import CompactionRequest, Summary
 from harnessed.runtime.budget import ContextBudget
 from harnessed.runtime.plugin import Service
 from harnessed.runtime.tokens import CalibratedTokenCounter, TokenCounter
@@ -58,8 +57,12 @@ async def test_targets_measure_complete_request_and_capture_reserve(target):
         plugins=[
             Service(TokenCounter, Characters()),
             Service(ContextBudget, ContextBudget(reserve_tokens=100)),
-            Compaction(trigger=lambda _: False, summarizer=summaries, keep_last_steps=1, **target),
         ],
+        context=Context(
+            compaction=Compaction(
+                trigger=lambda _: False, summarizer=summaries, keep_last_steps=1, **target
+            )
+        ),
     ).session() as session:
         await session.run("x" * 500)
         await session.run("kept")
@@ -104,12 +107,12 @@ async def test_target_retry_is_bounded_and_keeps_best_complete_candidate(texts, 
     summaries = RecordingSummary(*texts)
     async with Agent(
         model=ScriptedModel(["old", "kept"]),
-        plugins=[
-            Service(TokenCounter, Characters()),
-            Compaction(
+        plugins=[Service(TokenCounter, Characters())],
+        context=Context(
+            compaction=Compaction(
                 trigger=lambda _: False, summarizer=summaries, keep_last_steps=1, target_tokens=76
-            ),
-        ],
+            )
+        ),
     ).session() as session:
         await session.run("x" * 500)
         await session.run("task")
@@ -132,12 +135,12 @@ async def test_retained_content_over_target_skips_futile_retry_and_preserves_ide
     model = ScriptedModel(["old", "answer"])
     async with Agent(
         model=model,
-        plugins=[
-            Service(TokenCounter, Characters()),
-            Compaction(
+        plugins=[Service(TokenCounter, Characters())],
+        context=Context(
+            compaction=Compaction(
                 trigger=lambda _: False, summarizer=summaries, keep_last_steps=1, target_tokens=20
-            ),
-        ],
+            )
+        ),
     ).session() as session:
         await session.run("x" * 500)
         await session.run("retained " * 20)
@@ -155,15 +158,15 @@ async def test_explicit_summary_ceiling_retries_without_slicing_text(texts, expe
     summaries = RecordingSummary(*texts)
     async with Agent(
         model=ScriptedModel(["old", "answer"]),
-        plugins=[
-            Service(TokenCounter, Characters()),
-            Compaction(
+        plugins=[Service(TokenCounter, Characters())],
+        context=Context(
+            compaction=Compaction(
                 trigger=lambda _: False,
                 summarizer=summaries,
                 keep_last_steps=1,
                 max_summary_tokens=4,
-            ),
-        ],
+            )
+        ),
     ).session() as session:
         await session.run("x" * 500)
         await session.run("kept")
@@ -189,9 +192,11 @@ async def test_truncated_model_output_gets_one_larger_generation_attempt_and_no_
     )
     async with Agent(
         model=ScriptedModel(["old", "answer"]),
-        plugins=[
-            Compaction(trigger=lambda _: False, llm=llm, keep_last_steps=1, max_summary_tokens=16),
-        ],
+        context=Context(
+            compaction=Compaction(
+                trigger=lambda _: False, llm=llm, keep_last_steps=1, max_summary_tokens=16
+            )
+        ),
     ).session() as session:
         await session.run("x" * 4000)
         await session.run("kept")
@@ -206,20 +211,23 @@ async def test_unknown_window_requires_finite_limit_but_absolute_target_works():
     model = ScriptedModel(["old", "kept"], info=ModelInfo("unknown"))
     async with Agent(
         model=model,
-        plugins=[Compaction(trigger=lambda _: False, summarizer=summaries, keep_last_steps=1)],
+        context=Context(
+            compaction=Compaction(trigger=lambda _: False, summarizer=summaries, keep_last_steps=1)
+        ),
     ).session() as session:
         await session.run("x" * 500)
         await session.run("kept")
         with pytest.raises(ConfigError, match="max_summary_tokens"):
             await session.compact()
         assert not summaries.requests
-        handle = await session.mount(
-            Compaction(
-                trigger=lambda _: False, summarizer=summaries, keep_last_steps=1, target_tokens=200
-            )
-        )
+        state = session.snapshot()
+    policy = Compaction(
+        trigger=lambda _: False, summarizer=summaries, keep_last_steps=1, target_tokens=200
+    )
+    async with Agent(model=model, context=Context(compaction=policy)).session(
+        state=state
+    ) as session:
         assert await session.compact() is not None
-        await handle.aclose()
 
 
 @pytest.mark.parametrize(
@@ -256,7 +264,8 @@ async def test_ratio_target_fails_with_unknown_window_before_provider_call():
     model = ScriptedModel([], info=ModelInfo("unknown"))
     with pytest.raises(ConfigError, match="context window"):
         await Agent(
-            model=model, plugins=[Compaction(trigger=lambda _: False, target_ratio=0.5)]
+            model=model,
+            context=Context(compaction=Compaction(trigger=lambda _: False, target_ratio=0.5)),
         ).run("task")
     assert model.requests == []
 
@@ -266,10 +275,10 @@ async def test_calibration_and_request_snapshot_survive_start_observer_changes()
     summaries = RecordingSummary("done")
     async with Agent(
         model=ScriptedModel(["old", "kept"]),
-        plugins=[
-            Service(TokenCounter, counter),
-            Compaction(trigger=lambda _: False, summarizer=summaries, keep_last_steps=1),
-        ],
+        plugins=[Service(TokenCounter, counter)],
+        context=Context(
+            compaction=Compaction(trigger=lambda _: False, summarizer=summaries, keep_last_steps=1)
+        ),
     ).session() as session:
         await session.run("x" * 4000)
         await session.run("kept")
@@ -289,10 +298,10 @@ async def test_context_arriving_at_start_is_outside_the_attempt_snapshot():
     summaries = RecordingSummary("done")
     async with Agent(
         model=ScriptedModel(["old", "kept"]),
-        plugins=[
-            Service(TokenCounter, Characters()),
-            Compaction(trigger=lambda _: False, summarizer=summaries, keep_last_steps=1),
-        ],
+        plugins=[Service(TokenCounter, Characters())],
+        context=Context(
+            compaction=Compaction(trigger=lambda _: False, summarizer=summaries, keep_last_steps=1)
+        ),
     ).session() as session:
         await session.run("x" * 500)
         await session.run("kept")
@@ -315,10 +324,12 @@ async def test_model_output_is_recounted_with_the_session_tokenizer():
     llm = ScriptedModel(["too long", "ok"])
     async with Agent(
         model=ScriptedModel(["old", "kept"]),
-        plugins=[
-            Service(TokenCounter, Characters()),
-            Compaction(trigger=lambda _: False, llm=llm, keep_last_steps=1, max_summary_tokens=4),
-        ],
+        plugins=[Service(TokenCounter, Characters())],
+        context=Context(
+            compaction=Compaction(
+                trigger=lambda _: False, llm=llm, keep_last_steps=1, max_summary_tokens=4
+            )
+        ),
     ).session() as session:
         await session.run("x" * 500)
         await session.run("kept")
@@ -333,14 +344,14 @@ async def test_small_ratio_target_rounds_down_without_inventing_a_minimum():
     model = ScriptedModel(["old", "kept"], info=ModelInfo("small", context_window=1000))
     async with Agent(
         model=model,
-        plugins=[
-            Compaction(
+        context=Context(
+            compaction=Compaction(
                 trigger=lambda _: False,
                 summarizer=summaries,
                 keep_last_steps=1,
                 target_ratio=0.0001,
-            ),
-        ],
+            )
+        ),
     ).session() as session:
         await session.run("x" * 500)
         await session.run("kept")

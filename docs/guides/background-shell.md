@@ -59,7 +59,7 @@ Missing services follow the normal [startup validation](plugins.md#session-start
 Mounting it on an already open session is also explicit:
 
 ```python
-from harnessed import SectionDelivery
+from harnessed.prompts import SectionDelivery
 
 handle = await session.mount(BackgroundShell(workspace), section_delivery=SectionDelivery.CONTEXT)
 # Later: terminate all jobs owned by this mount and remove its tools.

@@ -6,13 +6,14 @@ import pytest
 from pydantic import PydanticSchemaGenerationError
 
 from harnessed import Agent as Application
-from harnessed import Plugin, PolicyDecision, Session, ToolCall, hook, plugin, tool
-from harnessed.kernel import Emit, PluginStatus, Scope, ScopeClosed
-from harnessed.plugins import Approvals
+from harnessed import Approvals, Decision, Plugin, Session, tool
+from harnessed.kernel import Emit, PluginStatus, Scope, ScopeClosed, hook
+from harnessed.models import ToolCall
 from harnessed.prompts import SystemPromptStore
 from harnessed.runtime.services import RuntimeServices
 from harnessed.testing import ScriptedModel
 from harnessed.tools import ToolRegistry
+from tests._kernel_recipe import kernel_recipe
 
 
 @dataclass
@@ -39,7 +40,7 @@ async def test_direct_registration_disposers_are_idempotent_and_restore_override
     async def base() -> str:
         return "base"
 
-    @plugin(needs=[ToolRegistry, SystemPromptStore])
+    @kernel_recipe(needs=[ToolRegistry, SystemPromptStore])
     async def feature(scope):
 
         async def override() -> str:
@@ -87,7 +88,7 @@ async def test_registrations_are_hidden_during_setup_and_before_async_teardown_f
     async def base() -> str:
         return "base"
 
-    @plugin(needs=[ToolRegistry, SystemPromptStore])
+    @kernel_recipe(needs=[ToolRegistry, SystemPromptStore])
     async def feature(scope):
 
         @scope[ToolRegistry].tool(name="read", override=True)
@@ -135,13 +136,13 @@ async def test_registrations_are_hidden_during_setup_and_before_async_teardown_f
 async def test_transitive_needs_rebuild_all_registrations_without_duplicates():
     lifecycle, seen = ([], [])
 
-    @plugin
+    @kernel_recipe
     async def provider(scope, name):
         scope.provide(Backend, Backend(name))
         yield
         lifecycle.append(("provider", name))
 
-    @plugin(needs=[Backend])
+    @kernel_recipe(needs=[Backend])
     async def bridge(scope):
         name = scope[Backend].name
         scope.provide(Bridge, Bridge(name))
@@ -234,7 +235,7 @@ async def test_registration_failure_after_class_setup_runs_teardown_and_rolls_ba
 async def test_teardown_errors_remove_all_effects_and_allow_fresh_activation():
     seen = []
 
-    @plugin(needs=[Backend, ToolRegistry, SystemPromptStore])
+    @kernel_recipe(needs=[Backend, ToolRegistry, SystemPromptStore])
     async def feature(scope):
         name = scope[Backend].name
         scope.provide(Ready, Ready())
@@ -278,7 +279,7 @@ async def test_agent_registration_facade_uses_the_active_plugin_owner():
         async def setup(self, scope):
             # Plugins cannot inject the application Session; the application holds it.
             agent = sessions[0]
-            agent.add_hook(Ping, lambda event: seen.append("explicit"))
+            agent.on(Ping, lambda event: seen.append("explicit"))
 
             @agent.on(Ping)
             def listener(event):
@@ -289,7 +290,7 @@ async def test_agent_registration_facade_uses_the_active_plugin_owner():
             return "plugin tool"
 
     async with Application(
-        model=ScriptedModel([]), plugins=[Approvals(default=PolicyDecision.ALLOW)]
+        model=ScriptedModel([]), approvals=Approvals(default=Decision.ALLOW)
     ).session() as agent:
         sessions.append(agent)
         handle = await agent.scope.plugin(Feature())

@@ -26,9 +26,19 @@ from harnessed.events import (
 )
 from harnessed.events.turn import FinalStepPolicy
 from harnessed.kernel import Scope
-from harnessed.models import ModelAttemptOutcome, RetryKind
-from harnessed.models.messages import AssistantMessage, Message, Role, SystemMessage, UserMessage
-from harnessed.models.model import GenerationSettings, Model, ModelRequest, resolve_request_settings
+from harnessed.models import (
+    AssistantMessage,
+    GenerationSettings,
+    Message,
+    Model,
+    ModelAttemptOutcome,
+    ModelRequest,
+    RetryKind,
+    Role,
+    SystemMessage,
+    UserMessage,
+)
+from harnessed.models.model import resolve_request_settings
 from harnessed.prompts import SystemPromptStore
 from harnessed.sessions.context import PendingObservations, SessionContext
 from harnessed.sessions.log import SessionLog
@@ -186,7 +196,7 @@ class StepRunner:
         if ContextBudget in self.scope:
             await self.scope[ContextBudget].check(
                 request,
-                context_window=self.options.context_window or model.info.context_window,
+                context_window=model.info.context_window,
                 counter=self.scope[TokenCounter],
             )
         return request

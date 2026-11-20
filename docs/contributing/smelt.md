@@ -218,13 +218,8 @@ both one-shot replies and persistent readiness/replies. The installed-wheel
 smoke check also executes the bundled worker outside the checkout.
 
 The expanded test checks expose two real package-import findings: `Spill` and
-`LatestObservationOnly` now use the existing `harnessed.plugins` facade. Nine
-SMT107 findings instead misclassify `from harnessed.kernel import plugin`: the
-initializer explicitly re-exports the decorator and includes it in `__all__`,
-while the checker treats its name as the `kernel.plugin` submodule. Keep the
-correct public import with a statement-local SMT107 explanation; do not weaken
-the kernel contract or rename its public decorator. An architecture regression
-checks the exported function's type and owning module. One further local exception
+`LatestObservationOnly` now use the existing `harnessed.plugins` facade. The SDK removed the function plugin decorator and its
+associated import exceptions. A local exception
 allows the DI regression test to patch `kernel.di.get_type_hints`: proving that
 dispatch does not repeat reflection requires observing that implementation
 boundary. None of these exceptions grants private module access to production.

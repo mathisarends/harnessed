@@ -20,9 +20,11 @@ from harnessed.events import (
     UserMessageEvent,
 )
 from harnessed.kernel import HookInstrumentation, PluginScope
-from harnessed.models import ModelRequest, ModelUsage, StopReason
-from harnessed.models.messages import (
+from harnessed.models import (
     AssistantMessage,
+    ModelRequest,
+    ModelUsage,
+    StopReason,
     ToolCall,
     ToolResult,
     ToolStatus,

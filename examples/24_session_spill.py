@@ -2,15 +2,10 @@
 
 import asyncio
 
-from harnessed import (
-    Agent,
-    Plugin,
-    SessionState,
-    ToolResult,
-    ToolStatus,
-    tool,
-)
+from harnessed import Agent, Plugin, tool
+from harnessed.models import ToolResult, ToolStatus
 from harnessed.plugins import Spill
+from harnessed.sessions import SessionState
 from harnessed.testing import ScriptedModel, call
 
 TEXT = "ä😀 log line\r\n" * 2000

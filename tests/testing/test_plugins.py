@@ -1,16 +1,11 @@
 import pytest
 from pydantic import ValidationError
 
-from harnessed import (
-    Instructions,
-    Plugin,
-    PluginConfig,
-    SystemPrompt,
-    ToolCall,
-    tool,
-)
+from harnessed import Plugin, PluginConfig, SystemPrompt, tool
 from harnessed.kernel import PluginScope, PluginState, Scope, needs
+from harnessed.models import ToolCall
 from harnessed.plugins import Service
+from harnessed.prompts import Instructions
 from harnessed.testing import mount_plugin
 from harnessed.tools import ToolRegistry
 

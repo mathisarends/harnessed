@@ -114,7 +114,7 @@ class SessionCheckpoint:
     events: tuple[CheckpointEntry, ...] = ()
     assets: tuple[AssetValue, ...] = ()
     files: tuple[TextValue, ...] = ()
-    version: Literal[3] = 3
+    version: Literal[4] = 4
 
     def __post_init__(self) -> None:
         if type(self.version) is not int:

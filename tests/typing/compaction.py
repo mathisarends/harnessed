@@ -1,18 +1,21 @@
 from typing import assert_type
 
+from harnessed import Compaction
+from harnessed.context import (
+    DEFAULT_COMPACTION_PROMPT,
+    CompactionContext,
+    CompactionPrompt,
+    CompactionRequest,
+    ContextState,
+    Summarizer,
+    Summary,
+)
 from harnessed.events import (
     CompactionAppliedEvent,
     CompactionFinishedEvent,
     CompactionStartedEvent,
 )
 from harnessed.models import Message, SystemMessage
-from harnessed.plugins import (
-    DEFAULT_COMPACTION_PROMPT,
-    Compaction,
-    CompactionPrompt,
-    ContextState,
-)
-from harnessed.plugins.compaction import CompactionContext, CompactionRequest, Summarizer, Summary
 
 
 class CustomSummarizer:

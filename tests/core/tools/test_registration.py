@@ -2,7 +2,7 @@ import pytest
 
 from harnessed.errors import ToolNameConflict
 from harnessed.kernel import Scope
-from harnessed.models.messages import ToolCall
+from harnessed.models import ToolCall
 from harnessed.prompts import SystemPromptStore
 from harnessed.tools import ToolError, ToolRegistry
 

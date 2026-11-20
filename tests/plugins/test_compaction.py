@@ -4,13 +4,8 @@ from dataclasses import replace
 
 import pytest
 
-from harnessed import (
-    Agent,
-    AgentLoop,
-    Plugin,
-    SessionStatus,
-    hook,
-)
+from harnessed import Agent, AgentLoop, Compaction, Context, Plugin
+from harnessed.context import Summary, at_ratio, every_turns
 from harnessed.errors import ConfigError, ContextLengthExceeded, SessionStateError
 from harnessed.events import (
     CompactionAppliedEvent,
@@ -21,19 +16,21 @@ from harnessed.events import (
     TurnOutcome,
 )
 from harnessed.events.codec import decode_event, encode_event
-from harnessed.models.messages import AssistantMessage, SystemMessage, ToolCall
-from harnessed.models.model import (
+from harnessed.kernel import hook
+from harnessed.models import (
+    AssistantMessage,
     Model,
     ModelChunk,
     ModelInfo,
     ModelRequest,
     ModelResponse,
     ModelUsage,
-    UsagePurpose,
+    SystemMessage,
+    ToolCall,
 )
-from harnessed.plugins import Compaction, at_ratio, every_turns
-from harnessed.plugins.compaction import Summary
+from harnessed.models.model import UsagePurpose
 from harnessed.runtime.compaction import ContextState
+from harnessed.runtime.control import SessionStatus
 from harnessed.runtime.hooks import PrepareRequest
 from harnessed.testing import CallbackModel, ScriptedModel, reply
 from harnessed.tools import tool
@@ -64,8 +61,12 @@ async def test_compaction_window_uses_captured_model(context_window: int | None)
 
     async with Agent(
         model=original,
-        plugins=[Compaction(trigger=lambda state: windows.append(state.context_window) or False)],
-        loop=AgentLoop(context_window=context_window),
+        context=Context(
+            max_tokens=context_window,
+            compaction=Compaction(
+                trigger=lambda state: windows.append(state.context_window) or False
+            ),
+        ),
     ).session() as session:
         session.on(PrepareRequest, swap)
         assert (await session.run("hello")).text == "original"
@@ -86,7 +87,8 @@ async def test_default_summary_uses_captured_model_after_a_request_hook() -> Non
         return await next_()
 
     async with Agent(
-        model=original, plugins=[Compaction(trigger=every_turns(1), keep_last_steps=1)]
+        model=original,
+        context=Context(compaction=Compaction(trigger=every_turns(1), keep_last_steps=1)),
     ).session() as session:
         await session.run("x" * 4000)
         await session.run("retained")
@@ -103,7 +105,8 @@ async def test_manual_summary_uses_captured_model_before_start_observers() -> No
     )
     replacement = ScriptedModel([], info=ModelInfo("replacement"))
     async with Agent(
-        model=original, plugins=[Compaction(trigger=lambda state: False, keep_last_steps=1)]
+        model=original,
+        context=Context(compaction=Compaction(trigger=lambda state: False, keep_last_steps=1)),
     ).session() as session:
         await session.run("x" * 4000)
         await session.run("retained")
@@ -137,7 +140,8 @@ async def test_context_recovery_summary_uses_captured_model() -> None:
         return await next_()
 
     async with Agent(
-        model=original, plugins=[Compaction(trigger=lambda state: False, keep_last_steps=1)]
+        model=original,
+        context=Context(compaction=Compaction(trigger=lambda state: False, keep_last_steps=1)),
     ).session() as session:
         await session.run("x" * 4000)
         await session.run("retained")
@@ -154,7 +158,9 @@ async def test_default_summarizer_uses_the_session_model_and_preserves_fixed_ins
     async with Agent(
         model=model,
         instructions="Fixed instructions.",
-        plugins=[Compaction(trigger=every_turns(1), keep_last_steps=1, prompt="Keep paths.")],
+        context=Context(
+            compaction=Compaction(trigger=every_turns(1), keep_last_steps=1, prompt="Keep paths.")
+        ),
     ).session() as session:
         session_audit = Audit(session)
         await session.run("x" * 4000)
@@ -192,7 +198,7 @@ async def test_compaction_usage_is_counted_and_replayed_even_when_no_summary_is_
     )
     async with Agent(
         model=model,
-        plugins=[Compaction(trigger=every_turns(1), keep_last_steps=1)],
+        context=Context(compaction=Compaction(trigger=every_turns(1), keep_last_steps=1)),
     ).session() as session:
         session_audit = Audit(session)
         await session.run("x" * 4000)
@@ -224,7 +230,8 @@ async def test_invalid_summarizer_responses_still_contribute_their_usage(message
         ]
     )
     async with Agent(
-        model=model, plugins=[Compaction(trigger=every_turns(1), keep_last_steps=1)]
+        model=model,
+        context=Context(compaction=Compaction(trigger=every_turns(1), keep_last_steps=1)),
     ).session() as session:
         session_audit = Audit(session)
         await session.run("x" * 4000)
@@ -242,7 +249,9 @@ async def test_periodic_trigger_counts_new_closed_turns_and_reuses_the_previous_
     model = ScriptedModel(["answer"] * 6)
     async with Agent(
         model=model,
-        plugins=[Compaction(trigger=every_turns(2), summarizer=brief, keep_last_steps=1)],
+        context=Context(
+            compaction=Compaction(trigger=every_turns(2), summarizer=brief, keep_last_steps=1)
+        ),
     ).session() as session:
         session_audit = Audit(session)
         counts = []
@@ -268,7 +277,10 @@ async def test_compaction_runs_after_request_hooks_and_preserves_their_extra_con
     model = ScriptedModel(["first", "retained", "second"])
     async with Agent(
         model=model,
-        plugins=[Scope(), Compaction(trigger=every_turns(1), summarizer=brief, keep_last_steps=1)],
+        plugins=[Scope()],
+        context=Context(
+            compaction=Compaction(trigger=every_turns(1), summarizer=brief, keep_last_steps=1)
+        ),
     ).session() as session:
         await session.run("x" * 4000)
         await session.run("retained")
@@ -283,8 +295,10 @@ async def test_budget_overflow_forces_compaction_even_when_the_trigger_is_not_du
     model = ScriptedModel(["first", "retained", "second"])
     async with Agent(
         model=model,
-        plugins=[Compaction(trigger=lambda state: False, summarizer=brief, keep_last_steps=1)],
-        loop=AgentLoop(context_window=500),
+        context=Context(
+            max_tokens=500,
+            compaction=Compaction(trigger=lambda state: False, summarizer=brief, keep_last_steps=1),
+        ),
     ).session() as session:
         await session.run("x" * 1000)
         await session.run("retained")
@@ -342,7 +356,7 @@ async def test_new_model_calls_and_close_wait_for_manual_compaction(operation):
     model = ScriptedModel(["first", "second", "third", "next"])
     async with Agent(
         model=model,
-        plugins=[Compaction(trigger=lambda state: False, summarizer=Blocked())],
+        context=Context(compaction=Compaction(trigger=lambda state: False, summarizer=Blocked())),
     ).session() as session:
         for index in range(3):
             await session.run(f"task {index}: " + "x" * 1000)
@@ -371,10 +385,10 @@ async def test_new_model_calls_and_close_wait_for_manual_compaction(operation):
 async def test_ratio_requires_known_metadata_or_a_loop_override():
     model = ScriptedModel(["answer"], info=ModelInfo("unknown"))
     with pytest.raises(ConfigError, match="context window"):
-        await Agent(model=model, plugins=[Compaction()]).run("task")
+        await Agent(model=model, context=Context(compaction=Compaction())).run("task")
     assert not model.requests
     result = await Agent(
-        model=model, plugins=[Compaction()], loop=AgentLoop(context_window=2000)
+        model=model, context=Context(max_tokens=2000, compaction=Compaction())
     ).run("task")
     assert result.text == "answer"
 
@@ -413,12 +427,13 @@ async def test_async_triggers_and_non_boolean_trigger_results_are_rejected():
     with pytest.raises(ValueError, match="synchronous"):
         Compaction(trigger=trigger)
     with pytest.raises(ValueError):
-        await Agent(model=ScriptedModel([]), plugins=[Compaction(trigger=lambda state: 1)]).run(
-            "task"
-        )
+        await Agent(
+            model=ScriptedModel([]), context=Context(compaction=Compaction(trigger=lambda state: 1))
+        ).run("task")
     with pytest.raises(TypeError, match="synchronous boolean"):
         await Agent(
-            model=ScriptedModel([]), plugins=[Compaction(trigger=lambda state: trigger(state))]
+            model=ScriptedModel([]),
+            context=Context(compaction=Compaction(trigger=lambda state: trigger(state))),
         ).run("task")
 
 
@@ -452,10 +467,10 @@ async def test_provider_context_error_compacts_once_then_retries_as_a_new_step()
     brief = Brief()
     async with Agent(
         model=model,
-        plugins=[
-            Work(),
-            Compaction(trigger=lambda state: False, summarizer=brief, keep_last_steps=1),
-        ],
+        plugins=[Work()],
+        context=Context(
+            compaction=Compaction(trigger=lambda state: False, summarizer=brief, keep_last_steps=1)
+        ),
     ).session() as session:
         session_audit = Audit(session)
         await session.run("x" * 4000)
@@ -492,13 +507,15 @@ async def test_context_retry_is_bounded_and_requires_a_safe_smaller_request(case
 
     model = CallbackModel(chunks)
     brief = Brief()
-    plugins = (
-        []
+    compaction = (
+        None
         if case == "no-policy"
-        else [Compaction(trigger=lambda state: False, summarizer=brief, keep_last_steps=1)]
+        else Compaction(trigger=lambda state: False, summarizer=brief, keep_last_steps=1)
     )
     loop = AgentLoop(max_steps=1) if case == "step-limit" else None
-    async with Agent(model=model, plugins=plugins, loop=loop).session() as session:
+    async with Agent(
+        model=model, context=Context(compaction=compaction), loop=loop
+    ).session() as session:
         session_audit = Audit(session)
         if case != "no-history":
             await session.run("x" * 4000)

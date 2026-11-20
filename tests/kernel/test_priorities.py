@@ -3,12 +3,9 @@ from itertools import permutations
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import Plugin, PolicyDecision, hook
+from harnessed import Plugin
 from harnessed.kernel import Bundle as KernelBundle
-from harnessed.kernel import Emit, Scope, Waterfall
-from harnessed.kernel import PluginBase as KernelPlugin
-from harnessed.plugins import Approvals
-from harnessed.runtime.plugin import Bundle
+from harnessed.kernel import Emit, Scope, Waterfall, hook
 from harnessed.testing import ScriptedModel
 
 
@@ -87,48 +84,22 @@ async def test_priority_survives_plugin_unload_and_reactivation():
 
 
 async def test_priority_flows_through_all_sdk_declaration_and_imperative_hook_apis():
-    extensions = Bundle("configured")
     seen = []
-
-    class KernelFeature(KernelPlugin):
-        @hook(Ping, priority=-60)
-        def observe(self, event):
-            seen.append("kernel-class")
 
     class Feature(Plugin):
         @hook(Ping, priority=-50)
         def observe(self, event):
             seen.append("class")
 
-    bundle = Bundle("feature")
-    bundle.on(Ping, lambda ev: seen.append("bundle-decorator"), priority=-40)
-    bundle.add_hook(Ping, lambda ev: seen.append("bundle-imperative"), priority=-30)
     explicit = Plugin(hooks=[(Ping, lambda ev: seen.append("tuple"), -20)])
-    harness = Application(
-        model=ScriptedModel([]),
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            KernelFeature(),
-            Feature(),
-            bundle,
-            explicit,
-            extensions,
-        ],
-    )
-    extensions.on(Ping, lambda ev: seen.append("harness-decorator"), priority=-10)
-    extensions.add_hook(Ping, lambda ev: seen.append("harness-imperative"), priority=10)
+    harness = Application(model=ScriptedModel([]), plugins=[Feature(), explicit])
     async with harness.session() as agent:
         agent.on(Ping, lambda ev: seen.append("agent-decorator"), priority=20)
-        dispose = agent.add_hook(Ping, lambda ev: seen.append("agent-imperative"), priority=30)
+        dispose = agent.on(Ping, lambda ev: seen.append("agent-imperative"), priority=30)
         await agent.scope.dispatch(Ping())
         assert seen == [
-            "kernel-class",
             "class",
-            "bundle-decorator",
-            "bundle-imperative",
             "tuple",
-            "harness-decorator",
-            "harness-imperative",
             "agent-decorator",
             "agent-imperative",
         ]

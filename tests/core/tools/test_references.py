@@ -1,9 +1,9 @@
 import pytest
 from pydantic import ValidationError
 
-from harnessed import Agent, ApprovalAnswer, Plugin, PolicyDecision, tool
+from harnessed import Agent, Approvals, Decision, Plugin, tool
 from harnessed.events import ApprovalRequestedEvent
-from harnessed.plugins import Approvals, Filesystem
+from harnessed.plugins import Filesystem
 from harnessed.runtime.approval_policy import CallbackApprover
 from harnessed.testing import ScriptedModel, call
 
@@ -19,21 +19,18 @@ async def test_explicit_ask_overrides_allow_readonly_and_policy():
 
     def approve(request):
         requests.append(request)
-        return ApprovalAnswer.ALLOW
+        return Decision.ALLOW
 
     model = ScriptedModel([call(Echo.echo, text="hello"), "done"])
     agent = Agent(
         model=model,
-        plugins=[
-            Echo(),
-            Approvals(
-                default=PolicyDecision.ALLOW,
-                allow=[Echo.echo],
-                ask=[Echo.echo],
-                policy=lambda call: PolicyDecision.ALLOW,
-                approver=approve,
-            ),
-        ],
+        approvals=Approvals(
+            default=Decision.ALLOW,
+            ask=[Echo.echo],
+            policy=lambda call: Decision.ALLOW,
+            approver=approve,
+        ),
+        plugins=[Echo()],
     )
     result = await agent.run("Echo")
     assert result.tool_calls[0][1].text == "hello"
@@ -44,17 +41,17 @@ async def test_explicit_ask_overrides_allow_readonly_and_policy():
 
 async def test_denied_reference_never_asks():
     model = ScriptedModel([call(Echo.echo, text="hello"), "done"])
-    agent = Agent(
-        model=model,
-        plugins=[Echo(), Approvals(ask=[Echo.echo], deny=[Echo.echo])],
-    )
+    agent = Agent(model=model, approvals=Approvals(deny=[Echo.echo]), plugins=[Echo()])
     result = await agent.run("Echo")
     assert result.tool_calls[0][1].is_error
 
 
 async def test_unmounted_reference_and_wrong_recipe_fail_at_session_start():
-    for plugins in ([Approvals(ask=[Echo.echo])], [Echo(), Approvals(ask=[Echo().echo])]):
-        agent = Agent(model=ScriptedModel([]), plugins=plugins)
+    for plugins, policy in (
+        ([], Approvals(ask=[Echo.echo])),
+        ([Echo()], Approvals(ask=[Echo().echo])),
+    ):
+        agent = Agent(model=ScriptedModel([]), plugins=plugins, approvals=policy)
         with pytest.raises(ValueError, match="not registered"):
             async with agent.session():
                 pytest.fail("unresolved references must fail before exposing the session")
@@ -65,10 +62,8 @@ async def test_bound_recipe_reference_survives_per_session_mount_copy():
     model = ScriptedModel([call(echo.echo, text="hello"), "done"])
     agent = Agent(
         model=model,
-        plugins=[
-            echo,
-            Approvals(ask=[echo.echo], approver=lambda request: ApprovalAnswer.ALLOW),
-        ],
+        approvals=Approvals(ask=[echo.echo], approver=lambda request: Decision.ALLOW),
+        plugins=[echo],
     )
     assert (await agent.run("Echo")).tool_calls[0][1].text == "hello"
 
@@ -90,12 +85,12 @@ async def test_callback_adapter_receives_the_same_request_as_policy_callbacks():
     )
     seen = []
     adapter = CallbackApprover(lambda value: seen.append(value) or True)
-    assert await adapter.ask(request) is ApprovalAnswer.ALLOW
+    assert await adapter.ask(request) is Decision.ALLOW
     assert seen == [request]
 
 
 def test_string_sentinel_and_arbitrary_functions_are_rejected():
-    with pytest.raises(TypeError, match="collections"):
+    with pytest.raises(TypeError, match="action enum"):
         Approvals(allow="all")
     with pytest.raises(TypeError, match="@tool"):
         Approvals(ask=[lambda: None])

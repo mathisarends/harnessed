@@ -6,30 +6,27 @@ contain this compacted conversation. Store a complete audit externally when
 historical records are needed.
 
 ```python
-from harnessed import Agent
-from harnessed.plugins import Compaction, DEFAULT_COMPACTION_PROMPT, at_ratio
+from harnessed import Agent, Compaction, Context
 
 agent = Agent(
-    model="deepseek:deepseek-chat",
-    plugins=[
-        Compaction(
-            trigger=at_ratio(0.8),
-            keep_last_steps=2,
-            target_ratio=0.4,
-            prompt=DEFAULT_COMPACTION_PROMPT + "\nPreserve relevant file paths.",
-        ),
-    ],
+    model=model,
+    context=Context(
+        max_tool_output_chars=16_000,
+        compaction=Compaction(at=0.8, fallback_tokens=64_000, keep_last_steps=2),
+    ),
 )
 ```
 
 ## Triggers and retention
 
-`at_ratio(0.8)` is the default trigger. It measures estimated input **plus reserved
-output**, divided by the effective context window. Unknown windows require an
-explicit `AgentLoop(context_window=...)`. `every_turns(N)` counts newly completed
-turns since the last compaction. Custom synchronous triggers receive the frozen
-`ContextState(input_tokens, reserve_tokens, context_window, turns_since_compaction)`;
-its `ratio` property is `None` without a known window.
+`at` measures estimated input plus reserved output as a fraction of the effective
+window. `Context(max_tokens=...)` caps that window. `fallback_tokens` is an
+absolute trigger for models with unknown windows. `trigger=` takes a custom
+synchronous function of `ContextState`. For turn-based compaction use
+`every_turns(n)` from `harnessed.context`. A plugin may handle `DeferCompaction`
+from `harnessed.hooks` and return `True` to defer one eligible automatic
+attempt. The next eligible attempt proceeds. Forced and manual compaction
+bypass this checkpoint.
 
 `keep_last_steps` is a positive integer, defaulting to two. A step is one model
 invocation and its associated tool calls and results. Parallel tool calls count
@@ -78,7 +75,7 @@ fails without changing history if required references do not fit.
 Custom implementations use the public service contracts:
 
 ```python
-from harnessed.plugins.compaction import CompactionRequest, Summary
+from harnessed.context import CompactionRequest, Summary
 
 
 class MySummarizer:
@@ -90,7 +87,7 @@ class MySummarizer:
 Pass an implementation with `summarizer=MySummarizer()`. This is mutually
 exclusive with explicit `llm` and `prompt`. `Summary(text, usage=...)` reports
 incurred `ModelUsage`, including for rejected candidates. A plain string is not
-a valid result. `Summarizer` is exported by `harnessed.plugins.compaction`.
+a valid result. `Summarizer` is exported by `harnessed.context`.
 
 ## Budgets and targets
 

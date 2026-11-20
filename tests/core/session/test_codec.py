@@ -8,15 +8,14 @@ from harnessed.events import ModelRequestedEvent, ToolCallRequestedEvent, TurnSt
 from harnessed.events.codec import decode_event, encode_event
 from harnessed.events.registry import EventRegistry
 from harnessed.events.unions import SESSION_EVENT_TYPES
-from harnessed.models import ModelInfo, ModelRequest
-from harnessed.models.messages import ToolCall, UserMessage
+from harnessed.models import ModelInfo, ModelRequest, ToolCall, UserMessage
 
 
 def test_canonical_tags_roundtrip_with_discriminated_schema():
     assert set(EventRegistry().schema()["discriminator"]["mapping"]) == set(SESSION_EVENT_TYPES)
     event = TurnStartedEvent("one")
     assert encode_event(event) == {
-        "version": 6,
+        "version": 7,
         "type": "turn.started",
         "data": {
             "turn_id": "one",
@@ -55,15 +54,15 @@ def test_model_request_fixture_uses_the_canonical_codec():
         {"version": True, "type": "turn.started", "data": {"turn_id": "one"}},
         {"version": 1, "type": "turn.started", "data": {"turn_id": "one"}},
         {"version": 2, "type": "turn.started", "data": {"turn_id": "one"}},
-        {"version": 6, "type": "turn/start", "data": {"turn_id": "one"}},
-        {"version": 6, "type": "TurnStartedEvent", "data": {"turn_id": "one"}},
-        {"version": 6, "type": "turn.started", "data": {"turn_id": "one", "extra": 1}},
-        {"version": 6, "type": "turn.started", "data": {"turn_id": ""}},
-        {"version": 6, "type": "step.started", "data": {"turn_id": "one", "step": True}},
-        {"version": 6, "type": "step.started", "data": {"turn_id": "one", "step": 0}},
-        {"version": 6, "type": "turn.ended", "data": {"turn_id": "one", "reason": "typo"}},
-        {"version": 6, "type": "turn.started", "seq": False, "data": {"turn_id": "one"}},
-        {"version": 6, "type": "turn.started", "data": {"turn_id": "one", "type": "turn.ended"}},
+        {"version": 7, "type": "turn/start", "data": {"turn_id": "one"}},
+        {"version": 7, "type": "TurnStartedEvent", "data": {"turn_id": "one"}},
+        {"version": 7, "type": "turn.started", "data": {"turn_id": "one", "extra": 1}},
+        {"version": 7, "type": "turn.started", "data": {"turn_id": ""}},
+        {"version": 7, "type": "step.started", "data": {"turn_id": "one", "step": True}},
+        {"version": 7, "type": "step.started", "data": {"turn_id": "one", "step": 0}},
+        {"version": 7, "type": "turn.ended", "data": {"turn_id": "one", "reason": "typo"}},
+        {"version": 7, "type": "turn.started", "seq": False, "data": {"turn_id": "one"}},
+        {"version": 7, "type": "turn.started", "data": {"turn_id": "one", "type": "turn.ended"}},
     ],
 )
 def test_invalid_records_fail_at_the_codec_boundary(record):
@@ -92,7 +91,7 @@ def test_messages_reject_fields_from_other_variants(role):
     if role == "tool":
         payload["tool_call_id"] = "call"
     record = {
-        "version": 6,
+        "version": 7,
         "type": "model.requested",
         "data": {"request": {"model": "test", "messages": [payload]}},
     }

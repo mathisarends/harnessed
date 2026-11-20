@@ -111,9 +111,6 @@ boundary. Literal content and files need no scope.
 `Plugin.events` declares the session event catalog. None of these responsibilities
 are inferred from the name of a library-owned `BrowserEvents` service.
 
-This PR preserves those contracts. Whether browserrig needs an additional event
-service is a question for that library's implementation and consumers.
-
 ## Migration
 
 1. Import `PluginScope` from `harnessed.kernel` for higher-level class-plugin

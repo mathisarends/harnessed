@@ -7,7 +7,8 @@ from harnessed.events import (
     ToolExecutionFinishedEvent,
     ToolExecutionStartedEvent,
 )
-from harnessed.models.model import ModelRequest, ModelUsage, sum_usage
+from harnessed.models import ModelRequest, ModelUsage
+from harnessed.models.model import sum_usage
 
 
 class RequestProjection:

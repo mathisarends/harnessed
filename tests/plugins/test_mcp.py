@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from harnessed import AgentLoop, PolicyDecision
+from harnessed import Context, Decision
 
 pytest.importorskip("fastmcp")
 pytest.importorskip("jsonschema")
@@ -33,12 +33,11 @@ from mcp.types import (
 )
 
 import harnessed.plugins.mcp.transport as mcp_transport
-from harnessed import Agent, ToolCall
+from harnessed import Agent, Approvals
 from harnessed.errors import ToolNameConflict
 from harnessed.events import ToolProgressEvent
-from harnessed.models import ModelChunk
-from harnessed.models.messages import ToolStatus, to_dict
-from harnessed.plugins import Approvals, ToolApprovalGuard
+from harnessed.models import ModelChunk, ToolCall, ToolStatus
+from harnessed.models.messages import to_dict
 from harnessed.plugins.mcp import MCP
 from harnessed.testing import ScriptedModel
 from harnessed.tools import ToolError, ToolRegistry
@@ -138,10 +137,8 @@ async def run_tool(transport, arguments=None, **options):
     model = ScriptedModel([[ModelChunk(tool_call=call)], "done"])
     agent = Agent(
         model=model,
-        plugins=[
-            MCP("docs", transport=transport, **options),
-            Approvals(default=PolicyDecision.ALLOW),
-        ],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[MCP("docs", transport=transport, **options)],
     )
     result = await agent.run("search")
     return result, model
@@ -212,17 +209,21 @@ async def test_empty_filter_and_disabled_tools():
 
 
 async def test_policy_denial_happens_before_remote_execution():
+    from enum import StrEnum
+
+    class RemoteAction(StrEnum):
+        SEARCH = "search"
+
     transport = MemoryTransport()
     model = ScriptedModel(
         [[ModelChunk(tool_call=ToolCall("docs__search", {"query": "x"}))], "done"]
     )
     agent = Agent(
         model=model,
-        plugins=[
-            MCP("docs", transport=transport),
-            Approvals(default=PolicyDecision.ALLOW),
-            ToolApprovalGuard(risky=["docs__search"], ask=lambda request: False),
-        ],
+        approvals=Approvals(
+            default=Decision.ALLOW, ask=[RemoteAction.SEARCH], approver=lambda request: False
+        ),
+        plugins=[MCP("docs", transport=transport, actions={"search": RemoteAction.SEARCH})],
     )
     result = await agent.run("search")
     assert result.tool_calls[0][1].status is ToolStatus.DENIED
@@ -263,7 +264,8 @@ async def test_call_timeout_and_abort_propagate_cancellation():
     call = ToolCall("docs__search", {"query": "x"})
     agent = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=call)]]),
-        plugins=[MCP("docs", transport=transport), Approvals(default=PolicyDecision.ALLOW)],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[MCP("docs", transport=transport)],
     )
     async with agent.session() as session:
         handle = await session.submit("search")
@@ -318,8 +320,9 @@ async def test_structured_and_image_content_and_output_limits():
     call = ToolCall("docs__search", {"query": "x"})
     agent = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=call)], "done"]),
-        plugins=[MCP("docs", transport=transport), Approvals(default=PolicyDecision.ALLOW)],
-        loop=AgentLoop(max_tool_output=256),
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[MCP("docs", transport=transport)],
+        context=Context(max_tool_output_chars=256),
     )
     result = await agent.run("x")
     assert result.tool_calls[0][1].truncation is not None
@@ -343,7 +346,8 @@ async def test_reopening_session_does_not_replay_remote_calls(tmp_path):
     model = ScriptedModel([[ModelChunk(tool_call=call)], "done", "next"])
     agent = Agent(
         model=model,
-        plugins=[MCP("docs", transport=transport), Approvals(default=PolicyDecision.ALLOW)],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[MCP("docs", transport=transport)],
     )
     async with agent.session() as session:
         await session.run("search")
@@ -368,9 +372,9 @@ if __name__ == "__main__":
     call = ToolCall("local__echo", {"query": "stdio works"})
     agent = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=call)], "done"]),
+        approvals=Approvals(default=Decision.ALLOW),
         plugins=[
-            MCP.stdio("local", command=sys.executable, args=[str(server)], startup_timeout=15),
-            Approvals(default=PolicyDecision.ALLOW),
+            MCP.stdio("local", command=sys.executable, args=[str(server)], startup_timeout=15)
         ],
     )
     result = await agent.run("echo")
@@ -638,7 +642,8 @@ async def test_enabled_predicate_is_rechecked_after_approval():
     call = ToolCall("docs__search", {"query": "x"})
     agent = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=call)], "done"]),
-        plugins=[MCP("docs", transport=transport, enabled=enabled), Approvals(approver=approve)],
+        approvals=Approvals(default=Decision.ASK, approver=approve),
+        plugins=[MCP("docs", transport=transport, enabled=enabled)],
     )
     result = await agent.run("search")
     assert result.tool_calls[0][1].status is ToolStatus.UNAVAILABLE

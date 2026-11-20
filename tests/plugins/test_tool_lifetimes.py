@@ -3,8 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from harnessed import ToolCall, plugin
-from harnessed.kernel import PluginStatus, Scope
+from harnessed import Plugin
+from harnessed.kernel import PluginScope, PluginStatus, Scope
+from harnessed.models import ToolCall
 from harnessed.plugins.filesystem import FileSystemBackend, FilesystemTools
 from harnessed.plugins.shell import ProcResult, ShellTools
 from harnessed.plugins.shell import ShellBackend as Shell
@@ -60,17 +61,20 @@ async def test_builtin_features_declare_lifetime_needs_and_wait_for_the_backend(
     spec = feature()
     assert spec.needs == (key, ToolRegistry)
 
-    @plugin
-    async def provider(scope, label):
-        scope.provide(key, backend(label))
-        yield
+    class Provider(Plugin):
+        def __init__(self, label: str) -> None:
+            super().__init__()
+            self.label = label
+
+        async def setup(self, scope: PluginScope) -> None:
+            scope.provide(key, backend(self.label))
 
     async with Scope() as scope:
         await scope.plugin(RuntimeServices())
         registry = scope[ToolRegistry]
         handle = await scope.plugin(spec)
         assert handle.status == PluginStatus.WAITING and registry.definitions == ()
-        first = await scope.plugin(provider("first"))
+        first = await scope.plugin(Provider("first"))
         await scope.settle()
         original = handle.scope
         assert handle.status == PluginStatus.ACTIVE
@@ -87,7 +91,7 @@ async def test_builtin_features_declare_lifetime_needs_and_wait_for_the_backend(
 
         await first.aclose()
         assert handle.status == PluginStatus.WAITING and registry.definitions == ()
-        await scope.plugin(provider("second"))
+        await scope.plugin(Provider("second"))
         await scope.settle()
         assert handle.status == PluginStatus.ACTIVE
         assert await invoke(registry, key) == "second"

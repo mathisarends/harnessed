@@ -1,15 +1,13 @@
 """Run with: uv run python -m examples.08_observations (uses an in-memory browser)."""
 
 import asyncio
-from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Protocol
 
-from harnessed import Agent, Plugin, PolicyDecision, ToolCall, tool
+from harnessed import Agent, Plugin, tool
 from harnessed.hooks import Next, PreStep, StepDecision
-from harnessed.kernel import Inject, Scope, hook, plugin
-from harnessed.models import ImagePart, ModelChunk, TextPart, UserMessage
-from harnessed.plugins import Approvals
+from harnessed.kernel import Inject, PluginScope, hook
+from harnessed.models import ImagePart, ModelChunk, TextPart, ToolCall, UserMessage
 from harnessed.testing import ScriptedModel
 
 
@@ -46,10 +44,9 @@ class DemoBrowser:
         self.title = "Settings"
 
 
-@plugin
-async def browser_backend(scope: Scope) -> AsyncGenerator[None]:
-    scope.provide(Browser, DemoBrowser())
-    yield
+class BrowserBackend(Plugin):
+    async def setup(self, scope: PluginScope) -> None:
+        scope.provide(Browser, DemoBrowser())
 
 
 class BrowserObserver(Plugin, needs=(Browser,)):
@@ -101,12 +98,7 @@ async def main():
     )
     agent = Agent(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            browser_backend(),
-            BrowserObserver(),
-            browser_tools,
-        ],
+        plugins=[BrowserBackend(), BrowserObserver(), browser_tools],
     )
     async with agent.session() as session:
         print((await session.run("Open Settings.")).text)

@@ -5,8 +5,9 @@ from typing import Annotated
 
 from pydantic import Field
 
-from harnessed import Agent, Plugin, PluginConfig, ToolParameter, tool
+from harnessed import Agent, Plugin, PluginConfig, tool
 from harnessed.testing import ScriptedModel, call
+from harnessed.tools import ToolParameter
 
 
 class SearchConfig(PluginConfig):

@@ -6,20 +6,12 @@ from typing import Annotated
 import pytest
 from pydantic import BaseModel, Field
 
-from harnessed import (
-    Agent,
-    Plugin,
-    PluginConfig,
-    ToolCall,
-    ToolChain,
-    ToolContext,
-    ToolParameter,
-    tool,
-)
+from harnessed import Agent, Plugin, PluginConfig, ToolContext, tool
 from harnessed.kernel import Inject, PluginScope, PluginState, Scope, needs
+from harnessed.models import ToolCall
 from harnessed.plugins import Service
 from harnessed.testing import ScriptedModel, call
-from harnessed.tools import ToolRegistry
+from harnessed.tools import ToolChain, ToolParameter, ToolRegistry
 
 
 @dataclass

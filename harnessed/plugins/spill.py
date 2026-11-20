@@ -10,8 +10,9 @@ from pydantic import Field
 
 from harnessed.events import SpillCreatedEvent, SpillExpirationReason, SpillExpiredEvent
 from harnessed.kernel import Inject, PluginScope, Priority, hook, needs
-from harnessed.models.messages import SpillRef, ToolResult
-from harnessed.prompts.values import Instructions, SystemPrompt
+from harnessed.models import ToolResult
+from harnessed.models.messages import SpillRef
+from harnessed.prompts import Instructions, SystemPrompt
 from harnessed.runtime.budget import truncate
 from harnessed.runtime.hooks import Next, ReviewToolResult, SessionAppended
 from harnessed.runtime.plugin import Plugin, PluginConfig

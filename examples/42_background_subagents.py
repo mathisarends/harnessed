@@ -1,10 +1,10 @@
 import asyncio
 import json
 
-from harnessed import Agent, Plugin, ToolCall, tool
+from harnessed import Agent, Approvals, Plugin, tool
 from harnessed.events import SubagentUpdatedEvent
-from harnessed.models import ModelChunk, ModelRequest
-from harnessed.plugins import Approvals, Subagents
+from harnessed.models import ModelChunk, ModelRequest, ToolCall
+from harnessed.plugins import SubagentAction, Subagents
 from harnessed.plugins.subagents import ChildReportState
 from harnessed.testing import CallbackModel
 
@@ -72,7 +72,10 @@ async def main() -> None:
     reviewer = Agent(model=CallbackModel(child_model), plugins=[ReviewTools()])
     coordinator = Agent(
         model=CallbackModel(coordinator_model),
-        plugins=[Subagents({"review": reviewer}), Approvals(allow=[Subagents.spawn])],
+        approvals=Approvals(
+            allow=[SubagentAction.SPAWN, SubagentAction.STATUS, SubagentAction.WAIT]
+        ),
+        plugins=[Subagents({"review": reviewer})],
     )
 
     # Offline coordination only: let inspection finish once a real report is requested.

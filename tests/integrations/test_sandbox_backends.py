@@ -6,9 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from harnessed import (
-    Agent,
-)
+from harnessed import Agent
 from harnessed.integrations import bubblewrap, docker
 from harnessed.integrations.sandbox import (
     SandboxConfig,

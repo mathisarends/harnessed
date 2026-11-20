@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 from functools import partial
 from itertools import islice
 from pathlib import Path, PurePath
@@ -9,9 +10,20 @@ from typing import Annotated, Protocol
 from pydantic import Field
 
 from harnessed.kernel import Inject, PluginScope, run_sync
-from harnessed.prompts.values import Instructions, SystemPrompt
+from harnessed.prompts import Instructions, SystemPrompt
 from harnessed.runtime.plugin import Plugin, PluginConfig
 from harnessed.tools import ToolError, ToolRegistry, tool
+
+
+class FilesystemAction(StrEnum):
+    """Stable approval keys for the built-in filesystem tools."""
+
+    READ = "read"
+    WRITE = "write"
+    LIST = "list"
+    SEARCH = "search"
+    EDIT = "edit"
+    DELETE = "delete"
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,7 +269,7 @@ class FilesystemTools[ConfigT: PluginConfig](
     def instructions(self) -> SystemPrompt:
         return SystemPrompt(_FILESYSTEMTOOLS_INSTRUCTIONS)
 
-    @tool(readonly=True, parallel=True)
+    @tool(action=FilesystemAction.READ, readonly=True, parallel=True)
     async def read_file(
         self,
         path: str,
@@ -277,20 +289,20 @@ class FilesystemTools[ConfigT: PluginConfig](
             )
         return content
 
-    @tool
+    @tool(action=FilesystemAction.WRITE)
     async def write_file(self, path: str, text: str, *, fs: Inject[FileSystemBackend]) -> str:
         """Atomically replace a UTF-8 file, creating parent directories if needed."""
         await fs.write(Path(path), text)
         return f"Wrote {path}"
 
-    @tool(readonly=True, parallel=True)
+    @tool(action=FilesystemAction.LIST, readonly=True, parallel=True)
     async def list_dir(
         self, path: str = ".", *, fs: Inject[FileSystemBackend]
     ) -> Sequence[FileStat]:
         """List direct children with file sizes and kinds."""
         return await fs.list(Path(path))
 
-    @tool(readonly=True, parallel=True)
+    @tool(action=FilesystemAction.SEARCH, readonly=True, parallel=True)
     async def glob(
         self,
         pattern: str,
@@ -302,7 +314,7 @@ class FilesystemTools[ConfigT: PluginConfig](
         paths = await fs.glob(pattern, limit=limit + 1)
         return PathMatches(tuple(path.as_posix() for path in paths[:limit]), len(paths) > limit)
 
-    @tool(readonly=True, parallel=True)
+    @tool(action=FilesystemAction.SEARCH, readonly=True, parallel=True)
     async def grep(
         self,
         query: Annotated[str, Field(min_length=1)],
@@ -314,7 +326,7 @@ class FilesystemTools[ConfigT: PluginConfig](
         """Find literal text in bounded UTF-8 previews; narrow patterns for large trees."""
         return await fs.grep(query, pattern=pattern, limit=limit)
 
-    @tool
+    @tool(action=FilesystemAction.EDIT)
     async def edit(
         self,
         path: str,
@@ -327,7 +339,7 @@ class FilesystemTools[ConfigT: PluginConfig](
         await fs.replace(Path(path), old, new)
         return f"Edited {path}"
 
-    @tool
+    @tool(action=FilesystemAction.DELETE)
     async def delete_file(self, path: str, *, fs: Inject[FileSystemBackend]) -> str:
         """Delete one workspace file."""
         await fs.delete(Path(path))

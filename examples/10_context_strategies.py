@@ -2,12 +2,13 @@
 
 import asyncio
 
-from harnessed import Agent, AgentLoop, Plugin, tool
+from harnessed import Agent, Compaction, Context, Plugin, tool
+from harnessed.context import at_ratio
 from harnessed.events import CompactionAppliedEvent, SpillCreatedEvent
 from harnessed.hooks import PreStep
 from harnessed.kernel import hook
 from harnessed.models import ModelChunk, UserMessage
-from harnessed.plugins import Compaction, LatestObservationOnly, Spill, at_ratio
+from harnessed.plugins import LatestObservationOnly, Spill
 from harnessed.testing import ScriptedModel, call
 
 
@@ -43,19 +44,16 @@ async def main():
     spill = Spill(threshold_tokens=100, preview_tokens=8)
     agent = Agent(
         model=model,
-        plugins=[
-            Reports(),
-            WorkspaceState(),
-            LatestObservationOnly(),
-            spill,
-            Compaction(
+        plugins=[Reports(), WorkspaceState(), LatestObservationOnly(), spill],
+        context=Context(
+            max_tokens=2000,
+            compaction=Compaction(
                 trigger=at_ratio(0.3),
                 llm=ScriptedModel(["The initial task was completed."]),
                 keep_last_steps=1,
                 max_summary_tokens=32,
             ),
-        ],
-        loop=AgentLoop(context_window=2000),
+        ),
     )
     async with agent.session() as session:
         await session.run("Old task context: " + "x" * 2000)

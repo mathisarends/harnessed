@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
+from enum import StrEnum
 from typing import Any
 
 from harnessed.kernel import PluginBase, binding_plan
@@ -42,11 +43,14 @@ def tool_reference(value: Callable | ToolReference) -> ToolReference:
     )
 
 
-def tool_selector(value: ToolSelector) -> str | ToolReference:
-    if isinstance(value, str):
-        if not value:
-            raise ValueError("Tool names must not be empty")
+type ApprovalSelector = StrEnum | Callable[..., Any] | ToolReference
+
+
+def approval_selector(value: ApprovalSelector) -> StrEnum | ToolReference:
+    if isinstance(value, StrEnum):
         return value
+    if isinstance(value, str):
+        raise TypeError("Approval rules require an action enum or @tool method")
     return tool_reference(value)
 
 

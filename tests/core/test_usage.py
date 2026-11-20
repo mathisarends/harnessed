@@ -1,7 +1,8 @@
 from harnessed import Agent
 from harnessed.events import ModelUsageRecordedEvent, TurnEndedEvent
 from harnessed.events.codec import decode_event, encode_event
-from harnessed.models.model import ModelChunk, ModelUsage, sum_usage
+from harnessed.models import ModelChunk, ModelUsage
+from harnessed.models.model import sum_usage
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit, AuditProjection
 

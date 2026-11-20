@@ -3,12 +3,13 @@ from dataclasses import dataclass
 
 import pytest
 
-from harnessed import Plugin, ToolCall, plugin
-from harnessed.kernel import Emit, MissingService, PluginScope, PluginStatus, Scope, needs
+from harnessed import Plugin
+from harnessed.kernel import Bundle, Emit, MissingService, PluginScope, PluginStatus, Scope, needs
+from harnessed.models import ToolCall
 from harnessed.prompts import SystemPromptStore
-from harnessed.runtime.plugin import Bundle
 from harnessed.runtime.services import RuntimeServices
 from harnessed.tools import ToolRegistry, tool
+from tests._kernel_recipe import kernel_recipe
 
 
 @dataclass
@@ -50,7 +51,7 @@ class Ping(Emit):
 async def test_explicit_needs_waits_and_rebuilds_with_fresh_scope_and_local_state():
     lifecycle, seen = [], []
 
-    @plugin(needs=[Backend])
+    @kernel_recipe(needs=[Backend])
     async def consumer(scope):
         backend = scope[Backend]
         calls = 0
@@ -89,12 +90,12 @@ async def test_explicit_needs_waits_and_rebuilds_with_fresh_scope_and_local_stat
 async def test_provider_unload_suspends_consumers_and_another_provider_reactivates_them():
     observed = []
 
-    @plugin
+    @kernel_recipe
     async def provider(scope, name):
         scope.provide(Backend, Backend(name))
         yield
 
-    @plugin(needs=[Backend])
+    @kernel_recipe(needs=[Backend])
     async def consumer(scope):
         observed.append(scope[Backend].name)
         yield
@@ -112,14 +113,14 @@ async def test_provider_unload_suspends_consumers_and_another_provider_reactivat
 async def test_transitive_needs_teardown_and_rebuild_in_dependency_order():
     lifecycle = []
 
-    @plugin(needs=[Backend])
+    @kernel_recipe(needs=[Backend])
     async def middle(scope):
         scope.provide(Feature, Feature())
         lifecycle.append("middle+")
         yield
         lifecycle.append("middle-")
 
-    @plugin(needs=[Feature])
+    @kernel_recipe(needs=[Feature])
     async def leaf(scope):
         lifecycle.append("leaf+")
         yield
@@ -143,7 +144,7 @@ async def test_transitive_needs_teardown_and_rebuild_in_dependency_order():
 async def test_service_shadow_and_fallback_each_recompose_the_consumer():
     seen = []
 
-    @plugin(needs=[Backend])
+    @kernel_recipe(needs=[Backend])
     async def consumer(scope):
         seen.append(scope[Backend].name)
         yield
@@ -161,7 +162,7 @@ async def test_service_shadow_and_fallback_each_recompose_the_consumer():
 async def test_scope_isolation_and_permanent_disposal_of_waiting_plugin():
     seen = []
 
-    @plugin(needs=[Backend])
+    @kernel_recipe(needs=[Backend])
     async def consumer(scope, label):
         seen.append((label, scope[Backend].name))
         yield
@@ -220,7 +221,7 @@ async def test_class_and_bundle_explicit_needs_remove_tools_and_prompt_sections(
 
 
 async def test_background_setup_failure_rolls_back_and_reports_once_then_recovers():
-    @plugin(needs=[Backend])
+    @kernel_recipe(needs=[Backend])
     async def conditional(scope):
         scope.provide(Feature, Feature())
         if scope[Backend].name == "broken":
@@ -244,7 +245,7 @@ async def test_services_are_not_published_to_consumers_until_provider_setup_yiel
     started, ready = asyncio.Event(), asyncio.Event()
     seen = []
 
-    @plugin
+    @kernel_recipe
     async def provider(scope):
         scope.provide(Backend, Backend("ready"))
         assert scope[Backend].name == "ready"
@@ -252,7 +253,7 @@ async def test_services_are_not_published_to_consumers_until_provider_setup_yiel
         await ready.wait()
         yield
 
-    @plugin(needs=[Backend])
+    @kernel_recipe(needs=[Backend])
     async def consumer(scope):
         seen.append(scope[Backend].name)
         yield
@@ -272,7 +273,7 @@ async def test_services_are_not_published_to_consumers_until_provider_setup_yiel
 
 
 async def test_missing_multiple_needs_stay_dormant_without_busy_retry():
-    @plugin(needs=[Backend, Feature])
+    @kernel_recipe(needs=[Backend, Feature])
     async def both(scope):
         yield
 
@@ -289,7 +290,7 @@ async def test_missing_multiple_needs_stay_dormant_without_busy_retry():
 async def test_recomposition_runs_automatically_without_an_explicit_settle():
     started = asyncio.Event()
 
-    @plugin(needs=[Backend])
+    @kernel_recipe(needs=[Backend])
     async def consumer(scope):
         started.set()
         yield
@@ -304,7 +305,7 @@ async def test_recomposition_runs_automatically_without_an_explicit_settle():
 async def test_dependency_loss_cancels_unfinished_setup_and_retries_when_service_returns():
     started, cleaned = asyncio.Event(), []
 
-    @plugin(needs=[Backend])
+    @kernel_recipe(needs=[Backend])
     async def consumer(scope):
         scope.effect(lambda: cleaned.append("cleanup"))
         if scope[Backend].name == "slow":
@@ -327,7 +328,7 @@ async def test_dependency_loss_cancels_unfinished_setup_and_retries_when_service
 async def test_context_close_cancels_background_setup():
     started, cleaned = asyncio.Event(), []
 
-    @plugin(needs=[Backend])
+    @kernel_recipe(needs=[Backend])
     async def consumer(scope):
         scope.effect(lambda: cleaned.append("cleanup"))
         started.set()
@@ -343,7 +344,7 @@ async def test_context_close_cancels_background_setup():
 
 
 async def test_wrapping_a_needed_service_keeps_the_upstream_dependency():
-    @plugin(needs=[Backend])
+    @kernel_recipe(needs=[Backend])
     async def wrapper(scope):
         upstream = scope[Backend]
         scope.provide(Backend, Backend(f"wrapped {upstream.name}"))
@@ -363,12 +364,12 @@ async def test_wrapping_a_needed_service_keeps_the_upstream_dependency():
 
 
 async def test_dynamic_dependency_cycle_reports_without_busy_loop_and_can_recover():
-    @plugin(needs=[Backend])
+    @kernel_recipe(needs=[Backend])
     async def first(scope):
         scope.provide(Feature, Feature())
         yield
 
-    @plugin(needs=[Feature])
+    @kernel_recipe(needs=[Feature])
     async def second(scope):
         scope.provide(Backend, Backend("cyclic"))
         yield

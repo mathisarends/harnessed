@@ -3,12 +3,12 @@ from contextlib import asynccontextmanager
 
 import pytest
 
-from harnessed import Agent, Inject, Plugin, SessionClosed, SessionStatus, StopReason
+from harnessed import Agent, Approvals, Plugin
+from harnessed.errors import SessionClosed
 from harnessed.events import ControlState, SessionControlChangedEvent, ToolCallFinishedEvent
-from harnessed.models import ModelChunk
-from harnessed.models.messages import ApprovalAnswer, ToolCall
-from harnessed.plugins import Approvals
-from harnessed.runtime.control import SessionControl
+from harnessed.kernel import Inject
+from harnessed.models import Decision, ModelChunk, StopReason, ToolCall
+from harnessed.runtime.control import SessionControl, SessionStatus
 from harnessed.testing import ScriptedModel, call
 from harnessed.tools import ToolContext, tool
 from tests._audit import Audit
@@ -156,10 +156,12 @@ async def test_abort_drains_tools_or_approvals_and_repairs_outstanding_calls(pha
             await asyncio.Event().wait()
         finally:
             closed.set()
-        return ApprovalAnswer.ALLOW
+        return Decision.ALLOW
 
     async with Agent(
-        model=ScriptedModel([call("work")]), plugins=[Tools(), Approvals(approver=approve)]
+        model=ScriptedModel([call("work")]),
+        approvals=Approvals(default=Decision.ASK, approver=approve),
+        plugins=[Tools()],
     ).session() as session:
         session_audit = Audit(session)
         running = asyncio.create_task(session.run("task"))

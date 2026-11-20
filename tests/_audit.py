@@ -10,7 +10,8 @@ from harnessed.events import (
     TurnStartedEvent,
 )
 from harnessed.events.registry import EventRegistry
-from harnessed.models.model import ModelRequest, ModelUsage, sum_usage
+from harnessed.models import ModelRequest, ModelUsage
+from harnessed.models.model import sum_usage
 from harnessed.runtime.approval_policy import ApprovalState
 from harnessed.runtime.hooks import SessionAppended
 from harnessed.sessions.control import RunControl

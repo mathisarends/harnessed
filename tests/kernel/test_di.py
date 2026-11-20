@@ -2,7 +2,7 @@ from typing import Annotated
 
 import pytest
 
-from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not a module.
+from harnessed.kernel import (
     Bundle,
     Emit,
     Inject,
@@ -15,8 +15,8 @@ from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not
     as_plugin_spec,
     binding_plan,
     hook,
-    plugin,
 )
+from tests._kernel_recipe import kernel_recipe
 
 
 async def test_injection_binds_values_without_creating_lifetime_dependencies():
@@ -72,7 +72,7 @@ def test_bundle_configured_hooks_and_function_injections_do_not_add_needs():
     bundle.on(Changed, observe)
     configured = PluginBase(hooks=((Changed, observe),))
 
-    @plugin
+    @kernel_recipe
     async def consumer(scope: Scope, value: Inject[str]):
         yield
 
@@ -108,7 +108,7 @@ async def test_listener_resolves_current_service_without_repeating_reflection(mo
 async def test_optional_injection_does_not_create_a_hard_lifetime_dependency():
     starts, values = [], []
 
-    @plugin
+    @kernel_recipe
     async def optional(scope: Scope, value: Inject[str | None]):
         starts.append(value)
         yield
@@ -149,7 +149,7 @@ async def test_named_key_injection_uses_the_same_key_as_needs():
 
 
 def test_plugin_config_keywords_are_immutable_and_detached():
-    @plugin
+    @kernel_recipe
     async def configured(scope, *, value: int):
         yield
 
@@ -161,7 +161,7 @@ def test_plugin_config_keywords_are_immutable_and_detached():
 async def test_scope_get_returns_provided_service_or_default():
     seen: list[object] = []
 
-    @plugin
+    @kernel_recipe
     async def reader(scope):
         seen.extend([scope.get(str), scope.get(int), scope.get(int, 7)])
         yield

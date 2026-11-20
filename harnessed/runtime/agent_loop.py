@@ -6,12 +6,13 @@ from harnessed.tools import ErrorFormatter
 
 from .options import AgentLoopConfig, AgentOptions
 from .session import Session
+from .tool_output_limit import ToolOutputLimit
 
 _DEFAULTS = AgentLoopConfig()
 
 
 class AgentLoop:
-    """Settings of the built-in ReAct loop: steps, tool execution and output limits.
+    """Settings of the built-in ReAct loop: steps, tool execution and output retries.
 
     The loop is part of the runtime core rather than a plugin. Pass an instance
     as ``Agent(loop=...)``; every default is visible in this signature.
@@ -23,8 +24,6 @@ class AgentLoop:
         max_steps: int = _DEFAULTS.max_steps,
         tool_timeout: float = _DEFAULTS.tool_timeout,
         max_parallel_tools: int = _DEFAULTS.max_parallel_tools,
-        max_tool_output: int = _DEFAULTS.max_tool_output,
-        context_window: int | None = _DEFAULTS.context_window,
         on_max_tokens: TokenLimitBehavior = _DEFAULTS.on_max_tokens,
         output_retries: int = _DEFAULTS.output_retries,
         final_step: FinalStepPolicy = _DEFAULTS.final_step,
@@ -34,8 +33,6 @@ class AgentLoop:
             max_steps=max_steps,
             tool_timeout=tool_timeout,
             max_parallel_tools=max_parallel_tools,
-            max_tool_output=max_tool_output,
-            context_window=context_window,
             on_max_tokens=on_max_tokens,
             output_retries=output_retries,
             final_step=final_step,
@@ -50,13 +47,13 @@ class AgentLoop:
     def max_steps(self) -> int:
         return self.config.max_steps
 
-    @property
-    def max_tool_output(self) -> int:
-        return self.config.max_tool_output
-
     def create(self, scope: Scope, session: SessionLog) -> Session:
         """Build a live session for the supplied scope and conversation log."""
         # Require a model before opening the runtime, without caching its metadata.
         scope[Model]
-        options = AgentOptions.resolve(self.config, error_formatter=self.error_formatter)
+        options = AgentOptions.resolve(
+            self.config,
+            tool_output_limit=scope[ToolOutputLimit],
+            error_formatter=self.error_formatter,
+        )
         return Session(scope, session, options)

@@ -1,16 +1,8 @@
 import pytest
 
-from harnessed import (
-    Agent,
-    Instructions,
-    SystemPrompt,
-)
-from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not a module.
-    PluginScope,
-    Scope,
-    plugin,
-)
-from harnessed.prompts import SystemPromptStore
+from harnessed import Agent, Plugin, SystemPrompt
+from harnessed.kernel import PluginScope, Scope
+from harnessed.prompts import Instructions, SystemPromptStore
 from harnessed.testing import ScriptedModel
 
 
@@ -29,7 +21,7 @@ async def test_session_section_factories_render_once_and_own_their_registrations
     )
     app = Agent(
         model=ScriptedModel(["one", "two"]),
-        prompt=SystemPrompt.from_plugins(Instructions.from_file(path=instructions), section),
+        instructions=SystemPrompt.from_plugins(Instructions.from_file(path=instructions), section),
     )
     async with app.session() as first:
         await first.run("One")
@@ -78,16 +70,15 @@ async def test_equal_snapshot_values_still_have_independent_disposers():
 
 
 async def test_failed_plugin_setup_rolls_back_its_prompt_snapshot():
-    @plugin(needs=[SystemPromptStore])
-    async def broken(scope):
-        scope[SystemPromptStore].fixed("must disappear")
-        raise ValueError("setup failed")
-        yield
+    class Broken(Plugin, needs=[SystemPromptStore]):
+        async def setup(self, scope: PluginScope) -> None:
+            scope[SystemPromptStore].fixed("must disappear")
+            raise ValueError("setup failed")
 
     async with Scope() as scope:
         prompt = SystemPromptStore(scope)
         scope.provide(SystemPromptStore, prompt)
         prompt.fixed("base")
         with pytest.raises(ValueError, match="setup failed"):
-            await scope.plugin(broken())
+            await scope.plugin(Broken())
         assert await prompt.render() == "base"

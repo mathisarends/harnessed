@@ -5,8 +5,7 @@ import pytest
 from harnessed import Agent
 from harnessed.errors import ToolNameConflict
 from harnessed.kernel import Scope
-from harnessed.models import ToolDefinition
-from harnessed.models.messages import ToolCall, ToolResult
+from harnessed.models import ToolCall, ToolDefinition, ToolResult
 from harnessed.testing import ScriptedModel
 from harnessed.tools import ToolAvailability, ToolContext, ToolRegistry, ToolSpec
 

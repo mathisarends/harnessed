@@ -8,15 +8,18 @@ from typing import TYPE_CHECKING, Self
 from harnessed.events import ApprovalRequestedEvent, DurableEvent, UserMessageEvent
 from harnessed.kernel import Bail, Emit, Waterfall
 from harnessed.kernel import Next as Next
-from harnessed.models import Model, ModelRequest, ModelStream, OutputSchema
-from harnessed.models.messages import (
-    ApprovalAnswer,
+from harnessed.models import (
+    Decision,
     Message,
-    PolicyDecision,
+    Model,
+    ModelRequest,
+    ModelStream,
+    OutputSchema,
     Role,
     ToolCall,
     ToolResult,
 )
+from harnessed.models.messages import ApprovalResponse
 from harnessed.tools import OutputLimit, OutputLimitSetting, ToolEnvelope, ToolInfo
 
 if TYPE_CHECKING:
@@ -74,7 +77,7 @@ class ExecuteTool(Waterfall[ToolResult]):
 
 
 @dataclass(frozen=True)
-class ToolPolicy(Waterfall[PolicyDecision]):
+class ToolPolicy(Waterfall[Decision]):
     call: ToolCall
     session: SessionContext
     tool: ToolInfo | None = field(default=None, kw_only=True)
@@ -148,7 +151,7 @@ class TurnStopping(Bail[bool]):
 
 
 @dataclass(frozen=True)
-class RequestApproval(Bail[ApprovalAnswer]):
+class RequestApproval(Bail[ApprovalResponse | Decision]):
     request: ApprovalRequestedEvent
     session: SessionContext
 

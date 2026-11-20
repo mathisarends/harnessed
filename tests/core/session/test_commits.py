@@ -7,7 +7,8 @@ import pytest
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 import harnessed.sessions.store as persistence_store
-from harnessed import Agent, Plugin
+from harnessed import Agent, Compaction, Context, Plugin
+from harnessed.context import CompactionRequest, Summary, every_turns
 from harnessed.errors import SessionWriteConflict
 from harnessed.events import (
     CompactionAppliedEvent,
@@ -20,8 +21,6 @@ from harnessed.events import (
 )
 from harnessed.hooks import SessionAppended
 from harnessed.models import ModelChunk, ModelRequest, ToolCallDelta, UserMessage
-from harnessed.plugins import Compaction, every_turns
-from harnessed.plugins.compaction import CompactionRequest, Summary
 from harnessed.prompts.plugin_instructions import PluginInstructions
 from harnessed.sessions import (
     CheckpointExtension,
@@ -124,7 +123,9 @@ async def test_commits_cover_each_live_event_once_even_after_compaction_and_reop
     agent = Agent(
         model=model,
         store=store,
-        plugins=[Compaction(trigger=every_turns(1), keep_last_steps=1, summarizer=Brief())],
+        context=Context(
+            compaction=Compaction(trigger=every_turns(1), keep_last_steps=1, summarizer=Brief())
+        ),
     )
     observed: list[tuple[int, DurableEvent]] = []
 

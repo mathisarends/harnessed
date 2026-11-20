@@ -5,7 +5,7 @@ It records requests and accepts strings, complete responses, or sequences of
 stream chunks. `call` and `reply` make ordinary tool rounds concise:
 
 ```python
-from harnessed import Agent, Plugin, PolicyDecision, tool
+from harnessed import Agent, Plugin, tool
 from harnessed.testing import ScriptedModel, assert_tool_called, call, reply
 
 
@@ -70,14 +70,13 @@ and tool execution are unavailable.
 They use the normal tool schemas, injection, approvals, execution and log paths.
 
 ```python
-from harnessed.plugins import Approvals
 from harnessed.testing import FakeShell, InMemoryFS
 
 files = InMemoryFS({"project/notes.txt": "Remember this."})
 commands = FakeShell({"pytest": "1 passed"})
 agent = Agent(
     model=ScriptedModel([call("run_command", argv=["pytest"]), reply("Tests pass")]),
-    plugins=[files, commands, Approvals(default=PolicyDecision.ALLOW)],
+    plugins=[files, commands],
 )
 ```
 

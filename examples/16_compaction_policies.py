@@ -2,15 +2,12 @@
 
 import asyncio
 
-from harnessed import (
-    Agent,
-    AgentLoop,
-    SessionState,
-)
+from harnessed import Agent, Compaction, Context
+from harnessed.context import at_ratio, every_turns
 from harnessed.errors import ContextBudgetExceeded
 from harnessed.events import CompactionAppliedEvent
 from harnessed.models import GenerationSettings
-from harnessed.plugins import Compaction, at_ratio, every_turns
+from harnessed.sessions import SessionState
 from harnessed.testing import ScriptedModel
 
 
@@ -22,15 +19,15 @@ async def compare(name, trigger):
     app = Agent(
         model=model,
         instructions="Keep the goal and recent work accurate.",
-        plugins=[
-            Compaction(
+        context=Context(
+            max_tokens=2500,
+            compaction=Compaction(
                 trigger=trigger,
                 llm=summaries,
                 keep_last_steps=1,
                 max_summary_tokens=48,
-            )
-        ],
-        loop=AgentLoop(context_window=2500),
+            ),
+        ),
     )
     async with app.session() as session:
         await session.run("GOAL: keep the public API stable. " + "detail " * 240)
@@ -68,7 +65,7 @@ async def main():
     # The current task and tool schemas are never silently removed to fit a budget.
     model = ScriptedModel([])
     async with Agent(
-        model=model, plugins=[Compaction()], loop=AgentLoop(context_window=100)
+        model=model, context=Context(max_tokens=100, compaction=Compaction())
     ).session() as session:
         try:
             await session.run("Current task that cannot be summarized away: " + "x" * 1000)

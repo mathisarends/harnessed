@@ -1,5 +1,6 @@
 import inspect
 from collections.abc import Callable
+from enum import StrEnum
 from functools import wraps
 from typing import Any, overload
 
@@ -29,7 +30,7 @@ def tool[F: Callable[..., Any]](
     parallel: bool = False,
     resources: ResourceSpec = (),
     readonly: bool = False,
-    confirm: bool = False,
+    action: StrEnum | None = None,
     output_limit: OutputLimitSetting = OutputLimit.INHERIT,
     override: bool = False,
     parameter_fields: ParameterFields | None = None,
@@ -52,7 +53,7 @@ def tool(
     parallel: bool = False,
     resources: ResourceSpec = (),
     readonly: bool = False,
-    confirm: bool = False,
+    action: StrEnum | None = None,
     output_limit: OutputLimitSetting = OutputLimit.INHERIT,
     override: bool = False,
     parameter_fields: ParameterFields | None = None,
@@ -79,7 +80,7 @@ def tool(
             parallel=parallel,
             resources=resources,
             readonly=readonly,
-            confirm=confirm,
+            action=action,
             override=override,
             output_limit=output_limit,
             parameter_fields=parameter_fields,

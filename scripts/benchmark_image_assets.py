@@ -7,9 +7,10 @@ import json
 import tracemalloc
 from time import perf_counter
 
-from harnessed import Agent, SessionState
+from harnessed import Agent
 from harnessed.models import ImageReference, UserMessage
 from harnessed.plugins import LatestObservationOnly
+from harnessed.sessions import SessionState
 from scripts.benchmark_sessions import EchoModel
 
 

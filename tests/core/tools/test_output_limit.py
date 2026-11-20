@@ -3,23 +3,13 @@ import sys
 
 import pytest
 
-from harnessed import (
-    Agent as Application,
-)
-from harnessed import (
-    AgentLoop,
-    Plugin,
-    PolicyDecision,
-    ToolCall,
-    ToolResult,
-    tool,
-)
+from harnessed import Agent as Application
+from harnessed import Approvals, Context, Decision, Plugin, tool
 from harnessed.events import ToolCallFinishedEvent, ToolExecutionFinishedEvent
 from harnessed.events.codec import decode_event, encode_event
 from harnessed.kernel import hook
-from harnessed.models import ModelChunk
-from harnessed.models.messages import ToolStatus
-from harnessed.plugins import Approvals, Service, Spill
+from harnessed.models import ModelChunk, ToolCall, ToolResult, ToolStatus
+from harnessed.plugins import Service, Spill
 from harnessed.plugins.filesystem import FileSystemBackend, FilesystemTools, LocalFileSystem
 from harnessed.plugins.shell import LocalShell, ShellBackend, ShellTools
 from harnessed.runtime.hooks import ReviewToolResult
@@ -65,8 +55,7 @@ async def test_two_megabyte_result_is_bounded_in_model_log_and_replay_by_default
 
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("cat"))], "done"])
     async with Application(
-        model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), features],
+        model=model, approvals=Approvals(default=Decision.ALLOW), plugins=[features]
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("inspect")
@@ -107,8 +96,9 @@ async def test_final_guard_also_limits_review_enrichment_and_tool_errors(stage):
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("large"))], "done"])
     async with Application(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), features],
-        loop=AgentLoop(max_tool_output=512),
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[features],
+        context=Context(max_tool_output_chars=512),
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("go")
@@ -135,8 +125,9 @@ async def test_output_budget_is_configured_on_the_loop():
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("large"))], "done"])
     harness = Application(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), features],
-        loop=AgentLoop(max_tool_output=512),
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[features],
+        context=Context(max_tool_output_chars=512),
     )
     async with harness.session() as agent:
         agent_audit = Audit(agent)
@@ -159,8 +150,9 @@ async def test_spill_retains_full_output_before_the_final_limit_is_applied(tmp_p
     spill = Spill(threshold_tokens=100)
     async with Application(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), features, spill],
-        loop=AgentLoop(max_tool_output=4096),
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[features, spill],
+        context=Context(max_tool_output_chars=4096),
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("go")
@@ -180,11 +172,8 @@ async def test_read_file_supports_bounded_unicode_character_ranges_and_continuat
     (tmp_path / "large.txt").write_text(original, encoding="utf-8")
     async with Application(
         model=ScriptedModel([]),
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            Service(FileSystemBackend, LocalFileSystem(tmp_path)),
-            FilesystemTools(),
-        ],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[Service(FileSystemBackend, LocalFileSystem(tmp_path)), FilesystemTools()],
     ).session() as agent:
         registry = agent.scope[ToolRegistry]
         result = await registry.execute(ToolCall("read_file", {"path": "large.txt"}))
@@ -228,12 +217,9 @@ async def test_large_shell_stdout_stderr_and_exit_code_remain_bounded(tmp_path):
     )
     async with Application(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            Service(ShellBackend, LocalShell()),
-            ShellTools(tmp_path),
-        ],
-        loop=AgentLoop(max_tool_output=1024),
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[Service(ShellBackend, LocalShell()), ShellTools(tmp_path)],
+        context=Context(max_tool_output_chars=1024),
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("go")

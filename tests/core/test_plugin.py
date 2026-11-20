@@ -4,18 +4,19 @@ from typing import Self
 import pytest
 from pydantic import Field, ValidationError
 
-from harnessed import Agent, ApprovalAnswer, Plugin, PluginConfig, PluginState, tool
+from harnessed import Agent, Approvals, Plugin, PluginConfig, tool
 from harnessed.kernel import (
     Emit,
     Inject,
     PluginFailed,
     PluginScope,
+    PluginState,
     Priority,
     Scope,
     as_plugin_spec,
     hook,
 )
-from harnessed.plugins import Approvals
+from harnessed.models import Decision
 from harnessed.testing import ScriptedModel, call
 
 
@@ -136,7 +137,7 @@ async def test_custom_instance_factory_preserves_bound_tool_references_and_isola
 
     def allow(request):
         approvals.append(request)
-        return ApprovalAnswer.ALLOW
+        return Decision.ALLOW
 
     model = ScriptedModel(
         [
@@ -148,7 +149,9 @@ async def test_custom_instance_factory_preserves_bound_tool_references_and_isola
             "third",
         ]
     )
-    agent = Agent(model=model, plugins=[recipe, Approvals(ask=[recipe.count], approver=allow)])
+    agent = Agent(
+        model=model, approvals=Approvals(ask=[recipe.count], approver=allow), plugins=[recipe]
+    )
     async with agent.session() as first, agent.session() as second:
         assert (await first.run("count")).tool_calls[0][1].text == "1"
         assert (await second.run("count")).tool_calls[0][1].text == "1"

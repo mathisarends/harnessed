@@ -1,8 +1,6 @@
+from harnessed.models import ToolArgumentsMode
 from harnessed.models.diagnostics import ModelAttemptOutcome, RetryKind, RetryReason
-from harnessed.models.model import (
-    ToolArgumentsMode,
-    UsagePurpose,
-)
+from harnessed.models.model import UsagePurpose
 
 from .approvals import (
     ApprovalNeededEvent,

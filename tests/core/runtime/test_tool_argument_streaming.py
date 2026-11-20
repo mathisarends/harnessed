@@ -3,7 +3,7 @@ import asyncio
 import pytest
 from pydantic import TypeAdapter
 
-from harnessed import Agent, Plugin, StopReason, ToolCall, events, tool
+from harnessed import Agent, Plugin, events, tool
 from harnessed.events import (
     AssistantMessageEvent,
     TextDeltaEvent,
@@ -13,7 +13,14 @@ from harnessed.events import (
 from harnessed.events.codec import encode_event
 from harnessed.events.deltas import coalesce_deltas
 from harnessed.events.stream import StreamEvent
-from harnessed.models import ModelChunk, ToolArgumentsMode, ToolCallDelta, ToolCallStart
+from harnessed.models import (
+    ModelChunk,
+    StopReason,
+    ToolArgumentsMode,
+    ToolCall,
+    ToolCallDelta,
+    ToolCallStart,
+)
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit
 

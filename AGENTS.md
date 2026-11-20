@@ -17,11 +17,11 @@ Single-dot relative imports within the same package remain allowed.
 
 ```python
 from harnessed.plugins.shell import LocalShell, ProcResult, ShellBackend
-from harnessed.kernel import Scope, Inject, plugin
+from harnessed.kernel import Scope, Inject, hook
 ```
 
 Plugin implementations and examples must use the public `harnessed.kernel` facade
-for kernel APIs, such as `Scope`, `Inject`, `plugin`, and `hook`. Do not import
+for kernel APIs, such as `Scope`, `Inject`, and `hook`. Do not import
 these through `harnessed.kernel.scope`, `.di`, or `.plugin`. Keep the facade's
 exports in `harnessed/kernel/__init__.py` stable when reorganizing kernel internals.
 The deliberate container rename to `Scope`/`ScopeClosed` is an accepted exception;

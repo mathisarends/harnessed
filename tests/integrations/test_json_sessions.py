@@ -70,7 +70,7 @@ import asyncio
 import sys
 from harnessed.errors import SessionWriteConflict
 from harnessed.integrations.json import JsonSessionStore
-from harnessed import SessionState
+from harnessed.sessions import SessionState
 from harnessed.events import SessionControlChangedEvent, ControlState
 from harnessed.sessions import SessionCheckpoint, SessionCommit
 

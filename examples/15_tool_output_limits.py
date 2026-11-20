@@ -4,19 +4,11 @@ import asyncio
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from harnessed import (
-    Agent,
-    AgentLoop,
-    Plugin,
-    PolicyDecision,
-    Role,
-    ToolResult,
-    ToolStatus,
-    tool,
-)
+from harnessed import Agent, Context, Plugin, tool
 from harnessed.events import ToolCallFinishedEvent
 from harnessed.kernel import Inject
-from harnessed.plugins import Approvals, Service
+from harnessed.models import Role, ToolResult, ToolStatus
+from harnessed.plugins import Service
 from harnessed.plugins.filesystem import FileSystemBackend, FilesystemTools, LocalFileSystem
 from harnessed.testing import ScriptedModel, call
 
@@ -50,13 +42,11 @@ async def main():
         agent = Agent(
             model=model,
             plugins=[
-                Approvals(default=PolicyDecision.ALLOW),
                 Service(FileSystemBackend, LocalFileSystem(directory)),
                 FilesystemTools(),
                 tools,
             ],
-            # The loop truncates every tool result before it enters the model context.
-            loop=AgentLoop(max_tool_output=MAX_TOOL_OUTPUT_CHARS),
+            context=Context(max_tool_output_chars=MAX_TOOL_OUTPUT_CHARS),
         )
         async with agent.session() as session:
             result = await session.run("Inspect the large log and read it in small ranges.")

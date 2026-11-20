@@ -18,13 +18,8 @@ from harnessed.events import (
     TurnStartedEvent,
 )
 from harnessed.events.codec import CURRENT_VERSION, decode_event
-from harnessed.models import ModelUsage, OutputSchema, StopReason
-from harnessed.models.messages import (
-    Message,
-    ToolCall,
-    ToolResult,
-    to_dict,
-)
+from harnessed.models import Message, ModelUsage, OutputSchema, StopReason, ToolCall, ToolResult
+from harnessed.models.messages import to_dict
 from harnessed.runtime.outputs import OutputTypes, OutputValues
 
 from .history import derive_messages

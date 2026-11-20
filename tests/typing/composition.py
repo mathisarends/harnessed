@@ -1,25 +1,23 @@
 from typing import assert_type
 
-from harnessed import Agent, AgentLoop, CompositionDescription, Plugin
-from harnessed.kernel import PluginLike, Scope, plugin
-from harnessed.runtime.composition import PluginDescription
+from harnessed import Agent, AgentLoop, Plugin
+from harnessed.runtime.composition import CompositionDescription, PluginDescription
 
 
 class OptionalFeature(Plugin):
     pass
 
 
-@plugin
-async def configured(scope: Scope):
-    yield
+class Configured(Plugin):
+    pass
 
 
 enabled = False
 agent = Agent(
-    plugins=[OptionalFeature(), configured, OptionalFeature() if enabled else None],
+    plugins=[OptionalFeature(), Configured()],
     loop=AgentLoop(max_steps=6),
 )
-assert_type(agent.plugins, tuple[PluginLike, ...])
+assert_type(agent.plugins, tuple[Plugin, ...])
 assert_type(agent.loop, AgentLoop)
 assert_type(agent.describe(), CompositionDescription)
 assert_type(agent.describe().plugins, tuple[PluginDescription, ...])

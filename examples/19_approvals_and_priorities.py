@@ -1,21 +1,25 @@
 """Run with: uv run python -m examples.19_approvals_and_priorities"""
 
 import asyncio
+from enum import StrEnum
 from time import perf_counter
 
-from harnessed import Agent, ApprovalAnswer, Plugin, PolicyDecision, ToolCall, ToolStatus, tool
+from harnessed import Agent, Approvals, Decision, Plugin, tool
 from harnessed.errors import ApprovalUnavailable
 from harnessed.events import ApprovalStatus, ToolCallFinishedEvent
 from harnessed.hooks import RequestApproval, ToolPolicy
 from harnessed.kernel import hook
-from harnessed.models import ModelChunk
-from harnessed.plugins import Approvals, ToolApprovalGuard
+from harnessed.models import ModelChunk, ToolCall, ToolStatus
 from harnessed.testing import ScriptedModel
+
+
+class DocumentAction(StrEnum):
+    PUBLISH = "publish"
 
 
 async def without_ui():
     class HeadlessTools(Plugin):
-        @tool
+        @tool(action=DocumentAction.PUBLISH)
         async def publish(self) -> str:
             raise AssertionError("Publishing requires approval")
 
@@ -24,11 +28,8 @@ async def without_ui():
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("publish"))], "Approval unavailable."])
     async with Agent(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            tools,
-            ToolApprovalGuard(risky=[HeadlessTools.publish]),
-        ],
+        approvals=Approvals(ask=[DocumentAction.PUBLISH]),
+        plugins=[tools],
     ).session() as session:
         result = await session.run("Publish the artifact.")
         returned = next(
@@ -43,7 +44,7 @@ async def listener_and_priorities():
     order = []
 
     class ApprovedTools(Plugin):
-        @tool
+        @tool(action=DocumentAction.PUBLISH)
         async def publish(self) -> str:
             order.append("execute")
             return "Artifact published by the offline example."
@@ -68,31 +69,25 @@ async def listener_and_priorities():
             start = perf_counter()
             await asyncio.sleep(0.025)
             print(f"Approval response time: {(perf_counter() - start) * 1000:.1f} ms")
-            return ApprovalAnswer.ALLOW
+            return Decision.ALLOW
 
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("publish"))], "Published."])
     agent = Agent(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            ApprovedTools(),
-            ToolApprovalGuard(risky=[ApprovedTools.publish], priority=-100),
-        ],
+        approvals=Approvals(ask=[DocumentAction.PUBLISH]),
+        plugins=[ApprovedTools()],
     )
 
     async with agent.session() as session:
         await session.run("Publish the artifact.")
-        assert order == ["approval", "timer", "policy", "execute"]
+        assert order == ["timer", "policy", "approval", "execute"]
         print("Order:", " -> ".join(order))
 
 
 async def response_timeout():
     stopped = asyncio.Event()
     async with Agent(
-        model=ScriptedModel([]),
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW, timeout=0.02),
-        ],
+        model=ScriptedModel([]), approvals=Approvals(timeout=0.02)
     ).session() as session:
 
         @session.on(RequestApproval)

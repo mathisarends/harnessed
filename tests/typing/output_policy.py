@@ -1,7 +1,8 @@
 from typing import assert_type
 
-from harnessed import Plugin, hook
+from harnessed import Plugin
 from harnessed.hooks import Next, OutputDecision, PrepareOutput
+from harnessed.kernel import hook
 from harnessed.models import ModelRequest, OutputSchema
 
 

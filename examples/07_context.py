@@ -6,19 +6,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Protocol, override
 
-from harnessed import (
-    Agent,
-    File,
-    Image,
-    Instructions,
-    Plugin,
-    SystemPrompt,
-    ToolCall,
-    tool,
-)
+from harnessed import Agent, File, Image, Plugin, SystemPrompt, tool
 from harnessed.hooks import PrepareRequest
-from harnessed.kernel import Inject, Scope, hook, plugin
-from harnessed.models import ModelChunk, UserMessage
+from harnessed.kernel import Inject, PluginScope, hook
+from harnessed.models import ModelChunk, ToolCall, UserMessage
+from harnessed.prompts import Instructions
 from harnessed.testing import ScriptedModel
 
 
@@ -32,10 +24,9 @@ class DemoMemory(Memory):
         return ["The project uses Python 3.12+.", "Focus on authentication tests."][:k]
 
 
-@plugin
-async def memory_backend(scope: Scope):
-    scope.provide(Memory, DemoMemory())
-    yield
+class MemoryBackend(Plugin):
+    async def setup(self, scope: PluginScope) -> None:
+        scope.provide(Memory, DemoMemory())
 
 
 class RelevantMemories(Plugin, needs=(Memory,)):
@@ -87,15 +78,15 @@ async def main():
         )
         harness = Agent(
             model=model,
-            prompt=SystemPrompt.from_plugins(
-                Instructions(text="You are a code reviewer."),
-                Instructions.from_file(path=root / "AGENTS.md"),
-            ),
             plugins=[
-                memory_backend(),
+                MemoryBackend(),
                 RelevantMemories(),
                 memory_tools,
             ],
+            instructions=SystemPrompt.from_plugins(
+                Instructions(text="You are a code reviewer."),
+                Instructions.from_file(path=root / "AGENTS.md"),
+            ),
         )
         async with harness.session() as agent:
             result = await agent.run(

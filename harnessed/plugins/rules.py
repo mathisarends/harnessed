@@ -15,8 +15,8 @@ from pydantic.dataclasses import dataclass
 from harnessed.events import DurableEvent
 from harnessed.events.base import Identifier
 from harnessed.kernel import Inject, Next, PluginScope, PluginState, hook, needs
-from harnessed.models import ModelRequest
-from harnessed.models.messages import ToolCall, ToolResult, UserMessage, to_dict, user
+from harnessed.models import ModelRequest, ToolCall, ToolResult, UserMessage, user
+from harnessed.models.messages import to_dict
 from harnessed.prompts.plugin_instructions import PluginInstructions
 from harnessed.runtime.hooks import PrepareRequest, ReviewToolResult
 from harnessed.runtime.inbox import SessionInbox

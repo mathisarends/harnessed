@@ -7,7 +7,8 @@ from collections.abc import Mapping
 from hashlib import sha256
 
 from harnessed.events import SubagentFinishedEvent, SubagentStartedEvent, SubagentStatus
-from harnessed.models.messages import ToolResult, ToolStatus, UserMessage, to_dict
+from harnessed.models import ToolResult, ToolStatus, UserMessage
+from harnessed.models.messages import to_dict
 from harnessed.sessions.children import ChildSession
 from harnessed.tools import ToolContext, ToolError
 

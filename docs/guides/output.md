@@ -1,7 +1,7 @@
 # Output limits and spill
 
 The loop caps final textual tool output at 32,000 characters; configure it with
-`Agent(loop=AgentLoop(max_tool_output=...))`.
+`Agent(context=Context(max_tool_output_chars=...))`.
 It keeps a head and tail, records truncation metadata, and tells the model to use
 ranges or filter its command. It runs after result-review hooks so even a policy
 that expands text cannot bypass the final limit. Images and structured status
@@ -16,14 +16,14 @@ captured when the tool batch is planned. Review hooks receive the setting on the
 ## Keep large results retrievable
 
 ```python
-from harnessed import Agent, AgentLoop
+from harnessed import Agent, Context
 from harnessed.plugins import Spill
 
 spill = Spill(threshold_tokens=8_000, preview_tokens=256, max_files=128, max_bytes=32 * 1024 * 1024)
 agent = Agent(
     model="deepseek:deepseek-chat",
     plugins=[spill],
-    loop=AgentLoop(max_tool_output=16_000),
+    context=Context(max_tool_output_chars=16_000),
 )
 ```
 

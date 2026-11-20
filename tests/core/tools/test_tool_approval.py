@@ -2,12 +2,11 @@ import asyncio
 
 import pytest
 
-from harnessed import Agent, AgentLoop, Plugin, PolicyDecision, ToolCall, ToolContext, events, tool
+from harnessed import Agent, AgentLoop, Approvals, Decision, Plugin, ToolContext, events, tool
 from harnessed.events import ApprovalRequestedEvent, ApprovalStatus
 from harnessed.kernel import Inject
-from harnessed.models import ModelChunk
-from harnessed.models.messages import ApprovalAnswer, ToolStatus
-from harnessed.plugins import Approvals
+from harnessed.models import ModelChunk, ToolCall, ToolStatus
+from harnessed.models.messages import ApprovalResponse
 from harnessed.runtime.approval_policy import ApprovalState
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit
@@ -34,10 +33,10 @@ def _calls(count: int) -> list:
 
 async def test_a_tool_asks_the_configured_approver_mid_call():
     tools = Cleanup()
-    answers = iter([ApprovalAnswer.DENY, ApprovalAnswer.ALWAYS])
-    approvals = Approvals(default=PolicyDecision.ALLOW, approver=lambda request: next(answers))
+    answers = iter([Decision.DENY, ApprovalResponse(Decision.ALLOW, remember=True)])
+    approvals = Approvals(default=Decision.ALLOW, approver=lambda request: next(answers))
     model = ScriptedModel(_calls(3))
-    async with Agent(model=model, plugins=[tools, approvals]).session() as session:
+    async with Agent(model=model, approvals=approvals, plugins=[tools]).session() as session:
         session_audit = Audit(session)
         result = await session.run("clean up")
         assert [r.text for _, r in result.tool_calls] == ["kept the files", "deleted", "deleted"]
@@ -52,13 +51,14 @@ async def test_a_tool_asks_the_configured_approver_mid_call():
 async def test_a_stream_consumer_answers_a_tool_approval():
     tools = Cleanup()
     model = ScriptedModel(_calls(1))
-    plugins = [tools, Approvals(default=PolicyDecision.ALLOW)]
-    async with Agent(model=model, plugins=plugins).session() as session:
+    async with Agent(
+        model=model, plugins=[tools], approvals=Approvals(default=Decision.ALLOW)
+    ).session() as session:
         async with session.stream("clean up") as run_stream:
             async for event in run_stream:
                 if isinstance(event, events.ApprovalNeededEvent):
                     assert event.reason == "Delete 3 generated files?"
-                    await session.approvals.answer(event.request_id, ApprovalAnswer.ALLOW)
+                    await session.approvals.allow(event.request_id)
         assert tools.deleted == []
         active = session.scope[Cleanup]
         assert active.deleted == ["c0"]
@@ -77,19 +77,17 @@ async def test_approval_waits_do_not_consume_tool_execution_time(transport):
 
     async def respond(request):
         await asyncio.sleep(0.08)
-        return ApprovalAnswer.ALLOW
+        return Decision.ALLOW
 
     async with Agent(
         model=ScriptedModel([[ModelChunk(tool_call=ToolCall("work"))], "done"]),
-        plugins=[
-            Work(),
-            Approvals(
-                default=PolicyDecision.ALLOW,
-                approver=respond if transport == "callback" else None,
-                timeout=1,
-            ),
-        ],
         loop=AgentLoop(tool_timeout=0.04),
+        approvals=Approvals(
+            default=Decision.ALLOW,
+            approver=respond if transport == "callback" else None,
+            timeout=1,
+        ),
+        plugins=[Work()],
     ).session() as session:
         audit = Audit(session)
         async with asyncio.timeout(3):
@@ -100,7 +98,7 @@ async def test_approval_waits_do_not_consume_tool_execution_time(transport):
                     async for event in stream:
                         if isinstance(event, events.ApprovalNeededEvent):
                             await asyncio.sleep(0.08)
-                            await session.approvals.answer(event.request_id, ApprovalAnswer.ALLOW)
+                            await session.approvals.allow(event.request_id)
                     result = await stream.result()
         assert effects == ["work"]
         assert result.tool_calls[0][1].status is ToolStatus.OK
@@ -125,7 +123,7 @@ async def test_approval_resumes_the_remaining_execution_budget_without_resetting
 
     async def respond(request):
         await clock.advance(20)
-        return ApprovalAnswer.ALLOW
+        return Decision.ALLOW
 
     with monkeypatch.context() as patch:
         patch.setattr(  # smelt: ignore[SMT426] -- Forward offsets retain real-time progress.
@@ -133,7 +131,8 @@ async def test_approval_resumes_the_remaining_execution_budget_without_resetting
         )
         async with Agent(
             model=ScriptedModel([[ModelChunk(tool_call=ToolCall("work"))], "done"]),
-            plugins=[Work(), Approvals(default=PolicyDecision.ALLOW, approver=respond)],
+            approvals=Approvals(default=Decision.ALLOW, approver=respond),
+            plugins=[Work()],
         ).session() as session:
             audit = Audit(session)
             # The clock advances 31 seconds; real time still bounds unexpected waits.
@@ -142,7 +141,7 @@ async def test_approval_resumes_the_remaining_execution_budget_without_resetting
             assert effects == []
             assert result.tool_calls[0][1].status is ToolStatus.TIMEOUT
             assert [record.decision for record in ApprovalState(audit.events).records] == [
-                ApprovalAnswer.ALLOW
+                Decision.ALLOW
             ]
 
 
@@ -165,7 +164,8 @@ async def test_run_cancellation_still_interrupts_a_suspended_tool_budget():
 
     async with Agent(
         model=ScriptedModel([[ModelChunk(tool_call=ToolCall("work"))]]),
-        plugins=[Work(), Approvals(default=PolicyDecision.ALLOW, approver=respond)],
+        approvals=Approvals(default=Decision.ALLOW, approver=respond),
+        plugins=[Work()],
     ).session() as session:
         audit = Audit(session)
         async with asyncio.timeout(3):
@@ -194,7 +194,7 @@ async def test_a_parallel_approval_wait_does_not_suspend_other_tools():
 
     async def respond(request):
         await asyncio.sleep(0.08)
-        return ApprovalAnswer.ALLOW
+        return Decision.ALLOW
 
     async with Agent(
         model=ScriptedModel(
@@ -206,8 +206,9 @@ async def test_a_parallel_approval_wait_does_not_suspend_other_tools():
                 "done",
             ]
         ),
-        plugins=[Work(), Approvals(default=PolicyDecision.ALLOW, approver=respond)],
         loop=AgentLoop(tool_timeout=0.04),
+        approvals=Approvals(default=Decision.ALLOW, approver=respond),
+        plugins=[Work()],
     ).session() as session:
         async with asyncio.timeout(3):
             result = await session.run("work")
@@ -228,19 +229,20 @@ async def test_nested_approval_waits_preserve_the_suspended_execution_budget():
         if request.reason == "outer":
             await session.approvals.request(request.call, "inner", scope="nested")
         await asyncio.sleep(0.08)
-        return ApprovalAnswer.ALLOW
+        return Decision.ALLOW
 
     async with Agent(
         model=ScriptedModel([[ModelChunk(tool_call=ToolCall("work"))], "done"]),
-        plugins=[Work(), Approvals(default=PolicyDecision.ALLOW, approver=respond)],
+        approvals=Approvals(default=Decision.ALLOW, approver=respond),
+        plugins=[Work()],
     ).session() as session:
         audit = Audit(session)
         async with asyncio.timeout(3):
             result = await session.run("work")
         assert result.tool_calls[0][1].status is ToolStatus.OK
         assert [record.decision for record in ApprovalState(audit.events).records] == [
-            ApprovalAnswer.ALLOW,
-            ApprovalAnswer.ALLOW,
+            Decision.ALLOW,
+            Decision.ALLOW,
         ]
 
 
@@ -266,7 +268,8 @@ async def test_background_approval_cannot_suspend_its_parent_tasks_execution():
 
     async with Agent(
         model=ScriptedModel([[ModelChunk(tool_call=ToolCall("work"))], "done"]),
-        plugins=[Work(), Approvals(default=PolicyDecision.ALLOW, approver=respond)],
+        approvals=Approvals(default=Decision.ALLOW, approver=respond),
+        plugins=[Work()],
     ).session() as session:
         async with asyncio.timeout(3):
             result = await session.run("work")

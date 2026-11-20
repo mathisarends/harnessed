@@ -11,7 +11,8 @@ tool, approval and persistence pipelines and requires no additional dependency.
 
 ```python
 from harnessed import Agent
-from harnessed.plugins import Approvals, Subagents
+from harnessed import Approvals
+from harnessed.plugins import SubagentAction, Subagents
 
 reviewer = Agent(
     model="openai:gpt-4.1-mini",
@@ -21,8 +22,8 @@ coordinator = Agent(
     model="openai:gpt-4.1",
     plugins=[
         Subagents({"review": reviewer}, max_parallel=2, max_steps=8),
-        Approvals(allow=[Subagents.delegate]),
     ],
+    approvals=Approvals(allow=[SubagentAction.DELEGATE]),
 )
 
 # Inside an async function:
@@ -162,10 +163,10 @@ delegation; the child's own tool policies still run. Every child approval reques
 including explicit tool-local approvers, is routed through the parent responder.
 During an owning parent turn, `session.stream()` delivers `ApprovalNeededEvent`, with the specialist
 and child ID in the reason. Answer it through the parent session's
-`session.approvals.answer(request_id, decision)`.
+`session.approvals.allow(request_id)` or `session.approvals.deny(request_id)`.
 
 `SubagentApprovalRequestedEvent` links the forwarded call ID to the original child
-request ID. Both logs retain their own approval records. Reusable `ALWAYS` grants
+request ID. Both logs retain their own approval records. Remembered grants
 remain at the parent, scoped to the child session, original tool and original
 scope. They do not authorize siblings; revoking the parent grant takes effect on
 the child's next request. Child-local callbacks do not bypass this route. Without

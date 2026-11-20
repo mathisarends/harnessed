@@ -4,7 +4,17 @@ from contextlib import asynccontextmanager
 import pytest
 from pydantic import BaseModel, TypeAdapter
 
-from harnessed import Agent, AgentLoop, Plugin, PolicyDecision, Session, ToolCall, tool
+from harnessed import (
+    Agent,
+    AgentLoop,
+    Approvals,
+    Compaction,
+    Context,
+    Decision,
+    Plugin,
+    Session,
+    tool,
+)
 from harnessed.errors import ContextLengthExceeded, OutputValidationError, RateLimited
 from harnessed.events import (
     ModelAttemptFinishedEvent,
@@ -24,9 +34,9 @@ from harnessed.models import (
     ModelAttemptStarted,
     ModelChunk,
     ModelRetryScheduled,
+    ToolCall,
     report_model_diagnostic,
 )
-from harnessed.plugins import Approvals, Compaction
 from harnessed.testing import CallbackModel, ExtractiveSummarizer, ScriptedModel
 from tests._audit import Audit
 
@@ -238,14 +248,14 @@ async def test_context_recovery_links_new_requests_without_counting_normal_steps
 
     async with Agent(
         model=CallbackModel(chunks),
-        plugins=[
-            Compaction(
+        context=Context(
+            compaction=Compaction(
                 trigger=lambda state: False,
                 summarizer=ExtractiveSummarizer(),
                 keep_last_steps=1,
                 max_summary_tokens=16,
             )
-        ],
+        ),
     ).session() as session:
         session_audit = Audit(session)
         await session.run("x" * 4000)
@@ -279,8 +289,9 @@ async def test_tool_steps_do_not_count_as_retries_and_new_groups_use_the_remaini
     ]
     async with Agent(
         model=ScriptedModel([[ModelChunk(tool_call=call)] for call in calls]),
-        plugins=[Tools(), Approvals(default=PolicyDecision.ALLOW)],
         loop=AgentLoop(output_retries=2),
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[Tools()],
     ).session() as session:
         session_audit = Audit(session)
         async with session.stream("work", output=Answer) as run_stream:

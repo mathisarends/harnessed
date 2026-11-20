@@ -1,15 +1,9 @@
 import pytest
 
-from harnessed import (
-    Agent,
-    Instructions,
-    Plugin,
-    Session,
-    SystemPrompt,
-    plugin,
-)
-from harnessed.kernel import PluginScope, Scope, needs
+from harnessed import Agent, Plugin, Session, SystemPrompt
+from harnessed.kernel import PluginScope, needs
 from harnessed.plugins import Filesystem, Shell
+from harnessed.prompts import Instructions
 from harnessed.sessions import SessionContext
 from harnessed.testing import ScriptedModel
 
@@ -22,8 +16,8 @@ async def test_explicit_project_composition_adds_only_the_requested_tools(tmp_pa
     commands = [Shell(tmp_path)] if shell else []
     app = Agent(
         model=model,
-        prompt=SystemPrompt.from_plugins(Instructions.from_file(path=tmp_path / "AGENTS.md")),
         plugins=[filesystem, *commands],
+        instructions=SystemPrompt.from_plugins(Instructions.from_file(path=tmp_path / "AGENTS.md")),
     )
     async with app.session() as session:
         await session.run("inspect")
@@ -44,12 +38,11 @@ async def test_session_installs_waiting_plugins_and_disposes_the_driver_once(mon
 
     monkeypatch.setattr(Session, "aclose", close)
 
-    @plugin(needs=[SessionContext])
-    async def observer(scope: Scope):
-        starts.append(scope[SessionContext])
-        yield
+    class Observer(Plugin, needs=[SessionContext]):
+        async def setup(self, scope: PluginScope) -> None:
+            starts.append(scope[SessionContext])
 
-    app = Agent(model=ScriptedModel(["ready"]), plugins=[observer()])
+    app = Agent(model=ScriptedModel(["ready"]), plugins=[Observer()])
     async with app.session() as session:
         assert [context.log for context in starts] == [session.log]
         assert (await session.run("hello")).text == "ready"

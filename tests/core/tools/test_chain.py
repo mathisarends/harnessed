@@ -3,7 +3,7 @@ from dataclasses import replace
 
 import pytest
 
-from harnessed import Agent, AgentLoop, Plugin, ToolCall, ToolChain, ToolResult, ToolStatus, tool
+from harnessed import Agent, AgentLoop, Plugin, tool
 from harnessed.events import (
     ToolCallFinishedEvent,
     ToolExecutionFinishedEvent,
@@ -11,9 +11,9 @@ from harnessed.events import (
 from harnessed.events.codec import decode_event, encode_event
 from harnessed.hooks import ReviewToolResult, ToolPolicy
 from harnessed.kernel import hook
-from harnessed.models import ModelChunk
-from harnessed.models.messages import PolicyDecision
+from harnessed.models import Decision, ModelChunk, ToolCall, ToolResult, ToolStatus
 from harnessed.testing import ScriptedModel
+from harnessed.tools import ToolChain
 
 
 @pytest.mark.parametrize("failure", [False, True])
@@ -149,7 +149,7 @@ async def test_denied_boundary_does_not_break_a_chain_before_execution():
 
         @hook(ToolPolicy)
         async def policy(self, event, next_):
-            return PolicyDecision.DENY if event.call.name == "switch" else await next_()
+            return Decision.DENY if event.call.name == "switch" else await next_()
 
     model = ScriptedModel(
         [[ModelChunk(tool_call=ToolCall("switch")), ModelChunk(tool_call=ToolCall("read"))], "done"]

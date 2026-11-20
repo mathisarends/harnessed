@@ -4,11 +4,8 @@ import sys
 import pytest
 from pydantic import ValidationError
 
-from harnessed import (
-    Agent,
-    AgentLoop,
-    ToolCall,
-)
+from harnessed import Agent, AgentLoop
+from harnessed.models import ToolCall
 from harnessed.plugins.shell import LocalShell, ProcResult, Shell, ShellBackend, ShellTools
 from harnessed.testing import ScriptedModel
 from harnessed.tools import ToolRegistry
@@ -156,8 +153,7 @@ async def test_shell_schema_and_validation_use_each_mounts_timeout_limit(tmp_pat
         schema = definition.parameters["properties"]["timeout"]
         assert schema["anyOf"][0]["maximum"] == maximum
         assert schema["default"] is None
-        reference = registry.reference(shell.run_command, owner=session.scope)
-        assert registry.matches(reference, "run_command")
+        assert session.tools.explain("run_command").name == "run_command"
         accepted = await registry.execute(
             ToolCall("run_command", {"argv": ["test"], "timeout": maximum})
         )

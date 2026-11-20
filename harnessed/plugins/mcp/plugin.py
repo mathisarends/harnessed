@@ -4,6 +4,7 @@ import re
 import warnings
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
+from enum import StrEnum
 from hashlib import sha256
 from pathlib import Path
 from typing import Annotated, NoReturn, Self
@@ -25,15 +26,15 @@ from referencing import Registry
 from referencing.exceptions import NoSuchResource
 
 from harnessed.kernel import PluginScope, RegistrationState
-from harnessed.models import ToolDefinition
-from harnessed.models.messages import (
+from harnessed.models import (
     ContentPart,
     ImagePart,
     TextPart,
+    ToolDefinition,
     ToolResult,
     ToolStatus,
-    to_dict,
 )
+from harnessed.models.messages import to_dict
 from harnessed.runtime.plugin import Plugin, PluginConfig
 from harnessed.tools import (
     ToolAnnotations,
@@ -75,6 +76,7 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
         transport: MCPTransport,
         include_tools: Iterable[str] | None = None,
         readonly_tools: Iterable[str] = (),
+        actions: Mapping[str, StrEnum] | None = None,
         startup_timeout: float = 10.0,
         call_timeout: float = 60.0,
         parallel: bool = False,
@@ -92,6 +94,7 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
             ),
         )
         ToolSpec(enabled=enabled)
+        self.actions = dict(actions) if actions is not None else {}
         self.transport = transport
         self.enabled = enabled
 
@@ -106,6 +109,7 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
         cwd: str | Path | None = None,
         include_tools: Iterable[str] | None = None,
         readonly_tools: Iterable[str] = (),
+        actions: Mapping[str, StrEnum] | None = None,
         startup_timeout: float = 10.0,
         call_timeout: float = 60.0,
         parallel: bool = False,
@@ -122,6 +126,7 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
         )
         return cls(
             name,
+            actions=actions,
             transport=transport,
             include_tools=include_tools,
             readonly_tools=readonly_tools,
@@ -141,6 +146,7 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
         auth: httpx2.Auth | str | None = None,
         include_tools: Iterable[str] | None = None,
         readonly_tools: Iterable[str] = (),
+        actions: Mapping[str, StrEnum] | None = None,
         startup_timeout: float = 10.0,
         call_timeout: float = 60.0,
         parallel: bool = False,
@@ -152,6 +158,7 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
             raise ValueError("MCP HTTP URL must have an http(s) scheme and host")
         return cls(
             name,
+            actions=actions,
             transport=HTTP(url, dict(headers if headers is not None else {}), auth),
             include_tools=include_tools,
             readonly_tools=readonly_tools,
@@ -187,7 +194,7 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
                     raise ValueError("MCP tools/list repeated a pagination cursor")
                 seen_cursors.add(cursor)
         selected = self.config.include_tools
-        requested = set(selected or ()) | set(self.config.readonly_tools)
+        requested = set(selected or ()) | set(self.config.readonly_tools) | self.actions.keys()
         if missing := requested - catalog.keys():
             raise ValueError(f"MCP server omitted configured tools: {sorted(missing)}")
         registry = scope[ToolRegistry]
@@ -213,6 +220,7 @@ class MCP(Plugin[MCPConfig], needs=(ToolRegistry,)):
                     timeout_seconds=self.config.call_timeout,
                     parallel=self.config.parallel,
                     readonly=name in self.config.readonly_tools,
+                    action=self.actions.get(name),
                     enabled=lambda: connection.active and self._check_enabled(scope),
                     presentation=_presentation(tool),
                 ),

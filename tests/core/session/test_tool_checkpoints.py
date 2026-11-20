@@ -9,7 +9,7 @@ from harnessed.events import (
     UserMessageEvent,
 )
 from harnessed.kernel import Scope
-from harnessed.models.messages import ToolCall, ToolResult, UserMessage
+from harnessed.models import ToolCall, ToolResult, UserMessage
 from harnessed.sessions.log import SessionLog
 
 

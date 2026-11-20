@@ -4,15 +4,10 @@ import sys
 
 import pytest
 
-from harnessed import (
-    Agent,
-    PolicyDecision,
-    ToolCall,
-)
+from harnessed import Agent, Approvals, Decision
 from harnessed.events import InboxAddedEvent
-from harnessed.models import ModelChunk
-from harnessed.models.messages import ToolStatus
-from harnessed.plugins import Approvals, BackgroundShell, Service, Shell
+from harnessed.models import ModelChunk, ToolCall, ToolStatus
+from harnessed.plugins import BackgroundShell, Service, Shell
 from harnessed.plugins.shell import LocalShell, ProcessState, ProcResult, ShellBackend
 from harnessed.testing import CallbackModel, ScriptedModel
 from harnessed.tools import ToolRegistry
@@ -191,11 +186,8 @@ async def test_completion_arrives_in_next_step_while_agent_keeps_working(tmp_pat
 
     app = Agent(
         model=CallbackModel(respond),
-        plugins=[
-            Shell(tmp_path),
-            BackgroundShell(tmp_path),
-            Approvals(default=PolicyDecision.ALLOW),
-        ],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[Shell(tmp_path), BackgroundShell(tmp_path)],
     )
     async with app.session() as session:
         await asyncio.wait_for(session.run("Run a command and continue"), 10)

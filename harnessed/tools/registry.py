@@ -3,9 +3,11 @@ import inspect
 import logging
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
+from enum import StrEnum
 from functools import partial
 from types import MethodType
 from typing import Annotated, Any, NamedTuple, overload
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel, TypeAdapter, ValidationError
 from pydantic.fields import FieldInfo
@@ -22,8 +24,7 @@ from harnessed.kernel import (
     binding_plan,
     run_sync,
 )
-from harnessed.models import ToolDefinition
-from harnessed.models.messages import ToolCall, ToolResult, ToolStatus
+from harnessed.models import ToolCall, ToolDefinition, ToolResult, ToolStatus
 
 from .arguments import ToolArguments, tool_result_content
 from .availability import ToolAvailability, ToolExplanation
@@ -52,7 +53,7 @@ from .info import (
 )
 from .parameters import DisabledToolParameterError
 from .policy import OutputLimit, OutputLimitSetting, validate_output_limit
-from .references import ToolReference, ToolSelector, tool_selector
+from .references import ToolReference
 from .scheduling import (
     PreparedToolCall,
     ResourceSpec,
@@ -90,7 +91,7 @@ class ToolSpec:
     parallel: bool = False
     resources: ResourceSpec = ()
     readonly: bool = False
-    confirm: bool = False
+    action: StrEnum | None = None
     override: bool = False
     output_limit: OutputLimitSetting = OutputLimit.INHERIT
     parameter_fields: ParameterFields | None = None
@@ -101,10 +102,8 @@ class ToolSpec:
     envelope: tuple[type[BaseModel], ...] = ()
 
     def __post_init__(self) -> None:
-        if type(self.confirm) is not bool:
-            raise TypeError("confirm must be a bool")
-        if self.readonly and self.confirm:
-            raise TypeError("readonly=True cannot be combined with confirm=True")
+        if self.action is not None and not isinstance(self.action, StrEnum):
+            raise TypeError("action must be a StrEnum member")
         if not isinstance(self.presentation, ToolPresentation):
             raise TypeError("Tool presentation must be a ToolPresentation")
         object.__setattr__(self, "metadata", ToolMetadata(self.metadata).values)
@@ -186,7 +185,15 @@ class _RegisteredTool:
     timeout_seconds: float | None
     enabled: BoundToolEnabled
     declared: EnvelopeLayout = field(kw_only=True)
+    grant_key: str = field(default_factory=lambda: uuid4().hex, init=False)
     cached: _CachedLayout | None = field(default=None, kw_only=True)
+
+    @property
+    def approval_identity(self) -> str:
+        action = self.spec.action
+        if action is None:
+            return self.grant_key
+        return f"{type(action).__module__}:{type(action).__qualname__}:{action.value}"
 
 
 @dataclass(eq=False)
@@ -228,18 +235,12 @@ class ToolRegistry:
         self._references: list[ToolReference] = []
         self._envelopes: list[_RegistryEnvelope] = []
 
-    def reference(
-        self, selector: ToolSelector, *, owner: Scope | PluginScope
-    ) -> str | ToolReference:
-        selected = tool_selector(selector)
-        if isinstance(selected, ToolReference):
+    def reference(self, selected: ToolReference, *, owner: Scope | PluginScope) -> None:
+        def install(_registration: RegistrationState):
+            self._references.append(selected)
+            return lambda: self._references.remove(selected)
 
-            def install(_registration: RegistrationState):
-                self._references.append(selected)
-                return lambda: self._references.remove(selected)
-
-            owner.register(install)
-        return selected
+        owner.register(install)
 
     def validate_references(self) -> None:
         for reference in self._references:
@@ -249,12 +250,6 @@ class ToolRegistry:
                 if (tool := self._visible(entries)) is not None
             ):
                 raise ValueError(f"Referenced tool {reference.name!r} is not registered")
-
-    def matches(self, selector: str | ToolReference, name: str) -> bool:
-        if isinstance(selector, str):
-            return selector == name
-        tool = self._visible(self._tools.get(name, []))
-        return tool is not None and selector.matches(tool.callback)
 
     def result_converter[T](
         self,
@@ -356,7 +351,7 @@ class ToolRegistry:
         parallel: bool = False,
         resources: ResourceSpec = (),
         readonly: bool = False,
-        confirm: bool = False,
+        action: StrEnum | None = None,
         output_limit: OutputLimitSetting = OutputLimit.INHERIT,
         override: bool = False,
         owner: Scope | PluginScope | None = None,
@@ -379,7 +374,7 @@ class ToolRegistry:
         parallel: bool = False,
         resources: ResourceSpec = (),
         readonly: bool = False,
-        confirm: bool = False,
+        action: StrEnum | None = None,
         output_limit: OutputLimitSetting = OutputLimit.INHERIT,
         override: bool = False,
         owner: Scope | PluginScope | None = None,
@@ -399,7 +394,7 @@ class ToolRegistry:
                 parallel=parallel,
                 resources=resources,
                 readonly=readonly,
-                confirm=confirm,
+                action=action,
                 output_limit=output_limit,
                 override=override,
                 owner=owner,
@@ -424,7 +419,7 @@ class ToolRegistry:
         parallel: bool = False,
         resources: ResourceSpec = (),
         readonly: bool = False,
-        confirm: bool = False,
+        action: StrEnum | None = None,
         output_limit: OutputLimitSetting = OutputLimit.INHERIT,
         override: bool = False,
         owner: Scope | PluginScope | None = None,
@@ -444,7 +439,7 @@ class ToolRegistry:
             parallel=parallel,
             resources=resources,
             readonly=readonly,
-            confirm=confirm,
+            action=action,
             override=override,
             output_limit=output_limit,
             params=params,
@@ -665,6 +660,8 @@ class ToolRegistry:
             binding=_Binding(tool, layout),
             output_limit=tool.spec.output_limit,
             tool=_tool_info(tool.spec, layout),
+            callback=tool.callback,
+            grant_key=tool.approval_identity,
             envelope=envelope,
         )
 
@@ -791,7 +788,7 @@ def _tool_info(spec: ToolSpec, layout: EnvelopeLayout) -> ToolInfo:
         spec.parallel,
         spec.chain,
         spec.presentation,
-        confirm=spec.confirm,
+        action=spec.action,
         envelope=tuple(binding.model for binding in layout.bindings),
     )
 

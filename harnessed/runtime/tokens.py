@@ -4,15 +4,15 @@ import math
 from collections.abc import Awaitable, Iterable
 from typing import Protocol
 
-from harnessed.models import ModelRequest, OutputMode
-from harnessed.models.messages import (
+from harnessed.models import (
     ContentPart,
     ImagePart,
     ImageReference,
     Message,
-    content_text,
-    to_dict,
+    ModelRequest,
+    OutputMode,
 )
+from harnessed.models.messages import content_text, to_dict
 
 
 class TokenCounter(Protocol):

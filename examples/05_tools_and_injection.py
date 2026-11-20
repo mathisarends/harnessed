@@ -3,13 +3,10 @@
 import asyncio
 
 from examples.features.workspace import FailureNudge, WorkspaceTools
-from harnessed import (
-    Agent,
-    ApprovalAnswer,
-    PolicyDecision,
-)
+from harnessed import Agent, Approvals, Decision
 from harnessed.events import ToolCallFinishedEvent, ToolProgressEvent
-from harnessed.plugins import Approvals, Filesystem
+from harnessed.models.messages import ApprovalResponse
+from harnessed.plugins import Filesystem
 from harnessed.testing import ScriptedModel, call
 
 
@@ -17,7 +14,7 @@ async def main():
 
     async def approve(request):
         print(f"Approval: allow {request.call.name} for the rest of this session")
-        return ApprovalAnswer.ALWAYS
+        return ApprovalResponse(Decision.ALLOW, remember=True)
 
     model = ScriptedModel(
         [
@@ -29,16 +26,12 @@ async def main():
     filesystem = Filesystem(root=".")
     agent = Agent(
         model=model,
-        plugins=[
-            filesystem,
-            WorkspaceTools(),
-            FailureNudge(threshold=2),
-            Approvals(
-                default=PolicyDecision.ALLOW,
-                ask=[WorkspaceTools.count_lines],
-                approver=approve,
-            ),
-        ],
+        approvals=Approvals(
+            default=Decision.ALLOW,
+            ask=[WorkspaceTools.count_lines],
+            approver=approve,
+        ),
+        plugins=[filesystem, WorkspaceTools(), FailureNudge(threshold=2)],
     )
     async with agent.session() as session:
         async with session.stream("Count the lines in the example file.") as run_stream:

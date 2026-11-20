@@ -4,7 +4,7 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
 import pytest
 
-from harnessed import Agent, Plugin, SessionStatus, ToolCall, tool
+from harnessed import Agent, Plugin, tool
 from harnessed.events import (
     AssistantMessageEvent,
     ModelAttemptFinishedEvent,
@@ -30,8 +30,10 @@ from harnessed.models import (
     ModelRequest,
     ModelStream,
     ModelUsage,
+    ToolCall,
     UserMessage,
 )
+from harnessed.runtime.control import SessionStatus
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit
 from tests._images import inline

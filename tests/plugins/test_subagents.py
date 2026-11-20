@@ -4,17 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from harnessed import (
-    Agent,
-    AgentLoop,
-    ApprovalAnswer,
-    Plugin,
-    PolicyDecision,
-    SessionState,
-    ToolCall,
-    ToolContext,
-    tool,
-)
+from harnessed import Agent, AgentLoop, Approvals, Decision, Plugin, ToolContext, tool
 from harnessed.errors import SessionWriteConflict
 from harnessed.events import (
     ApprovalNeededEvent,
@@ -30,10 +20,9 @@ from harnessed.events import (
 from harnessed.events.codec import decode_event, encode_event
 from harnessed.integrations.json import JsonSessionStore
 from harnessed.kernel import Inject, PluginScope
-from harnessed.models import ModelChunk, ModelUsage, UserMessage
-from harnessed.models.messages import ToolStatus
-from harnessed.plugins import Approvals, Subagents
-from harnessed.sessions import SessionCommit, StoredSession
+from harnessed.models import ModelChunk, ModelUsage, ToolCall, ToolStatus, UserMessage
+from harnessed.plugins import Subagents
+from harnessed.sessions import SessionCommit, SessionState, StoredSession
 from harnessed.sessions.log import SessionLog
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit, AuditProjection
@@ -73,7 +62,8 @@ def coordinator(child, calls=None, **limits):
     return Agent(
         model=model,
         instructions="Private parent instructions",
-        plugins=[Subagents({"review": child}, **limits), Approvals(default=PolicyDecision.ALLOW)],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[Subagents({"review": child}, **limits)],
     )
 
 
@@ -145,10 +135,10 @@ async def test_parent_stream_exposes_child_lifecycle_and_routes_approvals():
 
     child = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=ToolCall("write"))], "Done"]),
-        plugins=[
-            Write(),
-            Approvals(approver=lambda request: child_callbacks.append(request) or True),
-        ],
+        approvals=Approvals(
+            default=Decision.ASK, approver=lambda request: child_callbacks.append(request) or True
+        ),
+        plugins=[Write()],
     )
     parent = coordinator(child)
     events = []
@@ -159,7 +149,7 @@ async def test_parent_stream_exposes_child_lifecycle_and_routes_approvals():
                 if isinstance(event, ApprovalNeededEvent):
                     assert "Subagent review" in event.reason
                     assert event.call.name == "write"
-                    await session.approvals.answer(event.request_id, ApprovalAnswer.ALLOW)
+                    await session.approvals.allow(event.request_id)
         assert effects == ["written"]
         assert child_callbacks == []
         requests = [event for event in events if isinstance(event, ApprovalNeededEvent)]
@@ -197,14 +187,13 @@ async def test_forwarded_approvals_obey_both_child_and_parent_response_deadlines
 
     child = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=ToolCall("write"))], "done"]),
-        plugins=[Write(), Approvals(timeout=child_timeout)],
+        approvals=Approvals(ask=[Write.write], timeout=child_timeout),
+        plugins=[Write()],
     )
     parent = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=delegate())], "done"]),
-        plugins=[
-            Subagents({"review": child}),
-            Approvals(default=PolicyDecision.ALLOW, approver=respond, timeout=parent_timeout),
-        ],
+        approvals=Approvals(default=Decision.ALLOW, approver=respond, timeout=parent_timeout),
+        plugins=[Subagents({"review": child})],
     )
     async with parent.session() as session:
         audit = Audit(session)
@@ -227,7 +216,8 @@ async def test_unanswered_child_approval_does_not_execute_tool():
 
     child = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=ToolCall("write"))], "Denied"]),
-        plugins=[Write(), Approvals()],
+        approvals=Approvals(default=Decision.ASK),
+        plugins=[Write()],
     )
     parent = coordinator(child)
     await parent.run("Delegate")
@@ -286,7 +276,7 @@ async def test_dynamic_unmount_drains_active_child():
     child = Agent(model=CallbackModel(blocked))
     parent = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=delegate())], "Done"]),
-        plugins=[Approvals(default=PolicyDecision.ALLOW)],
+        approvals=Approvals(default=Decision.ALLOW),
     )
     async with parent.session() as session:
         mount = await session.mount(Subagents({"review": child}), section_delivery="context")
@@ -336,7 +326,8 @@ async def test_default_depth_limit_is_inherited_and_cannot_be_raised_by_child(ne
             ]
         ),
         store=store,
-        plugins=[Subagents({"leaf": leaf}, max_depth=10), Approvals(default=PolicyDecision.ALLOW)],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[Subagents({"leaf": leaf}, max_depth=10)],
     )
     parent = coordinator(middle)
     await parent.run("Delegate")
@@ -355,7 +346,8 @@ async def test_nested_usage_counts_each_model_once():
                 [ModelChunk(text="Middle", usage=ModelUsage(2))],
             ]
         ),
-        plugins=[Subagents({"leaf": leaf}, max_depth=2), Approvals(default=PolicyDecision.ALLOW)],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[Subagents({"leaf": leaf}, max_depth=2)],
     )
     parent = coordinator(middle, max_depth=2)
     async with parent.session() as session:
@@ -385,7 +377,8 @@ async def test_persistent_parent_and_child_are_replayable_without_running_models
     parent = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=delegate())], "Parent answer"]),
         store=store,
-        plugins=[Subagents({"review": child}), Approvals(default=PolicyDecision.ALLOW)],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[Subagents({"review": child})],
     )
     async with parent.session(id="parent") as session:
         result = await session.run("Delegate")
@@ -440,11 +433,9 @@ async def test_delegate_overrides_ordinary_tool_timeout():
 
     parent = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=delegate())], "Parent answer"]),
-        plugins=[
-            Subagents({"review": Agent(model=CallbackModel(respond))}),
-            Approvals(default=PolicyDecision.ALLOW),
-        ],
         loop=AgentLoop(tool_timeout=0.001),
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[Subagents({"review": Agent(model=CallbackModel(respond))})],
     )
     async with parent.session() as session:
         await session.run("Delegate")
@@ -531,7 +522,8 @@ async def test_always_grants_are_scoped_to_child_and_parent_revocation_is_effect
         model=ScriptedModel(
             [*[[ModelChunk(tool_call=ToolCall("write"))] for _ in range(3)], "Done"]
         ),
-        plugins=[Write(), Approvals()],
+        approvals=Approvals(default=Decision.ASK),
+        plugins=[Write()],
     )
     parent = coordinator(child)
     requests = []
@@ -541,10 +533,10 @@ async def test_always_grants_are_scoped_to_child_and_parent_revocation_is_effect
             async for event in run_stream:
                 if isinstance(event, ApprovalNeededEvent):
                     requests.append(event)
-                    await session.approvals.answer(
-                        event.request_id,
-                        ApprovalAnswer.ALWAYS if len(requests) == 1 else ApprovalAnswer.DENY,
-                    )
+                    if len(requests) == 1:
+                        await session.approvals.allow(event.request_id, remember=True)
+                    else:
+                        await session.approvals.deny(event.request_id)
         assert len(requests) == 2
         assert len(effects) == 2
         assert not session.approvals.grants
@@ -559,7 +551,7 @@ async def test_always_grants_are_scoped_to_child_and_parent_revocation_is_effect
         for change in commit.changes
         if isinstance(change.event, ApprovalResolvedEvent)
     ]
-    assert decisions == [ApprovalAnswer.ALLOW, ApprovalAnswer.ALLOW, ApprovalAnswer.DENY]
+    assert decisions == [Decision.ALLOW, Decision.ALLOW, Decision.DENY]
 
 
 async def test_parent_grants_do_not_authorize_a_sibling_child():
@@ -577,7 +569,8 @@ async def test_parent_grants_do_not_authorize_a_sibling_child():
                 "Two",
             ]
         ),
-        plugins=[Write(), Approvals()],
+        approvals=Approvals(default=Decision.ASK),
+        plugins=[Write()],
     )
     parent = coordinator(child, [delegate(), delegate()], max_parallel=1)
     requests = []
@@ -586,7 +579,7 @@ async def test_parent_grants_do_not_authorize_a_sibling_child():
             async for event in run_stream:
                 if isinstance(event, ApprovalNeededEvent):
                     requests.append(event)
-                    await session.approvals.answer(event.request_id, ApprovalAnswer.ALWAYS)
+                    await session.approvals.allow(event.request_id, remember=True)
         assert len(requests) == 2
         assert len(session.approvals.grants) == 2
         assert len({item.request.scope for item in session.approvals.grants}) == 2
@@ -600,7 +593,8 @@ async def test_stable_call_identity_returns_recorded_receipt_without_starting_ch
         model=ScriptedModel(
             [[ModelChunk(tool_call=call)], "One", [ModelChunk(tool_call=call)], "Two"]
         ),
-        plugins=[Subagents({"review": child}), Approvals(default=PolicyDecision.ALLOW)],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[Subagents({"review": child})],
     )
     async with parent.session() as session:
         first = await session.run("One")
@@ -648,7 +642,7 @@ async def test_repeated_cancellation_does_not_interrupt_child_cleanup():
     child = Agent(model=CallbackModel(blocked), plugins=[Resource()])
     parent = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=delegate())], "Done"]),
-        plugins=[Approvals(default=PolicyDecision.ALLOW)],
+        approvals=Approvals(default=Decision.ALLOW),
     )
     async with parent.session() as session:
         mount = await session.mount(Subagents({"review": child}), section_delivery="context")
@@ -701,10 +695,8 @@ async def test_reused_call_identity_cannot_change_its_task():
                 "Two",
             ]
         ),
-        plugins=[
-            Subagents({"review": Agent(model=child_model)}),
-            Approvals(default=PolicyDecision.ALLOW),
-        ],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[Subagents({"review": Agent(model=child_model)})],
     )
     async with parent.session() as session:
         await session.run("One")
@@ -728,7 +720,8 @@ async def test_snapshot_restoration_preserves_receipts_call_limits_and_parent_li
                 "Restored",
             ]
         ),
-        plugins=[Subagents({"review": child}, max_calls=1), Approvals(allow=[Subagents.delegate])],
+        approvals=Approvals(allow=[Subagents.delegate]),
+        plugins=[Subagents({"review": child}, max_calls=1)],
     )
     async with restored.session(state=state) as session:
         result = await session.run("Continue")
@@ -777,7 +770,8 @@ async def test_start_and_receipt_are_committed_before_crossing_session_boundarie
     parent = Agent(
         model=CallbackModel(parent_response),
         store=parent_store,
-        plugins=[Subagents({"review": child}), Approvals(allow=[Subagents.delegate])],
+        approvals=Approvals(allow=[Subagents.delegate]),
+        plugins=[Subagents({"review": child})],
     )
     async with parent.session(id="parent") as session:
         result = await session.run("Delegate")

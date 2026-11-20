@@ -2,7 +2,8 @@
 
 import asyncio
 
-from harnessed import Agent, AgentLoop, Plugin, PluginConflict, SystemPrompt, tool
+from harnessed import Agent, AgentLoop, Plugin, SystemPrompt, tool
+from harnessed.errors import PluginConflict
 from harnessed.testing import ScriptedModel, call
 
 

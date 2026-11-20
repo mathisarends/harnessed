@@ -65,9 +65,10 @@ The agent appends each plugin's instruction block to its own instructions, in
 plugin-list order; `print(agent.prompt)` shows every section and its origin.
 
 `Agent` is reusable configuration: a fixed runtime core plus exactly the plugins
-you list. Configure the loop with `loop=AgentLoop(max_steps=...)`. Without an
-`Approvals(...)` plugin, tools run without asking; add `Approvals()` to confirm
-side effects. `agent.run()` opens a session for one turn; use `agent.session()`
+you list. Configure the loop with `loop=AgentLoop(max_steps=...)`. Tools run by default.
+To restrict the agent to the calculator, pass
+`approvals=Approvals(allow=[Calculator.add])`. An empty allowlist denies every tool.
+`agent.run()` opens a session for one turn. Use `agent.session()`
 when several turns should share a conversation.
 
 Select a model with a `provider:model` string, such as

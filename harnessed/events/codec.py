@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from .registry import EventRegistry
 from harnessed.events import TransientEvent
 
-CURRENT_VERSION = 6
+CURRENT_VERSION = 7
 
 
 def validate_event(

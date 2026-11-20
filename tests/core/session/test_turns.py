@@ -4,7 +4,7 @@ from dataclasses import FrozenInstanceError
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import Plugin, PolicyDecision, ToolCall, tool
+from harnessed import Approvals, Decision, Plugin, tool
 from harnessed.events import (
     ModelRequestedEvent,
     StepEndedEvent,
@@ -18,8 +18,7 @@ from harnessed.events import (
     UserMessageEvent,
 )
 from harnessed.events.codec import decode_event, encode_event
-from harnessed.models import ModelChunk, ModelInfo, ModelRequest
-from harnessed.plugins import Approvals
+from harnessed.models import ModelChunk, ModelInfo, ModelRequest, ToolCall
 from harnessed.runtime.hooks import PreStep, StepDecision
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit, AuditProjection, derive_turns
@@ -41,7 +40,7 @@ async def test_turns_group_model_requests_and_tools_while_followups_wait_for_the
         [[ModelChunk(tool_call=ToolCall("wait"))], "corrected answer", "followup answer"]
     )
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), features]
+        model=model, approvals=Approvals(default=Decision.ALLOW), plugins=[features]
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.submit("first task")
@@ -80,7 +79,7 @@ async def test_turns_group_model_requests_and_tools_while_followups_wait_for_the
 async def test_rejected_pre_step_is_a_closed_turn_without_a_model_step():
     model = ScriptedModel([])
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+        model=model, approvals=Approvals(default=Decision.ALLOW)
     ).session() as agent:
         agent_audit = Audit(agent)
 
@@ -108,7 +107,7 @@ async def test_cancel_closes_the_open_step_and_turn_in_the_log():
             yield ModelChunk(text="never")
 
     async with Application(
-        model=WaitingModel(), plugins=[Approvals(default=PolicyDecision.ALLOW)]
+        model=WaitingModel(), approvals=Approvals(default=Decision.ALLOW)
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.submit("task")

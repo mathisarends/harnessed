@@ -250,7 +250,7 @@ and returned results; transient notifications are live only. Neither surface
 creates an archive. Applications subscribe or use hooks to save a complete audit.
 Custom audit records are excluded from conversation snapshots.
 
-The Agent collects declarations before runtime startup. `session.use(plugin)`
+The Agent collects declarations before runtime startup. `session.mount(plugin)`
 registers types before setup and retains their codecs after disposal. Catalogs
 are isolated between sessions. An external audit reader must supply its own
 matching declarations for custom records. Importing a conversation snapshot does
@@ -293,7 +293,7 @@ For durable JSON envelopes, import `EventRegistry` from `harnessed.events.regist
 at `session.log.registry`. Use `context={"events": registry}` when decoding a
 Pydantic terminal result whose nested log contains application events.
 Request IDs and approval payloads are data; answer them through
-`session.approvals.answer(request_id, decision)`, not through an event handle.
+`session.approvals.allow(request_id)` or `session.approvals.deny(request_id)`, not through an event handle.
 
 `DurableEvent` and `TransientEvent` describe persistence for both built-in and
 application classes. `SessionEvent` is their common root for generic observers;

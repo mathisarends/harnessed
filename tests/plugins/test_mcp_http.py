@@ -27,13 +27,12 @@ from starlette.responses import JSONResponse, RedirectResponse, Response
 from starlette.routing import Route
 
 import harnessed.plugins.mcp.transport as mcp_transport
-from harnessed import Agent, ToolCall
-from harnessed import ToolAnnotations as LocalToolAnnotations
+from harnessed import Agent
 from harnessed.events import ToolProgressEvent
-from harnessed.models import ModelChunk
-from harnessed.models.messages import ToolStatus
+from harnessed.models import ModelChunk, ToolCall, ToolStatus
 from harnessed.plugins.mcp import MCP
 from harnessed.testing import ScriptedModel
+from harnessed.tools import ToolAnnotations as LocalToolAnnotations
 from harnessed.tools import ToolRegistry
 
 

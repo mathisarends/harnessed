@@ -8,15 +8,9 @@ from pydantic.dataclasses import dataclass
 
 from harnessed.errors import SessionFormatError
 from harnessed.events import IncludedObservation, MessageLifetime, SubagentLinkedEvent
+from harnessed.models import AssistantMessage, ImageReference, Message, ToolMessage
 from harnessed.models.assets import AssetRef, AssetValue
-from harnessed.models.messages import (
-    AssistantMessage,
-    ImageReference,
-    Message,
-    SpillRef,
-    ToolMessage,
-    freeze,
-)
+from harnessed.models.messages import SpillRef, freeze
 
 from .children import ChildSession
 from .files import TextValue

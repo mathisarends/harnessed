@@ -2,7 +2,7 @@ from dataclasses import replace
 
 import pytest
 
-from harnessed import Agent, Plugin
+from harnessed import Agent, Compaction, Context, Plugin
 from harnessed.events import (
     ModelRequestedEvent,
     ObservationRecordedEvent,
@@ -18,7 +18,6 @@ from harnessed.models import (
     TextPart,
     UserMessage,
 )
-from harnessed.plugins import Compaction
 from harnessed.testing import ExtractiveSummarizer, ScriptedModel
 from tests._images import inline
 
@@ -48,14 +47,14 @@ async def test_compaction_does_not_load_images_removed_from_the_request(tmp_path
     model = ScriptedModel(["first", "kept", "after compaction"])
     app = Agent(
         model=model,
-        plugins=[
-            Compaction(
+        context=Context(
+            compaction=Compaction(
                 trigger=lambda _: False,
                 keep_last_steps=1,
                 max_summary_tokens=8,
                 summarizer=ExtractiveSummarizer(),
             )
-        ],
+        ),
     )
     async with app.session() as session:
         session.observe(UserMessage((TextPart("state " * 500), inline(b"old"))), source="screen")

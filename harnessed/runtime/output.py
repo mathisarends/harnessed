@@ -10,6 +10,7 @@ from harnessed.events import (
 )
 from harnessed.kernel import Scope
 from harnessed.models import (
+    AssistantMessage,
     Model,
     ModelRequest,
     OutputMode,
@@ -17,8 +18,9 @@ from harnessed.models import (
     StopReason,
     TokenLimitBehavior,
     ToolDefinition,
+    ToolResult,
+    UserMessage,
 )
-from harnessed.models.messages import AssistantMessage, ToolResult, UserMessage
 from harnessed.sessions.log import SessionLog
 
 from .options import AgentOptions

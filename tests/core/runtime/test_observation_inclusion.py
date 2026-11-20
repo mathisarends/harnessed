@@ -2,7 +2,8 @@ from dataclasses import replace
 
 import pytest
 
-from harnessed import Agent, Plugin, tool
+from harnessed import Agent, Compaction, Context, Plugin, tool
+from harnessed.context import every_turns
 from harnessed.events import (
     CompactionAppliedEvent,
     IncludedObservation,
@@ -13,7 +14,7 @@ from harnessed.events import (
 from harnessed.hooks import Next, PrepareRequest, PreStep, StepDecision
 from harnessed.kernel import hook
 from harnessed.models import ImagePart, ModelRequest, TextPart, UserMessage
-from harnessed.plugins import Compaction, LatestObservationOnly, every_turns
+from harnessed.plugins import LatestObservationOnly
 from harnessed.testing import ExtractiveSummarizer, ScriptedModel, call, reply
 from tests._audit import Audit
 
@@ -145,15 +146,15 @@ async def test_compaction_removes_old_images_in_the_same_request_and_keeps_five_
     model = ScriptedModel([*(call(Observe.work) for _ in range(7)), reply("done")])
     async with Agent(
         model=model,
-        plugins=[
-            Observe(),
-            Compaction(
+        plugins=[Observe()],
+        context=Context(
+            compaction=Compaction(
                 trigger=lambda _state: next(fire),
                 summarizer=ExtractiveSummarizer(),
                 keep_last_steps=5,
                 max_summary_tokens=8,
-            ),
-        ],
+            )
+        ),
     ).session() as session:
         session_audit = Audit(session)
         await session.run("inspect", max_steps=8)
@@ -176,14 +177,14 @@ async def test_compacted_observations_are_not_reported_as_included():
     model = ScriptedModel(["kept", "first", "second"])
     async with Agent(
         model=model,
-        plugins=[
-            Compaction(
+        context=Context(
+            compaction=Compaction(
                 trigger=every_turns(1),
                 summarizer=ExtractiveSummarizer(),
                 keep_last_steps=1,
                 max_summary_tokens=8,
-            ),
-        ],
+            )
+        ),
     ).session() as session:
         session.observe(
             UserMessage("state " * 500, id="capture:186"), source="browser", refs=("old",)

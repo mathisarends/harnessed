@@ -5,12 +5,11 @@ from typing import Self
 
 import pytest
 
-from harnessed import Agent, ApprovalAnswer, Plugin, ToolCall
+from harnessed import Agent, Approvals, Compaction, Context, Plugin
+from harnessed.context import Summary, every_turns
 from harnessed.hooks import PreStep, SessionClosing, StepDecision
 from harnessed.kernel import Next, PluginScope, Scope, hook
-from harnessed.models import ModelChunk
-from harnessed.plugins import Approvals, Compaction, every_turns
-from harnessed.plugins.compaction import Summary
+from harnessed.models import Decision, ModelChunk, ToolCall
 from harnessed.runtime.tracing import Tracer
 from harnessed.testing import ScriptedModel
 from harnessed.tools import tool
@@ -56,10 +55,14 @@ async def test_tool_span_starts_after_approval_wait_and_all_spans_close():
 
     def approve(request):
         assert trace.active == ["harnessed.turn", "harnessed.step", "harnessed.approval_wait"]
-        return ApprovalAnswer.ALLOW
+        return Decision.ALLOW
 
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("work"))], "done"])
-    await Agent(model=model, plugins=[Work(), Approvals(approver=approve), trace]).run("Go")
+    await Agent(
+        model=model,
+        approvals=Approvals(default=Decision.ASK, approver=approve),
+        plugins=[Work(), trace],
+    ).run("Go")
     names = [name for name, _ in trace.finished]
     assert names.index("harnessed.approval_wait") < names.index("harnessed.tool")
     assert names.count("harnessed.model") == names.count("harnessed.step") == 2
@@ -215,16 +218,15 @@ async def test_ineffective_compaction_backs_off_and_has_its_own_span(caplog):
     )
     app = Agent(
         model=model,
-        plugins=[
-            trace,
-            Work(),
-            Compaction(
+        plugins=[trace, Work()],
+        context=Context(
+            compaction=Compaction(
                 trigger=every_turns(1),
                 summarizer=Ineffective(),
                 keep_last_steps=1,
                 max_summary_tokens=40_000,
-            ),
-        ],
+            )
+        ),
     )
     async with app.session() as session:
         await session.run("first")

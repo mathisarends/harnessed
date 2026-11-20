@@ -3,11 +3,10 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
-from collections.abc import AsyncGenerator, Callable, Iterable
+from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack, suppress
 from enum import StrEnum
-from functools import wraps
-from typing import TYPE_CHECKING, Any, Concatenate, overload
+from typing import TYPE_CHECKING, Any
 
 from .declarations import Bundle, PluginBase
 from .di import bind_injected
@@ -342,49 +341,7 @@ class PluginRuntime:
                     self.errors.append(exc)
 
 
-@overload
-def plugin[**P](
-    fn: Callable[Concatenate[Any, P], AsyncGenerator[None, None]], /
-) -> Callable[P, PluginSpec]: ...
-
-
-@overload
-def plugin[**P](
-    *,
-    needs: Iterable[ServiceKey[Any]] = (),
-    name: str | None = None,
-    slot: str | None = None,
-) -> Callable[
-    [Callable[Concatenate[Any, P], AsyncGenerator[None, None]]], Callable[P, PluginSpec]
-]: ...
-
-
-def plugin(
-    fn=None,
-    /,
-    *,
-    needs: Iterable[ServiceKey[Any]] = (),
-    name: str | None = None,
-    slot: str | None = None,
-):
-    """Configure an async-generator plugin with explicit lifetime needs.
-
-    Inject parameters bind services without adding lifetime dependencies.
-    """
-
-    def decorate(factory):
-        @wraps(factory)
-        def configure(*args, **kwargs):
-            dependencies = tuple(dict.fromkeys(needs))
-            return PluginSpec(name or factory.__name__, factory, dependencies, args, kwargs, slot)
-
-        vars(configure)["_harnessed_plugin"] = True
-        return configure
-
-    return decorate(fn) if fn is not None else decorate
-
-
-type PluginLike = PluginSpec | Bundle | PluginBase | Callable[..., PluginSpec]
+type PluginLike = PluginSpec | Bundle | PluginBase
 
 
 def as_plugin_spec(value: PluginLike) -> PluginSpec:
@@ -392,6 +349,4 @@ def as_plugin_spec(value: PluginLike) -> PluginSpec:
         return value
     if isinstance(value, Bundle | PluginBase):
         return value._as_plugin_spec()
-    if callable(value) and getattr(value, "_harnessed_plugin", False):
-        return value()
     raise TypeError(f"Expected a configured plugin, Bundle or Plugin, got {type(value).__name__}")

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not a module.
+from harnessed.kernel import (
     Bail,
     Emit,
     Inject,
@@ -12,8 +12,8 @@ from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not
     Scope,
     ScopeClosed,
     Waterfall,
-    plugin,
 )
+from tests._kernel_recipe import kernel_recipe
 
 
 class Service:
@@ -93,7 +93,7 @@ async def test_parallel_observers_overlap_and_failure_cancels_siblings():
 async def test_setup_failure_rolls_back_all_effects():
     cleaned = []
 
-    @plugin
+    @kernel_recipe
     async def broken(scope):
         scope.provide(Service, Service())
         scope.on(Ping, lambda event: pytest.fail("Failed plugin left an active listener"))
@@ -112,13 +112,13 @@ async def test_setup_failure_rolls_back_all_effects():
 async def test_explicit_dependencies_and_provider_unload():
     teardown = []
 
-    @plugin
+    @kernel_recipe
     async def provider(scope):
         scope.provide(Service, Service())
         yield
         teardown.append("provider")
 
-    @plugin(name="consumer", needs=(Service,))
+    @kernel_recipe(name="consumer", needs=(Service,))
     async def consumer(scope, service: Inject[Service]):
         assert service is scope[Service]
         yield
@@ -136,12 +136,12 @@ async def test_explicit_dependencies_and_provider_unload():
 
 
 async def test_install_missing_dependencies_rolls_back_mounted_plugins():
-    @plugin
+    @kernel_recipe
     async def available(scope):
         scope.provide(int, 1)
         yield
 
-    @plugin(needs=[Service])
+    @kernel_recipe(needs=[Service])
     async def missing(scope):
         yield
 
@@ -182,7 +182,7 @@ async def test_listener_injection_is_resolved_at_each_dispatch():
 
 
 async def test_bad_plugin_yields_and_teardown_failure_still_clean_registrations():
-    @plugin()
+    @kernel_recipe()
     async def twice(scope):
         scope.provide(int, 7)
         yield
@@ -221,12 +221,12 @@ async def test_base_and_specific_listeners_keep_registration_order():
 
 
 async def test_provider_unload_removes_services_even_if_consumer_teardown_fails():
-    @plugin
+    @kernel_recipe
     async def provider(scope):
         scope.provide(Service, Service())
         yield
 
-    @plugin(needs=(Service,))
+    @kernel_recipe(needs=(Service,))
     async def consumer(scope, service: Inject[Service]):
         yield
         raise ValueError("consumer teardown")
@@ -239,7 +239,7 @@ async def test_provider_unload_removes_services_even_if_consumer_teardown_fails(
 
 
 async def test_listener_disposed_during_dispatch_does_not_run_from_stale_snapshot():
-    @plugin
+    @kernel_recipe
     async def observer(scope):
         scope.on(Ping, lambda event: pytest.fail("Disposed listener was called"))
         yield

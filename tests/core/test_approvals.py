@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import ApprovalAnswer, Plugin, ToolCall, tool
+from harnessed import Approvals, Plugin, tool
 from harnessed.events import (
     ApprovalRequestedEvent,
     ApprovalResolvedEvent,
@@ -14,15 +14,9 @@ from harnessed.events import (
     ToolPolicyAppliedEvent,
 )
 from harnessed.kernel import hook
-from harnessed.models import ModelChunk
-from harnessed.models.messages import PolicyDecision
-from harnessed.plugins import Approvals, Service
-from harnessed.runtime.approval_policy import (
-    ApprovalState,
-    Approver,
-    CallbackApprover,
-    ToolApprovalGuard,
-)
+from harnessed.models import Decision, ModelChunk, ToolCall
+from harnessed.plugins import Service
+from harnessed.runtime.approval_policy import ApprovalState, Approver, CallbackApprover
 from harnessed.runtime.hooks import ToolPolicy
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit, AuditProjection
@@ -42,7 +36,7 @@ async def test_grants_are_cached_only_in_the_live_session_and_not_in_imported_st
 
     def answer(request):
         asked.append(request.request_id)
-        return ApprovalAnswer.ALWAYS
+        return request.allow(remember=True)
 
     agent = Application(
         model=ScriptedModel(
@@ -55,11 +49,8 @@ async def test_grants_are_cached_only_in_the_live_session_and_not_in_imported_st
                 "third",
             ]
         ),
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            Work(),
-            ToolApprovalGuard(risky={"work"}, ask=answer),
-        ],
+        approvals=Approvals(default=Decision.ALLOW, ask={Work.work}, approver=answer),
+        plugins=[Work()],
     )
     async with agent.session() as session:
         await session.run("First")
@@ -75,7 +66,7 @@ async def test_grants_are_cached_only_in_the_live_session_and_not_in_imported_st
         assert len(asked) == 2
 
 
-@pytest.mark.parametrize("decision", [ApprovalAnswer.ALLOW, ApprovalAnswer.DENY])
+@pytest.mark.parametrize("decision", [Decision.ALLOW, Decision.DENY])
 async def test_single_call_answers_are_logged_without_becoming_persistent_grants(
     tmp_path, decision
 ):
@@ -97,11 +88,8 @@ async def test_single_call_answers_are_logged_without_becoming_persistent_grants
     for _ in range(2):
         harness = Application(
             model=tool_model(),
-            plugins=[
-                Approvals(default=PolicyDecision.ALLOW),
-                tools,
-                ToolApprovalGuard(risky={"work"}, ask=answer),
-            ],
+            approvals=Approvals(default=Decision.ALLOW, ask={tools.work}, approver=answer),
+            plugins=[tools],
         )
         async with harness.session() as agent:
             agent_audit = Audit(agent)
@@ -111,9 +99,9 @@ async def test_single_call_answers_are_logged_without_becoming_persistent_grants
             policy = next(
                 e for e in reversed(agent_audit.events) if isinstance(e, ToolPolicyAppliedEvent)
             )
-        assert policy.decision is PolicyDecision(decision.value)
+        assert policy.decision is Decision(decision.value)
     assert len(asked) == 2
-    assert len(executed) == (2 if decision is ApprovalAnswer.ALLOW else 0)
+    assert len(executed) == (2 if decision is Decision.ALLOW else 0)
 
 
 async def test_gate_scopes_do_not_share_persistent_permissions(tmp_path):
@@ -129,16 +117,13 @@ async def test_gate_scopes_do_not_share_persistent_permissions(tmp_path):
     def answer(request):
         call = request.call
         asked.append(call.id)
-        return ApprovalAnswer.ALWAYS
+        return request.allow(remember=True)
 
-    for scope in ("first-policy", "second-policy"):
+    for _ in range(2):
         async with Application(
             model=tool_model(),
-            plugins=[
-                Approvals(default=PolicyDecision.ALLOW),
-                tools,
-                ToolApprovalGuard(risky={"work"}, ask=answer, scope=scope),
-            ],
+            approvals=Approvals(default=Decision.ALLOW, ask={tools.work}, approver=answer),
+            plugins=[tools],
         ).session() as agent:
             await agent.run("task")
     assert len(asked) == 2
@@ -154,23 +139,20 @@ async def test_tool_policy_ask_uses_the_same_durable_approval_path(tmp_path):
 
         @hook(ToolPolicy)
         async def ask_policy(self, event, next_):
-            return PolicyDecision.ASK
+            return Decision.ASK
 
     tools = ToolsPlugin(name="work")
 
     def answer(request):
         call = request.call
         asked.append(call.id)
-        return ApprovalAnswer.ALWAYS
+        return request.allow(remember=True)
 
     for _ in range(2):
         async with Application(
             model=tool_model(),
-            plugins=[
-                Approvals(default=PolicyDecision.ALLOW),
-                tools,
-                Service(Approver, CallbackApprover(answer)),
-            ],
+            approvals=Approvals(default=Decision.ALLOW),
+            plugins=[tools, Service(Approver, CallbackApprover(answer))],
         ).session() as agent:
             await agent.run("task")
             assert agent.log.approvals.grant_for("work", scope="tool-policy") is not None
@@ -193,11 +175,8 @@ async def test_cancellation_closes_an_unanswered_approval_and_does_not_execute_t
 
     async with Application(
         model=tool_model(),
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            tools,
-            ToolApprovalGuard(risky={"work"}, ask=wait),
-        ],
+        approvals=Approvals(default=Decision.ALLOW, ask={tools.work}, approver=wait),
+        plugins=[tools],
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.submit("task")
@@ -218,12 +197,12 @@ async def test_cancellation_closes_an_unanswered_approval_and_does_not_execute_t
 @pytest.mark.parametrize(
     "events",
     [
-        (ApprovalResolvedEvent("unknown", ApprovalAnswer.ALLOW),),
+        (ApprovalResolvedEvent("unknown", Decision.ALLOW),),
         (ApprovalRevokedEvent("unknown"),),
         (ApprovalRequestedEvent("id", ToolCall("work"), "reason", "scope", grant_id="missing"),),
         (
             ApprovalRequestedEvent("id", ToolCall("work"), "reason", "scope"),
-            ApprovalResolvedEvent("id", ApprovalAnswer.DENY),
+            ApprovalResolvedEvent("id", Decision.DENY),
             ApprovalRevokedEvent("id"),
         ),
     ],

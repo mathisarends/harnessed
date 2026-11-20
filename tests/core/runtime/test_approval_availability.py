@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import AgentLoop, ApprovalAnswer, Plugin, ToolCall, ToolContext, tool
+from harnessed import AgentLoop, Approvals, Plugin, ToolContext, tool
 from harnessed.errors import ApprovalUnavailable
 from harnessed.events import (
     ApprovalResolvedEvent,
@@ -12,16 +12,14 @@ from harnessed.events import (
     ToolExecutionStartedEvent,
 )
 from harnessed.events.codec import decode_event, encode_event
-from harnessed.kernel import Inject, PluginStatus, hook
-from harnessed.models import ModelChunk
-from harnessed.models.messages import PolicyDecision, ToolStatus
-from harnessed.plugins import Approvals, Service
+from harnessed.kernel import Inject, hook
+from harnessed.models import Decision, ModelChunk, ToolCall, ToolStatus
+from harnessed.plugins import Service
 from harnessed.runtime.approval_policy import (
     ApprovalsConfig,
     ApprovalState,
     Approver,
     CallbackApprover,
-    ToolApprovalGuard,
 )
 from harnessed.runtime.hooks import RequestApproval, ToolPolicy
 from harnessed.testing import ScriptedModel
@@ -31,7 +29,7 @@ from tests._audit import Audit, AuditProjection
 async def test_removing_an_approver_never_removes_the_scoped_guard():
     from harnessed import Plugin, tool
     from harnessed.plugins import Service
-    from harnessed.runtime.approval_policy import CallbackApprover, ToolApprovalGuard
+    from harnessed.runtime.approval_policy import CallbackApprover
     from harnessed.testing import call
 
     effects = []
@@ -46,14 +44,12 @@ async def test_removing_an_approver_never_removes_the_scoped_guard():
         [call("publish"), "first", call("publish"), "blocked", call("publish"), "third"]
     )
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), Publish()]
+        model=model, approvals=Approvals(ask=[Publish.publish]), plugins=[Publish()]
     ).session() as session:
-        guard = await session.mount(ToolApprovalGuard(risky={"publish"}))
         provider = await session.mount(Service(Approver, CallbackApprover(lambda call: True)))
         assert (await session.run("publish")).tool_calls[0][1].status == ToolStatus.OK
         await provider.aclose()
         await session.scope.settle()
-        assert guard.status == PluginStatus.ACTIVE
         assert (await session.run("publish")).tool_calls[0][1].status == ToolStatus.UNAVAILABLE
         await session.mount(Service(Approver, CallbackApprover(lambda call: True)))
         assert (await session.run("publish")).tool_calls[0][1].status == ToolStatus.OK
@@ -78,12 +74,7 @@ async def test_approval_gate_without_a_ui_fails_closed_and_preserves_unrelated_c
     calls = [ToolCall("risky"), ToolCall("safe")]
     model = ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "done"])
     async with Application(
-        model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            tools,
-            ToolApprovalGuard(risky={"risky"}),
-        ],
+        model=model, approvals=Approvals(default=Decision.ALLOW, ask={tools.risky}), plugins=[tools]
     ).session() as agent:
         agent_audit = Audit(agent)
         await asyncio.wait_for(agent.run("go"), 2)
@@ -103,7 +94,7 @@ async def test_approval_gate_without_a_ui_fails_closed_and_preserves_unrelated_c
 
 async def test_direct_sdk_approval_raises_typed_unavailable_and_leaves_no_pending_question():
     async with Application(
-        model=ScriptedModel([]), plugins=[Approvals(default=PolicyDecision.ALLOW)]
+        model=ScriptedModel([]), approvals=Approvals(default=Decision.ALLOW)
     ).session() as agent:
         with pytest.raises(ApprovalUnavailable, match="No approval responder"):
             await asyncio.wait_for(agent.approvals.request(ToolCall("work"), "permission"), 2)
@@ -122,23 +113,23 @@ async def test_explicit_approver_then_service_take_precedence_over_request_liste
             return self.decision
 
     async with Application(
-        model=ScriptedModel([]), plugins=[Approvals(default=PolicyDecision.ALLOW)]
+        model=ScriptedModel([]), approvals=Approvals(default=Decision.ALLOW)
     ).session() as agent:
-        agent.scope.provide(Approver, Answer(ApprovalAnswer.DENY))
+        agent.scope.provide(Approver, Answer(Decision.DENY))
         agent.on(RequestApproval, lambda ev: pytest.fail("Explicit approver was bypassed"))
         assert (
             await agent.approvals.request(
-                ToolCall("work"), "permission", approver=Answer(ApprovalAnswer.ALLOW)
+                ToolCall("work"), "permission", approver=Answer(Decision.ALLOW)
             )
-            is ApprovalAnswer.ALLOW
+            is Decision.ALLOW
         )
-        assert await agent.approvals.request(ToolCall("work"), "permission") is ApprovalAnswer.DENY
+        assert await agent.approvals.request(ToolCall("work"), "permission") is Decision.DENY
 
 
 async def test_approval_listeners_bail_by_priority_and_can_explicitly_abstain_or_deny():
     asked = []
     async with Application(
-        model=ScriptedModel([]), plugins=[Approvals(default=PolicyDecision.ALLOW)]
+        model=ScriptedModel([]), approvals=Approvals(default=Decision.ALLOW)
     ).session() as agent:
         agent.on(RequestApproval, lambda ev: asked.append("late"), priority=100)
 
@@ -148,11 +139,11 @@ async def test_approval_listeners_bail_by_priority_and_can_explicitly_abstain_or
                 item.request_id for item in event.session.log.approvals.pending
             }
             asked.append("deny")
-            return ApprovalAnswer.DENY
+            return Decision.DENY
 
-        remove_answer = agent.add_hook(RequestApproval, answer, priority=0)
+        remove_answer = agent.on(RequestApproval, answer, priority=0)
         agent.on(RequestApproval, lambda ev: asked.append("abstain"), priority=-100)
-        assert await agent.approvals.request(ToolCall("work"), "permission") is ApprovalAnswer.DENY
+        assert await agent.approvals.request(ToolCall("work"), "permission") is Decision.DENY
         assert asked == ["abstain", "deny"]
         await remove_answer()
         asked.clear()
@@ -177,10 +168,8 @@ async def test_unresponsive_approval_uses_the_session_timeout_and_cancels_the_re
     plugins = [Service(Approver, CallbackApprover(wait))] if transport == "callback" else []
     harness = Application(
         model=ScriptedModel([]),
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW, timeout=0.02),
-            *plugins,
-        ],
+        approvals=Approvals(default=Decision.ALLOW, timeout=0.02),
+        plugins=[*plugins],
     )
     async with harness.session() as agent:
         if transport == "listener":
@@ -194,7 +183,7 @@ async def test_unresponsive_approval_uses_the_session_timeout_and_cancels_the_re
         assert agent.last(ApprovalResolvedEvent).status == ApprovalStatus.UNAVAILABLE
 
 
-@pytest.mark.parametrize("answer", [None, PolicyDecision.ASK, "allow", ValueError("disconnected")])
+@pytest.mark.parametrize("answer", [None, Decision.ASK, "allow", ValueError("disconnected")])
 async def test_responder_abstention_invalid_answers_and_failures_are_unavailable(answer):
 
     async def respond(event):
@@ -203,7 +192,7 @@ async def test_responder_abstention_invalid_answers_and_failures_are_unavailable
         return answer
 
     async with Application(
-        model=ScriptedModel([]), plugins=[Approvals(default=PolicyDecision.ALLOW)]
+        model=ScriptedModel([]), approvals=Approvals(default=Decision.ALLOW)
     ).session() as agent:
         agent.on(RequestApproval, respond)
         with pytest.raises(ApprovalUnavailable):
@@ -226,7 +215,7 @@ async def test_gate_stays_active_after_approver_service_is_removed():
 
     class AllowOnce:
         async def ask(self, request):
-            return ApprovalAnswer.ALLOW
+            return Decision.ALLOW
 
     model = ScriptedModel(
         [
@@ -237,8 +226,7 @@ async def test_gate_stays_active_after_approver_service_is_removed():
         ]
     )
     async with Application(
-        model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), tools, ToolApprovalGuard(risky={"work"})],
+        model=model, approvals=Approvals(default=Decision.ALLOW, ask={tools.work}), plugins=[tools]
     ).session() as agent:
         agent_audit = Audit(agent)
         remove = agent.scope.provide(Approver, AllowOnce())
@@ -251,8 +239,7 @@ async def test_gate_stays_active_after_approver_service_is_removed():
         assert len([e for e in agent_audit.events if isinstance(e, ToolExecutionStartedEvent)]) == 1
 
 
-@pytest.mark.parametrize("gate_first", [True, False])
-async def test_approval_priority_places_wait_outside_downstream_policy_timing(gate_first):
+async def test_approval_wait_occurs_after_policy_hooks():
     clock, measured, order = ([0], [], [])
 
     class ToolsPlugin(Plugin):
@@ -279,16 +266,14 @@ async def test_approval_priority_places_wait_outside_downstream_policy_timing(ga
     async def answer(call):
         order.append("approval")
         clock[0] += 100
-        return ApprovalAnswer.ALLOW
+        return Decision.ALLOW
 
-    gate = ToolApprovalGuard(risky={"work"}, ask=answer)
-    plugins = [gate, tools] if gate_first else [tools, gate]
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("work"))], "done"])
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), *plugins]
+        model=model, approvals=Approvals(ask=[tools.work], approver=answer), plugins=[tools]
     ).session() as agent:
         await agent.run("go")
-    assert order == ["approval", "timer", "policy"]
+    assert order == ["timer", "policy", "approval"]
     assert measured == [2]
 
 
@@ -317,15 +302,16 @@ async def test_invalid_request_timeout_does_not_record_a_question(timeout):
 async def test_request_timeout_replaces_the_default_in_either_direction(default, override):
     async def respond(request):
         await asyncio.sleep(0.05)
-        return ApprovalAnswer.ALLOW
+        return Decision.ALLOW
 
     async with Application(
-        model=ScriptedModel([]), plugins=[Approvals(approver=respond, timeout=default)]
+        model=ScriptedModel([]),
+        approvals=Approvals(default=Decision.ASK, approver=respond, timeout=default),
     ).session() as session:
         if override > default:
             assert (
                 await session.approvals.request(ToolCall("work"), "permission", timeout=override)
-                is ApprovalAnswer.ALLOW
+                is Decision.ALLOW
             )
         else:
             with pytest.raises(ApprovalUnavailable, match=r"timed out after 0.01 seconds"):
@@ -336,14 +322,15 @@ async def test_request_timeout_replaces_the_default_in_either_direction(default,
 async def test_none_inherits_the_default_and_an_override_does_not_change_the_next_question():
     async def respond(request):
         await asyncio.sleep(0.05)
-        return ApprovalAnswer.ALLOW
+        return Decision.ALLOW
 
     async with Application(
-        model=ScriptedModel([]), plugins=[Approvals(approver=respond, timeout=0.01)]
+        model=ScriptedModel([]),
+        approvals=Approvals(default=Decision.ASK, approver=respond, timeout=0.01),
     ).session() as session:
         assert (
             await session.approvals.request(ToolCall("work"), "permission", timeout=1)
-            is ApprovalAnswer.ALLOW
+            is Decision.ALLOW
         )
         with pytest.raises(ApprovalUnavailable, match=r"timed out after 0.01 seconds"):
             await session.approvals.request(ToolCall("work"), "permission", timeout=None)
@@ -357,27 +344,25 @@ async def test_replacing_approval_configuration_changes_only_new_questions():
     async def respond(request):
         asked.set()
         await answer.wait()
-        return ApprovalAnswer.ALLOW
+        return Decision.ALLOW
 
     async with Application(
-        model=ScriptedModel([]), plugins=[Approvals(approver=respond, timeout=0.03)]
+        model=ScriptedModel([]),
+        approvals=Approvals(default=Decision.ASK, approver=respond, timeout=0.03),
     ).session() as session:
         async with asyncio.timeout(2):
             waiting = asyncio.create_task(session.approvals.request(ToolCall("work"), "permission"))
             await asked.wait()
-            handle = await session.mount(Approvals(approver=respond, timeout=1))
+            with pytest.raises(TypeError, match="Plugin instance"):
+                await session.mount(Approvals(default=Decision.ASK, approver=respond, timeout=1))
             with pytest.raises(ApprovalUnavailable, match=r"timed out after 0.03 seconds"):
                 await waiting
             answer.set()
-            assert (
-                await session.approvals.request(ToolCall("work"), "permission")
-                is ApprovalAnswer.ALLOW
-            )
-            await handle.aclose()
+            assert await session.approvals.request(ToolCall("work"), "permission") is Decision.ALLOW
         assert not session.approvals.pending
 
 
-@pytest.mark.parametrize("source", ["policy", "guard", "tool", "hook"])
+@pytest.mark.parametrize("source", ["policy", "rule", "tool", "hook"])
 async def test_all_approval_sources_use_the_configured_response_timeout(source):
     executed = []
     stopped = asyncio.Event()
@@ -396,22 +381,19 @@ async def test_all_approval_sources_use_the_configured_response_timeout(source):
         finally:
             stopped.set()
 
-    plugins = [
-        Work(),
-        Approvals(
-            default=PolicyDecision.ASK if source == "policy" else PolicyDecision.ALLOW,
-            approver=respond,
-            timeout=0.02,
-        ),
-    ]
-    if source == "guard":
-        plugins.append(ToolApprovalGuard(risky=[Work.work]))
+    approvals = Approvals(
+        default=Decision.ASK if source == "policy" else Decision.ALLOW,
+        ask=[Work.work] if source == "rule" else (),
+        approver=respond,
+        timeout=0.02,
+    )
     async with Application(
         model=ScriptedModel([[ModelChunk(tool_call=ToolCall("work"))], "done"]),
-        plugins=plugins,
+        approvals=approvals,
+        plugins=[Work()],
     ).session() as session:
         if source == "hook":
-            session.on(ToolPolicy, lambda event, next_: PolicyDecision.ASK)
+            session.on(ToolPolicy, lambda event, next_: Decision.ASK)
         audit = Audit(session)
         async with asyncio.timeout(2):
             result = await session.run("work")
@@ -425,6 +407,6 @@ async def test_all_approval_sources_use_the_configured_response_timeout(source):
 
 def test_unavailable_resolution_is_not_an_answer_or_a_persistent_permission():
     with pytest.raises(ValueError):
-        ApprovalResolvedEvent("request", ApprovalAnswer.ALLOW, status=ApprovalStatus.UNAVAILABLE)
+        ApprovalResolvedEvent("request", Decision.ALLOW, status=ApprovalStatus.UNAVAILABLE)
     with pytest.raises(TypeError):
-        ApprovalResolvedEvent("request", ApprovalAnswer.ALLOW, reason=123)
+        ApprovalResolvedEvent("request", Decision.ALLOW, reason=123)

@@ -6,8 +6,17 @@ from typing import override
 
 import pytest
 
-from harnessed import Plugin, PluginState, ToolCall, ToolResult, tool
-from harnessed.kernel import Emit, PluginScope, PluginStatus, Scope, as_plugin_spec, needs
+from harnessed import Plugin, tool
+from harnessed.kernel import (
+    Emit,
+    PluginScope,
+    PluginState,
+    PluginStatus,
+    Scope,
+    as_plugin_spec,
+    needs,
+)
+from harnessed.models import ToolCall, ToolResult
 from harnessed.tools import ToolRegistry
 
 

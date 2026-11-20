@@ -2,14 +2,10 @@ from pathlib import Path
 
 import pytest
 
-from harnessed import (
-    Agent,
-    Instructions,
-    PolicyDecision,
-    SystemPrompt,
-)
-from harnessed.plugins import Approvals, Filesystem, Shell
+from harnessed import Agent, Approvals, Decision, SystemPrompt
+from harnessed.plugins import Filesystem, Shell
 from harnessed.plugins.filesystem import FileSystemBackend, LocalFileSystem
+from harnessed.prompts import Instructions
 from harnessed.testing import FakeShell, InMemoryFS, ScriptedModel, assert_tool_called, call, reply
 
 pytest_plugins = ["harnessed.testing.pytest_plugin"]
@@ -19,8 +15,7 @@ async def test_scripted_replies_and_fake_shell_keep_process_results_and_argument
     shell = FakeShell({"pytest": "1 passed"})
     model = ScriptedModel([call("run_command", argv=["pytest"]), reply("done")])
     result = await Agent(
-        model=model,
-        plugins=[shell, Approvals(default=PolicyDecision.ALLOW)],
+        model=model, approvals=Approvals(default=Decision.ALLOW), plugins=[shell]
     ).run("Test")
     _, output = assert_tool_called(result, "run_command", argv=["pytest"])
     assert output.exit_code == 0 and "1 passed" in output.content
@@ -60,14 +55,14 @@ async def test_pytest_fixture_replaces_feature_slots_without_duplicate_configura
     filesystem = Filesystem(tmp_path)
     shell = Shell(tmp_path)
     configured = Agent(
-        prompt=SystemPrompt.from_plugins(Instructions(text="Fixed.")),
         plugins=[filesystem, shell],
+        instructions=SystemPrompt.from_plugins(Instructions(text="Fixed.")),
     )
     virtual_files = InMemoryFS({"note.txt": "virtual"})
     virtual_shell = FakeShell()
     async with harnessed_session(
         configured,
-        prompt=SystemPrompt.from_plugins(Instructions(text="Fixed.")),
+        instructions=SystemPrompt.from_plugins(Instructions(text="Fixed.")),
         script=[call("read_file", path="note.txt"), reply("done")],
         plugins=[virtual_files, virtual_shell],
     ) as session:

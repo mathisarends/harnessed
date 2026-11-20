@@ -6,22 +6,16 @@ import pytest
 from pydantic import BaseModel
 
 import harnessed.sessions.store as persistence_store
-from harnessed import (
-    Agent,
-    ApprovalAnswer,
-    OutputContract,
-    Plugin,
-    SessionStatus,
-    ToolCall,
-    tool,
-)
+from harnessed import Agent, OutputContract, Plugin, tool
 from harnessed.errors import ConfigError, SessionClosed, SessionFormatError, SessionWriteConflict
 from harnessed.events import ApprovalRequestedEvent, MessageAppendedEvent
 from harnessed.integrations.json import JsonSessionStore
-from harnessed.models import ImageReference, UserMessage
+from harnessed.models import Decision, ImageReference, ToolCall, UserMessage
+from harnessed.models.messages import ApprovalResponse
 from harnessed.plugins import Spill
 from harnessed.plugins.spill import SpillStore
 from harnessed.prompts.plugin_instructions import PluginInstructions
+from harnessed.runtime.control import SessionStatus
 from harnessed.sessions import SessionCheckpoint, SessionCommit, SessionStore, StoredSession
 from harnessed.testing import ScriptedModel, call
 
@@ -289,15 +283,15 @@ async def test_corrupt_checkpoint_does_not_start_an_empty_conversation():
 
 async def test_approval_grants_survive_repository_reopening(store):
     class Allow:
-        async def ask(self, request: ApprovalRequestedEvent) -> ApprovalAnswer:
-            return ApprovalAnswer.ALWAYS
+        async def ask(self, request: ApprovalRequestedEvent) -> ApprovalResponse:
+            return ApprovalResponse(Decision.ALLOW, remember=True)
 
     agent = Agent(model=ScriptedModel([]), store=store)
     async with agent.session(id="grants") as session:
         answer = await session.approvals.request(
             ToolCall("work"), "Authorize work", approver=Allow()
         )
-        assert answer is ApprovalAnswer.ALWAYS
+        assert answer is Decision.ALLOW
         grant = session.approvals.grant_for("work", scope="tool-policy")
         assert grant is not None
         request_id = grant.request_id

@@ -5,8 +5,9 @@ from typing import Annotated, Self
 import pytest
 from pydantic import BaseModel, ConfigDict, Field, RootModel, ValidationError, model_validator
 
-from harnessed import Agent, Plugin, ToolCall, ToolContext, tool
+from harnessed import Agent, Plugin, ToolContext, tool
 from harnessed.kernel import Inject, Scope
+from harnessed.models import ToolCall
 from harnessed.plugins import Service
 from harnessed.testing import ScriptedModel, call
 from harnessed.tools import ToolRegistry, ToolSpec

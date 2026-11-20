@@ -5,7 +5,8 @@ from pathlib import Path
 from uuid import uuid4
 
 from harnessed.errors import SessionClosed
-from harnessed.models.messages import ToolResult, ToolStatus, result_content, to_dict
+from harnessed.models import ToolResult, ToolStatus
+from harnessed.models.messages import result_content, to_dict
 from harnessed.runtime.inbox import SessionInbox
 from harnessed.tools import ToolError
 

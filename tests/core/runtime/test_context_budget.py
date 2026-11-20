@@ -5,7 +5,8 @@ from dataclasses import replace
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import AgentLoop, Plugin, PolicyDecision, ToolCall, tool
+from harnessed import AgentLoop, Approvals, Compaction, Context, Decision, Plugin, tool
+from harnessed.context import Summary, at_ratio, every_turns
 from harnessed.errors import ContextBudgetExceeded, ContextLengthExceeded
 from harnessed.events import (
     AssistantMessageEvent,
@@ -16,13 +17,19 @@ from harnessed.events import (
     TurnOutcome,
 )
 from harnessed.events.codec import decode_event, encode_event
-from harnessed.models import GenerationSettings, Model, ModelChunk, ModelInfo
-from harnessed.models.messages import Role, SystemMessage
-from harnessed.plugins import Approvals, Compaction, at_ratio, every_turns
-from harnessed.plugins.compaction import Summary
+from harnessed.hooks import DeferCompaction
+from harnessed.models import (
+    GenerationSettings,
+    Model,
+    ModelChunk,
+    ModelInfo,
+    Role,
+    SystemMessage,
+    ToolCall,
+)
 from harnessed.runtime.budget import ContextBudget
 from harnessed.runtime.hooks import PrepareRequest
-from harnessed.runtime.plugin import Bundle, Service
+from harnessed.runtime.plugin import Service
 from harnessed.testing import CallbackModel, ExtractiveSummarizer, ScriptedModel
 from tests._audit import Audit, AuditProjection
 
@@ -52,16 +59,16 @@ async def test_sliding_window_preserves_recent_turns_first_turn_and_tool_pairs_v
     summaries = RecordingCompactor()
     async with Application(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            tools,
-            Compaction(
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[tools],
+        context=Context(
+            compaction=Compaction(
                 trigger=every_turns(1),
                 summarizer=summaries,
                 keep_last_steps=2,
                 max_summary_tokens=32,
-            ),
-        ],
+            )
+        ),
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("FIRST GOAL " + "a" * 800)
@@ -92,15 +99,15 @@ async def test_periodic_compaction_counts_new_closed_turns_since_last_event():
     model = ScriptedModel(["answer"] * 6)
     async with Application(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            Compaction(
+        approvals=Approvals(default=Decision.ALLOW),
+        context=Context(
+            compaction=Compaction(
                 trigger=every_turns(2),
                 summarizer=summaries,
                 keep_last_steps=1,
                 max_summary_tokens=32,
-            ),
-        ],
+            )
+        ),
     ).session() as agent:
         agent_audit = Audit(agent)
         counts = []
@@ -112,51 +119,72 @@ async def test_periodic_compaction_counts_new_closed_turns_since_last_event():
         assert sum(m.id.startswith("compaction:") for m in agent.log.messages) == 1
 
 
+@pytest.mark.parametrize("manual", [False, True])
+async def test_checkpoint_can_defer_only_one_eligible_attempt(manual):
+    summaries = RecordingCompactor()
+    policy = Compaction(trigger=every_turns(1), summarizer=summaries, keep_last_steps=1)
+    model = ScriptedModel(["answer"] * 4)
+    async with Application(model=model, context=Context(compaction=policy)).session() as session:
+        checkpoints = []
+
+        def checkpoint(event):
+            checkpoints.append(event.state)
+            return True
+
+        session.on(DeferCompaction, checkpoint)
+        for index in range(3):
+            await session.run(f"task {index} " + "x" * 500)
+        assert len(checkpoints) == 1 and not summaries.sources
+        if manual:
+            await session.compact()
+        else:
+            await session.run("continue")
+        assert len(checkpoints) == len(summaries.sources) == 1
+
+
 async def test_retention_can_only_preserve_currently_available_steps():
     summaries = RecordingCompactor()
     model = ScriptedModel(["answer"] * 4)
-    async with Application(model=model).session() as agent:
+    policy = Compaction(trigger=every_turns(1), summarizer=summaries, keep_last_steps=1)
+    async with Application(model=model, context=Context(compaction=policy)).session() as agent:
         await agent.run("OLDER " + "a" * 400)
         await agent.run("RECENT " + "b" * 800)
-        await agent.mount(
-            Compaction(trigger=every_turns(1), summarizer=summaries, keep_last_steps=1)
-        )
         await agent.run("current")
         assert not any(m.text.startswith("OLDER ") for m in model.requests[-1].messages)
         assert any(m.text.startswith("RECENT ") for m in model.requests[-1].messages)
-        await agent.mount(
-            Compaction(trigger=every_turns(1), summarizer=summaries, keep_last_steps=3)
-        )
+        state = agent.snapshot()
+    wider = Compaction(trigger=every_turns(1), summarizer=summaries, keep_last_steps=3)
+    async with Application(model=model, context=Context(compaction=wider)).session(
+        state=state
+    ) as agent:
         await agent.run("next")
         assert not any(m.text.startswith("OLDER ") for m in model.requests[-1].messages)
 
 
 async def test_compaction_preserves_request_hook_context_and_combines_triggers_once_per_step():
-    extensions = Bundle("configured")
     summaries = RecordingCompactor()
     model = ScriptedModel(["answer", "kept", "answer"])
     ratio, periodic = (at_ratio(0.1), every_turns(1))
     harness = Application(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            Compaction(
+        approvals=Approvals(default=Decision.ALLOW),
+        context=Context(
+            max_tokens=2000,
+            compaction=Compaction(
                 trigger=lambda state: ratio(state) or periodic(state),
                 summarizer=summaries,
                 keep_last_steps=1,
                 max_summary_tokens=32,
             ),
-            extensions,
-        ],
-        loop=AgentLoop(context_window=2000),
+        ),
     )
 
-    @extensions.on(PrepareRequest)
     async def request_context(event, next_):
         request = await next_()
         return replace(request, messages=(*request.messages, SystemMessage("HOOK CONTEXT")))
 
     async with harness.session() as agent:
+        agent.on(PrepareRequest, request_context)
         agent_audit = Audit(agent)
         await agent.run("x" * 2000)
         await agent.run("kept")
@@ -178,10 +206,12 @@ async def test_inbox_arrival_during_summary_does_not_change_the_summary_identity
     model = ScriptedModel(["answer", "kept", "answer", "answer"])
     async with Application(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            Compaction(trigger=every_turns(1), summarizer=BlockingCompactor(), keep_last_steps=1),
-        ],
+        approvals=Approvals(default=Decision.ALLOW),
+        context=Context(
+            compaction=Compaction(
+                trigger=every_turns(1), summarizer=BlockingCompactor(), keep_last_steps=1
+            )
+        ),
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("x" * 2000)
@@ -200,23 +230,19 @@ async def test_inbox_arrival_during_summary_does_not_change_the_summary_identity
 
 
 async def test_budget_guard_blocks_oversized_requests_after_configure_hooks():
-    extensions = Bundle("configured")
     model = ScriptedModel([])
     harness = Application(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            Service(ContextBudget, ContextBudget(limit=100, reserve_tokens=20)),
-            extensions,
-        ],
+        approvals=Approvals(default=Decision.ALLOW),
+        context=Context(max_tokens=100, reserve_tokens=20),
     )
 
-    @extensions.on(PrepareRequest)
     async def inflate(event, next_):
         request = await next_()
         return replace(request, messages=(*request.messages, SystemMessage("x" * 1000)))
 
     async with harness.session() as agent:
+        agent.on(PrepareRequest, inflate)
         agent_audit = Audit(agent)
         with pytest.raises(ContextBudgetExceeded) as error:
             await agent.run("small")
@@ -230,16 +256,16 @@ async def test_threshold_uses_guard_limit_and_reserved_output_budget():
     model = ScriptedModel(["answer", "kept", "answer"])
     async with Application(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            Compaction(
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[Service(ContextBudget, ContextBudget(limit=500, reserve_tokens=200))],
+        context=Context(
+            compaction=Compaction(
                 trigger=at_ratio(0.8),
                 summarizer=summaries,
                 keep_last_steps=1,
                 max_summary_tokens=32,
-            ),
-            Service(ContextBudget, ContextBudget(limit=500, reserve_tokens=200)),
-        ],
+            )
+        ),
     ).session() as agent:
         await agent.run("x" * 1000)
         await agent.run("kept")
@@ -258,14 +284,13 @@ async def test_current_turn_and_tool_schemas_are_not_silently_discarded_to_fit_b
     model = ScriptedModel([])
     async with Application(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            tools,
-            Compaction(
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[tools, Service(ContextBudget, ContextBudget(limit=100))],
+        context=Context(
+            compaction=Compaction(
                 trigger=every_turns(1), summarizer=ExtractiveSummarizer(), keep_last_steps=1
-            ),
-            Service(ContextBudget, ContextBudget(limit=100)),
-        ],
+            )
+        ),
     ).session() as agent:
         agent_audit = Audit(agent)
         with pytest.raises(ContextBudgetExceeded):
@@ -287,7 +312,7 @@ async def test_budget_reserve_uses_maximum_and_keeps_the_stricter_window_limit()
         app = Application(
             model=model,
             plugins=[Service(ContextBudget, ContextBudget(limit=100, reserve_tokens=20))],
-            loop=AgentLoop(context_window=200),
+            context=Context(max_tokens=200),
         )
         async with app.session() as session:
             if max_tokens == 80:
@@ -310,8 +335,12 @@ async def test_context_overflow_retry_uses_the_effective_turn_step_limit(default
     summaries = RecordingCompactor()
     async with Application(
         model=model,
-        plugins=[Compaction(trigger=lambda state: False, summarizer=summaries, keep_last_steps=1)],
         loop=AgentLoop(max_steps=default_steps),
+        context=Context(
+            compaction=Compaction(
+                trigger=lambda state: False, summarizer=summaries, keep_last_steps=1
+            )
+        ),
     ).session() as session:
         session_audit = Audit(session)
         await session.run("old question " * 100)
@@ -353,7 +382,11 @@ async def test_model_replacement_refreshes_request_names_and_context_windows(
     windows = []
     async with Application(
         model=original,
-        plugins=[Compaction(trigger=lambda state: windows.append(state.context_window) or False)],
+        context=Context(
+            compaction=Compaction(
+                trigger=lambda state: windows.append(state.context_window) or False
+            )
+        ),
     ).session() as session:
         await session.run("hello")
         assert windows[-1] == initial_window
@@ -384,13 +417,18 @@ async def test_explicit_loop_window_still_wins_after_model_replacement():
     windows = []
     async with Application(
         model=original,
-        plugins=[Compaction(trigger=lambda state: windows.append(state.context_window) or False)],
-        loop=AgentLoop(context_window=2000),
+        context=Context(
+            max_tokens=2000,
+            compaction=Compaction(
+                trigger=lambda state: windows.append(state.context_window) or False
+            ),
+        ),
     ).session() as session:
         await session.mount(Service(Model, replacement))
-        result = await session.run("x" * 1000)
-        assert result.completed and session.last(ModelRequestedEvent).model.name == "replacement"
-        assert windows == [2000]
+        with pytest.raises(ContextBudgetExceeded) as error:
+            await session.run("x" * 1000)
+        assert error.value.limit == 64
+        assert windows == [64]
 
 
 async def test_manual_compaction_uses_the_replacement_model():
@@ -398,7 +436,7 @@ async def test_manual_compaction_uses_the_replacement_model():
     replacement = ScriptedModel(["brief summary"], info=ModelInfo("replacement", max_output=2048))
     async with Application(
         model=original,
-        plugins=[Compaction(trigger=lambda state: False, keep_last_steps=1)],
+        context=Context(compaction=Compaction(trigger=lambda state: False, keep_last_steps=1)),
     ).session() as session:
         await session.run("old question " * 100)
         await session.run("retained")

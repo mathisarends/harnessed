@@ -4,13 +4,17 @@ import pytest
 
 from harnessed.events import ModelRequestedEvent, ObservationRecordedEvent, TurnStartedEvent
 from harnessed.models import (
+    AssistantMessage,
+    ImagePart,
     ModelInfo,
     ModelRequest,
     ModelResponse,
     ModelUsage,
+    TextPart,
+    ToolCall,
     ToolDefinition,
+    UserMessage,
 )
-from harnessed.models.messages import AssistantMessage, ImagePart, TextPart, ToolCall, UserMessage
 
 
 @pytest.mark.parametrize(

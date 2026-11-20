@@ -9,11 +9,7 @@ from pathlib import Path, PurePosixPath
 import pytest
 from pydantic import ValidationError
 
-from harnessed import (
-    Agent,
-    ApprovalAnswer,
-    ToolCall,
-)
+from harnessed import Agent, Approvals
 from harnessed.integrations.sandbox import (
     Sandbox,
     SandboxConfig,
@@ -28,7 +24,8 @@ from harnessed.integrations.sandbox.worker import Operation, Request
 from harnessed.integrations.sandbox.worker import filesystem as worker_filesystem
 from harnessed.integrations.sandbox.workspace import seed_archive
 from harnessed.kernel import MissingService
-from harnessed.plugins import Approvals, FilesystemTools, ShellTools
+from harnessed.models import Decision, ToolCall
+from harnessed.plugins import FilesystemTools, ShellTools
 from harnessed.plugins.filesystem import FileStat, FileSystemBackend, search_files
 from harnessed.plugins.shell import ProcResult, ShellBackend
 from harnessed.testing import ScriptedModel
@@ -137,12 +134,8 @@ class MemoryBackend:
 def app(sandbox):
     return Agent(
         model=ScriptedModel([]),
-        plugins=[
-            sandbox,
-            ShellTools(),
-            FilesystemTools(),
-            Approvals(approver=lambda _: ApprovalAnswer.ALLOW),
-        ],
+        approvals=Approvals(default=Decision.ASK, approver=lambda _: Decision.ALLOW),
+        plugins=[sandbox, ShellTools(), FilesystemTools()],
     )
 
 

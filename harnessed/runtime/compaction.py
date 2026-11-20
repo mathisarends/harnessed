@@ -21,24 +21,20 @@ from harnessed.events import (
     CompactionStartedEvent,
     ModelUsageRecordedEvent,
 )
-from harnessed.kernel import Scope
-from harnessed.models.messages import (
+from harnessed.kernel import Bail, Scope
+from harnessed.models import (
     ImagePart,
     ImageReference,
     Message,
-    SystemMessage,
-    UserMessage,
-    to_dict,
-)
-from harnessed.models.model import (
     Model,
     ModelRequest,
     ModelUsage,
     StopReason,
-    UsagePurpose,
-    resolve_request_settings,
-    sum_usage,
+    SystemMessage,
+    UserMessage,
 )
+from harnessed.models.messages import to_dict
+from harnessed.models.model import UsagePurpose, resolve_request_settings, sum_usage
 from harnessed.sessions import HistoryEntry
 from harnessed.sessions.log import SessionLog
 
@@ -72,6 +68,13 @@ class ContextState:
         if self.context_window is None:
             return None
         return (self.input_tokens + self.reserve_tokens) / self.context_window
+
+
+@dataclass(frozen=True)
+class DeferCompaction(Bail[bool]):
+    """Return True to give a checkpoint one ordinary model step before summarization."""
+
+    state: ContextState
 
 
 @dataclass(frozen=True)
@@ -214,14 +217,12 @@ class CompactionPolicy:
 class CompactionManager:
     """Serialize bounded attempts and commit only smaller, complete projections."""
 
-    def __init__(
-        self, scope: Scope, session_log: SessionLog, *, context_window: int | None
-    ) -> None:
+    def __init__(self, scope: Scope, session_log: SessionLog) -> None:
         self.scope = scope
         self._session_log = session_log
-        self.context_window = context_window
         self._lock = asyncio.Lock()
         self._retry_after_turns = 0
+        self._deferred = False
         self._retry_after_step: tuple[str, int] | None = None
         self._retry_through = 0
 
@@ -261,6 +262,8 @@ class CompactionManager:
             if isinstance(counter, CalibratedTokenCounter):
                 counter = copy(counter)
             state = await self._state(request, model, counter)
+            if await self._defer(state, force=force):
+                return None, request
             target = _target(settings, state)
             compaction_id = uuid4().hex
             outcome = CompactionOutcome.FAILED
@@ -314,6 +317,14 @@ class CompactionManager:
                     )
                 )
 
+    async def _defer(self, state: ContextState, *, force: bool) -> bool:
+        if force or self._deferred:
+            self._deferred = False
+            return False
+        requested = await self.scope.dispatch(DeferCompaction(state))
+        self._deferred = requested is True
+        return self._deferred
+
     async def _state(
         self, request: ModelRequest, model: Model, counter: TokenCounter
     ) -> ContextState:
@@ -322,11 +333,7 @@ class CompactionManager:
         return ContextState(
             input_tokens,
             budget.output_reserve(request),
-            budget.window_limit(
-                self.context_window
-                if self.context_window is not None
-                else model.info.context_window
-            ),
+            budget.window_limit(model.info.context_window),
             self._session_log.uncompacted_turn_count,
         )
 

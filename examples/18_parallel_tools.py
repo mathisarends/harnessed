@@ -6,11 +6,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import override
 
-from harnessed import Agent, AgentLoop, Plugin, PolicyDecision, Role, ToolCall, tool
+from harnessed import Agent, AgentLoop, Plugin, tool
 from harnessed.events import ToolCallFinishedEvent
 from harnessed.kernel import Inject, PluginScope
-from harnessed.models import ModelChunk
-from harnessed.plugins import Approvals, Filesystem
+from harnessed.models import ModelChunk, Role, ToolCall
+from harnessed.plugins import Filesystem
 from harnessed.plugins.filesystem import FileSystemBackend
 from harnessed.testing import ScriptedModel
 
@@ -40,8 +40,8 @@ async def independent_calls():
     model = ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "Lookups finished."])
     async with Agent(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), tools],
         loop=AgentLoop(max_parallel_tools=3),
+        plugins=[tools],
     ).session() as session:
         result = await session.run("Look up records 0, 1 and 2.")
         returned = [event for event in result.events if isinstance(event, ToolCallFinishedEvent)]
@@ -80,14 +80,7 @@ async def writes_with_resource_keys(root: Path):
     ]
     model = ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "Documents saved."])
     filesystem = Filesystem(root)
-    async with Agent(
-        model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            filesystem,
-            tools,
-        ],
-    ).session() as session:
+    async with Agent(model=model, plugins=[filesystem, tools]).session() as session:
         result = await session.run("Save both documents and then update a.txt.")
         returned = [event for event in result.events if isinstance(event, ToolCallFinishedEvent)]
         assert all(not event.result.is_error for event in returned)

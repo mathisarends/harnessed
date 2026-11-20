@@ -1,97 +1,70 @@
-# Approval composition
+# Configure tool approvals
 
-Approvals is an explicit plugin. Without it every tool runs without asking,
-except tools declared with `@tool(confirm=True)`: they return an unavailable
-result because nobody can answer. Add `Approvals()` to ask before side effects;
-it permits read-only tools.
-Use an enum for a different fallback and decorated method references for rules:
+An agent allows every tool by default. Put the application policy on
+`Agent(approvals=...)`. A tool publisher can give an action a stable identifier
+that survives changes to the Python method, its parameters or its model-facing name.
 
 ```python
-from harnessed import Agent, ApprovalAnswer, Plugin, PolicyDecision, tool
-from harnessed.events import ApprovalRequestedEvent
-from harnessed.plugins import Approvals, Filesystem
-from harnessed.testing import ScriptedModel, call
+from enum import StrEnum
+
+from harnessed import Agent, Approvals, Plugin, tool
 
 
-class WorkspaceTools(Plugin):
-    @tool(readonly=True)
-    async def count_lines(self, path: str) -> int:
-        return 42
+class DocumentAction(StrEnum):
+    PUBLISH = "publish"
 
 
-async def approve(request: ApprovalRequestedEvent) -> ApprovalAnswer:
-    return ApprovalAnswer.ALLOW
+class Documents(Plugin):
+    @tool(action=DocumentAction.PUBLISH)
+    def publish_revision(self, title: str) -> str:
+        return f"Published {title}"
 
 
-filesystem = Filesystem(root=".")
 agent = Agent(
-    model=ScriptedModel([call(WorkspaceTools.count_lines, path="README.md"), "done"]),
-    plugins=[
-        filesystem,
-        WorkspaceTools(),
-        Approvals(
-            default=PolicyDecision.ALLOW,
-            ask=[WorkspaceTools.count_lines],
-            approver=approve,
-        ),
-    ],
+    model=model,
+    plugins=[Documents()],
+    approvals=Approvals(allow=[DocumentAction.PUBLISH]),
 )
 ```
 
-Rules are evaluated in this order:
+| Application policy | Matching calls | Other calls |
+| --- | --- | --- |
+| Omitted or `Approvals()` | All run | All run |
+| `Approvals(allow=[action])` | Run | Denied |
+| `Approvals(allow=[])` | Empty allowlist | Denied |
+| `Approvals(ask=[action])` | Ask | Run |
+| `Approvals(deny=[action])` | Denied | Run |
+| `Approvals(default=Decision.ASK)` | Ask about every call | Ask |
 
-| Rule | Decision |
-| --- | --- |
-| In `deny` | DENY, without asking |
-| In `ask` | ASK, including explicitly allowed or read-only tools |
-| In `allow` | ALLOW, including a tool marked `confirm=True` |
-| `@tool(confirm=True)` | ASK |
-| `@tool(readonly=True)` | ALLOW |
-| Explicit `policy(call)` result | Its PolicyDecision |
-| Remaining tools | `default`, initially PolicyDecision.ASK |
+`default=` explicitly chooses the fallback. A custom `policy(call)` may decide
+unmatched calls before that fallback. Explicit rules must agree whenever they
+match the same call. A single action can cover several tools. Enum members of
+different classes have separate identities even when their values coincide.
+The SDK publishes `FilesystemAction`, `ShellAction` and `SubagentAction` in
+`harnessed.plugins` for its built-in operations. Local one-off rules can reference a decorated method, for example
+`ask=[Documents.publish_revision]`. String selectors are rejected.
+For external tools bind wire names once at the adapter using `actions=`.
+The runtime checks the captured registration when it executes the scheduled call.
+`readonly=True` describes tool behavior and does not decide permission.
 
-`Approvals(default=PolicyDecision.ALLOW)` or `Approvals(default=PolicyDecision.ASK)`
-choose the fallback; both accept `approver=` and `timeout=`. The default controls
-otherwise unmatched tools. Tool flags and explicit rules still take precedence:
-`default=ASK` permits a tool marked `readonly=True` without asking. To ask for a
-specific read-only tool too, include its reference in `ask=[...]`.
-A tool author uses `@tool(confirm=True)` for actions that need confirmation;
-combining `readonly=True` and `confirm=True` raises `TypeError` at decoration.
-Application selectors have the final say, and the resulting `ToolPolicyAppliedEvent`
-records a policy or human-approval source.
+## Respond to a request
 
-`allow`, `ask` and `deny` accept decorated class methods or methods bound to a
-configured plugin instance. If a tool appears in both `ask` and `allow`, `ask`
-wins. References retain renamed tool metadata, check the active declaration,
-and fail session startup when their tool is missing. An instance reference must
-belong to that mounted recipe. Explicit string names remain an escape hatch for
-dynamic integrations; they cannot receive the same declaration checks.
-Policy reads the tool flags captured for the scheduled call, even if a binding
-is subsequently replaced. Descriptive MCP annotations never grant permission.
+Supply a sync or async callback as `approver=`. Return `request.allow()` for
+one call, `request.allow(remember=True)` for a reusable grant, or `request.deny()`.
+A reusable grant belongs to its action and approval scope. A tool without an
+action key has a grant scoped to that registration. To revoke a grant use
+`await session.approvals.revoke(request_id)`.
 
-An approver is a sync/async callback receiving `ApprovalRequestedEvent`, or a structural
-service with `async ask(request)`. Both receive the same immutable request data.
-`ALLOW` approves this call, `DENY` declines it, and `ALWAYS` records a reusable
-grant for that tool and policy scope. Grants apply only within the current live session.
-`await session.approvals.revoke(request_id)` revokes a grant. Forks revoke grants
-by default. Policy denial and user denial retain distinct provenance.
-
-An active [UI stream](streaming.md) emits `events.ApprovalNeededEvent` with
-`request_id`, `call` and `reason`. Respond through
-`await session.approvals.answer(request_id, ApprovalAnswer.ALLOW)`. The call waits
-for in-memory admission. Identical acknowledged responses are idempotent;
-a different second response fails. Late or expired responses fail with
-`ApprovalUnavailable`.
-
-Without a callback or an active UI responder, ASK immediately produces an
-unavailable tool result.
-`run()`, `submit()` and raw subscriptions do not install a UI responder.
+An active [UI stream](streaming.md) emits `ApprovalNeededEvent`. Use
+`await session.approvals.allow(request_id)` or `await session.approvals.deny(request_id)`.
+A repeated identical response is idempotent. A contradictory response fails.
+A question without a responder yields an unavailable result.
+`run()`, `submit()` and raw subscriptions install no UI responder.
 
 ## Response timeouts
 
 `Approvals(timeout=120)` sets the default approval response timeout for the whole
-session, in seconds. It applies to tool-policy questions, independent guards,
-questions inside a tool, direct SDK requests and forwarded subagent questions.
+session, in seconds. It applies to tool-policy questions, questions inside a tool, direct SDK requests and forwarded subagent questions.
 Callbacks, services, hooks and stream responders use the same timeout. The
 default is 300 seconds; values must be finite and positive.
 
@@ -121,9 +94,7 @@ seconds. The application default is not a maximum. Overrides do not change later
 questions. Invalid overrides are rejected before recording a question, even when
 a reusable grant exists.
 
-The response timeout starts when the session waits for the answer. Each question
-captures its configured timeout before recording the request; replacing a plugin
-affects new questions. An existing grant answers immediately without waiting.
+The response timeout starts when the session waits for the answer. Each question captures its timeout before recording the request. An existing grant answers immediately without waiting.
 Expiration raises `ApprovalUnavailable` and records an unavailable resolution;
 it is distinct from an explicit `DENY`. Late answers cannot authorize the action.
 Tool-policy and in-tool approval failures produce an unavailable tool result.
@@ -140,16 +111,3 @@ Configure approval response timeouts on `Approvals`, and tool execution timeouts
 on `AgentLoop(tool_timeout=...)` or `@tool(timeout_seconds=...)`.
 The [API decision and rationale](../contributing/approval-timeouts.md) explain
 these responsibilities.
-
-## Independent guards and grants
-
-Independent hard guards can use `ToolApprovalGuard(risky=[WorkspaceTools.count_lines],
-scope="workspace")` or the `ToolPolicy` hook. They remain active when their
-optional approver disappears or the `approvals` slot is replaced. This guard can
-protect local and external/MCP tools independently of ordinary application policy. `Service(Approver, CallbackApprover(callback))` is
-available for advanced service composition and receives the same request data;
-normal application composition passes `approver=callback` directly.
-
-Approval grants belong to one live session. Importing a conversation snapshot
-re-evaluates the configured policy; it does not inherit permissions or unanswered
-approvals. Save approval audit events externally if historical inspection is needed.

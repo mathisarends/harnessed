@@ -25,8 +25,8 @@ from harnessed.events import (
     TurnStartedEvent,
     UserMessageEvent,
 )
-from harnessed.models import ModelRequest
-from harnessed.models.messages import Message, SpillRef, SystemMessage, ToolMessage
+from harnessed.models import Message, ModelRequest, SystemMessage, ToolMessage
+from harnessed.models.messages import SpillRef
 
 from .state import HistoryEntry, HistoryStep, SessionState
 

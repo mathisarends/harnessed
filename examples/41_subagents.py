@@ -1,8 +1,8 @@
 import asyncio
 
-from harnessed import Agent, ToolCall
-from harnessed.models import ModelChunk
-from harnessed.plugins import Approvals, Subagents
+from harnessed import Agent, Approvals
+from harnessed.models import ModelChunk, ToolCall
+from harnessed.plugins import SubagentAction, Subagents
 from harnessed.testing import ScriptedModel
 
 
@@ -25,7 +25,8 @@ async def main() -> None:
                 "Review complete: session ownership is preserved.",
             ]
         ),
-        plugins=[Subagents({"review": reviewer}), Approvals(allow=[Subagents.delegate])],
+        approvals=Approvals(allow=[SubagentAction.DELEGATE]),
+        plugins=[Subagents({"review": reviewer})],
     )
     async with coordinator.session() as session:
         result = await session.run("Ask the reviewer to inspect session ownership.")

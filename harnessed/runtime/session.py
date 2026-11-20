@@ -21,22 +21,19 @@ from harnessed.kernel import (
     Disposer,
     HookFactory,
     ListenerFactory,
-    PluginHandle,
-    PluginLike,
     Scope,
 )
-from harnessed.models import Message, UserMessage
-from harnessed.models.assets import AssetStore
-from harnessed.models.model import (
+from harnessed.models import (
     GenerationSettings,
+    Message,
     Model,
     ModelRequest,
     ModelUsage,
-    resolve_request_settings,
+    UserMessage,
 )
-from harnessed.prompts import SystemPromptStore
-from harnessed.prompts.delivery import runtime_sections
-from harnessed.prompts.values import SectionDelivery
+from harnessed.models.assets import AssetStore
+from harnessed.models.model import resolve_request_settings
+from harnessed.prompts import SectionDelivery, SystemPromptStore
 from harnessed.sessions import SessionState
 from harnessed.sessions.children import ChildSession
 from harnessed.sessions.context import PendingObservations, SessionContext
@@ -57,10 +54,11 @@ from .hooks import (
     SessionClosing,
 )
 from .inbox import InboxItem, InboxWriter, SessionInbox
+from .mounts import PluginMount
 from .options import AgentOptions, RunOptions
 from .output import OutputHandler
 from .outputs import OutputContract, OutputTypes, OutputValues
-from .plugin import plugin_contribution, plugin_events
+from .plugin import Plugin
 from .respond import ModelResponder
 from .stepper import StepRunner
 from .stream_approvals import StreamApprovals
@@ -84,7 +82,7 @@ class Session:
         self.id = session.id
         scope.provide(TraceSession, TraceSession(self.id))
         self._boundary_state = session.boundary_state
-        self._compaction = CompactionManager(scope, session, context_window=options.context_window)
+        self._compaction = CompactionManager(scope, session)
         self.control = SessionControl(session, self._drive, lambda: _driving.get() is self)
         self._live_approvals = LiveApprovals()
         self.approvals = SessionApprovals(scope, session, self.control, self._live_approvals)
@@ -201,37 +199,11 @@ class Session:
         async for event in self.log.subscribe(transient=transient, buffer_size=buffer_size):
             yield event
 
-    @asynccontextmanager
-    async def use(
-        self, plugin: PluginLike, *, section_delivery: SectionDelivery = SectionDelivery.ERROR
-    ) -> AsyncGenerator[PluginHandle]:
-        """Mount a capability for this context and remove it on every exit path."""
-        handle = await self.mount(plugin, section_delivery=section_delivery)
-        try:
-            yield handle
-        finally:
-            await handle.aclose()
-
-    async def mount(
-        self, plugin: PluginLike, *, section_delivery: SectionDelivery = SectionDelivery.ERROR
-    ) -> PluginHandle:
-        """Mount a capability, with explicit delivery of any declared system sections.
-
-        CONTEXT owns guidance for each activation; IGNORE never evaluates section
-        providers. Neither policy changes the session's fixed system text.
-        """
-        delivery = SectionDelivery(section_delivery)
-        contribution = plugin_contribution(plugin)
-        spec = runtime_sections(plugin, contribution, delivery)
-        self.log.registry.register(plugin_events(plugin))
-        handle = await self.scope.plugin(spec)
-        try:
-            await self.scope.settle()
-            self.scope[ToolRegistry].validate_references()
-        except BaseException:
-            await handle.aclose()
-            raise
-        return handle
+    def mount(
+        self, plugin: Plugin, *, section_delivery: SectionDelivery = SectionDelivery.CONTEXT
+    ) -> PluginMount:
+        """Mount a capability using async with, or await a manually owned handle."""
+        return PluginMount(self.scope, self.log.registry, plugin, section_delivery=section_delivery)
 
     @overload
     def on[H](
@@ -258,12 +230,6 @@ class Session:
     def on(self, event, fn=None, *, prepend: bool = False, priority: int = 0, owner=None):
         owner = owner if owner is not None else Scope.current() or self.scope
         return owner.on(event, fn, prepend=prepend, priority=priority)
-
-    def add_hook(
-        self, event, callback, *, prepend: bool = False, priority: int = 0, owner=None
-    ) -> Disposer:
-        owner = owner if owner is not None else Scope.current() or self.scope
-        return owner.add_listener(event, callback, prepend=prepend, priority=priority)
 
     @property
     def assets(self) -> AssetStore:
