@@ -8,7 +8,6 @@ from harnessed import (
     Instructions,
     Plugin,
     PluginConfig,
-    PluginPack,
     PromptFormat,
     SectionDelivery,
     SystemPrompt,
@@ -57,15 +56,11 @@ class BrowserTrust(Plugin):
 async def main() -> None:
     interaction = InteractionTools(name="browser.interaction")
     for format in PromptFormat:
-        browser = PluginPack(
-            "browser",
-            [Observe(config=ObserveConfig()), interaction, BrowserTrust()],
-            prompt=SystemPrompt.from_plugins(format=format),
-        )
         agent = Agent(
             model=ScriptedModel(["Ready."]),
             instructions="You are a browser agent.",
-            plugins=[browser],
+            prompt=SystemPrompt.from_plugins(format=format),
+            plugins=[Observe(config=ObserveConfig()), interaction, BrowserTrust()],
         )
         print(agent.prompt)
         async with agent.session() as session:

@@ -53,7 +53,7 @@ runpy.run_module(module, run_name="__main__", alter_sys=True)
         "examples.33_basic_stream",
         "examples.34_sandbox",
         "examples.35_background_shell",
-        "examples.36_plugin_packs",
+        "examples.36_explicit_composition",
         "examples.37_plugin_recipes",
         "examples.38_session_store",
         "examples.39_typed_session_store",

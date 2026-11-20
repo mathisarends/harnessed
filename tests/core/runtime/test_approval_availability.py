@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import ApprovalAnswer, Plugin, ToolCall, ToolContext, tool
+from harnessed import AgentLoop, ApprovalAnswer, Plugin, ToolCall, ToolContext, tool
 from harnessed.errors import ApprovalUnavailable
 from harnessed.events import (
     ApprovalResolvedEvent,
@@ -15,7 +15,7 @@ from harnessed.events.codec import decode_event, encode_event
 from harnessed.kernel import Inject, PluginStatus, hook
 from harnessed.models import ModelChunk
 from harnessed.models.messages import PolicyDecision, ToolStatus
-from harnessed.plugins import AgentLoop, Approvals, Service
+from harnessed.plugins import Approvals, Service
 from harnessed.runtime.approval_policy import (
     ApprovalsConfig,
     ApprovalState,

@@ -24,7 +24,7 @@ from harnessed.events import (
 from harnessed.kernel import PluginScope, needs
 from harnessed.models import Model, ModelChunk
 from harnessed.models.messages import PolicyDecision, ToolStatus
-from harnessed.plugins import Approvals, PromptRenderer, Service
+from harnessed.plugins import Approvals, Service
 from harnessed.prompts.plugin_instructions import PluginInstructions
 from harnessed.sessions.log import SessionLog
 from harnessed.testing import ScriptedModel
@@ -72,7 +72,7 @@ async def test_application_facade_composes_plugins_and_fixed_ordered_guidance(tm
     assert model.requests[0].messages[0].text == model.requests[-1].messages[0].text
 
 
-async def test_facade_parameters_are_equivalent_to_public_plugins():
+async def test_model_parameter_is_equivalent_to_model_service():
     one, two = ScriptedModel(["done"]), ScriptedModel(["done"])
     calculator = Calculator()
     await Agent(
@@ -82,11 +82,8 @@ async def test_facade_parameters_are_equivalent_to_public_plugins():
     ).run("Go")
     calculator_4 = Calculator()
     await Agent(
-        plugins=[
-            Service(Model, two),
-            PromptRenderer(SystemPrompt.from_plugins(Instructions(text="Rules."))),
-            calculator_4,
-        ]
+        prompt=SystemPrompt.from_plugins(Instructions(text="Rules.")),
+        plugins=[Service(Model, two), calculator_4],
     ).run("Go")
     assert [message.text for message in one.requests[0].messages] == [
         message.text for message in two.requests[0].messages
@@ -133,15 +130,22 @@ async def test_removed_runtime_plugins_are_collectable_while_the_session_stays_o
         assert not session.scope[PluginInstructions].values
 
 
-async def test_default_approvals_allow_reads_and_reject_side_effects_without_a_responder():
+async def test_without_approvals_side_effects_run_but_confirmed_tools_do_not():
     class Mutating(Plugin):
         @tool
         async def write(self) -> str:
-            pytest.fail("Unapproved side effect ran")
+            return "written"
 
-    model = ScriptedModel([[ModelChunk(tool_call=ToolCall("write"))], "blocked"])
+        @tool(confirm=True)
+        async def delete(self) -> str:
+            pytest.fail("Unconfirmed tool ran")
+
+    model = ScriptedModel(
+        [[ModelChunk(tool_call=ToolCall("write")), ModelChunk(tool_call=ToolCall("delete"))], "ok"]
+    )
     result = await Agent(model=model, plugins=[Mutating()]).run("Write")
-    assert result.tool_calls[0][1].status == ToolStatus.UNAVAILABLE
+    statuses = {call.name: output.status for call, output in result.tool_calls}
+    assert statuses == {"write": ToolStatus.OK, "delete": ToolStatus.UNAVAILABLE}
 
 
 def test_explicit_duplicate_slots_raise_instead_of_silently_overriding():

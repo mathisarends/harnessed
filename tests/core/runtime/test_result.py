@@ -4,7 +4,7 @@ import json
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import Plugin, PolicyDecision, StopReason, ToolCall, tool
+from harnessed import AgentLoop, Plugin, PolicyDecision, StopReason, ToolCall, tool
 from harnessed.errors import OutputTokenLimit
 from harnessed.events import InboxAddedEvent, InboxMode, TextDeltaEvent
 from harnessed.events.codec import decode_event, encode_event
@@ -100,12 +100,11 @@ async def test_public_max_token_policies_return_typed_stop_reasons_or_fail(
 
     from harnessed import Agent, StopReason
     from harnessed.models import AssistantMessage, ModelResponse
-    from harnessed.plugins import AgentLoop
     from harnessed.testing import ScriptedModel
 
     partial = ModelResponse(AssistantMessage("partial"), stop_reason=StopReason.MAX_TOKENS)
     model = ScriptedModel([partial, "complete"])
-    async with Agent(model=model, plugins=[AgentLoop(on_max_tokens=policy)]).session() as session:
+    async with Agent(model=model, loop=AgentLoop(on_max_tokens=policy)).session() as session:
         session_audit = Audit(session)
         if policy == "fail":
             with pytest.raises(OutputTokenLimit, match="output token limit"):
@@ -123,13 +122,12 @@ async def test_public_max_token_policies_return_typed_stop_reasons_or_fail(
 async def test_step_limit_takes_precedence_over_the_last_model_finish_reason():
     from harnessed import Agent, StopReason
     from harnessed.models import AssistantMessage, ModelResponse
-    from harnessed.plugins import AgentLoop
     from harnessed.testing import ScriptedModel
 
     partial = ModelResponse(AssistantMessage("partial"), stop_reason=StopReason.MAX_TOKENS)
     result = await Agent(
         model=ScriptedModel([partial]),
-        plugins=[AgentLoop(max_steps=1, on_max_tokens=TokenLimitBehavior.CONTINUE)],
+        loop=AgentLoop(max_steps=1, on_max_tokens=TokenLimitBehavior.CONTINUE),
     ).run("task")
     assert result.stop_reason is StopReason.MAX_STEPS
     assert not result.completed

@@ -6,9 +6,9 @@ from pydantic import ValidationError
 
 from harnessed import (
     Agent,
+    AgentLoop,
     ToolCall,
 )
-from harnessed.plugins import AgentLoop
 from harnessed.plugins.shell import LocalShell, ProcResult, Shell, ShellBackend, ShellTools
 from harnessed.testing import ScriptedModel
 from harnessed.tools import ToolRegistry
@@ -125,10 +125,8 @@ async def test_shell_command_deadline_overrides_the_generic_tool_timeout(tmp_pat
     shell = Shell(tmp_path, implementation=Backend(), timeout=0.1, max_timeout=0.2)
     async with Agent(
         model=ScriptedModel([]),
-        plugins=[
-            AgentLoop(tool_timeout=0.01),
-            shell,
-        ],
+        plugins=[shell],
+        loop=AgentLoop(tool_timeout=0.01),
     ).session() as session:
         registry = session.scope[ToolRegistry]
         result = await registry.execute(

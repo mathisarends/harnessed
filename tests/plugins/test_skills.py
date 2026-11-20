@@ -6,13 +6,14 @@ import pytest
 
 from harnessed import (
     Agent,
+    AgentLoop,
     Instructions,
     SystemPrompt,
     ToolCall,
 )
 from harnessed.errors import ConfigError
 from harnessed.models.messages import ToolStatus
-from harnessed.plugins import Compaction, Rules, Skill, Skills, Spill, ToolOutputLimit, when
+from harnessed.plugins import Compaction, Rules, Skill, Skills, Spill, when
 from harnessed.plugins.skills import SkillCatalog
 from harnessed.prompts.plugin_instructions import PluginInstructions
 from harnessed.testing import ExtractiveSummarizer, ScriptedModel, call
@@ -320,11 +321,8 @@ async def test_complete_skill_output_is_never_truncated_or_spilled_and_needs_no_
     spill_9 = Spill(threshold_tokens=1)
     async with Agent(
         model=model,
-        plugins=[
-            skills,
-            ToolOutputLimit(256),
-            spill_9,
-        ],
+        plugins=[skills, spill_9],
+        loop=AgentLoop(max_tool_output=256),
     ).session() as session:
         result = (await session.run("Load the notes skill")).tool_calls[0][1]
         assert result.status == ToolStatus.OK and result.spill is None and result.truncation is None
@@ -397,7 +395,8 @@ async def test_discovery_is_not_recursive_and_resource_output_is_complete(tmp_pa
     spill_13 = Spill(threshold_tokens=1)
     async with Agent(
         model=model,
-        plugins=[skills_12, ToolOutputLimit(256), spill_13],
+        plugins=[skills_12, spill_13],
+        loop=AgentLoop(max_tool_output=256),
     ).session() as session:
         result = (await session.run("Read the reference")).tool_calls[0][1]
         assert result.text == text and result.spill is None and result.truncation is None

@@ -205,7 +205,7 @@ def test_application_facade_stays_small_and_has_no_transitional_names():
         "Session",
         "SessionState",
         "Plugin",
-        "PluginPack",
+        "AgentLoop",
         "CompositionDescription",
         "tool",
         "ToolParameter",
@@ -225,6 +225,8 @@ def test_application_facade_stays_small_and_has_no_transitional_names():
         "Section",
         "Context",
         "Scope",
+        "PluginPack",
+        "NoopTracer",
     } & set(harnessed.__all__)
 
 

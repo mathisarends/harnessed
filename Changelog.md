@@ -7,6 +7,40 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 
 ## Unreleased
 
+### Changed
+
+- An `Agent` is now a fixed runtime core plus exactly the plugins in `plugins=`.
+  The session log, tool registry, system prompt, token counter, prompt renderer
+  and loop are core components, not plugins, and the Agent installs no hidden
+  default plugins. `agent.describe()` lists only configured plugins.
+- `AgentLoop` is a value passed as `Agent(loop=AgentLoop(...))` and is exported
+  from `harnessed`. It now owns the final tool-output limit as
+  `max_tool_output` (default 32,000 characters).
+- Slots only detect conflicts: two plugins in one slot raise `PluginConflict`.
+  Nothing replaces or overrides a plugin implicitly.
+- `Approvals` is no longer installed by default, and tools now run without
+  asking when it is absent. Previously, side-effecting tools were unavailable
+  without an approver. Tools declared with `confirm=True` still require an
+  approval. Add `Approvals()` to `plugins=` to ask before side effects.
+
+### Removed
+
+- `PluginPack`, `PluginPackPromptPolicy` and `ResolvedPluginPack`. Share
+  compositions with ordinary functions that return plugin lists, and pass
+  `prompt=` explicitly. `CompositionDescription` no longer has `removed`, and
+  plugin descriptions no longer have `pack_path`, `origin` or `replaces`.
+- `NoopTracer`. Without a tracer nothing is traced.
+- `ToolOutputLimit` and `PromptRenderer` as public plugins, and `AgentFactory`.
+
+Upgrade:
+
+```python
+# Before
+Agent(model=model, plugins=[AgentLoop(max_steps=8), ToolOutputLimit(4_000), tools])
+# After
+Agent(model=model, plugins=[tools], loop=AgentLoop(max_steps=8, max_tool_output=4_000))
+```
+
 ### Fixed
 
 - With content capture enabled, OpenTelemetry model spans no longer lose

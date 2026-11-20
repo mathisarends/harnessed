@@ -19,14 +19,13 @@ def __getattr__(name: str) -> Any:
 
 _EXPORTS = {
     "Agent": ("harnessed.agent", "Agent"),
+    "AgentLoop": ("harnessed.runtime.agent_loop", "AgentLoop"),
     "ApprovalAnswer": ("harnessed.models.messages", "ApprovalAnswer"),
     "CompositionDescription": ("harnessed.runtime.composition", "CompositionDescription"),
     "File": ("harnessed.runtime.attachments", "File"),
     "Image": ("harnessed.runtime.attachments", "Image"),
     "ImageDetail": ("harnessed.models.messages", "ImageDetail"),
     "Inject": ("harnessed.kernel", "Inject"),
-    "PluginPack": ("harnessed.runtime.composition", "PluginPack"),
-    "PluginPackPromptPolicy": ("harnessed.runtime.composition", "PluginPackPromptPolicy"),
     "OutputContract": ("harnessed.runtime.outputs", "OutputContract"),
     "Plugin": ("harnessed.runtime.plugin", "Plugin"),
     "PluginConfig": ("harnessed.runtime.plugin", "PluginConfig"),
@@ -35,7 +34,6 @@ _EXPORTS = {
     "PluginConflict": ("harnessed.errors", "PluginConflict"),
     "PolicyDecision": ("harnessed.models.messages", "PolicyDecision"),
     "Role": ("harnessed.models.messages", "Role"),
-    "ResolvedPluginPack": ("harnessed.runtime.composition", "ResolvedPluginPack"),
     "RunHandle": ("harnessed.runtime.handles", "RunHandle"),
     "RunResult": ("harnessed.sessions.result", "RunResult"),
     "RunStream": ("harnessed.runtime.handles", "RunStream"),

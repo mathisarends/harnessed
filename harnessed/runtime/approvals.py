@@ -18,6 +18,7 @@ from harnessed.sessions.log import SessionLog
 from harnessed.tools import suspend_tool_execution
 
 from .approval_policy import (
+    DEFAULT_APPROVALS,
     Approval,
     ApprovalsConfig,
     Approver,
@@ -161,7 +162,8 @@ class SessionApprovals:
         Missing responders and expired questions raise ``ApprovalUnavailable``.
         """
         self.control.check_open()
-        timeout = self.scope[ApprovalsConfig].timeout if timeout is None else timeout
+        if timeout is None:
+            timeout = self.scope.get(ApprovalsConfig, DEFAULT_APPROVALS).timeout
         validate_approval_timeout(timeout)
         grant = self.log.approval_grant(call.name, scope=scope)
         request = ApprovalRequestedEvent(

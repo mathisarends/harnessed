@@ -11,7 +11,7 @@ from harnessed.sessions.log import SessionLog
 from harnessed.sessions.store import SessionPersistence, SessionStore
 from harnessed.tools import ToolRegistry
 
-from .agent_loop import AgentFactory
+from .agent_loop import AgentLoop
 from .child_contracts import ChildSessionRequest
 from .child_reports import ChildReports
 from .composition import PluginValidation, validate_plugins
@@ -24,6 +24,7 @@ async def open_session(
     scope: Scope,
     state: SessionState | None,
     *,
+    loop: AgentLoop,
     plugin_validation: PluginValidation,
     store: SessionStore | None = None,
     id: str | None = None,
@@ -77,7 +78,7 @@ async def open_session(
         await log.repair_interrupted()
     elif selected is not None:
         await log.repair_interrupted()
-    runtime = scope[AgentFactory].create(scope, log)
+    runtime = loop.create(scope, log)
     try:
         await scope.install(
             [

@@ -5,13 +5,13 @@ from pydantic import ValidationError
 
 from harnessed import (
     Agent,
+    AgentLoop,
     Plugin,
 )
 from harnessed.events import SpillCreatedEvent, SpillExpiredEvent
 from harnessed.models.messages import ImagePart, TextPart, ToolCall, ToolResult, ToolStatus
 from harnessed.plugins import Rules, Spill, when
 from harnessed.plugins.spill import SpillStore
-from harnessed.runtime.tool_output_limit import ToolOutputLimit
 from harnessed.sessions.files import SessionFiles
 from harnessed.testing import ScriptedModel, call
 from harnessed.tools import ToolError, tool
@@ -28,10 +28,11 @@ class Source(Plugin):
         )
 
 
-def configure(model, *, plugins=()):
+def configure(model, *, plugins=(), loop=None):
     return Agent(
         model=model,
         plugins=[Source(), *plugins],
+        loop=loop,
     )
 
 
@@ -94,7 +95,8 @@ async def test_retention_expiration_is_durable_and_cannot_be_reactivated_by_old_
 async def test_spill_budget_falls_back_to_the_final_output_limit_without_losing_metadata():
     app = configure(
         ScriptedModel([call("source", text="x" * 4000), "done"]),
-        plugins=[Spill(threshold_tokens=1, max_bytes=100), ToolOutputLimit(256)],
+        plugins=[Spill(threshold_tokens=1, max_bytes=100)],
+        loop=AgentLoop(max_tool_output=256),
     )
     async with app.session() as session:
         result = (await session.run("read")).tool_calls[0][1]

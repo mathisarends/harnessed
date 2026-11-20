@@ -6,6 +6,7 @@ import pytest
 
 from harnessed import (
     Agent,
+    AgentLoop,
     Plugin,
     SessionStatus,
     hook,
@@ -30,7 +31,7 @@ from harnessed.models.model import (
     ModelUsage,
     UsagePurpose,
 )
-from harnessed.plugins import AgentLoop, Compaction, at_ratio, every_turns
+from harnessed.plugins import Compaction, at_ratio, every_turns
 from harnessed.plugins.compaction import Summary
 from harnessed.runtime.compaction import ContextState
 from harnessed.runtime.hooks import PrepareRequest
@@ -63,10 +64,8 @@ async def test_compaction_window_uses_captured_model(context_window: int | None)
 
     async with Agent(
         model=original,
-        plugins=[
-            AgentLoop(context_window=context_window),
-            Compaction(trigger=lambda state: windows.append(state.context_window) or False),
-        ],
+        plugins=[Compaction(trigger=lambda state: windows.append(state.context_window) or False)],
+        loop=AgentLoop(context_window=context_window),
     ).session() as session:
         session.on(PrepareRequest, swap)
         assert (await session.run("hello")).text == "original"
@@ -284,10 +283,8 @@ async def test_budget_overflow_forces_compaction_even_when_the_trigger_is_not_du
     model = ScriptedModel(["first", "retained", "second"])
     async with Agent(
         model=model,
-        plugins=[
-            AgentLoop(context_window=500),
-            Compaction(trigger=lambda state: False, summarizer=brief, keep_last_steps=1),
-        ],
+        plugins=[Compaction(trigger=lambda state: False, summarizer=brief, keep_last_steps=1)],
+        loop=AgentLoop(context_window=500),
     ).session() as session:
         await session.run("x" * 1000)
         await session.run("retained")
@@ -376,9 +373,9 @@ async def test_ratio_requires_known_metadata_or_a_loop_override():
     with pytest.raises(ConfigError, match="context window"):
         await Agent(model=model, plugins=[Compaction()]).run("task")
     assert not model.requests
-    result = await Agent(model=model, plugins=[AgentLoop(context_window=2000), Compaction()]).run(
-        "task"
-    )
+    result = await Agent(
+        model=model, plugins=[Compaction()], loop=AgentLoop(context_window=2000)
+    ).run("task")
     assert result.text == "answer"
 
 
@@ -500,9 +497,8 @@ async def test_context_retry_is_bounded_and_requires_a_safe_smaller_request(case
         if case == "no-policy"
         else [Compaction(trigger=lambda state: False, summarizer=brief, keep_last_steps=1)]
     )
-    if case == "step-limit":
-        plugins.append(AgentLoop(max_steps=1))
-    async with Agent(model=model, plugins=plugins).session() as session:
+    loop = AgentLoop(max_steps=1) if case == "step-limit" else None
+    async with Agent(model=model, plugins=plugins, loop=loop).session() as session:
         session_audit = Audit(session)
         if case != "no-history":
             await session.run("x" * 4000)

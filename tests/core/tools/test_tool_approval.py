@@ -2,12 +2,12 @@ import asyncio
 
 import pytest
 
-from harnessed import Agent, Plugin, PolicyDecision, ToolCall, ToolContext, events, tool
+from harnessed import Agent, AgentLoop, Plugin, PolicyDecision, ToolCall, ToolContext, events, tool
 from harnessed.events import ApprovalRequestedEvent, ApprovalStatus
 from harnessed.kernel import Inject
 from harnessed.models import ModelChunk
 from harnessed.models.messages import ApprovalAnswer, ToolStatus
-from harnessed.plugins import AgentLoop, Approvals
+from harnessed.plugins import Approvals
 from harnessed.runtime.approval_policy import ApprovalState
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit
@@ -83,13 +83,13 @@ async def test_approval_waits_do_not_consume_tool_execution_time(transport):
         model=ScriptedModel([[ModelChunk(tool_call=ToolCall("work"))], "done"]),
         plugins=[
             Work(),
-            AgentLoop(tool_timeout=0.04),
             Approvals(
                 default=PolicyDecision.ALLOW,
                 approver=respond if transport == "callback" else None,
                 timeout=1,
             ),
         ],
+        loop=AgentLoop(tool_timeout=0.04),
     ).session() as session:
         audit = Audit(session)
         async with asyncio.timeout(3):
@@ -206,11 +206,8 @@ async def test_a_parallel_approval_wait_does_not_suspend_other_tools():
                 "done",
             ]
         ),
-        plugins=[
-            Work(),
-            AgentLoop(tool_timeout=0.04),
-            Approvals(default=PolicyDecision.ALLOW, approver=respond),
-        ],
+        plugins=[Work(), Approvals(default=PolicyDecision.ALLOW, approver=respond)],
+        loop=AgentLoop(tool_timeout=0.04),
     ).session() as session:
         async with asyncio.timeout(3):
             result = await session.run("work")

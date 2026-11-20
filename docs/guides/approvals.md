@@ -1,6 +1,9 @@
 # Approval composition
 
-The default `Approvals()` permits read-only tools and asks before side effects.
+Approvals is an explicit plugin. Without it every tool runs without asking,
+except tools declared with `@tool(confirm=True)`: they return an unavailable
+result because nobody can answer. Add `Approvals()` to ask before side effects;
+it permits read-only tools.
 Use an enum for a different fallback and decorated method references for rules:
 
 ```python

@@ -19,7 +19,6 @@ from harnessed.plugins.filesystem import FileSystemBackend, FilesystemTools
 from harnessed.plugins.shell import ProcResult, ShellTools
 from harnessed.plugins.shell import ShellBackend as Shell
 from harnessed.plugins.spill import SpillStore
-from harnessed.runtime.agent_loop import AgentFactory
 from harnessed.runtime.approval_policy import Approver
 from harnessed.runtime.compaction import Summarizer
 from harnessed.runtime.hooks import ToolPolicy
@@ -37,7 +36,6 @@ from harnessed.testing import ScriptedModel
         TokenCounter,
         Summarizer,
         SpillStore,
-        AgentFactory,
     ],
 )
 def test_service_contracts_use_structural_protocols(contract):

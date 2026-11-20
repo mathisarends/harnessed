@@ -11,11 +11,9 @@ from harnessed.models.pydantic_ai import PydanticAIModel
 from harnessed.prompts.instructions import PromptRenderer
 from harnessed.prompts.values import PromptComposition, SystemPrompt
 from harnessed.runtime.agent_loop import AgentLoop
-from harnessed.runtime.approval_policy import Approvals
 from harnessed.runtime.child_contracts import ChildSessionRequest
 from harnessed.runtime.composition import (
     CompositionDescription,
-    PluginInput,
     PluginValidation,
     compose_plugins,
 )
@@ -26,15 +24,17 @@ from harnessed.runtime.plugin import Service, plugin_contribution, plugin_events
 from harnessed.runtime.services import RuntimeServices
 from harnessed.runtime.session import Session
 from harnessed.runtime.tool_output_limit import ToolOutputLimit
-from harnessed.runtime.tracing import NoopTracer
 from harnessed.sessions import SessionState, SessionStore
 from harnessed.sessions.result import RunResult
 
 
 class Agent:
-    """Resolve model, instructions and plugins into a reusable configuration.
+    """Resolve model, instructions, loop settings and plugins into a reusable configuration.
 
-    Each opened session owns its runtime and plugin lifetimes. The configured
+    The composition is exactly the supplied plugin list: nothing is added,
+    replaced or removed implicitly. The runtime core (session log, tool
+    registry, prompt rendering and the loop configured by ``loop``) is not a
+    plugin. Each opened session owns its runtime and plugin lifetimes. The
     conversation state is returned to the caller rather than archived by the agent.
     """
 
@@ -44,7 +44,8 @@ class Agent:
         model: Model | str | None = None,
         instructions: str | None = None,
         prompt: SystemPrompt | None = None,
-        plugins: Iterable[PluginInput | None] = (),
+        plugins: Iterable[PluginLike | None] = (),
+        loop: AgentLoop | None = None,
         plugin_validation: PluginValidation = PluginValidation.ERROR,
         store: SessionStore | None = None,
     ) -> None:
@@ -52,18 +53,19 @@ class Agent:
             PluginValidation(plugin_validation)
         )
         self.store = store
-        composition = compose_plugins(
-            _configured_plugins(plugins, model=model, prompt=prompt),
-            defaults=_default_plugins(),
-        )
+        if loop is None:
+            loop = AgentLoop()
+        if not isinstance(loop, AgentLoop):
+            raise ConfigError("loop must be an AgentLoop")
+        self.loop = loop
+        composition = compose_plugins(_configured_plugins(plugins, model=model))
         self._description = composition.description
-        resolved = [_resolve_model(value) for value in composition.plugins]
-        self.prompt = _compose_prompt(resolved, instructions=instructions)
-        self.plugins = tuple(_bind_prompt(value, self.prompt) for value in resolved)
+        self.plugins = tuple(_resolve_model(value) for value in composition.plugins)
+        self.prompt = _compose_prompt(self.plugins, instructions=instructions, prompt=prompt)
         self._events = EventRegistry(chain.from_iterable(map(plugin_events, self.plugins)))
 
     def describe(self) -> CompositionDescription:
-        """Inspect configured order, origins, replacements and exclusions without mounting."""
+        """Inspect the configured plugins and their declarations without mounting."""
         return self._description
 
     @asynccontextmanager
@@ -104,9 +106,19 @@ class Agent:
             for output in restore_outputs:
                 outputs.register(output)
             scope.provide(OutputTypes, outputs)
-            await scope.install(self.plugins, settle=True)
+            scope.provide(ToolOutputLimit, ToolOutputLimit(self.loop.max_tool_output))
+            core = (
+                RuntimeServices(),
+                PromptRenderer(self.prompt.document, composition=self.prompt),
+            )
+            await scope.install((*core, *self.plugins), settle=True)
             yield await open_session(
-                scope, state, plugin_validation=self.plugin_validation, store=self.store, id=id
+                scope,
+                state,
+                loop=self.loop,
+                plugin_validation=self.plugin_validation,
+                store=self.store,
+                id=id,
             )
 
     @overload
@@ -143,30 +155,13 @@ class Agent:
 
 
 def _configured_plugins(
-    plugins: Iterable[PluginInput | None],
-    *,
-    model: Model | str | None,
-    prompt: SystemPrompt | None,
-) -> list[PluginInput]:
-    """Place the explicit model and prompt arguments before the supplied plugins."""
-    leading: list[PluginInput] = []
-    if model is not None:
-        leading.append(Service(Model, model))
-    if prompt is not None:
-        leading.append(PromptRenderer(prompt))
-    return [*leading, *(value for value in plugins if value is not None)]
-
-
-def _default_plugins() -> list[PluginLike]:
-    """Create the default runtime plugins that fill unclaimed slots."""
-    return [
-        RuntimeServices(),
-        AgentLoop(),
-        ToolOutputLimit(),
-        Approvals(),
-        NoopTracer(),
-        PromptRenderer(),
-    ]
+    plugins: Iterable[PluginLike | None], *, model: Model | str | None
+) -> list[PluginLike]:
+    """Place the explicit model argument before the supplied plugins."""
+    supplied = [value for value in plugins if value is not None]
+    if model is None:
+        return supplied
+    return [Service(Model, model), *supplied]
 
 
 def _resolve_model(value: PluginLike) -> PluginLike:
@@ -185,22 +180,11 @@ def _resolve_model(value: PluginLike) -> PluginLike:
 
 
 def _compose_prompt(
-    plugins: Sequence[PluginLike], *, instructions: str | None
+    plugins: Sequence[PluginLike], *, instructions: str | None, prompt: SystemPrompt | None
 ) -> PromptComposition:
     """Compose the declared system prompt with every plugin's prompt contribution."""
-    declared = next((value for value in plugins if isinstance(value, PromptRenderer)), None)
-    values = None
-    if declared is not None:
-        values = declared.values
     return PromptComposition(
-        values,
+        prompt,
         (plugin_contribution(value) for value in plugins),
         instructions=instructions,
     )
-
-
-def _bind_prompt(value: PluginLike, prompt: PromptComposition) -> PluginLike:
-    """Bind the prompt renderer to the composed prompt; keep other plugins unchanged."""
-    if isinstance(value, PromptRenderer):
-        return PromptRenderer(prompt.document, composition=prompt)
-    return value

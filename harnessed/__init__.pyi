@@ -18,13 +18,11 @@ from harnessed.prompts.values import Instructions as Instructions
 from harnessed.prompts.values import PromptFormat as PromptFormat
 from harnessed.prompts.values import SectionDelivery as SectionDelivery
 from harnessed.prompts.values import SystemPrompt as SystemPrompt
+from harnessed.runtime.agent_loop import AgentLoop as AgentLoop
 from harnessed.runtime.attachments import File as File
 from harnessed.runtime.attachments import Image as Image
 from harnessed.runtime.composition import CompositionDescription as CompositionDescription
-from harnessed.runtime.composition import PluginPack as PluginPack
-from harnessed.runtime.composition import PluginPackPromptPolicy as PluginPackPromptPolicy
 from harnessed.runtime.composition import PluginValidation as PluginValidation
-from harnessed.runtime.composition import ResolvedPluginPack as ResolvedPluginPack
 from harnessed.runtime.control import SessionStatus as SessionStatus
 from harnessed.runtime.handles import RunHandle as RunHandle
 from harnessed.runtime.handles import RunStream as RunStream
@@ -52,6 +50,7 @@ from . import events as events
 
 __all__ = [
     "Agent",
+    "AgentLoop",
     "ApprovalAnswer",
     "CompositionDescription",
     "File",
@@ -63,12 +62,9 @@ __all__ = [
     "Plugin",
     "PluginConfig",
     "PluginConflict",
-    "PluginPack",
-    "PluginPackPromptPolicy",
     "PluginValidation",
     "PolicyDecision",
     "PromptFormat",
-    "ResolvedPluginPack",
     "Role",
     "RunHandle",
     "RunResult",

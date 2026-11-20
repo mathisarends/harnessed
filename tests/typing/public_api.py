@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from harnessed import Agent as AppAgent
 from harnessed import (
+    AgentLoop,
     OutputContract,
     Plugin,
     PluginState,
@@ -48,7 +49,7 @@ from harnessed.kernel import (
 from harnessed.models import ToolArgumentsMode, ToolCallDelta, ToolCallStart
 from harnessed.models.messages import AssistantMessage, ToolMessage, UserMessage
 from harnessed.models.model import ModelRequest, ModelResponse, ToolDefinition
-from harnessed.plugins import AgentLoop, Spill
+from harnessed.plugins import Spill
 from harnessed.runtime.session import Session
 from harnessed.sessions.result import RunResult
 from harnessed.tools import SessionTools, ToolAvailability, ToolExplanation

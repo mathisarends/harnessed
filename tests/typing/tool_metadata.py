@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import assert_type
 
 from harnessed import (
+    AgentLoop,
     Plugin,
     ToolAnnotations,
     ToolChain,
@@ -14,7 +15,7 @@ from harnessed import (
 )
 from harnessed.hooks import ExecuteTool, Next, PreStep, ReviewToolResult, ToolPolicy
 from harnessed.kernel import hook
-from harnessed.plugins import AgentLoop, FinalStepPolicy
+from harnessed.plugins import FinalStepPolicy
 
 
 @dataclass(frozen=True)

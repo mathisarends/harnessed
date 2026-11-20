@@ -4,7 +4,6 @@ from harnessed import (
     Agent,
     Instructions,
     Plugin,
-    PluginPack,
     PromptFormat,
     SectionDelivery,
     Session,
@@ -22,7 +21,7 @@ class PromptFeature(Plugin):
 feature = PromptFeature()
 assert_type(feature.instructions(), SystemPrompt)
 layout = SystemPrompt.from_plugins(format=PromptFormat.MARKDOWN)
-Agent(instructions="Role.", plugins=[None, PluginPack("feature", [feature, None], prompt=layout)])
+Agent(instructions="Role.", plugins=[None, feature, None], prompt=layout)
 Agent(prompt=layout)
 assert_type(SystemPrompt.from_plugins().collects_plugins, bool)
 SystemPrompt.from_plugins(order="as_listed")  # ty: ignore[unknown-argument]

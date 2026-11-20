@@ -1,30 +1,21 @@
-from __future__ import annotations
-
-from typing import Protocol
-
 from harnessed.events.turn import FinalStepPolicy
-from harnessed.kernel import PluginScope, Scope
+from harnessed.kernel import Scope
 from harnessed.models import Model, TokenLimitBehavior
 from harnessed.sessions.log import SessionLog
 from harnessed.tools import ErrorFormatter
 
 from .options import AgentLoopConfig, AgentOptions
-from .plugin import Plugin
 from .session import Session
-from .tool_output_limit import ToolOutputLimit
-
-
-class AgentFactory(Protocol):
-    def create(self, scope: Scope, session: SessionLog) -> Session:
-        """Build a live session for the supplied scope and conversation log."""
-        ...
-
 
 _DEFAULTS = AgentLoopConfig()
 
 
-class AgentLoop(Plugin[AgentLoopConfig], slot="loop"):
-    """Configure the ReAct loop: step, tool execution and output limits."""
+class AgentLoop:
+    """Settings of the built-in ReAct loop: steps, tool execution and output limits.
+
+    The loop is part of the runtime core rather than a plugin. Pass an instance
+    as ``Agent(loop=...)``; every default is visible in this signature.
+    """
 
     def __init__(
         self,
@@ -32,40 +23,40 @@ class AgentLoop(Plugin[AgentLoopConfig], slot="loop"):
         max_steps: int = _DEFAULTS.max_steps,
         tool_timeout: float = _DEFAULTS.tool_timeout,
         max_parallel_tools: int = _DEFAULTS.max_parallel_tools,
+        max_tool_output: int = _DEFAULTS.max_tool_output,
         context_window: int | None = _DEFAULTS.context_window,
         on_max_tokens: TokenLimitBehavior = _DEFAULTS.on_max_tokens,
         output_retries: int = _DEFAULTS.output_retries,
         final_step: FinalStepPolicy = _DEFAULTS.final_step,
         error_formatter: ErrorFormatter | None = None,
     ) -> None:
-        super().__init__(
-            config=AgentLoopConfig(
-                max_steps=max_steps,
-                tool_timeout=tool_timeout,
-                max_parallel_tools=max_parallel_tools,
-                context_window=context_window,
-                on_max_tokens=on_max_tokens,
-                output_retries=output_retries,
-                final_step=final_step,
-            )
+        self.config = AgentLoopConfig(
+            max_steps=max_steps,
+            tool_timeout=tool_timeout,
+            max_parallel_tools=max_parallel_tools,
+            max_tool_output=max_tool_output,
+            context_window=context_window,
+            on_max_tokens=on_max_tokens,
+            output_retries=output_retries,
+            final_step=final_step,
         )
         self.error_formatter = error_formatter
 
-    async def setup(self, scope: PluginScope) -> None:
-        scope.provide(AgentFactory, ReactLoopFactory(self.config, self.error_formatter))
+    def __repr__(self) -> str:
+        fields = ", ".join(f"{name}={value!r}" for name, value in self.config)
+        return f"AgentLoop({fields})"
 
+    @property
+    def max_steps(self) -> int:
+        return self.config.max_steps
 
-class ReactLoopFactory:
-    def __init__(self, config: AgentLoopConfig, error_formatter: ErrorFormatter | None) -> None:
-        self.config = config
-        self.error_formatter = error_formatter
+    @property
+    def max_tool_output(self) -> int:
+        return self.config.max_tool_output
 
     def create(self, scope: Scope, session: SessionLog) -> Session:
+        """Build a live session for the supplied scope and conversation log."""
         # Require a model before opening the runtime, without caching its metadata.
         scope[Model]
-        options = AgentOptions.resolve(
-            self.config,
-            tool_output_limit=scope[ToolOutputLimit],
-            error_formatter=self.error_formatter,
-        )
+        options = AgentOptions.resolve(self.config, error_formatter=self.error_formatter)
         return Session(scope, session, options)

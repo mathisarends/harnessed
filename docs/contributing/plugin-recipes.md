@@ -162,16 +162,13 @@ Plugins return one complete content document through
 configuration helpers return actual content. Methods are pure and synchronous.
 `Instructions` holds literal text or session-owned file/factory sources.
 
-Agents collect plugin blocks by default; applications and packs keep collection
+Agents collect plugin blocks by default; applications keep collection
 with `SystemPrompt.from_plugins(format=...)` and opt out with a constructor-built
-`SystemPrompt`. Resolve pack nesting, removals and slot replacements before
-calling selected providers once at the agent boundary. Preserve whole plugin
-blocks in resolved list order, independently of setup order. `None` parts and
+`SystemPrompt`. Call providers once at the agent boundary. Preserve whole plugin
+blocks in plugin-list order, independently of setup order. `None` parts and
 plugin-list entries are normalized away.
 
-`PluginPack(prompt=...)` provides a default in the existing instructions slot. Parent
-prompts override child defaults, and explicit `Agent(prompt=...)` overrides pack
-defaults. `Agent(instructions="...")` prepends caller text without replacing the
+`Agent(instructions="...")` prepends caller text without replacing the
 strategy. Selected instruction overrides without explicit collection fail before
 provider calls. Providers cannot return another collection strategy.
 

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from harnessed import PolicyDecision
+from harnessed import AgentLoop, PolicyDecision
 
 pytest.importorskip("fastmcp")
 pytest.importorskip("jsonschema")
@@ -38,7 +38,7 @@ from harnessed.errors import ToolNameConflict
 from harnessed.events import ToolProgressEvent
 from harnessed.models import ModelChunk
 from harnessed.models.messages import ToolStatus, to_dict
-from harnessed.plugins import Approvals, ToolApprovalGuard, ToolOutputLimit
+from harnessed.plugins import Approvals, ToolApprovalGuard
 from harnessed.plugins.mcp import MCP
 from harnessed.testing import ScriptedModel
 from harnessed.tools import ToolError, ToolRegistry
@@ -318,11 +318,8 @@ async def test_structured_and_image_content_and_output_limits():
     call = ToolCall("docs__search", {"query": "x"})
     agent = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=call)], "done"]),
-        plugins=[
-            MCP("docs", transport=transport),
-            ToolOutputLimit(max_chars=256),
-            Approvals(default=PolicyDecision.ALLOW),
-        ],
+        plugins=[MCP("docs", transport=transport), Approvals(default=PolicyDecision.ALLOW)],
+        loop=AgentLoop(max_tool_output=256),
     )
     result = await agent.run("x")
     assert result.tool_calls[0][1].truncation is not None

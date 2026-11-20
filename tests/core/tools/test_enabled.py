@@ -7,6 +7,7 @@ import pytest
 
 from harnessed import (
     Agent,
+    AgentLoop,
     ApprovalAnswer,
     Plugin,
     PluginState,
@@ -18,7 +19,7 @@ from harnessed import (
 from harnessed.events import ApprovalRequestedEvent, ToolCallFinishedEvent
 from harnessed.kernel import Inject, InjectMarker, Key, Scope
 from harnessed.models import AssistantMessage, ModelResponse
-from harnessed.plugins import AgentLoop, Approvals, Service
+from harnessed.plugins import Approvals, Service
 from harnessed.testing import ScriptedModel, call, reply
 from harnessed.tools import ToolRegistry, ToolSpec
 from tests._audit import Audit
@@ -123,12 +124,8 @@ async def test_condition_is_rechecked_after_an_earlier_tool_and_resource_wait(pa
     model = ScriptedModel([ModelResponse(AssistantMessage(tool_calls=calls)), "done"])
     async with Agent(
         model=model,
-        plugins=[
-            Tools(),
-            Service(PointerState, state),
-            AgentLoop(max_parallel_tools=2),
-            Approvals(default=PolicyDecision.ALLOW),
-        ],
+        plugins=[Tools(), Service(PointerState, state), Approvals(default=PolicyDecision.ALLOW)],
+        loop=AgentLoop(max_parallel_tools=2),
     ).session() as session:
         session_audit = Audit(session)
         await session.run("invalidate then click")

@@ -5,8 +5,9 @@ from tempfile import TemporaryDirectory
 
 from harnessed import (
     Agent,
+    AgentLoop,
 )
-from harnessed.plugins import Skill, Skills, Spill, ToolOutputLimit
+from harnessed.plugins import Skill, Skills, Spill
 from harnessed.plugins.skills import SkillCatalog
 from harnessed.testing import ScriptedModel, call
 
@@ -41,11 +42,8 @@ async def main():
         spill = Spill(threshold_tokens=1)
         agent = Agent(
             model=model,
-            plugins=[
-                skills,
-                ToolOutputLimit(256),
-                spill,
-            ],
+            plugins=[skills, spill],
+            loop=AgentLoop(max_tool_output=256),
         )
         async with agent.session() as session:
             print("Catalog:", [entry.info.name for entry in session.scope[SkillCatalog].entries])

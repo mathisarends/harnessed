@@ -1,15 +1,8 @@
-"""Run with: uv run python -m examples.36_plugin_packs"""
+"""Run with: uv run python -m examples.36_explicit_composition"""
 
 import asyncio
 
-from harnessed import (
-    Agent,
-    Plugin,
-    PluginPack,
-    SystemPrompt,
-    tool,
-)
-from harnessed.plugins import AgentLoop
+from harnessed import Agent, AgentLoop, Plugin, PluginConflict, SystemPrompt, tool
 from harnessed.testing import ScriptedModel, call
 
 
@@ -32,22 +25,25 @@ class DebugTools(Plugin):
         return "Debugging enabled."
 
 
-def library_pack() -> PluginPack:
-    return PluginPack(
-        "library",
-        [TextTools(), DebugTools(), AgentLoop(max_steps=12)],
-    )
+def text_plugins(*, prefix: str = "Library", debug: bool = False) -> list[Plugin]:
+    """Share a recipe as a function returning a plain list; parameters select variants."""
+    return [TextTools(prefix=prefix), *([DebugTools()] if debug else [])]
 
 
 async def main() -> None:
-    project = PluginPack("project", [library_pack(), AgentLoop(max_steps=6)]).without(DebugTools)
     agent = Agent(
         model=ScriptedModel([call("label", text="Hello"), "Application: Hello"]),
-        plugins=[project, TextTools(prefix="Application")],
+        plugins=text_plugins(prefix="Application"),
         instructions="Help with text.",
+        loop=AgentLoop(max_steps=6),
     )
     print(agent.describe())
+    print(agent.loop)
     print((await agent.run("Label Hello")).text)
+    try:
+        Agent(plugins=[*text_plugins(), TextTools(prefix="Other")])
+    except PluginConflict as error:
+        print(f"Conflict: {error}")
 
 
 if __name__ == "__main__":

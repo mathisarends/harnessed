@@ -245,7 +245,7 @@ async def test_invalid_stream_buffer_is_rejected_before_enqueueing_input(capacit
 
 async def test_answering_through_a_closed_session_fails_even_for_an_acknowledged_id():
     async with Agent(
-        model=ScriptedModel([work(), "done"]), plugins=[Work([])]
+        model=ScriptedModel([work(), "done"]), plugins=[Work([]), Approvals()]
     ).session() as session:
         request_id = None
         async with session.stream("Publish") as run_stream:
@@ -265,7 +265,7 @@ def work():
 async def test_stream_has_model_lifecycle_a_durable_approval_and_one_terminal_result():
     effects = []
     model = ScriptedModel([work(), [ModelChunk(reasoning="checked"), ModelChunk(text="Finished")]])
-    async with Agent(model=model, plugins=[Work(effects)]).session() as session:
+    async with Agent(model=model, plugins=[Work(effects), Approvals()]).session() as session:
         session_audit = Audit(session)
         events = []
         async with session.stream("Publish") as run_stream:
@@ -363,7 +363,7 @@ async def test_execution_start_precedes_progress_without_approval():
 async def test_closing_the_stream_resolves_pending_approval_and_removes_its_responder():
     effects = []
     model = ScriptedModel([work(), "disconnected", work(), "headless"])
-    async with Agent(model=model, plugins=[Work(effects)]).session() as session:
+    async with Agent(model=model, plugins=[Work(effects), Approvals()]).session() as session:
         question = None
         async with session.stream("Publish") as stream:
             async for event in stream:
@@ -382,7 +382,7 @@ async def test_answer_waits_for_admission_and_caller_cancellation_does_not_revok
     entered, release = asyncio.Event(), asyncio.Event()
     effects = []
     async with Agent(
-        model=ScriptedModel([work(), "done"]), plugins=[Work(effects)]
+        model=ScriptedModel([work(), "done"]), plugins=[Work(effects), Approvals()]
     ).session() as session:
         original = session.log._append
 
@@ -424,7 +424,7 @@ async def test_answer_waits_for_admission_and_caller_cancellation_does_not_revok
 async def test_a_queued_stream_cannot_answer_a_different_turns_approval():
     model = ScriptedModel([work(), "headless", work(), "streamed"])
     effects, asked = [], []
-    async with Agent(model=model, plugins=[Work(effects)]).session() as session:
+    async with Agent(model=model, plugins=[Work(effects), Approvals()]).session() as session:
         await session.pause()
         enqueued = asyncio.Event()
         submitted = []
@@ -476,7 +476,9 @@ async def test_expired_ui_approval_cannot_be_answered_and_still_finishes_the_tur
 async def test_abort_during_ui_approval_returns_an_aborted_terminal_result():
     effects, questions = [], []
     ready = asyncio.Event()
-    async with Agent(model=ScriptedModel([work()]), plugins=[Work(effects)]).session() as session:
+    async with Agent(
+        model=ScriptedModel([work()]), plugins=[Work(effects), Approvals()]
+    ).session() as session:
 
         async def consume():
             events = []

@@ -4,6 +4,7 @@ import pytest
 
 from harnessed import (
     Agent,
+    AgentLoop,
     Plugin,
 )
 from harnessed.models import ModelInfo, ModelRequest
@@ -36,9 +37,8 @@ async def test_multimodal_tool_loop_retains_images_and_metadata_through_replay(t
             return ToolResult((TextPart(TEXT), IMAGE), exit_code=0)
 
     plugins = [Screenshot(), Rules([when(tool="screenshot").note("Keep the image.")])]
-    if policy == "limit":
-        plugins.append(ToolOutputLimit(max_chars=256))
-    elif policy == "spill":
+    loop = AgentLoop(max_tool_output=256) if policy == "limit" else None
+    if policy == "spill":
         plugins.append(Spill(threshold_tokens=32, preview_tokens=4))
     model = ScriptedModel(
         [call("screenshot"), "I can see it."],
@@ -47,6 +47,7 @@ async def test_multimodal_tool_loop_retains_images_and_metadata_through_replay(t
     async with Agent(
         model=model,
         plugins=plugins,
+        loop=loop,
     ).session() as session:
         session_audit = Audit(session)
         result = await session.run("Look at the screenshot.")

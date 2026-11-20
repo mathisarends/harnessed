@@ -1,7 +1,7 @@
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import Plugin, PolicyDecision, ToolCall, ToolResult, tool
+from harnessed import AgentLoop, Plugin, PolicyDecision, ToolCall, ToolResult, tool
 from harnessed.errors import SessionFormatError
 from harnessed.events import (
     InboxAddedEvent,
@@ -268,7 +268,6 @@ def test_invalid_rule_options(kwargs):
 
 async def test_canonical_match_metadata_survives_output_limits_and_context_resets(tmp_path):
     from harnessed import Agent, Plugin
-    from harnessed.plugins import ToolOutputLimit
     from harnessed.testing import ScriptedModel
     from harnessed.tools import tool
 
@@ -298,7 +297,8 @@ async def test_canonical_match_metadata_survives_output_limits_and_context_reset
     ]
     app = Agent(
         model=ScriptedModel(responses),
-        plugins=[Large(), rules, ToolOutputLimit(256)],
+        plugins=[Large(), rules],
+        loop=AgentLoop(max_tool_output=256),
     )
     async with app.session() as session:
         first = await session.run("First")

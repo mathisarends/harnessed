@@ -14,7 +14,7 @@ from harnessed.events import (
 )
 from harnessed.kernel import Inject, Next, PluginScope, Priority, hook, needs
 from harnessed.models.messages import ApprovalAnswer, PolicyDecision, ToolCall
-from harnessed.tools import ToolRegistry
+from harnessed.tools import ToolInfo, ToolRegistry
 from harnessed.tools.references import ToolReference, ToolSelector, tool_selector
 
 from .hooks import ToolPolicy
@@ -211,7 +211,27 @@ class ApprovalsConfig(PluginConfig):
     timeout: Annotated[float, Field(gt=0)] = 300.0
 
 
-_DEFAULTS = ApprovalsConfig()
+DEFAULT_APPROVALS = ApprovalsConfig()
+
+
+def _tool_flag_decision(tool: ToolInfo | None) -> PolicyDecision | None:
+    """Return the decision implied by ``confirm``/``readonly`` tool flags, if any."""
+    if tool is not None and tool.confirm:
+        return PolicyDecision.ASK
+    if tool is not None and tool.readonly:
+        return PolicyDecision.ALLOW
+    return None
+
+
+def unconfigured_tool_decision(tool: ToolInfo | None) -> PolicyDecision:
+    """Decide a call when no ``Approvals`` policy is configured.
+
+    Tools run without asking. A tool declared with ``confirm=True`` still asks,
+    so it stays unavailable until an approver can answer.
+    """
+    if tool is not None and tool.confirm:
+        return PolicyDecision.ASK
+    return PolicyDecision.ALLOW
 
 
 class Approvals(Plugin[ApprovalsConfig], slot="approvals"):
@@ -232,7 +252,7 @@ class Approvals(Plugin[ApprovalsConfig], slot="approvals"):
         ask: Iterable[ToolSelector] = (),
         deny: Iterable[ToolSelector] = (),
         policy: Callable[[ToolCall], PolicyDecision | None] | None = None,
-        timeout: float = _DEFAULTS.timeout,
+        timeout: float = DEFAULT_APPROVALS.timeout,
     ) -> None:
         super().__init__(config=ApprovalsConfig(timeout=timeout))
         self.approver: Approver | None = (
@@ -272,12 +292,10 @@ class Approvals(Plugin[ApprovalsConfig], slot="approvals"):
             decision = PolicyDecision.ASK
         elif any(tools.matches(item, event.call.name) for item in self.allow):
             decision = PolicyDecision.ALLOW
-        elif event.tool is not None and event.tool.confirm:
-            decision = PolicyDecision.ASK
-        elif event.tool is not None and event.tool.readonly:
-            decision = PolicyDecision.ALLOW
         else:
-            decision = self.policy(event.call) if self.policy is not None else None
+            decision = _tool_flag_decision(event.tool)
+            if decision is None and self.policy is not None:
+                decision = self.policy(event.call)
             if decision is None:
                 decision = self.default
         if decision is not None and not isinstance(decision, PolicyDecision):
