@@ -712,7 +712,13 @@ async def summarize(self, request: CompactionRequest) -> Summary: ...
 
 `CompactionContext` contains `history_to_compact`, `retained_context`, `instructions`,
 `state` and resolved `target_tokens`. `CompactionRequest.max_summary_tokens` is the
-runtime's finite text budget. Results must be complete `Summary(text, usage=None)`
+runtime's finite text budget after reserving space for any plugin notes.
+Results must be complete `Summary(text, usage=None)`
 values; output is never truncated to fit. One further summarization attempt is
 permitted. Targets are best effort; hard request budgets remain mandatory.
-See the [compaction guide](../guides/compaction.md) for lifecycle and acceptance.
+
+Plugins use `PrepareCompaction` from `harnessed.hooks` to contribute optional
+summary prefixes with `event.add_note(key=..., text=..., min_summary_tokens=1)`.
+`CompactionAppliedEvent.accepted_note_keys` reports which contributions were
+committed. See the [compaction guide](../guides/compaction.md#add-a-plugin-handover-note)
+for budgeting and lifecycle.
