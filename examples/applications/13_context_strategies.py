@@ -1,0 +1,71 @@
+"""Run with: uv run python -m examples.applications.13_context_strategies (offline)."""
+
+import asyncio
+
+from harnessed import Agent, Compaction, Context, Plugin, tool
+from harnessed.context import at_ratio
+from harnessed.events import CompactionAppliedEvent, SpillCreatedEvent
+from harnessed.hooks import PreStep
+from harnessed.kernel import hook
+from harnessed.models import ModelChunk, UserMessage
+from harnessed.plugins import LatestObservationOnly, Spill
+from harnessed.testing import ScriptedModel, call
+
+
+class WorkspaceState(Plugin):
+    def __init__(self):
+        super().__init__()
+        self.frame = 0
+
+    @hook(PreStep)
+    async def observe(self, event: PreStep, next_):
+        self.frame += 1
+        event.session.observe(
+            UserMessage(f"FULL current workspace frame {self.frame}"), source="workspace"
+        )
+        return await next_()
+
+
+class Reports(Plugin):
+    @tool(readonly=True)
+    async def read_report(self, path: str) -> str:
+        """Read the simulated large report."""
+        return f"Report: {path}\n" + "A long result with useful details.\n" * 1000
+
+
+async def main():
+    model = ScriptedModel(
+        [
+            "Initial context accepted.",
+            call("read_report", path="report.txt"),
+            [ModelChunk(text="The report is stored for ranged reads.")],
+        ]
+    )
+    spill = Spill(threshold_tokens=100, preview_tokens=8)
+    agent = Agent(
+        model=model,
+        plugins=[Reports(), WorkspaceState(), LatestObservationOnly(), spill],
+        context=Context(
+            max_tokens=2000,
+            compaction=Compaction(
+                trigger=at_ratio(0.3),
+                llm=ScriptedModel(["The initial task was completed."]),
+                keep_last_steps=1,
+                max_summary_tokens=32,
+            ),
+        ),
+    )
+    async with agent.session() as session:
+        await session.run("Old task context: " + "x" * 2000)
+        result = await session.run("Inspect the report.")
+        print(result.text)
+        for event in result.events:
+            if isinstance(event, CompactionAppliedEvent):
+                print(f"Compacted event prefix [0, {event.through}): {event.summary[:100]}")
+            elif isinstance(event, SpillCreatedEvent):
+                print(f"Spilled {event.tokens} estimated tokens to {event.ref.path}")
+        print("Current observation:", model.requests[-1].messages[-1].text)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

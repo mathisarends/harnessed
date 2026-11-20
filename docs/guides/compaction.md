@@ -159,4 +159,4 @@ compaction preserves pause state. Incoming queued input can arrive during
 summarization, but its model step waits until compaction finishes.
 
 Run the [offline policy comparison](examples.md) with
-`uv run python -m examples.16_compaction_policies`.
+`uv run python -m examples.applications.12_compaction_policies`.

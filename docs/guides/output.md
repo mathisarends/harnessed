@@ -56,6 +56,6 @@ the final preview. Rule conditions inspect the original execution result; their
 match bits are recorded with the canonical result for application-owned audit.
 Rules repetition counters start fresh when a new live session opens.
 
-Run `uv run python -m examples.24_session_spill` for a complete offline example
+Run `uv run python -m examples.applications.11_session_spill` for a complete offline example
 that exports a large failing test result in SessionState and reads a Unicode range
 after importing it into a fresh session.

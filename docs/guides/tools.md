@@ -191,7 +191,7 @@ asynchronous action.
 
 `PrepareRequest` can separately filter model-facing tools; that alone does not
 prevent execution. `ToolPolicy` remains the authorization/approval mechanism.
-See the [offline conditional tools example](https://github.com/mathisarends/harnessed/blob/main/examples/30_conditional_tools.py).
+See the [offline conditional tools example](https://github.com/mathisarends/harnessed/blob/main/examples/plugin_authoring/04_conditional_tools.py).
 
 ## Conditional parameters
 
@@ -273,7 +273,7 @@ The scripted `call(Tools.method, ...)` helper validates declared value types but
 cannot evaluate conditions without a mount. For conditional tools it preserves
 the supplied wire arguments, including omitted defaults; the active registry
 enforces availability.
-See the [offline conditional parameters example](https://github.com/mathisarends/harnessed/blob/main/examples/43_conditional_parameters.py).
+See the [offline conditional parameters example](https://github.com/mathisarends/harnessed/blob/main/examples/plugin_authoring/05_conditional_parameters.py).
 
 ## Per-call state
 
@@ -434,7 +434,7 @@ when execution finishes out of order. An explicit `override=True` is required to
 replace an existing live tool name. Removing that registration restores the
 previous owner.
 
-See [the runnable class plugin example](https://github.com/mathisarends/harnessed/blob/main/examples/06_explicit_registration.py).
+See [the runnable class plugin example](https://github.com/mathisarends/harnessed/blob/main/examples/plugin_authoring/07_class_plugins.py).
 
 ## Application metadata and captured tool descriptions
 

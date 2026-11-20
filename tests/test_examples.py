@@ -17,54 +17,62 @@ runpy.run_module(module, run_name="__main__", alter_sys=True)
 """
 
 
-@pytest.mark.parametrize(
-    "module",
-    [
-        "examples.01_tool_agent",
-        "examples.02_plugins",
-        "examples.03_inbox",
-        "examples.05_tools_and_injection",
-        "examples.06_explicit_registration",
-        "examples.07_context",
-        "examples.08_observations",
-        "examples.09_rules",
-        "examples.10_context_strategies",
-        "examples.11_temporal_needs",
-        "examples.12_layered_sdk",
-        "examples.13_models",
-        "examples.14_session_state",
-        "examples.15_tool_output_limits",
-        "examples.16_compaction_policies",
-        "examples.17_external_state",
-        "examples.18_parallel_tools",
-        "examples.19_approvals_and_priorities",
-        "examples.20_pause_resume_stop",
-        "examples.21_validated_forms",
-        "examples.22_builtin_tool_lifetimes",
-        "examples.23_plugin_lifecycle",
-        "examples.24_session_spill",
-        "examples.25_structured_output",
-        "examples.26_ui_stream",
-        "examples.27_skills",
-        "examples.28_custom_events",
-        "examples.29_tracing",
-        "examples.30_conditional_tools",
-        "examples.32_system_prompts",
-        "examples.33_basic_stream",
-        "examples.34_sandbox",
-        "examples.35_background_shell",
-        "examples.36_explicit_composition",
-        "examples.37_plugin_recipes",
-        "examples.38_session_store",
-        "examples.39_typed_session_store",
-        "examples.40_atomic_session_store",
-        "examples.41_subagents",
-        "examples.42_background_subagents",
-        "examples.43_conditional_parameters",
-    ],
+_STAGES = ("getting_started", "applications", "plugin_authoring")
+_EXTERNAL_EXAMPLES = frozenset(
+    {
+        "examples.getting_started.05_deepseek",
+        "examples.applications.09_mcp",
+    }
 )
+_OFFLINE_EXAMPLES = (
+    "examples.getting_started.01_tool_agent",
+    "examples.getting_started.02_plugins",
+    "examples.getting_started.03_basic_stream",
+    "examples.getting_started.04_structured_output",
+    "examples.applications.01_approvals",
+    "examples.applications.02_ui_stream",
+    "examples.applications.03_inbox",
+    "examples.applications.04_pause_resume_stop",
+    "examples.applications.05_parallel_tools",
+    "examples.applications.06_background_shell",
+    "examples.applications.07_sandbox",
+    "examples.applications.08_skills",
+    "examples.applications.10_tool_output_limits",
+    "examples.applications.11_session_spill",
+    "examples.applications.12_compaction_policies",
+    "examples.applications.13_context_strategies",
+    "examples.applications.14_session_state",
+    "examples.applications.15_external_state",
+    "examples.applications.16_session_store",
+    "examples.applications.17_typed_session_store",
+    "examples.applications.18_atomic_session_store",
+    "examples.applications.19_subagents",
+    "examples.applications.20_background_subagents",
+    "examples.applications.21_tracing",
+    "examples.plugin_authoring.01_explicit_composition",
+    "examples.plugin_authoring.02_tool_context",
+    "examples.plugin_authoring.03_validated_forms",
+    "examples.plugin_authoring.04_conditional_tools",
+    "examples.plugin_authoring.05_conditional_parameters",
+    "examples.plugin_authoring.06_system_prompts",
+    "examples.plugin_authoring.07_class_plugins",
+    "examples.plugin_authoring.08_failure_nudge",
+    "examples.plugin_authoring.09_rules",
+    "examples.plugin_authoring.10_context",
+    "examples.plugin_authoring.11_observations",
+    "examples.plugin_authoring.12_custom_events",
+    "examples.plugin_authoring.13_plugin_recipes",
+    "examples.plugin_authoring.14_plugin_lifecycle",
+    "examples.plugin_authoring.15_builtin_tool_lifetimes",
+    "examples.plugin_authoring.16_temporal_needs",
+    "examples.plugin_authoring.17_layered_sdk",
+    "examples.plugin_authoring.18_models",
+)
+
+
+@pytest.mark.parametrize("module", _OFFLINE_EXAMPLES)
 def test_offline_sdk_example_runs(module):
-    if module == "examples.29_tracing":
+    if module == "examples.applications.21_tracing":
         pytest.importorskip("opentelemetry.sdk")
     try:
         result = subprocess.run(
@@ -82,6 +90,17 @@ def test_offline_sdk_example_runs(module):
         pytest.fail(f"{module} timed out; child traceback:\n{details[-8000:]}", pytrace=False)
     assert result.returncode == 0, result.stderr
     assert result.stdout
+
+
+def test_examples_follow_a_contiguous_learning_path():
+    root = Path(__file__).resolve().parents[1] / "examples"
+    found = set()
+    for stage in _STAGES:
+        numbered = sorted(path.stem for path in (root / stage).glob("[0-9][0-9]_*.py"))
+        assert [name[:2] for name in numbered] == [f"{n:02}" for n in range(1, len(numbered) + 1)]
+        found.update(f"examples.{stage}.{name}" for name in numbered)
+    assert sorted(path.name for path in root.glob("[0-9]*.py")) == []
+    assert found == set(_OFFLINE_EXAMPLES) | _EXTERNAL_EXAMPLES
 
 
 def test_examples_do_not_import_the_internal_runtime():

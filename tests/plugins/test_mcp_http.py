@@ -178,7 +178,7 @@ async def test_mcp_example_consumes_an_external_server(serve_http):
         process = await asyncio.create_subprocess_exec(
             sys.executable,
             "-m",
-            "examples.31_mcp",
+            "examples.applications.09_mcp",
             "--url",
             url,
             stdout=asyncio.subprocess.PIPE,

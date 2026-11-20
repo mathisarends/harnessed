@@ -112,8 +112,8 @@ inside this application-owned adapter. Implementing the protocol directly is
 also possible. The agent never closes an application-owned store or pool.
 
 The executable
-[adapter example](https://github.com/mathisarends/harnessed/blob/main/examples/39_typed_session_store.py)
-wraps a [repository with no SDK imports](https://github.com/mathisarends/harnessed/blob/main/examples/_conversation_repository.py).
+[adapter example](https://github.com/mathisarends/harnessed/blob/main/examples/applications/17_typed_session_store.py)
+wraps a [repository with no SDK imports](https://github.com/mathisarends/harnessed/blob/main/examples/applications/_conversation_repository.py).
 It maps typed checkpoint information to application-owned fields and translates
 the repository's conflict error to `SessionWriteConflict`. Its storage layout is
 illustrative; applications can map fields into their own records instead of
@@ -159,16 +159,16 @@ The SDK passes a commit request; your repository implements its atomicity.
 Separate writes before `session.run()` are not automatically enrolled.
 
 The executable
-[atomic adapter example](https://github.com/mathisarends/harnessed/blob/main/examples/_atomic_session_store.py)
+[atomic adapter example](https://github.com/mathisarends/harnessed/blob/main/examples/applications/_atomic_session_store.py)
 maps `InboxAddedEvent` to an accepted user message and `AssistantMessageEvent` to
 an assistant message. `UserMessageEvent` also records an admitted input during
 execution, so treating both input events as separate domain messages would
 create duplicates. Applications choose their own projections, metadata and
 final/draft-message semantics; an assistant event can be an intermediate tool
 reply. Stable message IDs support application upserts. The
-[repository](https://github.com/mathisarends/harnessed/blob/main/examples/_atomic_repository.py)
+[repository](https://github.com/mathisarends/harnessed/blob/main/examples/applications/_atomic_repository.py)
 uses a real SQLite transaction for this offline example, with no SDK imports.
-Run `uv run python -m examples.40_atomic_session_store`. No database driver,
+Run `uv run python -m examples.applications.18_atomic_session_store`. No database driver,
 Unit-of-Work abstraction or web-framework integration is added to Harnessed.
 
 Adapters can ignore `changes` when only recovery state is needed. The bundled

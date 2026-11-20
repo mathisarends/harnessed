@@ -29,7 +29,7 @@ not require exhaustive handling. If the turn can ask for approval, also
 | Cancel one queued or active run | `await run.cancel()` |
 | Observe the session's audit events across turns | `session.subscribe()` |
 
-Run `uv run python -m examples.33_basic_stream` for the minimal offline consumer.
+Run `uv run python -m examples.getting_started.03_basic_stream` for the minimal offline consumer.
 The sections below add individual capabilities; the
 [event reference](../reference/events.md) lists the built-in events.
 
@@ -70,9 +70,9 @@ messages. Final-answer control tools do not produce application tool spinners.
 
 Most interfaces handle five updates first: incoming text, a tool call starting,
 its result, an approval request and the final turn result. The short
-[stream example](https://github.com/mathisarends/harnessed/blob/main/examples/33_basic_stream.py)
+[stream example](https://github.com/mathisarends/harnessed/blob/main/examples/getting_started/03_basic_stream.py)
 shows the iteration pattern, and the
-[UI example](https://github.com/mathisarends/harnessed/blob/main/examples/26_ui_stream.py)
+[UI example](https://github.com/mathisarends/harnessed/blob/main/examples/applications/02_ui_stream.py)
 handles the richer event vocabulary.
 
 ## Model and retry activity
@@ -290,6 +290,6 @@ Use the versioned durable codec for storage and replication. UI notifications
 are a projection of that log plus transient data, rather than a persistence
 format. See [event schemas and extension catalogs](events.md).
 
-Run `uv run python -m examples.26_ui_stream` for the detailed offline example with
-previews, approval, progress and a typed report; `examples.28_custom_events` adds
+Run `uv run python -m examples.applications.02_ui_stream` for the detailed offline example with
+previews, approval, progress and a typed report; `examples.plugin_authoring.12_custom_events` adds
 application events.
