@@ -414,7 +414,9 @@ after completion it raises `SessionStateError` instead of starting a new turn.
 | messages / usage / last(Event) | Retained working context, live-session usage and recent diagnostics |
 | status | SessionStatus: IDLE, RUNNING, PAUSED, STOPPING, CLOSED |
 | emit(event) | Admit a declared execution event or publish a transient notification |
-| approvals.request(call, reason) / answer(id, decision) / revoke(id) | Ask, answer, or revoke live-session grants; `pending` / `grants` / `grant_for()` read them |
+| `approvals.request(call, reason)` | Ask for approval in the live session |
+| `approvals.allow(id, remember=False)` / `approvals.deny(id)` | Answer a pending approval. Set `remember=True` to grant future calls for the same action and scope |
+| `approvals.revoke(id)` | Revoke a remembered grant. Use `pending`, `grants` and `grant_for()` to inspect approvals |
 | id / prompt | Session ID / effective system prompt |
 | tools | Read-only `SessionTools` mapping of currently visible tool names to definitions; `.names` returns a frozenset |
 | plugin_context | The restricted `SessionContext` view that plugins and hooks receive |
