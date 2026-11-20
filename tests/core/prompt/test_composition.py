@@ -95,6 +95,15 @@ async def test_with_instructions_can_add_or_omit_a_block():
     assert await agent.prompt.render() == "Added."
 
 
+async def test_without_instructions_omits_an_existing_replacement():
+    configured = Observe().with_instructions("Custom guidance.")
+    muted = configured.without_instructions()
+    agent = Agent(instructions="Role.", plugins=[muted])
+    assert muted is not configured
+    assert await agent.prompt.render() == "Role."
+    assert await Agent(plugins=[configured]).prompt.render() == "Custom guidance."
+
+
 def test_with_instructions_requires_content():
     with pytest.raises(TypeError, match="text or a SystemPrompt"):
         Observe().with_instructions(42)

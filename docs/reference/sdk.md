@@ -542,6 +542,7 @@ unhashable. See [values and record versions](../concepts/values.md).
 | class Capability(Plugin, provides=True) | Publish the mount under the declaring class; provides=Key selects another key |
 | Plugin.create_instance() | Customize fresh instance construction; defaults to replaying explicit constructor arguments |
 | Plugin.with_instructions(str \| SystemPrompt) | Return a recipe with a replacement prompt block. An empty SystemPrompt removes the block |
+| Plugin.without_instructions() | Return a recipe that contributes no prompt block |
 | Plugin.setup(scope: PluginScope) / teardown(scope: PluginScope) | Async activation lifecycle; dependencies bind first and cleanup remains framework-owned |
 | PluginScope | Concrete resource/registration view; enter, effect, provide, on, dispatch, register, lookup and owner_name |
 | class Capability(Plugin, needs=(Backend,)) / Inject[T] | Temporal lifetime / per-call service resolution |

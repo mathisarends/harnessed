@@ -138,6 +138,10 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         configured._instruction_override = document
         return configured
 
+    def without_instructions(self) -> Self:
+        """Return a configured copy that contributes no prompt block."""
+        return self.with_instructions(SystemPrompt())
+
     def instructions(self) -> SystemPrompt:
         """Return pure configuration-derived content, collected once per selected recipe.
 

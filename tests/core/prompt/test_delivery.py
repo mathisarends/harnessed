@@ -59,7 +59,7 @@ async def test_context_delivery_is_mount_owned_and_leaves_system_text_fixed():
         assert any("Runtime guidance." in m.text for m in first.messages)
 
 
-async def test_mount_delivers_replacement_and_accepts_empty_prompt_without_sections():
+async def test_mount_delivers_replacement_and_accepts_a_recipe_without_instructions():
     model = ScriptedModel(["replacement", "empty"])
     feature = Feature()
     async with Agent(model=model).session() as session:
@@ -70,7 +70,7 @@ async def test_mount_delivers_replacement_and_accepts_empty_prompt_without_secti
             assert "Runtime guidance." not in messages
             assert "inspect" in session.tools
         async with session.mount(
-            feature.with_instructions(SystemPrompt()), section_delivery=SectionDelivery.ERROR
+            feature.without_instructions(), section_delivery=SectionDelivery.ERROR
         ):
             await session.run("Use the tool again")
             messages = [message.text for message in model.requests[-1].messages]
