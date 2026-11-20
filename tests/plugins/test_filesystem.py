@@ -10,6 +10,7 @@ from harnessed import (
 )
 from harnessed.models import ModelChunk
 from harnessed.models.messages import ToolStatus
+from harnessed.plugins import Approvals
 from harnessed.plugins.filesystem import Filesystem, LocalFileSystem
 from harnessed.testing import ScriptedModel
 from harnessed.tools import ToolError, ToolRegistry
@@ -111,7 +112,7 @@ async def test_filesystem_plugin_schema_bounds_search_notices_and_safe_approvals
     filesystem_2 = Filesystem(tmp_path)
     result = await Agent(
         model=model,
-        plugins=[filesystem_2],
+        plugins=[filesystem_2, Approvals()],
     ).run("Write")
     assert result.tool_calls[0][1].status == ToolStatus.UNAVAILABLE
     assert not (tmp_path / "denied.txt").exists()

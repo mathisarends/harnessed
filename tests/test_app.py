@@ -130,15 +130,22 @@ async def test_removed_runtime_plugins_are_collectable_while_the_session_stays_o
         assert not session.scope[PluginInstructions].values
 
 
-async def test_default_approvals_allow_reads_and_reject_side_effects_without_a_responder():
+async def test_without_approvals_side_effects_run_but_confirmed_tools_do_not():
     class Mutating(Plugin):
         @tool
         async def write(self) -> str:
-            pytest.fail("Unapproved side effect ran")
+            return "written"
 
-    model = ScriptedModel([[ModelChunk(tool_call=ToolCall("write"))], "blocked"])
+        @tool(confirm=True)
+        async def delete(self) -> str:
+            pytest.fail("Unconfirmed tool ran")
+
+    model = ScriptedModel(
+        [[ModelChunk(tool_call=ToolCall("write")), ModelChunk(tool_call=ToolCall("delete"))], "ok"]
+    )
     result = await Agent(model=model, plugins=[Mutating()]).run("Write")
-    assert result.tool_calls[0][1].status == ToolStatus.UNAVAILABLE
+    statuses = {call.name: output.status for call, output in result.tool_calls}
+    assert statuses == {"write": ToolStatus.OK, "delete": ToolStatus.UNAVAILABLE}
 
 
 def test_explicit_duplicate_slots_raise_instead_of_silently_overriding():

@@ -28,7 +28,7 @@ Optional extension points have defined behavior when absent:
 
 | Extension | Without it |
 | --- | --- |
-| `Approvals(...)` | Fail closed: read-only tools run, tools marked `confirm` or unflagged side effects are unavailable |
+| `Approvals(...)` | Tools run without asking; tools declared with `confirm=True` are unavailable |
 | A tracer, for example `OpenTelemetry(...)` | No tracing; nothing is recorded |
 | `Compaction(...)` | History is never summarized; requests fail once they exceed the context window |
 

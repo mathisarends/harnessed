@@ -227,7 +227,7 @@ async def test_unanswered_child_approval_does_not_execute_tool():
 
     child = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=ToolCall("write"))], "Denied"]),
-        plugins=[Write()],
+        plugins=[Write(), Approvals()],
     )
     parent = coordinator(child)
     await parent.run("Delegate")
@@ -531,7 +531,7 @@ async def test_always_grants_are_scoped_to_child_and_parent_revocation_is_effect
         model=ScriptedModel(
             [*[[ModelChunk(tool_call=ToolCall("write"))] for _ in range(3)], "Done"]
         ),
-        plugins=[Write()],
+        plugins=[Write(), Approvals()],
     )
     parent = coordinator(child)
     requests = []
@@ -577,7 +577,7 @@ async def test_parent_grants_do_not_authorize_a_sibling_child():
                 "Two",
             ]
         ),
-        plugins=[Write()],
+        plugins=[Write(), Approvals()],
     )
     parent = coordinator(child, [delegate(), delegate()], max_parallel=1)
     requests = []

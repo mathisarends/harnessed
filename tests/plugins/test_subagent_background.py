@@ -425,7 +425,7 @@ async def test_status_while_awaiting_child_approval_returns_facts_then_terminal_
                         model=ScriptedModel(
                             [[ModelChunk(tool_call=ToolCall("write"))], "Child done"]
                         ),
-                        plugins=[Write()],
+                        plugins=[Write(), Approvals()],
                     )
                 }
             ),

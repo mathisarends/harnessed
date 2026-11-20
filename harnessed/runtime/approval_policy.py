@@ -226,13 +226,12 @@ def _tool_flag_decision(tool: ToolInfo | None) -> PolicyDecision | None:
 def unconfigured_tool_decision(tool: ToolInfo | None) -> PolicyDecision:
     """Decide a call when no ``Approvals`` policy is configured.
 
-    Read-only tools run; every other tool asks, so a session without an
-    approval policy or responder fails closed instead of running side effects.
+    Tools run without asking. A tool declared with ``confirm=True`` still asks,
+    so it stays unavailable until an approver can answer.
     """
-    decision = _tool_flag_decision(tool)
-    if decision is None:
+    if tool is not None and tool.confirm:
         return PolicyDecision.ASK
-    return decision
+    return PolicyDecision.ALLOW
 
 
 class Approvals(Plugin[ApprovalsConfig], slot="approvals"):

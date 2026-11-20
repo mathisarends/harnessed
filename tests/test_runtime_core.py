@@ -57,11 +57,11 @@ async def test_session_limits_tool_output_from_loop_settings():
     ("flags", "status"),
     [
         ({"readonly": True}, ToolStatus.OK),
-        ({}, ToolStatus.UNAVAILABLE),
+        ({}, ToolStatus.OK),
         ({"confirm": True}, ToolStatus.UNAVAILABLE),
     ],
 )
-async def test_tools_fail_closed_without_an_approval_policy(flags, status):
+async def test_tools_run_without_an_approval_policy_unless_they_require_confirmation(flags, status):
     class Tools(Plugin):
         @tool(**flags)
         def act(self) -> str:

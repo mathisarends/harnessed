@@ -157,8 +157,8 @@ the supplied scope. See [method declarations](../guides/plugins.md#third-party-m
 
 ## Approval policy
 
-Approvals are not installed by default. Without an `Approvals` plugin, read-only
-tools run and other tools return `ToolStatus.UNAVAILABLE`.
+Approvals are not installed by default. Without an `Approvals` plugin, tools run
+without asking; tools declared with `confirm=True` return `ToolStatus.UNAVAILABLE`.
 `Approvals(default=PolicyDecision.ALLOW)` and `Approvals(default=PolicyDecision.ASK)`
 select the fallback decision; both accept `approver=` and `timeout=`. Tool flags
 still take precedence over that fallback. `Approvals(allow=..., ask=..., deny=...)`
@@ -327,8 +327,8 @@ service keys. Reusable compositions are ordinary functions returning plugin list
 The core is not a plugin and cannot be replaced: session log, tool registry,
 system prompt store, token counter, context budget, prompt renderer and loop.
 `Service(TokenCounter, counter)` overrides the token counter service. Absent
-extension points behave explicitly: without `Approvals`, read-only tools run and
-other tools are unavailable; without a tracer, nothing is traced.
+extension points behave explicitly: without `Approvals`, tools run without asking
+unless they declare `confirm=True`; without a tracer, nothing is traced.
 
 `agent.describe()` returns a `CompositionDescription` with a `plugins` tuple and
 a readable `str()` rendering. Plugin descriptions contain `name`, `slot`,

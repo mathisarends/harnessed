@@ -18,9 +18,10 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   `max_tool_output` (default 32,000 characters).
 - Slots only detect conflicts: two plugins in one slot raise `PluginConflict`.
   Nothing replaces or overrides a plugin implicitly.
-- `Approvals` is no longer installed by default. Without it, read-only tools run
-  and other tools are unavailable, matching the previous default behavior.
-  Add `Approvals(...)` to `plugins=` to allow, ask or deny explicitly.
+- `Approvals` is no longer installed by default, and tools now run without
+  asking when it is absent. Previously, side-effecting tools were unavailable
+  without an approver. Tools declared with `confirm=True` still require an
+  approval. Add `Approvals()` to `plugins=` to ask before side effects.
 
 ### Removed
 
