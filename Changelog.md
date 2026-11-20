@@ -5,12 +5,38 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
-## Unreleased
+## 0.23.0 (Unreleased)
+
+### Added
 
 - Use `Plugin.with_instructions(...)` to replace a plugin's prompt block or
   `Plugin.without_instructions()` to omit it. Both methods return a new recipe of
   the same plugin type and apply when composing an agent or mounting a plugin at
   runtime.
+- Use `PrepareCompaction` from `harnessed.hooks` to propose plugin handover
+  notes for automatic, recovery or manual compaction. Accepted notes are
+  prepended to the saved summary within the token budget.
+  `CompactionAppliedEvent.accepted_note_keys` identifies the notes that were
+  committed. See [plugin handover notes](docs/guides/compaction.md#add-a-plugin-handover-note).
+
+### Documentation
+
+- The examples form a three-stage learning path in `examples.getting_started`,
+  `examples.applications` and `examples.plugin_authoring`.
+  Run them as modules, for example `uv run python -m examples.getting_started.01_tool_agent`.
+  The previous `05_tools_and_injection` example is split into
+  `plugin_authoring.02_tool_context` and `plugin_authoring.08_failure_nudge`.
+  Remembered approvals moved to `applications.01_approvals`.
+
+### Upgrade from 0.22.0
+
+- Update commands that run examples to use their new module paths.
+- Existing persisted sessions need no migration. Conversation snapshots and
+  JSON store envelopes remain at version **3**, execution checkpoints at **4**,
+  and standalone audit envelopes at **7**. Older compaction events decode with
+  an empty `accepted_note_keys` tuple. Upgrade readers before writers in a staged
+  rollout. `0.22.0` rejects the new field in audit events and in checkpoints
+  that contain a compaction event in an open turn.
 
 ## 0.22.0 (2026-11-20)
 
@@ -97,16 +123,6 @@ agent = Agent(
     context=Context(max_tool_output_chars=8_000, compaction=Compaction(at=0.8)),
 )
 ```
-
-### Documentation
-
-- The examples form a learning path in three stages, numbered by reading order:
-  `examples.getting_started`, `examples.applications` and
-  `examples.plugin_authoring`. Run them as, for example,
-  `uv run python -m examples.getting_started.01_tool_agent`. The previous
-  `05_tools_and_injection` example is split into `plugin_authoring.02_tool_context`
-  and `plugin_authoring.08_failure_nudge`; remembered approvals moved to
-  `applications.01_approvals`.
 
 ### Fixed
 
