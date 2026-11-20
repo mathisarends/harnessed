@@ -59,6 +59,49 @@ async def test_plugin_instructions_follow_application_instructions_by_default():
         SystemPrompt.from_plugins(order="as_listed")
 
 
+async def test_with_instructions_replaces_only_the_selected_recipe():
+    calls = []
+
+    class Guidance(Plugin):
+        def instructions(self) -> SystemPrompt:
+            calls.append(self)
+            return SystemPrompt("Original.")
+
+    original = Guidance(name="custom")
+    configured = original.with_instructions("First.")
+    revised = configured.with_instructions(
+        SystemPrompt(Instructions(title="Usage", text="Second."))
+    )
+    default = Agent(plugins=[original])
+    first = Agent(plugins=[configured])
+    second = Agent(
+        instructions=SystemPrompt.from_plugins("Role.", format=PromptFormat.MARKDOWN),
+        plugins=[revised, Observe()],
+    )
+    assert calls == [original]
+    assert await default.prompt.render() == "Original."
+    assert await first.prompt.render() == "First."
+    assert await second.prompt.render() == (
+        "Role.\n\n## Usage\n\nSecond.\n\n## Page state\n\nDOM snapshot."
+        "\n\n## Freshness\n\nUse the latest observation."
+    )
+    assert "custom.instructions" in str(second.prompt)
+
+
+async def test_with_instructions_can_add_or_omit_a_block():
+    agent = Agent(
+        plugins=[Observe().with_instructions(SystemPrompt()), Plugin().with_instructions("Added.")]
+    )
+    assert await agent.prompt.render() == "Added."
+
+
+def test_with_instructions_requires_content():
+    with pytest.raises(TypeError, match="text or a SystemPrompt"):
+        Observe().with_instructions(42)
+    with pytest.raises(ValueError, match="must supply content"):
+        Observe().with_instructions(SystemPrompt.from_plugins())
+
+
 async def test_explicit_prompt_omits_plugin_instructions_without_evaluating_them():
     class Feature(Plugin):
         def instructions(self) -> SystemPrompt:

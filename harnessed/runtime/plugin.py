@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 from contextlib import AbstractAsyncContextManager
+from copy import copy
 from types import get_original_bases
 from typing import Any, ClassVar, Self, TypeVar, cast, get_args, get_origin, overload
 
@@ -79,6 +80,7 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         if not config.model_config.get("frozen"):
             raise TypeError("Plugin Config models must be frozen; inherit PluginConfig")
         self.config = config
+        self._instruction_override: SystemPrompt | None = None
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -109,9 +111,32 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         """Reconstruct runtime attributes while retaining the validated frozen configuration."""
         if "config" not in vars(self):
             raise TypeError("Plugin constructors must call super().__init__()")
-        instance = super().create_instance()
+        instance: Self = super().create_instance()
         object.__setattr__(instance, "config", self.config)
+        instance._instruction_override = self._instruction_override
         return instance
+
+    def with_instructions(self, instructions: str | SystemPrompt) -> Self:
+        """Return a configured copy with a replacement prompt block.
+
+        An empty SystemPrompt removes the block.
+        """
+        if self.recipe is not self:
+            raise TypeError("Configure instructions on the plugin recipe")
+        if not isinstance(instructions, str | SystemPrompt):
+            raise TypeError("instructions must be text or a SystemPrompt")
+        document = SystemPrompt(instructions) if isinstance(instructions, str) else instructions
+        if document.collects_plugins:
+            raise ValueError("Plugin instructions must supply content, not plugin collection")
+        configured: Self = copy(self)
+        if (
+            configured is self
+            or type(configured) is not type(self)
+            or configured.recipe is not configured
+        ):
+            raise TypeError("Copying a plugin recipe must return a fresh recipe of the same class")
+        configured._instruction_override = document
+        return configured
 
     def instructions(self) -> SystemPrompt:
         """Return pure configuration-derived content, collected once per selected recipe.
@@ -120,6 +145,18 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         Session-owned files and factories may be returned as Instructions values.
         """
         return SystemPrompt()
+
+    def prompt_contribution(self) -> PromptContribution:
+        """Normalize this recipe's prompt metadata for the runtime."""
+        name = as_plugin_spec(self).name
+        override = self._instruction_override
+        if override is not None:
+            provider = (lambda: override) if override.sections else None
+        else:
+            provider = (
+                self.instructions if type(self).instructions is not Plugin.instructions else None
+            )
+        return PromptContribution(name, provider)
 
     async def setup(self, scope: PluginScope) -> None:
         """Acquire resources and publish services for this activation.
@@ -221,13 +258,6 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
 def plugin_events(value: Plugin) -> tuple[type[DurableEvent | TransientEvent], ...]:
     """Event types a plugin declares; only core Plugin recipes declare any."""
     return value.events
-
-
-def plugin_contribution(value: Plugin) -> PromptContribution:
-    """Normalize a plugin's prompt metadata once at the agent boundary."""
-    spec = as_plugin_spec(value)
-    provider = value.instructions if type(value).instructions is not Plugin.instructions else None
-    return PromptContribution(spec.name, provider)
 
 
 class Service[T](Plugin):

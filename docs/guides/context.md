@@ -94,6 +94,19 @@ agent = Agent(
 
 The strategy collects instructions from the complete configured plugin list.
 
+Use `plugin.with_instructions(...)` to replace one configured plugin's prompt
+block. The method returns a new recipe of the same type.
+
+```python
+observe = Observe(config=ObserveConfig())
+agent = Agent(plugins=[observe.with_instructions("Use the latest browser screenshot.")])
+```
+
+Pass a `SystemPrompt` for multiple sections or `SystemPrompt()` to remove the
+block. Runtime mounts use the same replacement with their configured section
+delivery. The authoring method `instructions()` still supplies the defaults for
+recipes without a replacement.
+
 ## Compose content and select a renderer
 
 `SystemPrompt(*parts, format=PromptFormat.PLAIN)` accepts strings, `Instructions`

@@ -23,7 +23,7 @@ from harnessed.runtime.composition import (
 from harnessed.runtime.opener import open_session
 from harnessed.runtime.options import RunOptions
 from harnessed.runtime.outputs import OutputContract, OutputTypes
-from harnessed.runtime.plugin import Plugin, Service, plugin_contribution, plugin_events
+from harnessed.runtime.plugin import Plugin, Service, plugin_events
 from harnessed.runtime.services import RuntimeServices
 from harnessed.runtime.session import Session
 from harnessed.runtime.tool_output_limit import ToolOutputLimit
@@ -74,7 +74,7 @@ class Agent:
         self.instructions = instructions
         self.prompt = PromptComposition(
             instructions if isinstance(instructions, SystemPrompt) else None,
-            (plugin_contribution(value) for value in self.plugins),
+            (value.prompt_contribution() for value in self.plugins),
             instructions=instructions if isinstance(instructions, str) else None,
         )
         self._events = EventRegistry(chain.from_iterable(map(plugin_events, self.plugins)))

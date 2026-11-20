@@ -7,7 +7,7 @@ from harnessed.prompts import SectionDelivery
 from harnessed.prompts.delivery import runtime_sections
 from harnessed.tools import ToolRegistry
 
-from .plugin import Plugin, plugin_contribution, plugin_events
+from .plugin import Plugin, plugin_events
 
 
 class PluginMount:
@@ -46,7 +46,7 @@ class PluginMount:
         if self._started:
             raise RuntimeError("A mount request can only be opened once")
         self._started = True
-        contribution = plugin_contribution(self._plugin)
+        contribution = self._plugin.prompt_contribution()
         spec = runtime_sections(self._plugin, contribution, self._delivery)
         self._registry.register(plugin_events(self._plugin))
         handle = await self._scope.plugin(spec)
