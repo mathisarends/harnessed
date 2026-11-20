@@ -1974,7 +1974,7 @@ async def test_otlp_provider_rejects_empty_service_names(service_name: str) -> N
 def test_otlp_example_exports_on_exit(otlp_collector: Collector) -> None:
     base_url, requests = otlp_collector
     result = subprocess.run(
-        [sys.executable, "-m", "examples.29_tracing", "--otlp"],
+        [sys.executable, "-m", "examples.applications.21_tracing", "--otlp"],
         cwd=Path(__file__).resolve().parents[2],
         capture_output=True,
         text=True,

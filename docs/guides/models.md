@@ -177,7 +177,7 @@ Custom `Model` implementations expose `info: ModelInfo`, immutable
 `settings: GenerationSettings`, `request(ModelRequest) -> ModelResponse`, and
 `stream(ModelRequest)` as an asynchronous context manager. The configured object
 selects the model; the request carries messages, tools, resolved settings and an
-optional output schema. See the [offline model example](https://github.com/mathisarends/harnessed/blob/main/examples/13_models.py).
+optional output schema. See the [offline model example](https://github.com/mathisarends/harnessed/blob/main/examples/plugin_authoring/18_models.py).
 
 Custom `ModelStream` implementations expose a `usage` property containing the
 cumulative `ModelUsage` snapshot, or `None` while usage is unknown. Keep this

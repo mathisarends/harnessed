@@ -4,8 +4,8 @@ from dataclasses import replace
 
 import pytest
 
-from examples._atomic_repository import ConversationRepository, Speaker
-from examples._atomic_session_store import ConversationSessionStore
+from examples.applications._atomic_repository import ConversationRepository, Speaker
+from examples.applications._atomic_session_store import ConversationSessionStore
 from harnessed import Agent
 from harnessed.errors import SessionWriteConflict
 from harnessed.events import InboxAddedEvent, InboxMode

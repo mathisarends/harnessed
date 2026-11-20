@@ -91,4 +91,4 @@ has changed. A subsequent load reads the new body and updates retained context.
 Unloading the plugin removes its tools, listeners and catalog service; historical
 results and retained facts remain part of the session log.
 
-Run `uv run python -m examples.27_skills` for an offline folder/inline example.
+Run `uv run python -m examples.applications.08_skills` for an offline folder/inline example.

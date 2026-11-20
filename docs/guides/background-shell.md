@@ -143,5 +143,5 @@ Run-only backends, including the current Docker/Bubblewrap worker transports,
 continue to support `Shell`. `start_command` rejects them explicitly before
 launching anything; there is no fallback to an unsandboxed local process.
 
-Run `uv run python -m examples.35_background_shell` for an offline example showing
+Run `uv run python -m examples.applications.06_background_shell` for an offline example showing
 registration, stdin, inspection, termination, retry and completion notifications.

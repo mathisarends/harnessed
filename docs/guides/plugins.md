@@ -66,7 +66,7 @@ are additive. Use a slot when two implementations claim the same capability.
 a session opens. Inspect `session.tools` for currently available tools.
 The SDK collects each plugin's instructions in list order by default.
 See [ordered instructions](context.md#plugin-instructions-are-collected-by-default)
-and run `uv run python -m examples.36_explicit_composition` for an offline example.
+and run `uv run python -m examples.plugin_authoring.01_explicit_composition` for an offline example.
 
 ## Per-mount state and cleanup
 

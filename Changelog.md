@@ -91,6 +91,16 @@ agent = Agent(
 )
 ```
 
+### Documentation
+
+- The examples form a learning path in three stages, numbered by reading order:
+  `examples.getting_started`, `examples.applications` and
+  `examples.plugin_authoring`. Run them as, for example,
+  `uv run python -m examples.getting_started.01_tool_agent`. The previous
+  `05_tools_and_injection` example is split into `plugin_authoring.02_tool_context`
+  and `plugin_authoring.08_failure_nudge`; remembered approvals moved to
+  `applications.01_approvals`.
+
 ### Fixed
 
 - With content capture enabled, OpenTelemetry model spans no longer lose

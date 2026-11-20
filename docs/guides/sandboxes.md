@@ -276,7 +276,7 @@ or supplied shell backend. For local execution, configure these options on `Loca
 
 ## Verification
 
-Run `uv run python -m examples.34_sandbox` for an offline configuration example.
+Run `uv run python -m examples.applications.07_sandbox` for an offline configuration example.
 Add `--run` to execute it against an installed Docker runtime, or
 `--run --backend bubblewrap --rootfs /srv/agent-rootfs` on a configured Linux host.
 

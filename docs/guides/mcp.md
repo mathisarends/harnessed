@@ -194,7 +194,7 @@ class DocsTransport:
 docs = MCP("docs", transport=DocsTransport())
 ```
 
-Run `uv run --extra mcp python -m examples.31_mcp --url http://localhost:8000/mcp`
+Run `uv run --extra mcp python -m examples.applications.09_mcp --url http://localhost:8000/mcp`
 to consume an existing read-only `search(query: str)` tool with a scripted model.
 The example requires an externally supplied MCP endpoint. See the upstream
 [FastMCP client](https://gofastmcp.com/clients/client) and

@@ -305,7 +305,7 @@ from `harnessed.plugins.rules`. Decoding `rule.triggered` requires that plugin's
 declaration in the registry. A missing declaration fails with an unknown-event
 error; it does not silently discard or retain an opaque record.
 
-Run `uv run python -m examples.28_custom_events` for streaming, schema generation
+Run `uv run python -m examples.plugin_authoring.12_custom_events` for streaming, schema generation
 and replay in one offline example.
 
 
@@ -318,6 +318,6 @@ without one and receive events from multiple producers. Producers declare codecs
 while hooks belong to individual activations. Disposal removes listeners and
 retains registered codecs for later audit decoding.
 
-Run `uv run python -m examples.37_plugin_recipes` for one complete example of
+Run `uv run python -m examples.plugin_authoring.13_plugin_recipes` for one complete example of
 `Plugin[FileToolsConfig]`, explicit `config=FileToolsConfig(...)`, `FILE_EVENTS`,
 `ToolContext.emit(...)`, an independent observer and a composition factory.
