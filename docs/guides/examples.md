@@ -4,6 +4,12 @@ Run examples from the checkout with the locked uv environment. These scripts are
 also exercised by the test suite. The MCP client example requires an external
 MCP endpoint; the native-provider example requires its provider extra and credentials.
 
+Start with `01_tool_agent`, `02_plugins` and `33_basic_stream` to declare a tool,
+compose an agent and display its output. For an application, continue with
+`19_approvals_and_priorities`, `16_compaction_policies` and `41_subagents`.
+Plugin authors can then explore `36_explicit_composition`, `11_temporal_needs`
+and `23_plugin_lifecycle`.
+
 | Topic | Run | Source |
 | --- | --- | --- |
 | Background shell control | `uv run python -m examples.35_background_shell` | [Code](https://github.com/mathisarends/harnessed/blob/main/examples/35_background_shell.py) |

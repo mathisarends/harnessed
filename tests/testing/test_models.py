@@ -4,8 +4,7 @@ from dataclasses import replace
 import pytest
 
 from harnessed.errors import HarnessedError
-from harnessed.models import Model, ModelChunk, ModelRequest, ModelUsage, StopReason
-from harnessed.models.messages import ToolCall
+from harnessed.models import Model, ModelChunk, ModelRequest, ModelUsage, StopReason, ToolCall
 from harnessed.testing import CallbackModel, ScriptedModel, ScriptExhausted
 
 

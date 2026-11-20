@@ -2,22 +2,11 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from harnessed import (
-    Agent,
-    CompositionDescription,
-    Instructions,
-    Plugin,
-    SystemPrompt,
-)
+from harnessed import Agent, Plugin, SystemPrompt
 from harnessed.errors import PluginConflict, PluginDependencyError
-from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not a module.
-    Bundle,
-    PluginLike,
-    PluginScope,
-    Scope,
-    plugin,
-)
-from harnessed.runtime.composition import compose_plugins
+from harnessed.kernel import Bundle, PluginScope
+from harnessed.prompts import Instructions
+from harnessed.runtime.composition import CompositionDescription
 from harnessed.testing import ScriptedModel
 
 
@@ -31,9 +20,9 @@ class Extra(Plugin):
 
 def test_composition_keeps_the_supplied_order_and_skips_disabled_entries():
     first, choice, last = Extra(name="first"), Choice(), Extra(name="last")
-    resolved = compose_plugins([first, None, choice, last])
+    resolved = Agent(plugins=[first, choice, last])
     assert resolved.plugins == (first, choice, last)
-    assert [row.name for row in resolved.description.plugins] == ["first", "Choice", "last"]
+    assert [row.name for row in resolved.describe().plugins] == ["first", "Choice", "last"]
 
 
 @pytest.mark.parametrize("swap", [False, True])
@@ -42,7 +31,7 @@ def test_duplicate_slots_are_errors_regardless_of_input_order(swap):
     if swap:
         inputs.reverse()
     with pytest.raises(PluginConflict, match=r"example\.choice.*(one, two|two, one)"):
-        compose_plugins(inputs)
+        Agent(plugins=inputs)
 
 
 def test_unslotted_plugins_are_additive_even_when_they_provide_the_same_service():
@@ -50,9 +39,9 @@ def test_unslotted_plugins_are_additive_even_when_they_provide_the_same_service(
         pass
 
     first, second = Provider(), Provider()
-    resolved = compose_plugins([first, second])
+    resolved = Agent(plugins=[first, second])
     assert resolved.plugins == (first, second)
-    assert resolved.description.plugins[0].provides == (Provider,)
+    assert resolved.describe().plugins[0].provides == (Provider,)
 
 
 def test_a_model_argument_and_a_model_service_conflict():
@@ -65,22 +54,14 @@ def test_a_model_argument_and_a_model_service_conflict():
 
 @pytest.mark.parametrize("invalid", [False, 42, [Extra()]])
 def test_composition_inputs_require_plugins(invalid):
-    with pytest.raises(TypeError, match="Expected a configured plugin"):
+    with pytest.raises(TypeError, match="Expected a Plugin instance"):
         Agent(plugins=[invalid])
 
 
-def test_function_factories_are_configured_once_and_kernel_bundles_remain_recipes():
-    @plugin(slot="example.function")
-    async def factory(scope: Scope):
-        yield
-
-    bundle = Bundle("hooks")
-    configured = factory()
-    inputs: list[PluginLike] = [bundle, factory, configured]
-    with pytest.raises(PluginConflict, match=r"example.function"):
-        compose_plugins(inputs)
-    resolved = compose_plugins([configured, bundle])
-    assert resolved.plugins == (configured, bundle)
+def test_agent_rejects_kernel_recipes_and_disabled_entries():
+    for value in [Bundle("hooks"), None, Extra]:
+        with pytest.raises(TypeError, match="Plugin instance"):
+            Agent(plugins=[value])
 
 
 def test_callable_plugin_instances_keep_their_prompt_metadata():

@@ -7,8 +7,8 @@ The server must provide a read-only search(query: str) tool.
 import asyncio
 from argparse import ArgumentParser
 
-from harnessed import Agent, ToolCall
-from harnessed.models import ModelChunk
+from harnessed import Agent
+from harnessed.models import ModelChunk, ToolCall
 from harnessed.plugins.mcp import MCP
 from harnessed.testing import ScriptedModel
 

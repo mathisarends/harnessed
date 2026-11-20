@@ -2,8 +2,8 @@
 
 import asyncio
 
-from harnessed import Agent, Plugin, SessionStatus, StopReason, tool
-from harnessed.models import UserMessage
+from harnessed import Agent, Plugin, SessionStatus, tool
+from harnessed.models import StopReason, UserMessage
 from harnessed.testing import ScriptedModel, call
 
 

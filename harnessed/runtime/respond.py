@@ -11,14 +11,15 @@ from harnessed.events import (
 )
 from harnessed.kernel import Scope
 from harnessed.models import (
+    AssistantMessage,
     Model,
     ModelAttemptOutcome,
     ModelChunk,
     ModelRequest,
     ModelStream,
+    ToolCall,
     model_diagnostics,
 )
-from harnessed.models.messages import AssistantMessage, ToolCall
 from harnessed.sessions import SessionContext
 from harnessed.sessions.log import SessionLog
 

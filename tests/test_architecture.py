@@ -5,11 +5,11 @@ import subprocess
 import sys
 import tomllib
 from pathlib import Path
-from types import FunctionType
 
 import pytest
 
 from harnessed.kernel import PluginStatus
+from tests._kernel_recipe import kernel_recipe
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "harnessed"
@@ -100,7 +100,7 @@ def test_optional_integrations_and_features_are_isolated():
 def test_kernel_import_is_independent_of_agents_adapters_and_third_party_packages():
     code = """
 import sys
-from harnessed.kernel import Scope, PluginBase, Bundle, Event, Key, plugin
+from harnessed.kernel import Scope, PluginBase, Bundle, Event, Key, hook
 for layer in ('runtime', 'events', 'models', 'plugins', 'prompts', 'sessions', 'tools'):
     assert not any(name == 'harnessed.' + layer or name.startswith('harnessed.' + layer + '.')
                    for name in sys.modules), (layer, sorted(sys.modules))
@@ -158,7 +158,7 @@ def test_validation_is_explicit_and_otel_is_optional_and_isolated():
         "harnessed.hooks",
         "harnessed.models",
         "harnessed.plugins",
-        "harnessed.plugins.compaction",
+        "harnessed.context",
         "harnessed.prompts",
         "harnessed.sessions",
         "harnessed.tools",
@@ -198,36 +198,27 @@ def test_public_exports_resolve_to_their_canonical_classes_and_functions(module)
 def test_application_facade_stays_small_and_has_no_transitional_names():
     import harnessed
 
-    # ToolParameter adds parameter conditions to the deliberately small root SDK.
-    assert len(harnessed.__all__) <= 50
-    assert {
+    assert set(harnessed.__all__) == {
         "Agent",
-        "Session",
-        "SessionState",
-        "Plugin",
         "AgentLoop",
-        "CompositionDescription",
-        "tool",
-        "ToolParameter",
-        "RunResult",
-        "RunHandle",
-        "RunStream",
-        "ToolContext",
-    } <= set(harnessed.__all__)
-    assert "SectionDelivery" in harnessed.__all__ and "PluginOrder" not in harnessed.__all__
-    assert not {
-        "ApprovalRequest",
-        "Harness",
-        "LLM",
-        "Bundle",
-        "FileSystemBackend",
-        "Shell",
-        "Section",
+        "Approvals",
+        "Compaction",
         "Context",
-        "Scope",
-        "PluginPack",
-        "NoopTracer",
-    } & set(harnessed.__all__)
+        "Decision",
+        "File",
+        "Image",
+        "OutputContract",
+        "Plugin",
+        "PluginConfig",
+        "RunResult",
+        "Session",
+        "SystemPrompt",
+        "ToolContext",
+        "events",
+        "tool",
+        "SessionStatus",
+        "PluginValidation",
+    }
 
 
 def test_kernel_scope_has_one_canonical_public_name():
@@ -238,12 +229,11 @@ def test_kernel_scope_has_one_canonical_public_name():
     assert not hasattr(kernel, "Context") and not hasattr(kernel, "ContextClosed")
 
 
-def test_kernel_exports_plugin_as_a_decorator() -> None:
+def test_kernel_has_no_function_plugin_decorator():
     import harnessed.kernel as kernel
 
-    assert "plugin" in kernel.__all__
-    assert isinstance(kernel.plugin, FunctionType)
-    assert kernel.plugin.__module__ == "harnessed.kernel.plugin"
+    assert "plugin" not in kernel.__all__
+    assert not callable(getattr(kernel, "plugin", None))
 
 
 async def test_session_exposes_its_kernel_scope_without_a_legacy_alias():
@@ -278,6 +268,7 @@ def test_package_root_has_only_public_entrypoints_and_no_transition_modules():
     assert {path.name for path in PACKAGE.glob("*.py")} == {
         "__init__.py",
         "agent.py",
+        "context.py",
         "errors.py",
         "hooks.py",
         "tracing.py",
@@ -292,16 +283,12 @@ def test_package_root_has_only_public_entrypoints_and_no_transition_modules():
 
 
 async def test_typed_keys_have_identity_and_work_with_temporal_needs():
-    from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not a module.
-        Key,
-        Scope,
-        plugin,
-    )
+    from harnessed.kernel import Key, Scope
 
     first, second = Key[str]("backend"), Key[str]("backend")
     seen = []
 
-    @plugin(needs=[first])
+    @kernel_recipe(needs=[first])
     async def feature(scope):
         seen.append(scope[first])
         yield

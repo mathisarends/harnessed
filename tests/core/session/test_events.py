@@ -5,14 +5,12 @@ from typing import ClassVar
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import Plugin, PolicyDecision, ToolCall, ToolResult, tool
+from harnessed import Approvals, Decision, Plugin, tool
 from harnessed.events import DurableEvent, ModelRequestedEvent, SystemMessageEvent, TurnEndedEvent
 from harnessed.events.codec import decode_event, encode_event
 from harnessed.events.unions import SESSION_EVENT_TYPES
-from harnessed.models import ModelChunk, SystemMessage
-from harnessed.plugins import Approvals
+from harnessed.models import ModelChunk, SystemMessage, ToolCall, ToolResult
 from harnessed.runtime.hooks import PrepareRequest
-from harnessed.runtime.plugin import Bundle
 from harnessed.sessions.log import SessionLog, derive_messages, derive_requests
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit, AuditProjection
@@ -40,7 +38,7 @@ async def test_every_log_prefix_reconstructs_the_same_history_and_requests():
         ]
     )
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), features]
+        model=model, approvals=Approvals(default=Decision.ALLOW), plugins=[features]
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("Add. Ticket: one")
@@ -59,20 +57,17 @@ async def test_every_log_prefix_reconstructs_the_same_history_and_requests():
 
 
 async def test_exact_requests_include_request_hook_changes_without_rerunning_the_hook():
-    extensions = Bundle("configured")
     model = ScriptedModel(["done"])
-    harness = Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), extensions]
-    )
+    harness = Application(model=model, approvals=Approvals(default=Decision.ALLOW))
     invocations = []
 
-    @extensions.on(PrepareRequest)
     async def configure(event, next_):
         invocations.append(True)
         request = await next_()
         return replace(request, messages=(*request.messages, SystemMessage("request context")))
 
     async with harness.session() as agent:
+        agent.on(PrepareRequest, configure)
         agent_audit = Audit(agent)
         await agent.run("hello")
         replay = AuditProjection(roundtrip(agent_audit.events))

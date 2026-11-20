@@ -5,11 +5,11 @@ from pathlib import Path
 from uuid import uuid4
 
 from harnessed.errors import SessionClosed
-from harnessed.models.messages import ToolResult, ToolStatus, result_content, to_dict
+from harnessed.models import ToolResult, ToolStatus
+from harnessed.models.messages import result_content, to_dict
 from harnessed.runtime.inbox import SessionInbox
 from harnessed.tools import ToolError
-
-from .process import BackgroundShellBackend, ProcessState, ShellProcess
+from harnessed.tools.workspace import BackgroundShellBackend, ProcessState, ShellProcess
 
 logger = logging.getLogger(__name__)
 

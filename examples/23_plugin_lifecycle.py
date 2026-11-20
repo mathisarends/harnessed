@@ -4,19 +4,11 @@ import asyncio
 from dataclasses import dataclass
 from typing import Protocol, override
 
-from harnessed import (
-    Agent,
-    ApprovalAnswer,
-    Plugin,
-    SystemPrompt,
-    ToolCall,
-    tool,
-)
+from harnessed import Agent, Approvals, Plugin, SystemPrompt, tool
 from harnessed.events import TurnEndedEvent
 from harnessed.hooks import ExecuteTool, SessionAppended
-from harnessed.kernel import Inject, PluginScope, PluginState, Scope, plugin
-from harnessed.models import ModelChunk
-from harnessed.plugins import Approvals
+from harnessed.kernel import PluginScope, PluginState, needs
+from harnessed.models import Decision, ModelChunk, ToolCall
 from harnessed.testing import ScriptedModel
 
 
@@ -36,10 +28,9 @@ class MemoryNotes:
         return f"Saved note {len(self.entries)}"
 
 
-@plugin()
-async def notes_backend(scope: Scope):
-    scope.provide(Notes, MemoryNotes())
-    yield
+class NotesBackend(Plugin):
+    async def setup(self, scope: PluginScope) -> None:
+        scope.provide(Notes, MemoryNotes())
 
 
 @dataclass(frozen=True)
@@ -47,7 +38,9 @@ class NotesConfig:
     instruction: str = "Use save_note to save notes."
 
 
-class NotesTools(Plugin, needs=(Notes,)):
+class NotesTools(Plugin):
+    notes = needs(Notes)
+
     saved = PluginState[int](int)
 
     def __init__(self, config: NotesConfig):
@@ -58,9 +51,9 @@ class NotesTools(Plugin, needs=(Notes,)):
         return SystemPrompt(self._instruction)
 
     @tool
-    async def save_note(self, text: str, notes: Inject[Notes]) -> str:
+    async def save_note(self, text: str) -> str:
         """Save a note."""
-        result = await notes.save(text)
+        result = await self.notes.save(text)
         self.saved += 1
         return result
 
@@ -69,21 +62,19 @@ class NotesTools(Plugin, needs=(Notes,)):
         print(f"Notes plugin stopped after {self.saved} saves in this mount.")
 
 
-@plugin()
-async def trace(scope: Scope):
-    @scope.on(ExecuteTool)
-    async def around_tool(event, next_):
-        print(f"before {event.call.name}")
-        result = await next_()
-        print(f"after {event.call.name}: {result.status}")
-        return result
+class Trace(Plugin):
+    async def setup(self, scope: PluginScope) -> None:
+        @scope.on(ExecuteTool)
+        async def around_tool(event, next_):
+            print(f"before {event.call.name}")
+            result = await next_()
+            print(f"after {event.call.name}: {result.status}")
+            return result
 
-    @scope.on(SessionAppended)
-    def record(event):
-        if isinstance(event.event, TurnEndedEvent):
-            print(f"{event.log.id}: turn ended at event {event.seq}")
-
-    yield
+        @scope.on(SessionAppended)
+        def record(event):
+            if isinstance(event.event, TurnEndedEvent):
+                print(f"{event.log.id}: turn ended at event {event.seq}")
 
 
 async def main():
@@ -95,12 +86,8 @@ async def main():
                 "The note has been saved.",
             ]
         ),
-        plugins=[
-            notes,
-            notes_backend(),
-            trace(),
-            Approvals(approver=lambda _: ApprovalAnswer.ALLOW),
-        ],
+        approvals=Approvals(default=Decision.ASK, approver=lambda _: Decision.ALLOW),
+        plugins=[notes, NotesBackend(), Trace()],
     )
 
     async with harness.session() as agent:

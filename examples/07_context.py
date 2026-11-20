@@ -6,19 +6,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Protocol, override
 
-from harnessed import (
-    Agent,
-    File,
-    Image,
-    Instructions,
-    Plugin,
-    SystemPrompt,
-    ToolCall,
-    tool,
-)
+from harnessed import Agent, File, Image, Plugin, SystemPrompt, tool
 from harnessed.hooks import PrepareRequest
-from harnessed.kernel import Inject, Scope, hook, plugin
-from harnessed.models import ModelChunk, UserMessage
+from harnessed.kernel import PluginScope, hook, needs
+from harnessed.models import ModelChunk, ToolCall, UserMessage
+from harnessed.prompts import Instructions
 from harnessed.testing import ScriptedModel
 
 
@@ -32,15 +24,16 @@ class DemoMemory(Memory):
         return ["The project uses Python 3.12+.", "Focus on authentication tests."][:k]
 
 
-@plugin
-async def memory_backend(scope: Scope):
-    scope.provide(Memory, DemoMemory())
-    yield
+class MemoryBackend(Plugin):
+    async def setup(self, scope: PluginScope) -> None:
+        scope.provide(Memory, DemoMemory())
 
 
-class RelevantMemories(Plugin, needs=(Memory,)):
+class RelevantMemories(Plugin):
+    memory = needs(Memory)
+
     @hook(PrepareRequest)
-    async def recall(self, _event: PrepareRequest, next_, memory: Inject[Memory]):
+    async def recall(self, _event: PrepareRequest, next_):
         request = await next_()
         query = next(
             (
@@ -50,19 +43,19 @@ class RelevantMemories(Plugin, needs=(Memory,)):
             ),
             "project",
         )
-        hits = await memory.search(query, k=3)
+        hits = await self.memory.search(query, k=3)
         for hit in hits:
             request = request.append_message(UserMessage(hit))
         return request
 
 
 class MemoryTools(Plugin):
-    needs = (Memory,)
+    memory = needs(Memory)
 
     @tool(readonly=True)
-    async def recall(self, query: str, memory: Inject[Memory]) -> list[str]:
+    async def recall(self, query: str) -> list[str]:
         """Search long-term memory for relevant project information."""
-        return await memory.search(query, k=5)
+        return await self.memory.search(query, k=5)
 
 
 memory_tools = MemoryTools()
@@ -87,15 +80,15 @@ async def main():
         )
         harness = Agent(
             model=model,
-            prompt=SystemPrompt.from_plugins(
-                Instructions(text="You are a code reviewer."),
-                Instructions.from_file(path=root / "AGENTS.md"),
-            ),
             plugins=[
-                memory_backend(),
+                MemoryBackend(),
                 RelevantMemories(),
                 memory_tools,
             ],
+            instructions=SystemPrompt.from_plugins(
+                Instructions(text="You are a code reviewer."),
+                Instructions.from_file(path=root / "AGENTS.md"),
+            ),
         )
         async with harness.session() as agent:
             result = await agent.run(

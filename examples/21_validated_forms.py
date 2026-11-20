@@ -6,11 +6,10 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from harnessed import Agent, AgentLoop, Plugin, ToolCall, ToolContext, tool
+from harnessed import Agent, AgentLoop, Approvals, Plugin, ToolContext, tool
 from harnessed.events import ToolCallFinishedEvent
 from harnessed.kernel import Inject
-from harnessed.models import ModelChunk
-from harnessed.plugins import Approvals
+from harnessed.models import ModelChunk, ToolCall
 from harnessed.testing import ScriptedModel
 
 
@@ -68,7 +67,7 @@ async def validated_tool():
         ]
     )
     async with Agent(
-        model=model, plugins=[tools, Approvals(allow=[IssuesTools.create_issue])]
+        model=model, approvals=Approvals(allow=[IssuesTools.create_issue]), plugins=[tools]
     ).session() as agent:
         result = await agent.run("Create an authentication issue for alice.")
         results = [

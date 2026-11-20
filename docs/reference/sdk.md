@@ -157,30 +157,20 @@ the supplied scope. See [method declarations](../guides/plugins.md#third-party-m
 
 ## Approval policy
 
-Approvals are not installed by default. Without an `Approvals` plugin, tools run
-without asking; tools declared with `confirm=True` return `ToolStatus.UNAVAILABLE`.
-`Approvals(default=PolicyDecision.ALLOW)` and `Approvals(default=PolicyDecision.ASK)`
-select the fallback decision; both accept `approver=` and `timeout=`. Tool flags
-still take precedence over that fallback. `Approvals(allow=..., ask=..., deny=...)`
-accepts tool references or names. Tools declare `@tool(confirm=True)` or
-`@tool(readonly=True)`; these flags are mutually exclusive and are captured in
-`ToolInfo` when scheduling. Explicit application rules precede tool flags and
-`policy=`. `ToolApprovalGuard` provides an independent gate that survives policy
-slot replacement. See [approval composition](../guides/approvals.md).
-
-`Approvals(timeout=300)` owns the default response timeout for every approval
-request in the session, including guards, `ToolContext.approve()` and direct
-`session.approvals.request()` calls. A request's `timeout=` replaces this default
-with a shorter or longer finite positive number of seconds; omission and `None`
-inherit it. Approval waits do not consume the asking task's tool execution budget.
-Missing responders and expired questions raise `ApprovalUnavailable`; in a tool
-call this becomes an unavailable result. `AgentLoop` has no approval timeout.
+Pass `approvals=Approvals(...)` to `Agent`. Omitting `allow` permits unmatched
+tools by default. Supplying an allowlist makes the default denial, including for
+read-only tools. `ask` and `deny` can restrict individual actions. `default`
+sets an explicit fallback. Rules take `StrEnum` action keys and decorated methods.
+MCP clients bind remote names to the same action keys using `actions=`.
+Callbacks answer with `request.allow(remember=True)`, `request.allow()` or
+`request.deny()`. The corresponding session operations accept a request ID.
+See [approval configuration and response timeouts](../guides/approvals.md).
 
 ## Tool presentation
 
 `@tool(presentation=ToolPresentation(...))` attaches
 immutable display and JSON integration metadata to native tools. Import
-`ToolAnnotations`, `ToolIcon` and `ToolPresentation` from `harnessed`. Policy,
+`ToolAnnotations`, `ToolIcon` and `ToolPresentation` from `harnessed.tools`. Policy,
 execution and review hooks expose the captured `ToolInfo.presentation`; display
 values do not change model argument schemas or grant approval. See
 [tool display and integration metadata](../guides/tools.md#tool-display-and-integration-metadata).
@@ -199,11 +189,19 @@ The default depth is one; children cannot raise an inherited limit.
 See [subagents](../guides/subagents.md) for approvals, limits,
 recovery and ownership.
 
+## Workspace providers and tools
+
+Import `LocalWorkspace`, `WorkspaceBackends`, `Filesystem` and `Shell` from
+`harnessed.plugins`. Local agents use `[LocalWorkspace(root=path), Filesystem(), Shell()]`.
+To bring an existing file store use `[WorkspaceBackends(filesystem=storage), Filesystem()]`.
+A provider exposes services. Tool plugins declare which operations reach the model.
+A missing required backend fails default session startup validation.
+
 ## Sandbox integrations
 
 Import `DockerSandbox` from `harnessed.integrations.docker`, or
 `BubblewrapSandbox` from `harnessed.integrations.bubblewrap`. Both own shared
-shell/filesystem backends; compose them with `ShellTools()` and `FilesystemTools()`.
+shell/filesystem backends; compose them with `Shell()` and `Filesystem()`.
 Docker requires an explicit `image`; Bubblewrap requires a dedicated `rootfs`.
 Both accept `workspace=Workspace.copy_from(path)` or `Workspace.mount(path,
 readonly=True)`, `network=NetworkAccess.NONE`, explicit `env`, `SandboxLimits`,
@@ -220,7 +218,7 @@ returns typed `SandboxServices`: assign `shell = services.shell` and
 `SearchResult(matches, scanned_files, notes)` and executes in one built-in worker
 request. Text ranges count Unicode characters; a range that exceeds the transfer
 byte budget raises `ValueError`. Invalid UTF-8 raises `UnicodeError`.
-`ShellTools` accepts only `cwd`, `timeout` and `max_timeout`; configure `env` and
+`Shell` accepts only `cwd`, `timeout` and `max_timeout`; configure `env` and
 `max_output_bytes` on the sandbox/backend. Shell deadlines include queueing and
 launcher startup, and expired sandbox startup raises `TimeoutError`.
 `Sandbox(backend=MyBackend, workspace=...)` accepts a zero-argument constructor or
@@ -233,12 +231,12 @@ runtime requirements and the extension protocol.
 ## Background shell commands
 
 Import `BackgroundShell` from `harnessed.plugins` and register it explicitly with
-`Shell(cwd)` or `Service(ShellBackend, LocalShell(...))` in `Agent(plugins=...)`.
+`LocalWorkspace(root=...)`, a sandbox, or `WorkspaceBackends(shell=backend)` in `Agent(plugins=...)`.
 `BackgroundShell(cwd=".", *, timeout=600.0, max_timeout=600.0,
 max_background_commands=32)` requires an existing shell backend and a live session.
 It adds `start_command(argv, timeout=None)`, `read_command(command_id, wait=0.0)`,
 `write_command(command_id, text="", *, eof=False)`, `terminate_command(command_id)` and
-`list_commands()`. `Shell` and `ShellTools` retain their foreground-only tool set.
+`list_commands()`. `Shell` exposes the foreground command tool.
 
 `start_command` returns a mount-scoped ID promptly. Completion, failure, timeout
 or cancellation queues one durable session-inbox notification and wakes an idle
@@ -254,16 +252,17 @@ Run-only backends explicitly reject background starts. See
 
 ## Agent
 
-`Agent(*, model=None, instructions=None, prompt=None, plugins=(), loop=None,
+`Agent(*, model=None, instructions=None, approvals=None, context=None, plugins=(), loop=None,
 plugin_validation=PluginValidation.ERROR, store=None)` resolves reusable configuration.
 
 | Member | Behavior |
 | --- | --- |
 | model | Harnessed Model or provider:model string; wrap native models with PydanticAIModel |
-| instructions | Caller-owned text prepended to the selected prompt |
-| prompt | Complete content document, or SystemPrompt.from_plugins(...) to keep collecting plugin blocks; defaults to collection |
-| plugins | Iterable of configured plugins or `None`, mounted in order; duplicate slots raise PluginConflict |
-| loop | AgentLoop value with step, tool, output and context limits; defaults to `AgentLoop()` |
+| instructions | Text prepended to plugin instructions, a fixed SystemPrompt, or a SystemPrompt.from_plugins collection strategy |
+| approvals | Application approval rules, defaulting to allow |
+| context | Context window, tool output character limit and optional history compaction |
+| plugins | Iterable of Plugin instances, mounted in order; duplicate slots raise PluginConflict |
+| loop | AgentLoop value with step limits, tool execution and output retries; defaults to `AgentLoop()` |
 | plugin_validation | ERROR rejects unresolved plugins at session startup; WARN emits PluginDependencyWarning and retains them for later activation |
 | agent.plugins | Tuple of configured plugins |
 | agent.loop | The configured AgentLoop |
@@ -316,25 +315,13 @@ See [startup validation](../guides/plugins.md#session-startup-validation).
 
 ## Composition
 
-`from harnessed import AgentLoop, CompositionDescription` covers static
-composition. An Agent is the fixed runtime core plus exactly the plugins passed in
-`plugins=`, in order; there are no default plugins, packs or replacement rules.
-`None` entries are skipped. Booleans and nested lists are not plugin inputs.
-Two plugins in one slot, including `model=` together with `Service(Model, ...)`,
-raise `PluginConflict`. Unslotted recipes are additive, regardless of class or
-service keys. Reusable compositions are ordinary functions returning plugin lists.
-
-The core is not a plugin and cannot be replaced: session log, tool registry,
-system prompt store, token counter, context budget, prompt renderer and loop.
-`Service(TokenCounter, counter)` overrides the token counter service. Absent
-extension points behave explicitly: without `Approvals`, tools run without asking
-unless they declare `confirm=True`; without a tracer, nothing is traced.
-
-`agent.describe()` returns a `CompositionDescription` with a `plugins` tuple and
-a readable `str()` rendering. Plugin descriptions contain `name`, `slot`,
-`needs`, `observes` and `provides`. The result records static declarations, not
-live activation or services published dynamically by setup.
-See [composition](../guides/plugins.md#share-compositions-with-ordinary-functions).
+Compose an agent with a model, instructions, loop, context, approvals and
+an ordered list of `Plugin` instances. Two plugins claiming the same slot raise
+`PluginConflict`. Return plain lists from composition functions and include
+conditional features when building the list. `agent.describe()` exposes the
+configured model and loop and a tuple of plugin descriptions with their names,
+slots and declared dependencies. The runtime mounts this configuration for each
+session. See [plugin composition](../guides/plugins.md).
 
 Start with `Agent(model="openai-responses:gpt-6.1-terra")` to select a model.
 Provider strings automatically select the PydanticAI adapter. Use `PydanticAIModel` from `harnessed.models.pydantic_ai` for generation defaults
@@ -362,7 +349,7 @@ away. The outermost format controls all nested content. PLAIN joins text with bl
 lines, MARKDOWN adds optional level-two headings, and XML escapes section content.
 
 `SystemPrompt.from_plugins(*parts, format=...)` collects plugin blocks; it is
-also the default when `Agent(prompt=)` is omitted. Fixed parts appear
+also the default when `Agent(instructions=)` is omitted. Fixed parts appear
 before complete plugin blocks in plugin-list order. Providers run once at agent
 construction.
 A plugin provider returns a content document and cannot request collection itself.
@@ -370,9 +357,8 @@ A prompt built with the `SystemPrompt` constructor omits plugin blocks without
 calling their providers; `str(agent.prompt)` lists the omitted plugins.
 Collection strategies cannot be nested inside content.
 
-`Agent(instructions="...")` prepends caller text. `Agent(prompt=...)` selects the
-outer document or strategy. Optional `None` entries in public plugin lists are
-ignored.
+`Agent(instructions="...")` prepends application text and collects plugin blocks.
+Supply a `SystemPrompt` to select a complete document or collection strategy.
 
 `Instructions(text="", title=None, description="")` is a content value, not a
 plugin descriptor. `from_file(path=..., title=..., missing_ok=False)` and
@@ -384,7 +370,7 @@ its stable `scope.plugin_scope` view to the factory.
 `print(agent.prompt)` shows final order and origins;
 `await session.prompt.render()` returns the actual session text.
 
-`async with session.use(plugin, section_delivery=SectionDelivery.ERROR)` rejects overridden
+`async with session.mount(plugin, section_delivery=SectionDelivery.ERROR)` rejects overridden
 instruction providers before mounting. `CONTEXT` evaluates the method and content
 sources once per activation and delivers mount-owned context, removed on suspension
 or unmount. Failures roll back the mount. `IGNORE` never calls providers, factories
@@ -419,8 +405,7 @@ after completion it raises `SessionStateError` instead of starting a new turn.
 | stop(keep_inbox=False) | Finish this step, end its turn, return to idle |
 | abort(keep_inbox=False) | Cancel now, drain cleanup, repair and end its turn |
 | wait_until_idle() | Wait for idle and an empty inbox |
-| use(plugin, section_delivery=SectionDelivery.ERROR) | Async context manager owning a temporary capability; CONTEXT owns guidance per activation, IGNORE skips sections |
-| mount(plugin, section_delivery=SectionDelivery.ERROR) | Await a manually managed PluginHandle; call handle.aclose() to remove it |
+| mount(plugin, section_delivery=SectionDelivery.CONTEXT) | Use with async with for a temporary mount, or await a handle and call handle.aclose() |
 | compact() | Summarize completed history while idle or paused; return its record or None |
 | snapshot() | Export immutable conversation state at an idle boundary |
 | flush() | Await pending checkpoint persistence; no I/O without a store |
@@ -462,14 +447,9 @@ corrupt stored records raise `SessionFormatError`, and `on_max_tokens=FAIL` rais
 `OutputTokenLimit`.
 See [session boundaries and restart behavior](../guides/sessions.md).
 
-Configure loop options with `Agent(loop=AgentLoop(...))`: step limits,
-parallel tool limits, tool execution timeouts, the final tool-output limit
-(`max_tool_output`) and context-window overrides belong to the agent
-configuration. `session(id)` opens that configured runtime; it has no per-session
-loop overrides. A single run may narrow the step limit with `max_steps=` and cap
-the turn's billed input plus output tokens with `token_budget=`; both are stored
-with the turn and survive a restart. Add `Approvals(...)` to `plugins=` to permit
-side-effecting tools.
+Use `AgentLoop` for step limits, parallelism, tool timeouts and output retries.
+Use `Context` for input tokens, output reserve, tool result length and compaction.
+Per-run `max_steps=` and `token_budget=` narrow execution for a single turn.
 
 `AgentLoop(final_step=FinalStepPolicy.SUMMARIZE)` reserves the last available
 step for an action-free text summary. Import `FinalStepPolicy` from
@@ -561,7 +541,6 @@ unhashable. See [values and record versions](../concepts/values.md).
 | Plugin.create_instance() | Customize fresh instance construction; defaults to replaying explicit constructor arguments |
 | Plugin.setup(scope: PluginScope) / teardown(scope: PluginScope) | Async activation lifecycle; dependencies bind first and cleanup remains framework-owned |
 | PluginScope | Concrete resource/registration view; enter, effect, provide, on, dispatch, register, lookup and owner_name |
-| @plugin | Kernel services and hooks in an async generator |
 | class Capability(Plugin, needs=(Backend,)) / Inject[T] | Temporal lifetime / per-call service resolution |
 | @hook / Scope.hook | Typed observer, bail or waterfall extension |
 | @hook(EventA, EventB, ...) | One handler accepting every listed event; shared priority and prepend options |
@@ -603,7 +582,7 @@ See [parameter objects](../guides/tools.md#pydantic-parameter-objects),
 
 `ToolPolicy`, `ExecuteTool` and `ReviewToolResult` expose the captured
 `ToolInfo | None` as `event.tool`; `event.tool.metadata.get(T)` returns `T | None`.
-`ToolChain`, `ToolInfo` and `ToolMetadata` are exported by `harnessed`.
+`ToolChain`, `ToolInfo` and `ToolMetadata` are exported by `harnessed.tools`.
 The same hooks expose per-call `event.envelope: ToolEnvelope`. `@tool(envelope=(M,))`
 merges Pydantic model fields into a tool's schema, validates them and removes them
 before the callback; `ToolEnvelope.get(M)` returns `M | None`.
@@ -688,9 +667,9 @@ reaching into those implementations.
 
 ## SessionState
 
-`SessionState` is exported from `harnessed`. `state=None` starts a conversation
+`SessionState` is exported from `harnessed.sessions`. `state=None` starts a conversation
 without history. `SessionState.from_json(str_or_bytes)` validates format version
-2 and resource integrity; `state.to_json()` returns a string without I/O. State
+3 and resource integrity; `state.to_json()` returns a string without I/O. State
 contains retained history and provenance, feature-owned instruction state, compaction metadata,
 parent/child references and terminal child receipts, and
 referenced image/text resources. It contains no runtime handles, queued turns,
@@ -705,11 +684,12 @@ Reuse the same immutable state for independent continuations. See
 
 ## Compaction policy and services
 
-`harnessed.plugins.Compaction` accepts these keyword arguments:
+`Context(compaction=Compaction(...))` enables summarization. `Compaction` accepts these keyword arguments:
 
 | Argument | Default | Contract |
 | --- | --- | --- |
-| `trigger` | `at_ratio(0.8)` | Synchronous `ContextState -> bool`; trigger ratio includes reserved output. |
+| `at` / `fallback_tokens` | `0.8` / `None` | Ratio threshold and optional absolute trigger for unknown windows. |
+| `trigger` | ratio threshold | Synchronous `ContextState -> bool`; trigger ratio includes reserved output. |
 | `llm` | `None` | Harnessed `Model` or model name; omission captures the current session model. |
 | `prompt` | `None` | Complete system prompt, or sync/async `CompactionContext -> str` factory; omission uses `DEFAULT_COMPACTION_PROMPT`. |
 | `summarizer` | `None` | Custom `Summarizer`; mutually exclusive with explicit `llm` and `prompt`. |
@@ -718,8 +698,8 @@ Reuse the same immutable state for independent continuations. See
 | `target_tokens` | `None` | Positive absolute whole-input target; mutually exclusive with `target_ratio`. |
 | `max_summary_tokens` | `None` | Positive strict summary-text ceiling, measured by the session counter. |
 
-`CompactionPrompt` and `DEFAULT_COMPACTION_PROMPT` are exported by `harnessed.plugins`.
-`harnessed.plugins.compaction` exports frozen `CompactionContext`, `CompactionRequest`,
+`CompactionPrompt` and `DEFAULT_COMPACTION_PROMPT` are exported by `harnessed.context`.
+`harnessed.context` exports frozen `CompactionContext`, `CompactionRequest`,
 `Summary` and the structural `Summarizer` protocol:
 
 ```python

@@ -1,8 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Literal
 
-from harnessed.models import ToolCallDelta, ToolCallStart
-from harnessed.models.messages import PolicyDecision, ToolCall, ToolResult
+from harnessed.models import Decision, ToolCall, ToolCallDelta, ToolCallStart, ToolResult
 
 from .approvals import PolicySource
 from .base import DurableEvent, Identifier, TransientEvent
@@ -17,13 +16,13 @@ class ToolPolicyAppliedEvent(DurableEvent):
         default=EventKind.TOOL_POLICY_APPLIED, kw_only=True
     )
     call_id: Identifier
-    decision: PolicyDecision
+    decision: Decision
     source: PolicySource = PolicySource.POLICY
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source", PolicySource(self.source))
-        object.__setattr__(self, "decision", PolicyDecision(self.decision))
-        if self.decision is PolicyDecision.ASK:
+        object.__setattr__(self, "decision", Decision(self.decision))
+        if self.decision is Decision.ASK:
             raise ValueError("ToolPolicyAppliedEvent requires a final decision")
 
 

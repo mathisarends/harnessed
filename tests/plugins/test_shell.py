@@ -4,12 +4,10 @@ import sys
 import pytest
 from pydantic import ValidationError
 
-from harnessed import (
-    Agent,
-    AgentLoop,
-    ToolCall,
-)
-from harnessed.plugins.shell import LocalShell, ProcResult, Shell, ShellBackend, ShellTools
+from harnessed import Agent, AgentLoop
+from harnessed.models import ToolCall
+from harnessed.plugins import LocalWorkspace, WorkspaceBackends
+from harnessed.plugins.shell import LocalShell, ProcResult, Shell, ShellBackend
 from harnessed.testing import ScriptedModel
 from harnessed.tools import ToolRegistry
 
@@ -17,16 +15,15 @@ from harnessed.tools import ToolRegistry
 @pytest.mark.parametrize("options", [{"env": {}}, {"max_output_bytes": 256}])
 def test_shell_tools_reject_backend_configuration(options):
     with pytest.raises(TypeError, match="unexpected keyword argument"):
-        ShellTools(**options)
-    with pytest.raises(ValueError, match="supplied ShellBackend"):
-        Shell(implementation=LocalShell(), **options)
+        Shell(**options)
 
 
 async def test_owned_shell_configures_its_local_backend(tmp_path):
-    shell = Shell(tmp_path, env={"EXPLICIT": "yes"}, max_output_bytes=256)
+    workspace = LocalWorkspace(root=tmp_path, env={"EXPLICIT": "yes"}, max_output_bytes=256)
+    shell = Shell()
     async with Agent(
         model=ScriptedModel([]),
-        plugins=[shell],
+        plugins=[workspace, shell],
     ).session() as session:
         backend = session.scope[ShellBackend]
         assert isinstance(backend, LocalShell)
@@ -99,10 +96,11 @@ async def test_descendants_end_with_the_command(tmp_path, end):
 async def test_shell_limits_are_schema_visible_and_configured_backends_are_used(tmp_path):
     with pytest.raises(ValidationError):
         await LocalShell().run([sys.executable], cwd=tmp_path, timeout=601)
-    shell = Shell(tmp_path)
+    workspace = LocalWorkspace(root=tmp_path)
+    shell = Shell()
     async with Agent(
         model=ScriptedModel([]),
-        plugins=[shell],
+        plugins=[workspace, shell],
     ).session() as session:
         definition = session.scope[ToolRegistry].definitions[0]
         assert definition.parameters["properties"]["timeout"]["anyOf"][0]["maximum"] == 600
@@ -122,10 +120,11 @@ async def test_shell_command_deadline_overrides_the_generic_tool_timeout(tmp_pat
             await asyncio.sleep(0.03)
             return ProcResult(0, "finished", "")
 
-    shell = Shell(tmp_path, implementation=Backend(), timeout=0.1, max_timeout=0.2)
+    workspace = WorkspaceBackends(shell=Backend())
+    shell = Shell(tmp_path, timeout=0.1, max_timeout=0.2)
     async with Agent(
         model=ScriptedModel([]),
-        plugins=[shell],
+        plugins=[workspace, shell],
         loop=AgentLoop(tool_timeout=0.01),
     ).session() as session:
         registry = session.scope[ToolRegistry]
@@ -145,10 +144,11 @@ async def test_shell_schema_and_validation_use_each_mounts_timeout_limit(tmp_pat
         async def run(self, argv, *, cwd, timeout):
             return ProcResult(0, str(timeout), "")
 
-    shell = Shell(tmp_path, implementation=Backend(), timeout=min(30, maximum), max_timeout=maximum)
+    workspace = WorkspaceBackends(shell=Backend())
+    shell = Shell(tmp_path, timeout=min(30, maximum), max_timeout=maximum)
     app = Agent(
         model=ScriptedModel([]),
-        plugins=[shell],
+        plugins=[workspace, shell],
     )
     async with app.session() as session:
         registry = session.scope[ToolRegistry]
@@ -156,8 +156,7 @@ async def test_shell_schema_and_validation_use_each_mounts_timeout_limit(tmp_pat
         schema = definition.parameters["properties"]["timeout"]
         assert schema["anyOf"][0]["maximum"] == maximum
         assert schema["default"] is None
-        reference = registry.reference(shell.run_command, owner=session.scope)
-        assert registry.matches(reference, "run_command")
+        assert session.tools.explain("run_command").name == "run_command"
         accepted = await registry.execute(
             ToolCall("run_command", {"argv": ["test"], "timeout": maximum})
         )
@@ -168,10 +167,10 @@ async def test_shell_schema_and_validation_use_each_mounts_timeout_limit(tmp_pat
         assert rejected.is_error and "ValidationError" in rejected.text
 
     # A second mount keeps its own constraints; neither mutates the declaration.
-    shell_3 = Shell(tmp_path)
+    shell_3 = Shell()
     async with Agent(
         model=ScriptedModel([]),
-        plugins=[shell_3],
+        plugins=[LocalWorkspace(root=tmp_path), shell_3],
     ).session() as session:
         schema = session.scope[ToolRegistry].definitions[0].parameters["properties"]["timeout"]
         assert schema["anyOf"][0]["maximum"] == 600

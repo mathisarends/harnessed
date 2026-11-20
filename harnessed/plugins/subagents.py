@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from enum import StrEnum
 from types import MappingProxyType
 from typing import Annotated
 
@@ -9,8 +10,8 @@ from harnessed.events.child_status import ChildReport as ChildReport
 from harnessed.events.child_status import ChildReportState as ChildReportState
 from harnessed.events.child_status import ChildRuntimeState as ChildRuntimeState
 from harnessed.kernel import Inject, PluginScope, needs
-from harnessed.models.messages import ToolResult
-from harnessed.prompts.values import SystemPrompt
+from harnessed.models import ToolResult
+from harnessed.prompts import SystemPrompt
 from harnessed.runtime.child_contracts import ChildLimits
 from harnessed.runtime.child_contracts import ChildSessionFactory as ChildSessionFactory
 from harnessed.runtime.child_contracts import ChildSessionRequest as ChildSessionRequest
@@ -23,6 +24,17 @@ from harnessed.runtime.plugin import Plugin, PluginConfig
 from harnessed.sessions import SessionContext
 from harnessed.sessions.children import ChildSession as ChildSession
 from harnessed.tools import ToolContext, tool
+
+
+class SubagentAction(StrEnum):
+    """Stable approval keys for the built-in subagents tools."""
+
+    DELEGATE = "delegate"
+    SPAWN = "spawn"
+    STATUS = "status"
+    SEND = "send"
+    WAIT = "wait"
+    CANCEL = "cancel"
 
 
 class SubagentsConfig(PluginConfig):
@@ -97,34 +109,34 @@ class Subagents(Plugin[SubagentsConfig]):
         scope.on(SessionAborting, self._supervisor.aborting)
         scope.on(SessionClosing, self._supervisor.closing)
 
-    @tool(timeout_seconds=3600.0, parallel=True)
+    @tool(action=SubagentAction.DELEGATE, timeout_seconds=3600.0, parallel=True)
     async def delegate(self, agent: str, task: str, *, context: Inject[ToolContext]) -> ToolResult:
         """Run a specialist and return its child ID, answer, status and usage."""
         return await self._supervisor.delegate(agent, task, context)
 
-    @tool(parallel=True)
+    @tool(action=SubagentAction.SPAWN, parallel=True)
     async def spawn(self, agent: str, task: str, *, context: Inject[ToolContext]) -> ToolResult:
         """Start a specialist and return its child_id without waiting for its task."""
         return await self._supervisor.spawn(agent, task, context)
 
-    @tool(timeout_seconds=3600.0, parallel=True, readonly=True)
+    @tool(action=SubagentAction.STATUS, timeout_seconds=3600.0, parallel=True, readonly=True)
     async def status(self, child_id: str, timeout: float = 10.0) -> ToolResult:
         """Ask the child for a fresh report; timeout returns pending without cancelling it."""
         return await self._supervisor.status(child_id, timeout)
 
-    @tool(parallel=True)
+    @tool(action=SubagentAction.SEND, parallel=True)
     async def send(
         self, child_id: str, message: Annotated[str, Field(min_length=1, max_length=32768)]
     ) -> ToolResult:
         """Deliver additional guidance at the child's next step without starting a new task."""
         return await self._supervisor.send(child_id, message)
 
-    @tool(timeout_seconds=3600.0, parallel=True, readonly=True)
+    @tool(action=SubagentAction.WAIT, timeout_seconds=3600.0, parallel=True, readonly=True)
     async def wait(self, child_id: str, timeout: float = 30.0) -> ToolResult:
         """Wait for a child receipt; timeout returns current state and leaves the child running."""
         return await self._supervisor.wait(child_id, timeout)
 
-    @tool(timeout_seconds=3600.0, parallel=True)
+    @tool(action=SubagentAction.CANCEL, timeout_seconds=3600.0, parallel=True)
     async def cancel(self, child_id: str) -> ToolResult:
         """Cancel a child and wait until its driver and plugin resources are drained."""
         return await self._supervisor.cancel(child_id)
@@ -139,5 +151,6 @@ __all__ = [
     "ChildSessionFactory",
     "ChildSessionRequest",
     "ChildStatusReporter",
+    "SubagentAction",
     "Subagents",
 ]

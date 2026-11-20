@@ -1,6 +1,6 @@
 from typing import assert_type
 
-from harnessed import Agent, OutputContract, SessionState
+from harnessed import Agent, OutputContract
 from harnessed.events import ControlState
 from harnessed.integrations.json import JsonSessionStore
 from harnessed.sessions import (
@@ -9,6 +9,7 @@ from harnessed.sessions import (
     SessionChange,
     SessionCheckpoint,
     SessionCommit,
+    SessionState,
     SessionStore,
     StoredSession,
 )

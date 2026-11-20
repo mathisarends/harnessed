@@ -1,15 +1,8 @@
 from typing import assert_type
 
-from harnessed import (
-    Agent,
-    Instructions,
-    Plugin,
-    PromptFormat,
-    SectionDelivery,
-    Session,
-    SystemPrompt,
-)
+from harnessed import Agent, Plugin, Session, SystemPrompt
 from harnessed.kernel import PluginScope
+from harnessed.prompts import Instructions, PromptFormat, SectionDelivery
 from harnessed.prompts.values import PromptPart
 
 
@@ -21,15 +14,15 @@ class PromptFeature(Plugin):
 feature = PromptFeature()
 assert_type(feature.instructions(), SystemPrompt)
 layout = SystemPrompt.from_plugins(format=PromptFormat.MARKDOWN)
-Agent(instructions="Role.", plugins=[None, feature, None], prompt=layout)
-Agent(prompt=layout)
+Agent(instructions=layout, plugins=[feature])
+Agent(instructions=layout)
 assert_type(SystemPrompt.from_plugins().collects_plugins, bool)
 SystemPrompt.from_plugins(order="as_listed")  # ty: ignore[unknown-argument]
 SystemPrompt(42)  # ty: ignore[invalid-argument-type]
 SystemPrompt(("raw text",))  # ty: ignore[invalid-argument-type]
 SystemPrompt(sections=("raw text",))  # ty: ignore[unknown-argument]
 Agent(instructions=42)  # ty: ignore[invalid-argument-type]
-Agent(prompt="Role.")  # ty: ignore[invalid-argument-type]
+Agent(prompt="Role.")  # ty: ignore[unknown-argument]
 Agent(system_prompt="Removed")  # ty: ignore[unknown-argument]
 parts: list[PromptPart | None] = ["Role.", None, feature.instructions()]
 assert_type(SystemPrompt(*parts).sections, tuple[PromptPart, ...])

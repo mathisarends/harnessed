@@ -3,15 +3,8 @@
 import asyncio
 from enum import StrEnum
 
-from harnessed import (
-    Agent,
-    Instructions,
-    Plugin,
-    PluginConfig,
-    PromptFormat,
-    SectionDelivery,
-    SystemPrompt,
-)
+from harnessed import Agent, Plugin, PluginConfig, SystemPrompt
+from harnessed.prompts import Instructions, PromptFormat, SectionDelivery
 from harnessed.testing import ScriptedModel
 
 
@@ -58,8 +51,7 @@ async def main() -> None:
     for format in PromptFormat:
         agent = Agent(
             model=ScriptedModel(["Ready."]),
-            instructions="You are a browser agent.",
-            prompt=SystemPrompt.from_plugins(format=format),
+            instructions=SystemPrompt.from_plugins("You are a browser agent.", format=format),
             plugins=[Observe(config=ObserveConfig()), interaction, BrowserTrust()],
         )
         print(agent.prompt)

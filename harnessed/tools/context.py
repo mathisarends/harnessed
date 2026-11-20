@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
 from harnessed.events import DurableEvent, ToolProgressEvent, TransientEvent
-from harnessed.models.messages import ApprovalAnswer, ToolCall
+from harnessed.models import Decision, ToolCall
 
 if TYPE_CHECKING:
     from harnessed.runtime.approvals import SessionApprovals
@@ -22,6 +22,8 @@ class ToolContext:
     inbox: SessionInbox
     approvals: SessionApprovals
     signal: asyncio.Event = field(default_factory=asyncio.Event)
+
+    approval_identity: str | None = None
 
     @property
     def cancelled(self) -> bool:
@@ -45,8 +47,10 @@ class ToolContext:
         value replaces that response timeout for this question. Approval waits
         do not consume the tool's execution timeout.
         """
-        answer = await self.approvals.request(self.call, reason, scope=scope, timeout=timeout)
-        return answer in (ApprovalAnswer.ALLOW, ApprovalAnswer.ALWAYS)
+        answer = await self.approvals.request(
+            self.call, reason, scope=scope, timeout=timeout, identity=self.approval_identity
+        )
+        return answer is Decision.ALLOW
 
 
 class ToolContexts(Protocol):

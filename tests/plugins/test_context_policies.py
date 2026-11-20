@@ -3,10 +3,9 @@ import json
 
 import pytest
 
-from harnessed import (
-    Agent as Application,
-)
-from harnessed import AgentLoop, Plugin, PolicyDecision, ToolCall, ToolResult, tool
+from harnessed import Agent as Application
+from harnessed import Approvals, Compaction, Context, Decision, Plugin, tool
+from harnessed.context import CompactionContext, CompactionRequest, Summary, at_ratio, every_turns
 from harnessed.events import (
     CompactionAppliedEvent,
     ModelUsageRecordedEvent,
@@ -19,10 +18,16 @@ from harnessed.events import (
 )
 from harnessed.events.codec import decode_event, encode_event
 from harnessed.kernel import hook
-from harnessed.models import ModelChunk, ModelUsage
-from harnessed.models.messages import AssistantMessage, ToolStatus, UserMessage
-from harnessed.plugins import Approvals, Compaction, LatestObservationOnly, at_ratio, every_turns
-from harnessed.plugins.compaction import CompactionContext, CompactionRequest, Summary
+from harnessed.models import (
+    AssistantMessage,
+    ModelChunk,
+    ModelUsage,
+    ToolCall,
+    ToolResult,
+    ToolStatus,
+    UserMessage,
+)
+from harnessed.plugins import LatestObservationOnly
 from harnessed.plugins.spill import Spill, SpillStore
 from harnessed.runtime.compaction import ContextState, ModelSummarizer
 from harnessed.runtime.hooks import PreStep
@@ -47,8 +52,7 @@ async def test_large_results_spill_to_session_files_and_keep_structured_metadata
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("large"))], "done"])
     spill = Spill(threshold_tokens=100, preview_tokens=8)
     app = Application(
-        model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), tools, spill],
+        model=model, approvals=Approvals(default=Decision.ALLOW), plugins=[tools, spill]
     )
     async with app.session() as agent:
         agent_audit = Audit(agent)
@@ -130,17 +134,17 @@ async def test_threshold_compaction_commits_once_and_replays_and_forks(tmp_path)
     model = ScriptedModel(["initial reply", [ModelChunk(tool_call=ToolCall("work"))], "done"])
     harness = Application(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            tools,
-            Compaction(
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[tools],
+        context=Context(
+            max_tokens=400,
+            compaction=Compaction(
                 trigger=at_ratio(0.5),
                 summarizer=ExtractiveSummarizer(),
                 keep_last_steps=1,
                 max_summary_tokens=24,
             ),
-        ],
-        loop=AgentLoop(context_window=400),
+        ),
     )
     async with harness.session() as agent:
         agent_audit = Audit(agent)
@@ -202,11 +206,13 @@ async def test_failed_or_cancelled_compactor_does_not_commit_partial_compaction(
     model = ScriptedModel(["first reply", "kept"])
     harness = Application(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            Compaction(trigger=at_ratio(0.5), summarizer=BlockingCompactor(), keep_last_steps=1),
-        ],
-        loop=AgentLoop(context_window=500),
+        approvals=Approvals(default=Decision.ALLOW),
+        context=Context(
+            max_tokens=500,
+            compaction=Compaction(
+                trigger=at_ratio(0.5), summarizer=BlockingCompactor(), keep_last_steps=1
+            ),
+        ),
     )
     async with harness.session() as agent:
         agent_audit = Audit(agent)
@@ -228,11 +234,11 @@ async def test_compactor_error_is_reported_and_history_is_intact():
     model = ScriptedModel(["reply", "kept"])
     harness = Application(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            Compaction(trigger=at_ratio(0.5), summarizer=Broken(), keep_last_steps=1),
-        ],
-        loop=AgentLoop(context_window=500),
+        approvals=Approvals(default=Decision.ALLOW),
+        context=Context(
+            max_tokens=500,
+            compaction=Compaction(trigger=at_ratio(0.5), summarizer=Broken(), keep_last_steps=1),
+        ),
     )
     async with harness.session() as agent:
         agent_audit = Audit(agent)
@@ -248,16 +254,16 @@ async def test_keep_turns_retains_recent_work_and_later_compaction_merges_old_su
     model = ScriptedModel(["reply"] * 4)
     harness = Application(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            Compaction(
+        approvals=Approvals(default=Decision.ALLOW),
+        context=Context(
+            max_tokens=600,
+            compaction=Compaction(
                 trigger=every_turns(1),
                 summarizer=ExtractiveSummarizer(),
                 keep_last_steps=1,
                 max_summary_tokens=16,
             ),
-        ],
-        loop=AgentLoop(context_window=600),
+        ),
     )
     async with harness.session() as agent:
         agent_audit = Audit(agent)
@@ -281,16 +287,16 @@ async def test_compaction_does_not_commit_a_summary_that_expands_the_request():
     model = ScriptedModel(["reply", "reply"])
     harness = Application(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            Compaction(
+        approvals=Approvals(default=Decision.ALLOW),
+        context=Context(
+            max_tokens=100,
+            compaction=Compaction(
                 trigger=at_ratio(0.5),
                 summarizer=Verbose(),
                 keep_last_steps=1,
                 max_summary_tokens=2000,
             ),
-        ],
-        loop=AgentLoop(context_window=100),
+        ),
     )
     async with harness.session() as agent:
         agent_audit = Audit(agent)
@@ -315,11 +321,8 @@ async def test_latest_observation_policy_keeps_one_unchanged_snapshot_and_unwind
     model = ScriptedModel(["one", "two", "three"])
     async with Application(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            Observer(),
-            LatestObservationOnly(),
-        ],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[Observer(), LatestObservationOnly()],
     ).session() as agent:
         agent_audit = Audit(agent)
         for text in ("one", "two", "three"):
@@ -335,7 +338,7 @@ async def test_cache_usage_is_preserved_as_provider_reported_usage():
     usage = ModelUsage(100, 10, 80, 20)
     model = ScriptedModel([[ModelChunk(text="one", usage=usage)]])
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+        model=model, approvals=Approvals(default=Decision.ALLOW)
     ).session() as agent:
         await agent.run("one")
         event = agent.log.last(ModelUsageRecordedEvent)

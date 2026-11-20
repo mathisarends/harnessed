@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from harnessed.kernel import PluginScope
+from harnessed.kernel import PluginScope, needs
 from harnessed.runtime.plugin import Plugin
 from harnessed.tools import (
     EnvelopePosition,
@@ -12,7 +12,7 @@ from harnessed.tools import (
 )
 
 
-class CallEnvelope(Plugin, needs=(ToolRegistry,)):
+class CallEnvelope(Plugin):
     """Ask the model for an envelope model's fields on every selected tool call.
 
     The fields are merged into the definitions of tools owned by any plugin, MCP
@@ -26,6 +26,8 @@ class CallEnvelope(Plugin, needs=(ToolRegistry,)):
     the fields still runs without the envelope value. `position` places the fields
     before (`LEADING`, the default) or after (`TRAILING`) the tool's parameters.
     """
+
+    registry = needs(ToolRegistry)
 
     def __init__(
         self,
@@ -43,7 +45,7 @@ class CallEnvelope(Plugin, needs=(ToolRegistry,)):
         self._position = EnvelopePosition(position)
 
     async def setup(self, scope: PluginScope) -> None:
-        scope[ToolRegistry].envelope(
+        self.registry.envelope(
             self._model,
             select=self._select,
             on_invalid=self._on_invalid,

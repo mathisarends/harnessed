@@ -16,7 +16,7 @@ from harnessed.events import (
     TurnOutcome,
     TurnStartedEvent,
 )
-from harnessed.models.messages import ToolCall, ToolResult, ToolStatus
+from harnessed.models import ToolCall, ToolResult, ToolStatus
 
 from .control import RunControl
 

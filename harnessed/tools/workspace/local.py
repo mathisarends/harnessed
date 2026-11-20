@@ -40,10 +40,12 @@ class LocalShell:
     def __init__(
         self,
         *,
+        root: str | Path = ".",
         max_timeout: float = 600.0,
         max_output_bytes: int = 1_048_576,
         env: Mapping[str, str] | None = None,
     ) -> None:
+        self.root = Path(root).absolute()
         self.options = _Options(
             max_timeout=max_timeout,
             max_output_bytes=max_output_bytes,
@@ -72,7 +74,7 @@ class LocalShell:
         command = _Command(argv=argv, timeout=timeout)
         if command.timeout > self.options.max_timeout:
             raise ValueError(f"timeout must not exceed {self.options.max_timeout:g} seconds")
-        process = _LocalProcess(self, command, cwd, interactive=interactive)
+        process = _LocalProcess(self, command, self.root / cwd, interactive=interactive)
         try:
             await process.started.wait()
         except asyncio.CancelledError:

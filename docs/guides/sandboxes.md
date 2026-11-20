@@ -1,7 +1,7 @@
 # Sandboxed shell and filesystem tools
 
-Sandbox integrations supply one shared workspace to `ShellTools` and
-`FilesystemTools`. Install only the tool plugins you want the model to use.
+Sandbox integrations supply one shared workspace to `Shell` and
+`Filesystem`. Install only the tool plugins you want the model to use.
 The ordinary `Shell` and `Filesystem` plugins continue to own local backends;
 they do not automatically select or inherit a sandbox.
 
@@ -21,13 +21,13 @@ from pathlib import Path
 
 from harnessed import Agent
 from harnessed.integrations.docker import DockerSandbox, Workspace
-from harnessed.plugins import FilesystemTools, ShellTools
+from harnessed.plugins import Filesystem, Shell
 
 sandbox = DockerSandbox(
     image="python:3.12-slim",
     workspace=Workspace.copy_from("./project"),
 )
-agent = Agent(model=model, plugins=[sandbox, ShellTools(), FilesystemTools()])
+agent = Agent(model=model, plugins=[sandbox, Shell(), Filesystem()])
 
 async with agent.session() as session:
     await session.run("Create a report at reports/result.md.")
@@ -166,7 +166,7 @@ to the daemon host, with Docker Desktop applying its own sharing rules. The
 container's non-root user must have access to the selected directory. Read-only
 mounts are enforced by the runtime for both shell commands and filesystem tools.
 
-Tool paths and `ShellTools(cwd="nested")` are relative to the backend workspace.
+Tool paths and `Shell(cwd="nested")` are relative to the backend workspace.
 Sandbox backend paths use portable `/` separators; host-native `Path` arguments
 are normalized by the tool layer. Absolute paths, `..` and drive names are
 rejected. Reads and writes never follow symlinks and pin directory
@@ -198,7 +198,7 @@ reset when it acquires the lock. Owned cleanup may take additional time.
 ## Approvals and cancellation
 
 The existing approval policy still applies to sandboxed tools. A sandbox does not
-automatically grant tool execution. `FilesystemTools` includes read, write, list,
+automatically grant tool execution. `Filesystem` includes read, write, list,
 glob, grep, edit and delete operations; ordinary mutating operations and shell
 commands still ask for approval by default. Custom Python plugins and model
 clients run in the agent process and are outside this isolation boundary.
@@ -270,10 +270,9 @@ that only needs a Python fallback can delegate to
 `harnessed.plugins.filesystem.search_files(self, query, pattern=pattern, limit=limit)`.
 The fallback preserves search notes and skips `UnicodeError`; other read errors,
 including a preview that exceeds a backend's byte cap, propagate explicitly.
-`ShellTools(cwd=".", timeout=30, max_timeout=600)` only configures tool arguments
+`Shell(cwd=".", timeout=30, max_timeout=600)` only configures tool arguments
 and schema limits. Configure workload `env` and `max_output_bytes` on the sandbox
-or supplied shell backend. `Shell` accepts those options only for its own local
-backend; combining them with `implementation=` is rejected.
+or supplied shell backend. For local execution, configure these options on `LocalWorkspace`.
 
 ## Verification
 

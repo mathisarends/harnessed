@@ -5,7 +5,7 @@ It records requests and accepts strings, complete responses, or sequences of
 stream chunks. `call` and `reply` make ordinary tool rounds concise:
 
 ```python
-from harnessed import Agent, Plugin, PolicyDecision, tool
+from harnessed import Agent, Plugin, tool
 from harnessed.testing import ScriptedModel, assert_tool_called, call, reply
 
 
@@ -66,18 +66,18 @@ and tool execution are unavailable.
 
 ## Observable backend fakes
 
-`InMemoryFS` and `FakeShell` are real plugins in the `filesystem` and `shell` slots.
-They use the normal tool schemas, injection, approvals, execution and log paths.
+`InMemoryFS` and `FakeShell` implement the backend protocols. Supply them through
+`WorkspaceBackends` and install the same tool plugins as in production.
 
 ```python
-from harnessed.plugins import Approvals
+from harnessed.plugins import Filesystem, Shell, WorkspaceBackends
 from harnessed.testing import FakeShell, InMemoryFS
 
 files = InMemoryFS({"project/notes.txt": "Remember this."})
 commands = FakeShell({"pytest": "1 passed"})
 agent = Agent(
     model=ScriptedModel([call("run_command", argv=["pytest"]), reply("Tests pass")]),
-    plugins=[files, commands, Approvals(default=PolicyDecision.ALLOW)],
+    plugins=[WorkspaceBackends(filesystem=files, shell=commands), Filesystem(), Shell()],
 )
 ```
 
@@ -102,7 +102,7 @@ async def test_workspace(harnessed_session):
     files = InMemoryFS({"note.txt": "virtual"})
     async with harnessed_session(
         script=[call("read_file", path="note.txt"), reply("done")],
-        plugins=[files],
+        plugins=[WorkspaceBackends(filesystem=files), Filesystem()],
     ) as session:
         result = await session.run("Read the note")
         assert assert_tool_called(result, "read_file")[1].content == "virtual"
@@ -110,8 +110,7 @@ async def test_workspace(harnessed_session):
 
 The fixture also accepts an existing `Agent` as its first argument. Replaced
 plugins contribute their instruction blocks like any other selected plugin. The
-fixture accepts `instructions=` for caller text and `prompt=` for an explicit
-document. Provider SDKs
+fixture accepts `instructions=` for caller text or an explicit document. Provider SDKs
 and credentials are unnecessary for these tests. Configure pytest-asyncio as you
 normally would for asynchronous tests; Harnessed does not change its settings.
 

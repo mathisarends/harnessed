@@ -1,26 +1,31 @@
 """Run with: uv run python -m examples.12_layered_sdk"""
 
 import asyncio
+from typing import override
 
-from harnessed import Agent, PolicyDecision
-from harnessed.kernel import Key, Scope, plugin
-from harnessed.plugins import Approvals
+from harnessed import Agent, Plugin
+from harnessed.kernel import Key, PluginScope, Scope, needs
 from harnessed.plugins.rules import Rules, when
 from harnessed.testing import ScriptedModel
 
 backend = Key[str]("backend")
 
 
-@plugin(needs=[backend])
-async def feature(scope: Scope):
-    print(f"Independent kernel setup: {scope[backend]}")
-    yield
-    print("Independent kernel teardown")
+class Feature(Plugin):
+    value = needs(backend)
+
+    @override
+    async def setup(self, scope: PluginScope) -> None:
+        print(f"Independent kernel setup: {self.value}")
+
+    @override
+    async def teardown(self, scope: PluginScope) -> None:
+        print("Independent kernel teardown")
 
 
 async def main():
     async with Scope() as scope:
-        handle = await scope.plugin(feature())
+        handle = await scope.plugin(Feature())
         print("Before service:", handle.status)
         remove = scope.provide(backend, "local")
         await scope.settle()
@@ -29,10 +34,7 @@ async def main():
         print("After service removal:", handle.status)
     agent = Agent(
         model=ScriptedModel(["The layered SDK is ready."]),
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            Rules([when(tool="read_file", result_tokens_over=1000).note("Read a range.")]),
-        ],
+        plugins=[Rules([when(tool="read_file", result_tokens_over=1000).note("Read a range.")])],
     )
     async with agent.session() as session:
         print((await session.run("Hello")).text)

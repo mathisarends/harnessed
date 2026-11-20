@@ -18,10 +18,11 @@ from harnessed.events import (
     TurnStartedEvent,
     UserMessageEvent,
 )
-from harnessed.models import ModelInfo, ModelRequest
-from harnessed.models.messages import (
-    ApprovalAnswer,
+from harnessed.models import (
     AssistantMessage,
+    Decision,
+    ModelInfo,
+    ModelRequest,
     ToolCall,
     UserMessage,
 )
@@ -69,10 +70,11 @@ async def test_incremental_snapshots_equal_full_folds_for_generated_valid_logs(s
             call = ToolCall(f"tool-{rng.randrange(3)}", id=f"call-{turn}-{step}")
             request = ApprovalRequestedEvent(f"approval-{turn}-{step}", call, "test", "generated")
             await append(request)
-            answer = rng.choice([ApprovalAnswer.ALLOW, ApprovalAnswer.DENY, ApprovalAnswer.ALWAYS])
-            await append(ApprovalResolvedEvent(request.request_id, answer))
+            answer = rng.choice([Decision.ALLOW, Decision.DENY])
+            remember = answer is Decision.ALLOW and rng.choice([True, False])
+            await append(ApprovalResolvedEvent(request.request_id, answer, remember=remember))
             assert session.latest_approval(call.id).decision == answer
-            if answer is ApprovalAnswer.ALWAYS and rng.choice([True, False]):
+            if remember and rng.choice([True, False]):
                 await append(ApprovalRevokedEvent(request.request_id))
             await append(AssistantMessageEvent(AssistantMessage("reply"), request_id="request"))
             await append(StepEndedEvent(str(turn), step))

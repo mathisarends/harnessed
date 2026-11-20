@@ -6,10 +6,9 @@ from dataclasses import replace
 
 import pytest
 
-from harnessed import AgentLoop
-from harnessed.models import GenerationSettings
-from harnessed.models.messages import (
+from harnessed.models import (
     AssistantMessage,
+    GenerationSettings,
     ImageDetail,
     ToolCall,
     ToolMessage,
@@ -23,11 +22,7 @@ from pydantic_ai import direct
 from pydantic_ai import messages as native
 from pydantic_ai.models.function import DeltaThinkingPart, DeltaToolCall, FunctionModel
 
-from harnessed import (
-    Agent,
-    Plugin,
-    events,
-)
+from harnessed import Agent, Context, Plugin, events
 from harnessed.errors import (
     AuthError,
     ConfigError,
@@ -398,8 +393,8 @@ async def test_effective_output_limit_is_budgeted_before_the_provider_is_called(
     model = PydanticAIModel(
         provider, settings=GenerationSettings(max_tokens=900) if source == "adapter" else None
     )
-    loop = AgentLoop(context_window=500)
-    async with Agent(model=model, loop=loop).session() as session:
+    context = Context(max_tokens=500)
+    async with Agent(model=model, context=context).session() as session:
         with pytest.raises(ContextBudgetExceeded) as error:
             await session.run(
                 "hi", settings=GenerationSettings(max_tokens=900) if source == "run" else None

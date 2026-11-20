@@ -2,10 +2,11 @@ from typing import Annotated
 
 import pytest
 
-from harnessed import Agent, Plugin, PluginValidation, ToolContext, tool
+from harnessed import Agent, Plugin, ToolContext, tool
 from harnessed.errors import PluginDependencyWarning
 from harnessed.kernel import Inject, InjectMarker, Key, PluginScope
 from harnessed.plugins import Service
+from harnessed.runtime.composition import PluginValidation
 from harnessed.testing import ScriptedModel
 from harnessed.tools import SessionTools, ToolAvailability
 
@@ -101,9 +102,9 @@ async def test_tool_explanation_tracks_call_and_predicate_services_without_resta
         await session.run("before")
         assert model.requests[0].tools == ()
         switch = Switch()
-        async with session.use(Service(Switch, switch)):
+        async with session.mount(Service(Switch, switch)):
             assert session.tools.explain("work").missing_services == (int,)
-            async with session.use(Service(int, 1)):
+            async with session.mount(Service(int, 1)):
                 assert session.tools.explain("work").availability is ToolAvailability.AVAILABLE
                 await session.run("after")
                 assert model.requests[1].tools == tuple(session.tools.values())
@@ -129,14 +130,14 @@ async def test_named_predicate_requirements_and_disabled_overrides_are_explained
             return "disabled"
 
     async with Agent(model=ScriptedModel([]), plugins=[Replacement()]).session() as session:
-        async with session.use(Named()):
+        async with session.mount(Named()):
             missing = session.tools.explain("work")
             assert missing.availability is ToolAvailability.MISSING_SERVICES
             assert missing.missing_services == (gate,)
-            async with session.use(Service(gate, False)):
+            async with session.mount(Service(gate, False)):
                 explanation = session.tools.explain("work")
                 assert explanation.availability is ToolAvailability.DISABLED
-                async with session.use(Service(gate, True)):
+                async with session.mount(Service(gate, True)):
                     assert session.tools.explain("work").availability is ToolAvailability.AVAILABLE
             assert explanation.definition is not None
             assert "work" not in session.tools

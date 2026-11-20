@@ -68,6 +68,13 @@ Text and reasoning deltas are transient. Tool progress is durable. The accepted
 assistant message is stored once; deltas do not create additional history
 messages. Final-answer control tools do not produce application tool spinners.
 
+Most interfaces handle five updates first: incoming text, a tool call starting,
+its result, an approval request and the final turn result. The short
+[stream example](https://github.com/mathisarends/harnessed/blob/main/examples/33_basic_stream.py)
+shows the iteration pattern, and the
+[UI example](https://github.com/mathisarends/harnessed/blob/main/examples/26_ui_stream.py)
+handles the richer event vocabulary.
+
 ## Model and retry activity
 
 The UI stream includes the durable `ModelRequestedEvent` and
@@ -197,12 +204,12 @@ from the durable log.
 
 ## Answer approvals by ID
 
-Import `ApprovalAnswer` from `harnessed` and add an explicit decision path:
+Handle the approval request in the stream consumer:
 
 ```python
 case events.ApprovalNeededEvent(request_id=request_id, call=call):
     print("Denied:", call.name)
-    await session.approvals.answer(request_id, ApprovalAnswer.DENY)
+    await session.approvals.deny(request_id)
 ```
 
 This example always denies the request. An interactive application supplies its
@@ -211,14 +218,14 @@ waiting until the request expires or the stream closes.
 
 An active UI stream installs a responder scoped to its input and turn.
 `events.ApprovalNeededEvent` contains only data: request ID, call and reason.
-`await session.approvals.answer(request_id, decision)` waits for the durable
+`await session.approvals.allow(request_id)` waits for the durable
 resolution. A configured approver or earlier answering hook takes precedence.
 Late answers fail with `ApprovalUnavailable`; identical acknowledged answers
 are harmless, and an already submitted decision cannot be changed.
 
 Leave the `async with` context when disconnecting. Exiting removes its responder
 and resolves pending questions as unavailable. It does not abort the conversation;
-use `run.cancel()` to abort that run. Cancelling an `answer()` waiter does not withdraw
+use `run.cancel()` to abort that run. Cancelling a response waiter does not withdraw
 an already submitted decision. Headless runs need a configured approver for ASK.
 
 ## Observe compaction

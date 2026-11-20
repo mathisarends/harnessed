@@ -7,10 +7,13 @@ from pydantic import Field
 from harnessed.models import (
     ModelAttemptFinished,
     ModelAttemptStarted,
+    ModelInfo,
+    ModelRequest,
     ModelRetryScheduled,
+    ModelUsage,
     RetryKind,
 )
-from harnessed.models.model import ModelInfo, ModelRequest, ModelUsage, UsagePurpose
+from harnessed.models.model import UsagePurpose
 
 from .base import DurableEvent, Identifier, TransientEvent
 from .kinds import EventKind

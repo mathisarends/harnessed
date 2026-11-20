@@ -4,16 +4,7 @@ import weakref
 
 import pytest
 
-from harnessed import (
-    Agent,
-    ApprovalAnswer,
-    Instructions,
-    Plugin,
-    PluginConflict,
-    SystemPrompt,
-    ToolCall,
-    tool,
-)
+from harnessed import Agent, Approvals, Plugin, SystemPrompt, tool
 from harnessed.events import (
     CompactionAppliedEvent,
     PluginInstructionsChangedEvent,
@@ -22,9 +13,8 @@ from harnessed.events import (
     TurnStartedEvent,
 )
 from harnessed.kernel import PluginScope, needs
-from harnessed.models import Model, ModelChunk
-from harnessed.models.messages import PolicyDecision, ToolStatus
-from harnessed.plugins import Approvals, Service
+from harnessed.models import Decision, ModelChunk, ToolCall, ToolStatus
+from harnessed.prompts import Instructions
 from harnessed.prompts.plugin_instructions import PluginInstructions
 from harnessed.sessions.log import SessionLog
 from harnessed.testing import ScriptedModel
@@ -49,11 +39,11 @@ async def test_application_facade_composes_plugins_and_fixed_ordered_guidance(tm
     calculator = Calculator()
     app = Agent(
         model=model,
-        prompt=SystemPrompt.from_plugins(
+        plugins=[calculator],
+        instructions=SystemPrompt.from_plugins(
             Instructions(text="Be concise."),
             Instructions.from_file(path=path),
         ),
-        plugins=[calculator],
     )
     assert "Calculator.instructions" in str(app.prompt)
     async with app.session() as session:
@@ -77,13 +67,14 @@ async def test_model_parameter_is_equivalent_to_model_service():
     calculator = Calculator()
     await Agent(
         model=one,
-        prompt=SystemPrompt.from_plugins(Instructions(text="Rules.")),
         plugins=[calculator],
+        instructions=SystemPrompt.from_plugins(Instructions(text="Rules.")),
     ).run("Go")
     calculator_4 = Calculator()
     await Agent(
-        prompt=SystemPrompt.from_plugins(Instructions(text="Rules.")),
-        plugins=[Service(Model, two), calculator_4],
+        instructions=SystemPrompt.from_plugins(Instructions(text="Rules.")),
+        model=two,
+        plugins=[calculator_4],
     ).run("Go")
     assert [message.text for message in one.requests[0].messages] == [
         message.text for message in two.requests[0].messages
@@ -116,10 +107,13 @@ async def test_removed_runtime_plugins_are_collectable_while_the_session_stays_o
     class Missing:
         pass
 
+    class Waiting(Plugin, needs=(Missing,)):
+        pass
+
     async with Agent(model=ScriptedModel([])).session() as session:
         references = []
         for index in range(10):
-            recipe = Plugin(needs=(Missing,) if index % 2 else ())
+            recipe = Waiting() if index % 2 else Plugin()
             handle = await session.mount(recipe)
             references.extend((weakref.ref(handle), weakref.ref(recipe)))
             await handle.aclose()
@@ -130,27 +124,27 @@ async def test_removed_runtime_plugins_are_collectable_while_the_session_stays_o
         assert not session.scope[PluginInstructions].values
 
 
-async def test_without_approvals_side_effects_run_but_confirmed_tools_do_not():
+async def test_default_policy_allows_each_unrestricted_tool():
     class Mutating(Plugin):
         @tool
         async def write(self) -> str:
             return "written"
 
-        @tool(confirm=True)
+        @tool
         async def delete(self) -> str:
-            pytest.fail("Unconfirmed tool ran")
+            return "deleted"
 
     model = ScriptedModel(
         [[ModelChunk(tool_call=ToolCall("write")), ModelChunk(tool_call=ToolCall("delete"))], "ok"]
     )
     result = await Agent(model=model, plugins=[Mutating()]).run("Write")
     statuses = {call.name: output.status for call, output in result.tool_calls}
-    assert statuses == {"write": ToolStatus.OK, "delete": ToolStatus.UNAVAILABLE}
+    assert statuses == {"write": ToolStatus.OK, "delete": ToolStatus.OK}
 
 
 def test_explicit_duplicate_slots_raise_instead_of_silently_overriding():
-    with pytest.raises(PluginConflict, match="approvals"):
-        Agent(plugins=[Approvals(), Approvals(default=PolicyDecision.ALLOW)])
+    with pytest.raises(TypeError, match="Plugin instance"):
+        Agent(approvals=Approvals(), plugins=[Approvals(default=Decision.ALLOW)])
 
 
 @pytest.mark.parametrize("user_answer", [False, True])
@@ -162,11 +156,11 @@ async def test_denials_distinguish_policy_from_the_user_in_log_and_result(user_a
 
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("write"))], "blocked"])
     policy = (
-        Approvals(approver=lambda request: ApprovalAnswer.DENY)
+        Approvals(default=Decision.ASK, approver=lambda request: Decision.DENY)
         if user_answer
-        else Approvals(deny=["write"])
+        else Approvals(deny=[Write.write])
     )
-    async with Agent(model=model, plugins=[Write(), policy]).session() as session:
+    async with Agent(model=model, approvals=policy, plugins=[Write()]).session() as session:
         result = await session.run("Write")
         denied = result.tool_calls[0][1]
         assert denied.denied_by == ("user" if user_answer else "policy")
@@ -174,7 +168,7 @@ async def test_denials_distinguish_policy_from_the_user_in_log_and_result(user_a
             "User declined this action" if user_answer else "Denied by policy"
         )
         applied = session.last(ToolPolicyAppliedEvent)
-        assert applied.decision is PolicyDecision.DENY
+        assert applied.decision is Decision.DENY
         assert applied.source == ("approval" if user_answer else "policy")
 
 

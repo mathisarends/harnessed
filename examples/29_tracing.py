@@ -8,10 +8,9 @@ from contextlib import asynccontextmanager
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
 
-from harnessed import Agent, Plugin, PolicyDecision, tool
+from harnessed import Agent, Plugin, tool
 from harnessed.integrations.opentelemetry import OpenTelemetryTracer, otlp_provider
 from harnessed.models import ModelUsage
-from harnessed.plugins import Approvals
 from harnessed.testing import ScriptedModel, call, reply
 from harnessed.tracing import record, traced
 
@@ -58,11 +57,7 @@ async def main() -> None:
                     reply("42", usage=ModelUsage(20, 2)),
                 ]
             ),
-            plugins=[
-                Calculator(),
-                Approvals(default=PolicyDecision.ALLOW),
-                OpenTelemetryTracer(tracer_provider=provider),
-            ],
+            plugins=[Calculator(), OpenTelemetryTracer(tracer_provider=provider)],
         )
         with provider.get_tracer("backend").start_as_current_span("backend.request"):
             result = await agent.run("Add 19 and 23")

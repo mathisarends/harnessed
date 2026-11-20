@@ -6,9 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from harnessed import (
-    Agent,
-)
+from harnessed import Agent
 from harnessed.integrations import bubblewrap, docker
 from harnessed.integrations.sandbox import (
     SandboxConfig,
@@ -17,7 +15,7 @@ from harnessed.integrations.sandbox import (
     Workspace,
 )
 from harnessed.integrations.sandbox.types import ProcessOutput
-from harnessed.plugins import FilesystemTools, ShellTools
+from harnessed.plugins import Filesystem, Shell
 from harnessed.testing import ScriptedModel
 
 ENGINE = json.dumps(
@@ -426,7 +424,7 @@ async def exercise_live_sandbox(sandbox, tmp_path):
     (tmp_path / "input.txt").write_text("source", encoding="utf-8")
     agent = Agent(
         model=ScriptedModel([]),
-        plugins=[sandbox, FilesystemTools(), ShellTools()],
+        plugins=[sandbox, Filesystem(), Shell()],
     )
     async with agent.session() as session:
         services = sandbox.services(session)

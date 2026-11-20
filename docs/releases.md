@@ -4,6 +4,12 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
+## Unreleased
+
+Execution checkpoints use format **4** and standalone audit envelopes use version
+**7** for the new approval records. See the [breaking SDK changes](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#breaking-sdk-changes)
+for the developer API and upgrade steps.
+
 ## 0.21.0 (2026-11-19)
 
 `OTLPTracing` adds session-owned OTLP/HTTP export through the optional

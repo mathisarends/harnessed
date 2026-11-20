@@ -6,112 +6,67 @@ instance: constructors describe configuration, `setup()` acquires resources, and
 instance; use `mount_plugin()` in plugin tests. Post-construction recipe attribute
 assignments are not replayed into activations.
 
+Pass `name=` and typed `config=` to the SDK base constructor as needed. Declare
+static tools and hooks on methods with `@tool` and `@hook`. Register dynamically
+in `setup(scope)` so the activation owns cleanup. Use `field = needs(T)` for
+a service the plugin reads throughout activation. A class-level `needs=(T,)`
+can express an activation prerequisite without a corresponding field.
+`observes(T)` tracks an optional service across restarts. `Inject[T]` on a
+method parameter resolves a value at call time, such as the current `ToolContext`.
+
 Class lifecycle methods have one signature: `async def setup(self, scope:
 PluginScope) -> None` and `async def teardown(self, scope: PluginScope) -> None`.
 Import `PluginScope` from `harnessed.kernel`. It is the resource and registration
 view for this activation; the framework owns composition and closure. See the
 [activation contract](#activation-scope-and-lifecycle-contract) below.
 
-An Agent is a fixed runtime core plus the plugins you list. The core is not made
-of plugins and cannot be replaced: the session log, tool registry, system prompt,
-token counter, context budget, prompt rendering and the loop itself. Everything
-else is visible in `plugins=`; the Agent adds no hidden default plugins.
-
-`model=` supplies `Service(Model, model)`, `prompt=` chooses the system prompt
-strategy, `instructions=` prepends caller text and `loop=` configures the loop
-with an `AgentLoop` value. `AgentLoop` is a value object, not a plugin: it owns
-step limits, tool timeouts, parallelism, the final tool-output limit, context
-window and output retries. Replace a single core service with
-`Service(TokenCounter, counter)`.
-
-Optional extension points have defined behavior when absent:
-
-| Extension | Without it |
-| --- | --- |
-| `Approvals(...)` | Tools run without asking; tools declared with `confirm=True` are unavailable |
-| A tracer, for example `OpenTelemetry(...)` | No tracing; nothing is recorded |
-| `Compaction(...)` | History is never summarized; requests fail once they exceed the context window |
+An agent mounts the `Plugin` instances in `plugins=` in the supplied order.
+Choose a model with `model=`, supply text or a structured document through
+`instructions=`, and configure execution with `loop=`. The application owns
+`approvals=` and `context=`. Each session owns its registrations and resources.
 
 ## Configure the loop and add features
 
 ```python
-from harnessed import Agent, AgentLoop, PolicyDecision
-from harnessed.plugins import Approvals, Filesystem
-from harnessed.testing import ScriptedModel
+from harnessed import Agent, AgentLoop, Approvals, Context
+from harnessed.plugins import Filesystem, FilesystemAction, LocalWorkspace
 
 agent = Agent(
-    model=ScriptedModel(["done"]),
-    plugins=[
-        Approvals(default=PolicyDecision.ALLOW),
-        Filesystem(root="."),
-    ],
-    loop=AgentLoop(max_steps=50, max_parallel_tools=4, max_tool_output=16_000),
+    model=model,
+    plugins=[LocalWorkspace(root="."), Filesystem()],
+    approvals=Approvals(ask=[FilesystemAction.DELETE]),
+    context=Context(max_tool_output_chars=16_000),
+    loop=AgentLoop(max_steps=50, max_parallel_tools=4),
 )
-print(agent.describe())
 ```
 
-Slots detect conflicts; they never select or replace a plugin. Two plugins in the
-same slot raise `PluginConflict`, as do `model=` together with
-`Service(Model, ...)`. A custom plugin declares its slot with
-`class CustomApprovals(Plugin, slot="approvals")`. Plugins without a slot are
-additive. Namespaced slot strings such as `"my_library.observation"` avoid
-collisions with other libraries.
-
 ## Share compositions with ordinary functions
-
-Libraries publish reusable compositions as plain functions that return plugin
-lists. The caller spreads the result into `plugins=`, so every plugin remains
-visible at the call site and in `agent.describe()`. Entries may be `None` to
-toggle a feature inline.
 
 ```python
 from pathlib import Path
 
-from harnessed import Agent, AgentLoop, Plugin
-from harnessed.plugins import Compaction, Filesystem, Shell
-from harnessed.testing import ScriptedModel
+from harnessed import Plugin
+from harnessed.plugins import Filesystem, LocalWorkspace, Shell
 
 
-def workspace(root: str | Path = ".", *, shell: bool = True) -> list[Plugin]:
-    return [Filesystem(root), Shell(root) if shell else None, Compaction(keep_last_steps=4)]
-
-
-agent = Agent(
-    model=ScriptedModel(["done"]),
-    instructions="Help with the workspace.",
-    plugins=workspace(shell=False),
-    loop=AgentLoop(max_steps=10),
-)
+def workspace(root: Path, *, shell: bool = False) -> list[Plugin]:
+    plugins: list[Plugin] = [LocalWorkspace(root=root), Filesystem()]
+    if shell:
+        plugins.append(Shell())
+    return plugins
 ```
 
-To change one part of a shared composition, give the factory a parameter. A
-composition has no override or exclusion mechanism, so the list you pass is
-exactly what mounts.
+Use `Agent(model=model, plugins=workspace(root))`. Each list entry must be a
+`Plugin` instance. Duplicate slots raise `PluginConflict`. Unslotted features
+are additive. Use a slot when two implementations claim the same capability.
 
 ### Inspect the composition
 
-`agent.describe()` returns an immutable `CompositionDescription`, exported from
-`harnessed`. It does not open a session or execute setup or session prompt
-factories. Its `plugins` field is a tuple of plugin descriptions in configured
-order, each exposing `name`, `slot`, `needs`, `provides` and `observes`. Core
-runtime services are not plugins and do not appear. Service declarations reflect
-the recipe's metadata, not services dynamically published during setup.
-
-```python
-for item in agent.describe().plugins:
-    print(item.name, item.slot)
-```
-
-`print(description)` provides a readable view of the same data. This is a static
-configuration snapshot; `session.scope.plugin_diagnostics()` remains the live view
-of waiting plugins and missing services.
-
-The agent collects complete instruction blocks in plugin order. Caller
-`instructions=` are prepended; `prompt=` chooses the strategy, for example
-`SystemPrompt.from_plugins(format=...)`. A selected instruction override without
-a collection strategy raises `ConfigError` before providers run. See
-[ordered plugin instructions](context.md#plugin-instructions-are-collected-by-default).
-Run `uv run python -m examples.36_explicit_composition` for a complete offline example.
+`agent.describe()` shows the selected model, loop and declared plugins before
+a session opens. Inspect `session.tools` for currently available tools.
+The SDK collects each plugin's instructions in list order by default.
+See [ordered instructions](context.md#plugin-instructions-are-collected-by-default)
+and run `uv run python -m examples.36_explicit_composition` for an offline example.
 
 ## Per-mount state and cleanup
 
@@ -120,7 +75,8 @@ The configuration object is a reusable recipe. Declare mutable runtime state wit
 before `setup`, and again after a dependency restart. Each mount owns its value.
 
 ```python
-from harnessed import Plugin, PluginState, tool
+from harnessed import Plugin, tool
+from harnessed.kernel import PluginState
 
 
 class Counter(Plugin):
@@ -178,7 +134,8 @@ accepts this parameter, even when it only uses `self`.
 ```python
 from typing import override
 
-from harnessed import Plugin, SessionLog
+from harnessed import Plugin
+from harnessed.sessions.log import SessionLog
 from harnessed.kernel import PluginScope, needs
 
 
@@ -294,7 +251,8 @@ surfaces.
 Declare plugin services once with `needs` and `observes` from the public kernel facade:
 
 ```python
-from harnessed import Plugin, SessionLog
+from harnessed import Plugin
+from harnessed.sessions.log import SessionLog
 from harnessed.kernel import PluginScope, needs, observes
 
 
@@ -372,8 +330,6 @@ restoring it restarts the plugin. Tool and hook parameters may deliberately use
 `Inject[T]` to resolve the current service on each invocation. That declaration
 does not require the service for the plugin's lifetime or restart the plugin when
 the provider changes. Prefer a field when the entire plugin needs the service.
-Function plugins use
-`@plugin(needs=(Database,))`; bundles use `Bundle("name", needs=(Database,))`.
 Tool declarations contribute their own registration requirement for `ToolRegistry`.
 
 `Inject[T | None]` is optional and returns None while the service is absent.
@@ -390,13 +346,11 @@ contract; third-party implementations need no Harnessed base class.
 registration does not acquire or close that caller-owned resource. A resource-owning
 plugin acquires its resource in `setup()` and registers cleanup on its scope.
 
-`async with session.use(plugin) as handle` mounts a capability for a bounded
+`async with session.mount(plugin) as handle` mounts a capability for a bounded
 context, removing it on normal exit, an exception or cancellation. Use
 `handle = await session.mount(plugin)` when the application manages its lifetime
-manually, then `await handle.aclose()` to remove it. Plugins declaring
-system sections are rejected before setup by default. Explicitly select
-`section_delivery=SectionDelivery.CONTEXT` for mount-owned guidance or
-`SectionDelivery.IGNORE` to skip section evaluation. Runtime facts use `PrepareRequest` hooks;
+manually, then `await handle.aclose()` to remove it. The mount delivers declared instructions as scoped context by default.
+Choose `SectionDelivery.IGNORE` to skip section evaluation. Runtime facts use `PrepareRequest` hooks;
 closing its handle removes its value and temporal restarts refresh it.
 See [system prompt composition](context.md) for explicit ordering and rendering.
 
@@ -457,7 +411,7 @@ suppress setup failures. `PluginValidation.ERROR` is the default and also applie
 to the session opened by `agent.run()`.
 
 Validation guarantees startup readiness. Later service removal, restoration and
-`session.use()` retain their temporal lifecycle behavior. The standalone kernel's
+`session.mount()` retain their temporal lifecycle behavior. The standalone kernel's
 `Scope.install()` continues to allow deferred services by default; its `strict`
 option is unchanged. `scope.plugin_diagnostics()` provides a read-only snapshot of
 waiting plugins in its shared runtime after `await scope.settle()`, resolving each
@@ -465,29 +419,30 @@ plugin's needs in its own mount scope.
 
 ## Separate a backend from its tools
 
-`Filesystem` and `Shell` own their backend and tools together. Use
-`FilesystemTools` or `ShellTools` when a separate service owns the backend:
+Choose a provider for the execution environment and add the tools the agent may
+use. The tool configuration is the same for local, sandbox and custom backends.
 
 ```python
-from harnessed.plugins import Service, ShellTools
-from harnessed.plugins.shell import LocalShell, ShellBackend
+from harnessed.plugins import Filesystem, LocalWorkspace, Shell, WorkspaceBackends
 
-plugins = [Service(ShellBackend, LocalShell()), ShellTools(".")]
+local = [LocalWorkspace(root=project), Filesystem(), Shell()]
+isolated = [sandbox, Filesystem(), Shell()]
+custom = [WorkspaceBackends(filesystem=storage), Filesystem()]
 ```
 
-The tool plugin explicitly needs the backend. Removing its provider suspends the
-tools, and a replacement provider restarts them. Injection resolves the current
-backend for every call. `FilesystemTools` exposes the same bounded reading,
-writing, discovery, editing and deletion tools as `Filesystem`. For shared isolated
-backends, see [sandbox integrations](sandboxes.md).
+`LocalWorkspace` supplies a filesystem and a shell rooted at the same directory.
+`Shell(cwd="nested")` runs commands in a subdirectory. Local commands run as the
+host user. Use a [sandbox](sandboxes.md) for isolation. Configure local process
+environment and output capture on `LocalWorkspace(env=..., max_output_bytes=...)`.
+`Shell(timeout=..., max_timeout=...)` controls the tool's timeout schema.
 
-`ShellTools` accepts `cwd`, `timeout` and `max_timeout`. Set `env` and
-`max_output_bytes` on `LocalShell` or the selected sandbox instead. `Shell` can
-configure these options for its owned local backend; when passing an explicit
-`implementation`, configure that backend directly. Filesystem backends implement
-`grep(query, *, pattern="**/*", limit=100) -> SearchResult` so remote services can
-batch searches. `harnessed.plugins.filesystem.search_files` provides a fallback
-for backends using separate glob, stat and read operations.
+`WorkspaceBackends` accepts an existing `filesystem=`, `shell=`, or both. The
+caller owns those objects and their lifetime. A provider by itself publishes
+services only. With default validation, requesting tools whose backend is
+missing raises `PluginDependencyError` at session startup. At runtime, the tools
+suspend when their provider disappears and reactivate when it returns. There is
+no implicit host fallback. `BackgroundShell()` opts into a separate tool set
+for interactive process control.
 
 ## Typed configuration without duplicate declarations
 
@@ -541,7 +496,7 @@ class FailureNudge(Plugin[FailureNudgeConfig]):
 ```
 
 Built-in features retain their typed constructors, such as
-`Compaction(keep_last_steps=4)` and `Shell(root)`, and use this pattern internally.
+`Compaction(keep_last_steps=4)` and `Shell(timeout=30)`, and use this pattern internally.
 Callers of a custom constructor follow that class's explicit signature.
 Allocate mutable per-mount state with `PluginState` or in setup; constructors
 describe reusable recipes and acquire no resources.

@@ -2,14 +2,10 @@ from pathlib import Path
 
 import pytest
 
-from harnessed import (
-    Agent,
-    Instructions,
-    PolicyDecision,
-    SystemPrompt,
-)
-from harnessed.plugins import Approvals, Filesystem, Shell
+from harnessed import Agent, Approvals, Decision, SystemPrompt
+from harnessed.plugins import Filesystem, LocalWorkspace, Shell, WorkspaceBackends
 from harnessed.plugins.filesystem import FileSystemBackend, LocalFileSystem
+from harnessed.prompts import Instructions
 from harnessed.testing import FakeShell, InMemoryFS, ScriptedModel, assert_tool_called, call, reply
 
 pytest_plugins = ["harnessed.testing.pytest_plugin"]
@@ -20,7 +16,8 @@ async def test_scripted_replies_and_fake_shell_keep_process_results_and_argument
     model = ScriptedModel([call("run_command", argv=["pytest"]), reply("done")])
     result = await Agent(
         model=model,
-        plugins=[shell, Approvals(default=PolicyDecision.ALLOW)],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[WorkspaceBackends(shell=shell), Shell()],
     ).run("Test")
     _, output = assert_tool_called(result, "run_command", argv=["pytest"])
     assert output.exit_code == 0 and "1 passed" in output.content
@@ -37,7 +34,7 @@ async def test_virtual_and_local_filesystems_share_ranges_newlines_and_edit_sema
     inmemoryfs = InMemoryFS()
     async with Agent(
         model=ScriptedModel([]),
-        plugins=[inmemoryfs],
+        plugins=[WorkspaceBackends(filesystem=inmemoryfs), Filesystem()],
     ).session() as session:
         files = session.scope[FileSystemBackend] if memory else LocalFileSystem(tmp_path)
         text = "ä😀\r\nlast\rline\n"
@@ -57,19 +54,19 @@ async def test_virtual_and_local_filesystems_share_ranges_newlines_and_edit_sema
 async def test_pytest_fixture_replaces_feature_slots_without_duplicate_configuration(
     harnessed_session, tmp_path
 ):
-    filesystem = Filesystem(tmp_path)
-    shell = Shell(tmp_path)
+    filesystem = Filesystem()
+    shell = Shell()
     configured = Agent(
-        prompt=SystemPrompt.from_plugins(Instructions(text="Fixed.")),
-        plugins=[filesystem, shell],
+        plugins=[LocalWorkspace(tmp_path), filesystem, shell],
+        instructions=SystemPrompt.from_plugins(Instructions(text="Fixed.")),
     )
     virtual_files = InMemoryFS({"note.txt": "virtual"})
     virtual_shell = FakeShell()
     async with harnessed_session(
         configured,
-        prompt=SystemPrompt.from_plugins(Instructions(text="Fixed.")),
+        instructions=SystemPrompt.from_plugins(Instructions(text="Fixed.")),
         script=[call("read_file", path="note.txt"), reply("done")],
-        plugins=[virtual_files, virtual_shell],
+        plugins=[WorkspaceBackends(filesystem=virtual_files, shell=virtual_shell)],
     ) as session:
         result = await session.run("Read")
         assert assert_tool_called(result, "read_file")[1].content == "virtual"

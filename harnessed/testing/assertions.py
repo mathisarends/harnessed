@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from harnessed.models.messages import ToolCall, ToolResult, freeze
+from harnessed.models import ToolCall, ToolResult
+from harnessed.models.messages import freeze
 
 if TYPE_CHECKING:
     from harnessed.sessions.result import RunResult

@@ -37,7 +37,7 @@ agent = Agent(model="openai:gpt-4.1-mini", plugins=[tracing])
 Explicit values take precedence. Resource attributes merge by key, so an
 environment-supplied deployment name still applies when Python supplies the
 project name. To enable tracing conditionally, pass
-`plugins=[OTLPTracing() if enabled else None]`. You can import the class
+`plugins=[OTLPTracing()] if enabled else []`. You can import the class
 without the extra and install `harnessed[otel]` wherever you enable tracing.
 
 ## Open a provider for your application
@@ -476,8 +476,7 @@ own capture settings and do not use this callback.
 ## Library spans and hook instrumentation
 
 Use `@traced` for whole functions and `record(...)` for explicit diagnostic
-attributes. These public, provider-independent helpers reuse Browserrig's
-sync/async wrapper pattern with Harnessed's ambient context. A browser library
+attributes. These helpers use the active Harnessed tracing context. A browser library
 can keep its function bodies and decorators, using its own `Page` and
 `Observation` types:
 
@@ -514,16 +513,16 @@ For a portion of a function, use `span()` directly:
 ```python
 from harnessed.tracing import span
 
-with span("browserrig.wait_until_ready") as measured:
+with span("browser.wait_until_ready") as measured:
     ready = await wait_until_ready(page)
-    measured.set_attribute("browserrig.readiness.ready", ready)
+    measured.set_attribute("browser.readiness.ready", ready)
 ```
 
 The facade also exports `current`, `Tracer` and `Span`. Importing it requires no
 OTel extra and preserves canonical protocol identities. The synchronous context
 manager stays active across `await`. Names are exported
 exactly as supplied; qualified scalar attributes such as `code.function.name`
-or `browserrig.readiness.ready` also retain their names. Unqualified scalar
+or `browser.readiness.ready` also retain their names. Unqualified scalar
 attributes use the `harnessed.` prefix. The runtime explicitly names its spans
 `harnessed.turn`, `harnessed.model`, etc.
 
@@ -554,13 +553,6 @@ handler's duration includes awaited downstream work and is not its own exclusive
 cost. Automatic source-location caching for hook handlers and duration-based
 export filtering remain future work; decorated library functions already cache
 their source metadata.
-
-When adopting this API in Browserrig, replace its local `traced`, `record` and
-`span` helpers with imports from `harnessed.tracing`. After the local tracing wrapper is migrated,
-its `use_tracer` context and priority-sensitive `ExecuteTool`/`PreStep` binding
-hooks can be removed. Existing `@traced` annotations and `record(...)` calls stay
-in place. File paths now use the function's Python code filename rather than a
-Browserrig repository root, so other libraries use the same implementation.
 
 The kernel's optional `HookInstrumentation` protocol brackets invocation and
 dependency binding without importing Core or OTel. It resolves from the

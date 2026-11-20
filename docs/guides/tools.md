@@ -54,7 +54,8 @@ the MCP extra. The `name`, `description`, `enabled` and `timeout_seconds` option
 their normal execution behavior.
 
 ```python
-from harnessed import Plugin, ToolAnnotations, ToolIcon, ToolPresentation, tool
+from harnessed import Plugin, tool
+from harnessed.tools import ToolAnnotations, ToolIcon, ToolPresentation
 
 
 class Documents(Plugin):
@@ -203,7 +204,8 @@ from typing import Annotated
 
 from pydantic import Field
 
-from harnessed import Plugin, PluginConfig, ToolParameter, tool
+from harnessed import Plugin, PluginConfig, tool
+from harnessed.tools import ToolParameter
 
 
 class SearchConfig(PluginConfig):
@@ -320,10 +322,10 @@ and approval checks to execute.
 ## Ask for approval inside a tool
 
 A tool that discovers a risky step mid-call asks with `await context.approve(reason)`.
-The request is durable and runs through the session approval flow: an `ALWAYS`
+The request is durable and runs through the session approval flow: a remembered
 grant for the tool and scope (default `"tool-call"`), the approver configured on
 `Approvals(approver=...)`, or a stream consumer answering `events.ApprovalNeededEvent`.
-It returns True for allow or always and raises `ApprovalUnavailable` when nobody
+It returns True for an allowed request, including a remembered grant, and raises `ApprovalUnavailable` when nobody
 can answer.
 
 ```python
@@ -441,7 +443,8 @@ Attach immutable application values without changing the model's tool schema:
 ```python
 from dataclasses import dataclass
 
-from harnessed import Plugin, ToolResult, tool
+from harnessed import Plugin, tool
+from harnessed.models import ToolResult
 from harnessed.hooks import Next, ReviewToolResult
 from harnessed.kernel import hook
 
@@ -493,7 +496,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 
-from harnessed import Plugin, ToolResult, tool
+from harnessed import Plugin, tool
+from harnessed.models import ToolResult
 from harnessed.hooks import ExecuteTool, Next
 from harnessed.kernel import hook
 
@@ -566,7 +570,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 
-from harnessed import Agent, ToolInfo
+from harnessed import Agent
+from harnessed.tools import ToolInfo
 from harnessed.plugins import CallEnvelope, EnvelopePosition, InvalidEnvelope
 
 
@@ -661,7 +666,7 @@ up by `call_id` for later execution events. Use `envelope_value` to read one mod
 from a call without validating dictionaries yourself:
 
 ```python
-from harnessed import envelope_value
+from harnessed.tools import envelope_value
 from harnessed.events import ToolCallRequestedEvent
 
 if isinstance(event, ToolCallRequestedEvent):
@@ -677,7 +682,9 @@ One model response may contain several calls. A context-changing tool can stop
 the remaining calls from that response while keeping the turn open:
 
 ```python
-from harnessed import Plugin, ToolChain, ToolResult, tool
+from harnessed import Plugin, tool
+from harnessed.tools import ToolChain
+from harnessed.models import ToolResult
 
 
 class Workspace(Plugin):
@@ -877,7 +884,8 @@ the canonical result for replay.
 Use decorated method references in policies and scripted model responses:
 
 ```python
-from harnessed.plugins import Approvals, Filesystem
+from harnessed import Approvals
+from harnessed.plugins import Filesystem, FilesystemAction
 from harnessed.testing import ScriptedModel, call
 
 model = ScriptedModel(
@@ -887,7 +895,7 @@ model = ScriptedModel(
         "Read the requested ranges.",
     ]
 )
-policy = Approvals(ask=[Filesystem.delete_file])
+policy = Approvals(ask=[FilesystemAction.DELETE])
 ```
 
 `call(method, **arguments)` validates the model arguments immediately, excluding

@@ -4,15 +4,10 @@ import sys
 
 import pytest
 
-from harnessed import (
-    Agent,
-    PolicyDecision,
-    ToolCall,
-)
+from harnessed import Agent, Approvals, Decision
 from harnessed.events import InboxAddedEvent
-from harnessed.models import ModelChunk
-from harnessed.models.messages import ToolStatus
-from harnessed.plugins import Approvals, BackgroundShell, Service, Shell
+from harnessed.models import ModelChunk, ToolCall, ToolStatus
+from harnessed.plugins import BackgroundShell, LocalWorkspace, Shell, WorkspaceBackends
 from harnessed.plugins.shell import LocalShell, ProcessState, ProcResult, ShellBackend
 from harnessed.testing import CallbackModel, ScriptedModel
 from harnessed.tools import ToolRegistry
@@ -24,11 +19,16 @@ async def execute(session, name, **arguments):
 
 
 def agent(tmp_path, **options):
+    backend = options.pop("backend", None)
+    workspace = (
+        LocalWorkspace(root=tmp_path) if backend is None else WorkspaceBackends(shell=backend)
+    )
     return Agent(
         model=ScriptedModel([]),
         plugins=[
-            Shell(tmp_path, implementation=options.pop("implementation", None)),
-            BackgroundShell(tmp_path, **options),
+            workspace,
+            Shell(),
+            BackgroundShell(**options),
         ],
     )
 
@@ -57,7 +57,7 @@ async def eventually(predicate):
 async def test_background_tools_require_explicit_opt_in(tmp_path, shell_enabled):
     app = Agent(
         model=ScriptedModel([]),
-        plugins=[Shell(tmp_path)] if shell_enabled else [],
+        plugins=[LocalWorkspace(root=tmp_path), Shell()] if shell_enabled else [],
     )
     async with app.session() as session:
         definitions = {tool.name: tool for tool in session.scope[ToolRegistry].definitions}
@@ -79,7 +79,7 @@ async def test_background_tools_require_explicit_opt_in(tmp_path, shell_enabled)
 async def test_background_plugin_can_use_an_explicit_backend_without_foreground_tools(tmp_path):
     app = Agent(
         model=ScriptedModel([]),
-        plugins=[Service(ShellBackend, LocalShell()), BackgroundShell(tmp_path)],
+        plugins=[LocalWorkspace(root=tmp_path), BackgroundShell()],
     )
     async with app.session() as session:
         await session.pause()
@@ -143,7 +143,7 @@ async def test_completion_wakes_idle_agent_once_and_does_not_leak_raw_output(tmp
 
     app = Agent(
         model=CallbackModel(respond),
-        plugins=[Shell(tmp_path), BackgroundShell(tmp_path)],
+        plugins=[LocalWorkspace(root=tmp_path), Shell(), BackgroundShell()],
     )
     async with app.session() as session:
         session_audit = Audit(session)
@@ -191,11 +191,8 @@ async def test_completion_arrives_in_next_step_while_agent_keeps_working(tmp_pat
 
     app = Agent(
         model=CallbackModel(respond),
-        plugins=[
-            Shell(tmp_path),
-            BackgroundShell(tmp_path),
-            Approvals(default=PolicyDecision.ALLOW),
-        ],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[LocalWorkspace(root=tmp_path), Shell(), BackgroundShell()],
     )
     async with app.session() as session:
         await asyncio.wait_for(session.run("Run a command and continue"), 10)
@@ -281,12 +278,12 @@ async def test_background_process_tree_cleanup_and_retry(tmp_path, end):
     )
     app = Agent(
         model=ScriptedModel([]),
-        plugins=[Service(ShellBackend, LocalShell()), BackgroundShell(tmp_path)],
+        plugins=[LocalWorkspace(root=tmp_path), BackgroundShell()],
     )
     if end == "unmount":
         app = Agent(
             model=ScriptedModel([]),
-            plugins=[Shell(tmp_path)],
+            plugins=[LocalWorkspace(root=tmp_path), Shell()],
         )
     async with app.session() as session:
         await session.pause()
@@ -372,7 +369,7 @@ async def test_run_only_backend_rejects_background_without_launching(tmp_path):
             seen.append(argv)
             return ProcResult(0, "foreground", "")
 
-    async with agent(tmp_path, implementation=RunOnly()).session() as session:
+    async with agent(tmp_path, backend=RunOnly()).session() as session:
         result = await execute(session, "start_command", argv=["test"])
         assert result.is_error and "does not support background" in result.text
         assert seen == []

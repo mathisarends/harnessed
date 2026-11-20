@@ -2,7 +2,8 @@ import asyncio
 
 import pytest
 
-from harnessed import Agent, Plugin
+from harnessed import Agent, Compaction, Context, Plugin
+from harnessed.context import Summary, every_turns
 from harnessed.events import (
     CompactionAppliedEvent,
     CompactionFinishedEvent,
@@ -11,8 +12,6 @@ from harnessed.events import (
     TransientEvent,
 )
 from harnessed.kernel import hook
-from harnessed.plugins import Compaction, every_turns
-from harnessed.plugins.compaction import Summary
 from harnessed.sessions.publishing import SessionPublished
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit
@@ -45,14 +44,14 @@ async def test_compaction_lifecycle_is_live_and_correlates_with_the_committed_pr
     recorder = Recorder()
     async with Agent(
         model=ScriptedModel(["first", "retained", "second"]),
-        plugins=[
-            recorder,
-            Compaction(
+        plugins=[recorder],
+        context=Context(
+            compaction=Compaction(
                 trigger=every_turns(2),
                 summarizer=Summarizer(),
                 keep_last_steps=1,
-            ),
-        ],
+            )
+        ),
     ).session() as session:
         session_audit = Audit(session)
         assert await session.compact() is None
@@ -98,14 +97,14 @@ async def test_compaction_failure_and_cancellation_always_close_the_started_life
     recorder = Recorder()
     async with Agent(
         model=ScriptedModel(["first", "retained"]),
-        plugins=[
-            recorder,
-            Compaction(
+        plugins=[recorder],
+        context=Context(
+            compaction=Compaction(
                 trigger=every_turns(2),
                 summarizer=Summarizer(),
                 keep_last_steps=1,
-            ),
-        ],
+            )
+        ),
     ).session() as session:
         await session.run("x" * 4000)
         await session.run("retained")
@@ -143,7 +142,8 @@ async def test_failure_after_durable_apply_still_reports_applied():
     recorder = Recorder()
     async with Agent(
         model=ScriptedModel(["first", "retained", "summary"]),
-        plugins=[recorder, FailingObserver(), Compaction(keep_last_steps=1)],
+        plugins=[recorder, FailingObserver()],
+        context=Context(compaction=Compaction(keep_last_steps=1)),
     ).session() as session:
         await session.run("x" * 4000)
         await session.run("retained")

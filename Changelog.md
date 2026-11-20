@@ -7,38 +7,90 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 
 ## Unreleased
 
-### Changed
+### Breaking SDK changes
 
-- An `Agent` is now a fixed runtime core plus exactly the plugins in `plugins=`.
-  The session log, tool registry, system prompt, token counter, prompt renderer
-  and loop are core components, not plugins, and the Agent installs no hidden
-  default plugins. `agent.describe()` lists only configured plugins.
-- `AgentLoop` is a value passed as `Agent(loop=AgentLoop(...))` and is exported
-  from `harnessed`. It now owns the final tool-output limit as
-  `max_tool_output` (default 32,000 characters).
-- Slots only detect conflicts: two plugins in one slot raise `PluginConflict`.
-  Nothing replaces or overrides a plugin implicitly.
-- `Approvals` is no longer installed by default, and tools now run without
-  asking when it is absent. Previously, side-effecting tools were unavailable
-  without an approver. Tools declared with `confirm=True` still require an
-  approval. Add `Approvals()` to `plugins=` to ask before side effects.
-
-### Removed
-
-- `PluginPack`, `PluginPackPromptPolicy` and `ResolvedPluginPack`. Share
-  compositions with ordinary functions that return plugin lists, and pass
-  `prompt=` explicitly. `CompositionDescription` no longer has `removed`, and
-  plugin descriptions no longer have `pack_path`, `origin` or `replaces`.
-- `NoopTracer`. Without a tracer nothing is traced.
-- `ToolOutputLimit` and `PromptRenderer` as public plugins, and `AgentFactory`.
-
-Upgrade:
+- Configure the model, instructions, execution loop, approvals and context directly
+  on `Agent`. Use `plugins=` for instances of `Plugin`. Share compositions with
+  ordinary functions returning lists, and omit disabled features when building the
+  list. The SDK rejects `None` entries, nested lists, bundles and setup functions.
+  The `@plugin` decorator was removed from both the SDK and the kernel. Move setup
+  and cleanup into a `Plugin` subclass. Two plugins claiming one slot raise
+  `PluginConflict`. `agent.describe()` lists the model, loop and configured plugins.
+- Select a workspace provider and install the tool plugins separately. Replace
+  `Filesystem(root=path)` or `Shell(cwd=path)` as local providers with
+  `[LocalWorkspace(root=path), Filesystem(), Shell()]`, listing only the desired
+  tools. Put local shell `env` and `max_output_bytes` on `LocalWorkspace`.
+  With a sandbox use `[sandbox, Filesystem(), Shell()]`. For existing backends
+  use `WorkspaceBackends(filesystem=storage, shell=runner)`. The previous
+  `implementation=` option, `FilesystemTools`, `ShellTools` and their redundant
+  configuration models were removed. Migrate `InMemoryFS` and `FakeShell` to
+  `WorkspaceBackends(filesystem=..., shell=...)` in tests. Providers share the
+  workspace slot. `BackgroundShell` remains an explicit capability.
+- The SDK `Plugin` constructor accepts `name=` and `config=`. Migrate constructor
+  `hooks=` and `registrations=` to decorated methods or dynamic registration in
+  `setup(scope)`. Replace constructor `needs=` with `field = needs(T)` when the
+  plugin uses the service, or a class-level prerequisite when it only gates
+  activation. Built-in file and shell tools take model arguments directly and
+  bind their backends as fields for each activation.
+- `Agent(instructions="...")` prepends text to collected plugin instructions.
+  `instructions=SystemPrompt(...)` supplies the whole document.
+  `instructions=SystemPrompt.from_plugins(..., format=...)` collects plugin
+  sections after the supplied parts. Replace `Agent(prompt=...)` accordingly.
+- Supply `approvals=Approvals(...)` on the agent. Omitting approvals or using
+  `Approvals()` permits every tool. `allow=[...]` defaults unmatched actions to
+  denial, including read-only tools. `allow=[]` denies all. `ask=` or `deny=`
+  alone restricts the listed actions. Use `default=Decision.ASK` to ask about
+  unmatched actions. Replace `confirm=True` and `ToolApprovalGuard` with application
+  rules. `readonly` describes tool behavior and scheduling.
+- Publish a semantic `StrEnum` member with `@tool(action=...)` so application
+  policy can survive renaming a method or its wire name. Rules accept these keys
+  and decorated tool references. Replace string selectors for remote tools with
+  the MCP client's `actions=` mapping. Matching uses the scheduled registration.
+- Replace `PolicyDecision` with `Decision`. A callback can return `request.allow()`,
+  `request.deny()` or `request.allow(remember=True)`. Stream responders call
+  `await session.approvals.allow(id, remember=True)` or `deny(id)`.
+  Approval audit events store the decision and a separate remember flag.
+  Standalone audit envelopes use version 7 and execution checkpoints use version 4.
+  Finish or export stored work with its original SDK before upgrading. Plain
+  conversation snapshots and the outer JSON store envelope retain version 3.
+- Move `AgentLoop(context_window=..., max_tool_output=...)` to
+  `Context(max_tokens=..., max_tool_output_chars=...)`. Enable history summaries
+  with `Context(compaction=Compaction(at=0.8))`. `fallback_tokens=` supplies the
+  trigger for an unknown model window. A `DeferCompaction` hook can request one
+  extra ordinary step before an automatic summary.
+- Runtime mounts deliver plugin instructions as mount-owned context by default.
+  Pass `SectionDelivery.ERROR` to require an explicit choice. Use `async with session.mount(plugin)` in place of `session.use(plugin)`.
+  Awaiting `session.mount(plugin)` returns a manually owned handle. Use `session.on(...)` for listeners. Move kernel imports (`Inject`, `PluginState`,
+  `hook`) to `harnessed.kernel`, tool metadata to `harnessed.tools`, and prompt
+  formatting to `harnessed.prompts`. Use `model=` to select a model.
+- The fixed runtime owns the session log, tool registry, prompt renderer and loop.
+  The earlier composition refactor removed `PluginPack`, `PluginPackPromptPolicy`,
+  `ResolvedPluginPack`, `NoopTracer`, the public `ToolOutputLimit` and `PromptRenderer`
+  plugins, and `AgentFactory`.
 
 ```python
-# Before
-Agent(model=model, plugins=[AgentLoop(max_steps=8), ToolOutputLimit(4_000), tools])
-# After
-Agent(model=model, plugins=[tools], loop=AgentLoop(max_steps=8, max_tool_output=4_000))
+from enum import StrEnum
+
+from harnessed import Agent, Approvals, Compaction, Context, Plugin, tool
+
+
+class DocumentAction(StrEnum):
+    PUBLISH = "publish"
+
+
+class Documents(Plugin):
+    @tool(action=DocumentAction.PUBLISH)
+    def publish_revision(self, title: str) -> str:
+        return f"Published {title}"
+
+
+agent = Agent(
+    model=model,
+    instructions="Help prepare documents.",
+    plugins=[Documents()],
+    approvals=Approvals(allow=[DocumentAction.PUBLISH]),
+    context=Context(max_tool_output_chars=8_000, compaction=Compaction(at=0.8)),
+)
 ```
 
 ### Fixed

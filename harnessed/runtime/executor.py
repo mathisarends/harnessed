@@ -14,14 +14,8 @@ from harnessed.events import (
     ToolPolicyAppliedEvent,
 )
 from harnessed.kernel import Scope
-from harnessed.models.messages import (
-    ApprovalAnswer,
-    DenialSource,
-    PolicyDecision,
-    ToolCall,
-    ToolResult,
-    ToolStatus,
-)
+from harnessed.models import Decision, ToolCall, ToolResult, ToolStatus
+from harnessed.models.messages import DenialSource
 from harnessed.sessions import SessionContext
 from harnessed.sessions.log import SessionLog
 from harnessed.tools import (
@@ -35,7 +29,7 @@ from harnessed.tools import (
     format_tool_error,
 )
 
-from .approval_policy import ApprovalsConfig, unconfigured_tool_decision
+from .approval_policy import Approvals
 from .approvals import SessionApprovals
 from .hooks import (
     ExecuteTool,
@@ -125,6 +119,7 @@ class ToolExecutor:
     async def execute(self, plan: PreparedToolCall, batch: ToolBatch) -> tuple[ToolResult, bool]:
         call = plan.call
         execution = self.scope[ToolContexts].create(call)
+        execution.approval_identity = plan.grant_key
         result: ToolResult | None = None
         reviewable = False
         try:
@@ -223,46 +218,43 @@ class ToolExecutor:
             return await self._apply_policy(plan)
         except ApprovalUnavailable as exc:
             await self.log.append(
-                ToolPolicyAppliedEvent(call.id, PolicyDecision.DENY, PolicySource.UNAVAILABLE)
+                ToolPolicyAppliedEvent(call.id, Decision.DENY, PolicySource.UNAVAILABLE)
             )
             return ToolResult.unavailable(str(exc))
         except Exception as exc:
             # Policy hooks are user code; report their failures through the tool result boundary.
             return ToolResult.error(format_tool_error(call, exc, self.options.error_formatter))
 
-    def _unhandled_decision(self, plan: PreparedToolCall) -> PolicyDecision:
-        """Decide a call that no policy hook settled; Approvals has already ruled when present."""
-        if ApprovalsConfig in self.scope:
-            return PolicyDecision.ALLOW
-        return unconfigured_tool_decision(plan.tool)
-
     async def _apply_policy(self, plan: PreparedToolCall) -> ToolResult | None:
         """Record the policy decision; a denial result, or None when the call may run."""
         call = plan.call
         previous = self.log.latest_approval(call.id)
-        decision = await self.scope.dispatch(
-            ToolPolicy(call, self.context, tool=plan.tool, envelope=plan.envelope),
-            default=lambda: self._unhandled_decision(plan),
-        )
-        if not isinstance(decision, PolicyDecision):
-            raise TypeError("ToolPolicy hooks must return PolicyDecision")
-        if decision is PolicyDecision.ASK:
-            answer = await self.approvals.request(call, "Tool policy requested approval")
-            decision = (
-                PolicyDecision.DENY if answer is ApprovalAnswer.DENY else PolicyDecision.ALLOW
+        decision = self.scope[Approvals].decide(plan)
+        if decision is not Decision.DENY:
+            restriction = await self.scope.dispatch(
+                ToolPolicy(call, self.context, tool=plan.tool, envelope=plan.envelope),
+                default=lambda: Decision.ALLOW,
             )
+            if not isinstance(restriction, Decision):
+                raise TypeError("ToolPolicy hooks must return Decision")
+            if restriction is not Decision.ALLOW:
+                decision = restriction
+        if decision is Decision.ASK:
+            answer = await self.approvals.request(
+                call, "Tool policy requested approval", identity=plan.grant_key
+            )
+            decision = Decision.DENY if answer is Decision.DENY else Decision.ALLOW
         record = self.log.latest_approval(call.id)
         answered = record is not None and record is not previous
         source = (
             PolicySource.APPROVAL
-            if answered
-            and (decision is PolicyDecision.ALLOW or record.decision is ApprovalAnswer.DENY)
+            if answered and (decision is Decision.ALLOW or record.decision is Decision.DENY)
             else PolicySource.POLICY
         )
         await self.log.append(ToolPolicyAppliedEvent(call.id, decision, source))
-        if decision is not PolicyDecision.DENY:
+        if decision is not Decision.DENY:
             return None
-        if answered and record.decision is ApprovalAnswer.DENY:
+        if answered and record.decision is Decision.DENY:
             return ToolResult.denied("User declined this action", source=DenialSource.USER)
         return ToolResult.denied("Denied by policy", source=DenialSource.POLICY)
 

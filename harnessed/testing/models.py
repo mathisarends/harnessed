@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from harnessed.errors import HarnessedError
 from harnessed.models import (
+    AssistantMessage,
     GenerationSettings,
     ModelChunk,
     ModelInfo,
@@ -12,8 +13,8 @@ from harnessed.models import (
     ModelResponse,
     ModelUsage,
     StopReason,
+    ToolCall,
 )
-from harnessed.models.messages import AssistantMessage, ToolCall
 from harnessed.tools.references import ToolSelector, call_arguments, tool_reference
 
 

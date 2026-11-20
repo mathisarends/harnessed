@@ -19,7 +19,7 @@ from .events import (
 from .events import on as hook
 from .hooks import HookFactory, ListenerFactory, Next
 from .keys import ServiceKey
-from .plugin import PluginHandle, PluginLike, PluginSpec, PluginStatus, as_plugin_spec, plugin
+from .plugin import PluginHandle, PluginLike, PluginSpec, PluginStatus, as_plugin_spec
 from .scope import Key, MissingService, PluginScope, RegistrationState, Scope, ScopeClosed
 from .spec import PluginDependencyIssue
 from .state import PluginState
@@ -69,7 +69,6 @@ __all__ = [
     "needs",
     "observes",
     "on",
-    "plugin",
     "registration",
     "run_sync",
 ]

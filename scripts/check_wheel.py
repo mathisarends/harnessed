@@ -17,23 +17,20 @@ import re
 
 from harnessed.kernel import Scope, Key, needs
 assert 'pydantic' not in sys.modules
-from harnessed import (
-    Agent, AgentLoop, CompositionDescription, PluginConflict, SessionState, OutputContract,
-    Plugin, PluginConfig,
-    RunHandle, RunStream, StopReason, ToolPresentation,
-    PromptFormat, SectionDelivery,
-    SystemPrompt, Instructions, tool,
-)
-from harnessed.models import ModelRequest, UserMessage
+from harnessed import Agent, AgentLoop, OutputContract, Plugin, PluginConfig, SystemPrompt, tool
+from harnessed.errors import PluginConflict
+from harnessed.models import ModelRequest, StopReason, UserMessage
 from harnessed.events import TextDeltaEvent
 from harnessed.events.stream import TurnResultEvent
 from harnessed.plugins import Service, Skill, Skills
 from harnessed.integrations.json import JsonSessionStore
 from harnessed.integrations.sandbox.bundle import worker_source
-from harnessed.prompts import SystemPromptStore
-from harnessed.sessions import SessionContext, StoredSession
+from harnessed.prompts import Instructions, PromptFormat, SectionDelivery, SystemPromptStore
+from harnessed.runtime.composition import CompositionDescription
+from harnessed.runtime.handles import RunHandle, RunStream
+from harnessed.sessions import SessionContext, SessionState, StoredSession
 from harnessed.testing import ScriptedModel, call, reply, assert_tool_called, mount_plugin
-from harnessed.tools import SessionTools, ToolRegistry
+from harnessed.tools import SessionTools, ToolPresentation, ToolRegistry
 from pydantic import BaseModel
 from tempfile import TemporaryDirectory
 import harnessed
@@ -149,15 +146,15 @@ async def main():
     guidance = Guidance()
     simple = Agent(instructions='Role.', plugins=[guidance])
     assert await simple.prompt.render() == 'Role.\n\nPlugin guidance.'
-    ordered = Agent(plugins=[guidance], prompt=SystemPrompt.from_plugins('Prefix.'))
+    ordered = Agent(plugins=[guidance], instructions=SystemPrompt.from_plugins('Prefix.'))
     assert await ordered.prompt.render() == 'Prefix.\n\nPlugin guidance.'
-    explicit = Agent(plugins=[guidance], prompt=SystemPrompt('Only this.'))
+    explicit = Agent(plugins=[guidance], instructions=SystemPrompt('Only this.'))
     assert await explicit.prompt.render() == 'Only this.'
     assert 'Guidance' in str(explicit.prompt)
     mounted_model = ScriptedModel([reply('Ready'), reply('Unmounted')])
     async with Agent(model=mounted_model,
                      instructions='Fixed.').session() as session:
-        async with session.use(guidance, section_delivery=SectionDelivery.CONTEXT) as mount:
+        async with session.mount(guidance) as mount:
             assert mount.instance is not None
             await session.run('Mounted')
             assert any('Plugin guidance.' in message.text
@@ -169,7 +166,7 @@ async def main():
         mount = await session.mount(guidance, section_delivery=SectionDelivery.CONTEXT)
         await mount.aclose()
     agent = Agent(model=ScriptedModel([call(Calculator.add, a=19, b=23), reply('42')]),
-                  plugins=[Calculator(config=CalculatorConfig())], prompt=SystemPrompt(
+                  plugins=[Calculator(config=CalculatorConfig())], instructions=SystemPrompt(
                       Instructions(title='Role', text='Fixed instructions.'),
                       format=PromptFormat.MARKDOWN))
     async with agent.session() as session:

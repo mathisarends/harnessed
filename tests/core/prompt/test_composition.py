@@ -1,7 +1,8 @@
 import pytest
 
-from harnessed import Agent, Instructions, Plugin, PromptFormat, SystemPrompt, tool
+from harnessed import Agent, Plugin, SystemPrompt, tool
 from harnessed.kernel import PluginScope
+from harnessed.prompts import Instructions, PromptFormat
 from harnessed.testing import ScriptedModel
 
 
@@ -36,17 +37,15 @@ class Observe(Plugin):
 )
 async def test_explicit_collection_renders_complete_blocks(format, expected):
     agent = Agent(
-        instructions="Role.",
+        instructions=SystemPrompt.from_plugins("Role.", format=format),
         plugins=[Observe()],
-        prompt=SystemPrompt.from_plugins(format=format),
     )
     assert await agent.prompt.render() == expected
     assert "Observe.instructions" in str(agent.prompt)
     async with Agent(
         model=ScriptedModel([]),
-        instructions="Role.",
+        instructions=SystemPrompt.from_plugins("Role.", format=format),
         plugins=[Observe()],
-        prompt=SystemPrompt.from_plugins(format=format),
     ).session() as session:
         assert await session.prompt.render() == expected
 
@@ -65,9 +64,7 @@ async def test_explicit_prompt_omits_plugin_instructions_without_evaluating_them
         def instructions(self) -> SystemPrompt:
             pytest.fail("An explicit prompt must not evaluate plugin instructions")
 
-    agent = Agent(
-        instructions="Role.", plugins=[Feature()], prompt=SystemPrompt("Application text.")
-    )
+    agent = Agent(instructions=SystemPrompt("Role.", "Application text."), plugins=[Feature()])
     assert await agent.prompt.render() == "Role.\n\nApplication text."
     assert str(agent.prompt).endswith(
         "Plugin instructions omitted by the explicit prompt\n  - Feature"
@@ -128,7 +125,7 @@ def test_plugin_provider_cannot_request_recursive_collection():
 
 async def test_none_is_normalized_and_nested_documents_inherit_outer_format():
     agent = Agent(
-        prompt=SystemPrompt(
+        instructions=SystemPrompt(
             None,
             SystemPrompt(Instructions(title="Nested", text='a < b & "c"'), format=PromptFormat.XML),
             None,
@@ -142,7 +139,7 @@ async def test_none_is_normalized_and_nested_documents_inherit_outer_format():
 
 async def test_xml_escaping_and_empty_sections():
     agent = Agent(
-        prompt=SystemPrompt(
+        instructions=SystemPrompt(
             Instructions(title='A & "B"', text='a < b & "c"'),
             Instructions(title="Empty", text=""),
             "Untitled.",
@@ -180,12 +177,12 @@ def test_instruction_validation_and_removed_constructor_options():
     with pytest.raises(TypeError):
         Agent(system_prompt="Old keyword")
     with pytest.raises(TypeError, match="instructions"):
-        Agent(instructions=SystemPrompt("Wrong type"))
+        Agent(instructions=42)
 
 
 async def test_content_values_have_no_reference_identity_or_implicit_deduplication():
     section = Instructions(text="Same.")
-    agent = Agent(prompt=SystemPrompt(section, section, "Same."))
+    agent = Agent(instructions=SystemPrompt(section, section, "Same."))
     assert await agent.prompt.render() == "Same.\n\nSame.\n\nSame."
 
 

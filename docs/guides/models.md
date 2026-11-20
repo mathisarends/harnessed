@@ -43,7 +43,7 @@ you need them. `Agent` also accepts an object implementing the structural
 
 Use `PydanticAIModel(native_or_string, context_window=...)` when you need to
 explicitly override context-window metadata. Otherwise the adapter uses the native
-model profile. Unknown windows remain unknown; configure `AgentLoop(context_window=...)`
+model profile. Unknown windows remain unknown; configure `Context(max_tokens=...)`
 when a budget policy needs an explicit limit. The loop does not assume 128k.
 When both are set, the `AgentLoop` value wins for that agent.
 

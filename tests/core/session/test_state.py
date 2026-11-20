@@ -7,16 +7,17 @@ from pathlib import Path
 
 import pytest
 
-from harnessed import Agent, Plugin, SessionState, tool
+from harnessed import Agent, Compaction, Context, Plugin, tool
+from harnessed.context import every_turns
 from harnessed.errors import SessionClosed, SessionFormatError, SessionStateError
 from harnessed.events import TurnEndedEvent, TurnStartedEvent
 from harnessed.events.stream import TurnResultEvent
 from harnessed.kernel import PluginScope, Scope, needs
 from harnessed.models import ImageReference, UserMessage
-from harnessed.plugins import Compaction, LatestObservationOnly, Spill, every_turns
+from harnessed.plugins import LatestObservationOnly, Spill
 from harnessed.plugins.spill import SpillStore
 from harnessed.prompts.plugin_instructions import PluginInstructions
-from harnessed.sessions import SessionContext
+from harnessed.sessions import SessionContext, SessionState
 from harnessed.sessions.log import SessionLog
 from harnessed.testing import ExtractiveSummarizer, ScriptedModel, call
 
@@ -109,7 +110,7 @@ async def test_compaction_releases_discarded_objects_and_exports_only_active_con
         summarizer=ExtractiveSummarizer(),
         max_summary_tokens=8,
     )
-    async with Agent(model=model, plugins=[compaction]).session() as session:
+    async with Agent(model=model, context=Context(compaction=compaction)).session() as session:
         first = await session.run("old context " * 500)
         old = weakref.ref(first.state.history[0].message)
         frozen = first.state.to_json()
@@ -140,16 +141,15 @@ async def test_spill_contents_survive_compaction_json_and_session_close():
 
     agent = Agent(
         model=ScriptedModel([call(Source.source), "stored", "continued"]),
-        plugins=[
-            Source(),
-            Spill(threshold_tokens=32),
-            Compaction(
+        plugins=[Source(), Spill(threshold_tokens=32)],
+        context=Context(
+            compaction=Compaction(
                 trigger=lambda _: False,
                 keep_last_steps=1,
                 summarizer=ExtractiveSummarizer(),
                 max_summary_tokens=8,
-            ),
-        ],
+            )
+        ),
     )
     async with agent.session() as session:
         first = await session.run("Read.")
@@ -234,15 +234,15 @@ async def test_repeated_imports_compact_the_active_state_without_resurrecting_ol
     agent = Agent(
         model=model,
         instructions="Current instructions.",
-        plugins=[
-            Compaction(
+        plugins=[LatestObservationOnly()],
+        context=Context(
+            compaction=Compaction(
                 trigger=every_turns(1),
                 keep_last_steps=1,
                 max_summary_tokens=8,
                 summarizer=ExtractiveSummarizer(),
-            ),
-            LatestObservationOnly(),
-        ],
+            )
+        ),
     )
     state = None
     for index in range(10):

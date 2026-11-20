@@ -3,25 +3,17 @@ from pydantic import TypeAdapter, ValidationError
 
 from harnessed.kernel import Scope
 from harnessed.models import GenerationSettings, ModelInfo, ModelRequest, ModelUsage
-from harnessed.runtime.approval_policy import ToolApprovalGuard
 from harnessed.runtime.budget import ContextBudget
 from harnessed.runtime.options import AgentLoopConfig
 from harnessed.tools import ToolRegistry
 
 
-@pytest.mark.parametrize(
-    "options",
-    [
-        {"risky": "publish"},
-        {"risky": {""}},
-        {"risky": {"publish"}, "scope": ""},
-        {"risky": {"publish"}, "priority": True},
-        {"risky": {"publish"}, "ask": "allow"},
-    ],
-)
-def test_scoped_guard_configuration_is_strict(options):
-    with pytest.raises(ValidationError):
-        ToolApprovalGuard(**options)
+@pytest.mark.parametrize("rule", ["publish", "", lambda: None])
+def test_approval_selectors_are_typed(rule):
+    from harnessed import Approvals
+
+    with pytest.raises(TypeError):
+        Approvals(ask=[rule])
 
 
 @pytest.mark.parametrize(

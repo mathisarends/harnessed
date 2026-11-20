@@ -1,11 +1,11 @@
 import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import replace
 
 import pytest
 from pydantic import BaseModel, field_validator
 
-from harnessed import Agent, Plugin, StopReason, ToolCall, tool
+from harnessed import Agent, Plugin, tool
 from harnessed.errors import ConfigError, OutputUnavailable, OutputValidationError
 from harnessed.events import (
     OutputValidatedEvent,
@@ -14,19 +14,19 @@ from harnessed.events import (
     TurnOutcome,
 )
 from harnessed.events.codec import decode_event, encode_event
-from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not a module.
-    Scope,
-    plugin,
-)
+from harnessed.kernel import PluginScope
 from harnessed.models import (
+    AssistantMessage,
+    Decision,
     Model,
     ModelChunk,
     ModelInfo,
     ModelRequest,
     ModelResponse,
     OutputMode,
+    StopReason,
+    ToolCall,
 )
-from harnessed.models.messages import AssistantMessage, PolicyDecision
 from harnessed.runtime.agent_loop import AgentLoop
 from harnessed.runtime.hooks import PrepareRequest, ToolPolicy
 from harnessed.runtime.outputs import OutputContract, OutputTypes
@@ -75,19 +75,18 @@ async def test_output_mode_uses_the_model_captured_before_request_hooks(
         info=ModelInfo("replacement", supports_structured_output=not native_output),
     )
 
-    @plugin
-    async def swap(scope: Scope) -> AsyncIterator[None]:
-        async def configure(
-            event: PrepareRequest, next_: Callable[[], Awaitable[ModelRequest]]
-        ) -> ModelRequest:
-            scope.provide(Model, replacement)
-            return await next_()
+    class Swap(Plugin):
+        async def setup(self, scope: PluginScope) -> None:
+            async def configure(
+                event: PrepareRequest, next_: Callable[[], Awaitable[ModelRequest]]
+            ) -> ModelRequest:
+                scope.provide(Model, replacement)
+                return await next_()
 
-        scope.on(PrepareRequest, configure)
-        yield
+            scope.on(PrepareRequest, configure)
 
     async with Agent(
-        model=original, plugins=[swap()], loop=AgentLoop(output_retries=0)
+        model=original, plugins=[Swap()], loop=AgentLoop(output_retries=0)
     ).session() as session:
         first = await session.run("First", output=Triage)
         assert first.output == Triage(severity=2, owner="sdk")
@@ -107,9 +106,7 @@ async def test_fallback_answer_is_validated_without_policies_or_application_tool
     async with Agent(model=model).session() as session:
         session_audit = Audit(session)
         policies = []
-        session.on(
-            ToolPolicy, lambda ev, next_: policies.append(ev.call.name) or PolicyDecision.DENY
-        )
+        session.on(ToolPolicy, lambda ev, next_: policies.append(ev.call.name) or Decision.DENY)
         result = await session.run("Triage", output=Triage)
         assert result.output == Triage(severity=2, owner="sdk")
         assert result.completed

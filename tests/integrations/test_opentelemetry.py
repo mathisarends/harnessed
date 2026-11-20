@@ -16,7 +16,7 @@ from threading import Thread, get_ident
 import pytest
 from pydantic import BaseModel, JsonValue, SecretStr
 
-from harnessed import PolicyDecision
+from harnessed import Context, Decision
 from harnessed.models import ProviderState
 
 pytest.importorskip("opentelemetry.sdk")
@@ -28,7 +28,8 @@ from opentelemetry.sdk.trace import SpanLimits, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from harnessed import Agent, ApprovalAnswer, Plugin, ToolCall, tool
+from harnessed import Agent, Approvals, Compaction, Plugin, tool
+from harnessed.context import every_turns
 from harnessed.events import ControlState, SessionControlChangedEvent
 from harnessed.integrations.opentelemetry import (
     ContentCapture,
@@ -41,6 +42,7 @@ from harnessed.integrations.opentelemetry import (
 from harnessed.kernel import Next, Waterfall, hook
 from harnessed.models import (
     AssetRef,
+    AssistantMessage,
     GenerationSettings,
     ImageReference,
     ModelChunk,
@@ -48,9 +50,11 @@ from harnessed.models import (
     ModelUsage,
     StopReason,
     TextPart,
+    ToolCall,
+    ToolResult,
+    ToolStatus,
+    UserMessage,
 )
-from harnessed.models.messages import AssistantMessage, ToolResult, ToolStatus, UserMessage
-from harnessed.plugins import Approvals, Compaction, every_turns
 from harnessed.runtime.hooks import SessionAppended, SessionClosing
 from harnessed.runtime.tracing import Tracer
 from harnessed.testing import CallbackModel, ScriptedModel, reply
@@ -1526,11 +1530,8 @@ async def test_parallel_tools_are_siblings_and_inherit_context(telemetry):
     calls = [ToolCall("work", {"index": i}) for i in range(2)]
     await Agent(
         model=ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "done"]),
-        plugins=[
-            Work(),
-            Approvals(default=PolicyDecision.ALLOW),
-            OpenTelemetryTracer(tracer_provider=provider),
-        ],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[Work(), OpenTelemetryTracer(tracer_provider=provider)],
     ).run("go")
     spans = exporter.get_finished_spans()
     tools = [s for s in spans if s.name == "harnessed.tool"]
@@ -1566,11 +1567,8 @@ async def test_tool_result_errors_mark_the_span_without_raising(
 
     await Agent(
         model=ScriptedModel([[ModelChunk(tool_call=ToolCall("work"))], "recovered"]),
-        plugins=[
-            Work(),
-            Approvals(default=PolicyDecision.ALLOW),
-            OpenTelemetryTracer(tracer_provider=provider),
-        ],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[Work(), OpenTelemetryTracer(tracer_provider=provider)],
     ).run("go")
     tool_span = next(s for s in exporter.get_finished_spans() if s.name == "harnessed.tool")
     assert tool_span.status.status_code == trace.StatusCode.ERROR
@@ -1589,11 +1587,8 @@ async def test_approval_wait_is_separate_and_records_decision(telemetry):
 
     await Agent(
         model=ScriptedModel([[ModelChunk(tool_call=ToolCall("work"))], "done"]),
-        plugins=[
-            Work(),
-            Approvals(approver=lambda _: ApprovalAnswer.ALLOW),
-            OpenTelemetryTracer(tracer_provider=provider),
-        ],
+        approvals=Approvals(default=Decision.ASK, approver=lambda _: Decision.ALLOW),
+        plugins=[Work(), OpenTelemetryTracer(tracer_provider=provider)],
     ).run("go")
     spans = exporter.get_finished_spans()
     approval = next(s for s in spans if s.name == "harnessed.approval_wait")
@@ -1713,10 +1708,8 @@ async def test_compaction_span_records_its_usage(telemetry):
                 reply("second", usage=ModelUsage(3, 1)),
             ]
         ),
-        plugins=[
-            Compaction(trigger=every_turns(1), keep_last_steps=1),
-            OpenTelemetryTracer(tracer_provider=provider),
-        ],
+        plugins=[OpenTelemetryTracer(tracer_provider=provider)],
+        context=Context(compaction=Compaction(trigger=every_turns(1), keep_last_steps=1)),
     )
     async with agent.session() as session:
         await session.run("long prompt " * 100)
@@ -1755,7 +1748,7 @@ with span('library.noop'), current().span('library.also_noop'):
 assert not any(n.startswith('opentelemetry') for n in sys.modules)
 from harnessed.integrations.opentelemetry import OTLPTracing
 enabled = False
-Agent(plugins=[OTLPTracing() if enabled else None])
+Agent(plugins=[OTLPTracing()] if enabled else [])
 try:
     OTLPTracing()
 except ImportError as error:

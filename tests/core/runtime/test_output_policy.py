@@ -4,7 +4,7 @@ import json
 import pytest
 from pydantic import BaseModel, Field
 
-from harnessed import Agent, AgentLoop, Plugin, SectionDelivery, ToolStatus, hook, tool
+from harnessed import Agent, AgentLoop, Plugin, tool
 from harnessed.errors import OutputUnavailable, OutputValidationError
 from harnessed.events import (
     ControlState,
@@ -17,9 +17,10 @@ from harnessed.events import (
 )
 from harnessed.hooks import Next, OutputDecision, PrepareOutput, TurnStopping
 from harnessed.integrations.json import JsonSessionStore
-from harnessed.kernel import PluginScope
-from harnessed.models import ModelChunk, ModelInfo, ModelUsage, StopReason
+from harnessed.kernel import PluginScope, hook
+from harnessed.models import ModelChunk, ModelInfo, ModelUsage, StopReason, ToolStatus
 from harnessed.plugins import FinalStepPolicy
+from harnessed.prompts import SectionDelivery
 from harnessed.testing import CallbackModel, ScriptedModel, call, reply
 
 

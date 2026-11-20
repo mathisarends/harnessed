@@ -3,13 +3,9 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from harnessed import (
-    Agent,
-    AgentLoop,
-    Plugin,
-)
+from harnessed import Agent, Context, Plugin
 from harnessed.events import SpillCreatedEvent, SpillExpiredEvent
-from harnessed.models.messages import ImagePart, TextPart, ToolCall, ToolResult, ToolStatus
+from harnessed.models import ImagePart, TextPart, ToolCall, ToolResult, ToolStatus
 from harnessed.plugins import Rules, Spill, when
 from harnessed.plugins.spill import SpillStore
 from harnessed.sessions.files import SessionFiles
@@ -28,11 +24,11 @@ class Source(Plugin):
         )
 
 
-def configure(model, *, plugins=(), loop=None):
+def configure(model, *, plugins=(), context=None):
     return Agent(
         model=model,
         plugins=[Source(), *plugins],
-        loop=loop,
+        context=context,
     )
 
 
@@ -96,7 +92,7 @@ async def test_spill_budget_falls_back_to_the_final_output_limit_without_losing_
     app = configure(
         ScriptedModel([call("source", text="x" * 4000), "done"]),
         plugins=[Spill(threshold_tokens=1, max_bytes=100)],
-        loop=AgentLoop(max_tool_output=256),
+        context=Context(max_tool_output_chars=256),
     )
     async with app.session() as session:
         result = (await session.run("read")).tool_calls[0][1]

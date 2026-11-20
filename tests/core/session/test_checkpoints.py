@@ -6,7 +6,7 @@ from typing import Literal
 import pytest
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
-from harnessed import Agent, Plugin, SessionState, ToolContext, tool
+from harnessed import Agent, Plugin, ToolContext, tool
 from harnessed.errors import SessionFormatError
 from harnessed.events import (
     ControlState,
@@ -19,7 +19,7 @@ from harnessed.events.registry import EventRegistry
 from harnessed.integrations.json import JsonSessionStore
 from harnessed.kernel import Inject
 from harnessed.models import UserMessage
-from harnessed.sessions import CheckpointExtension, SessionCheckpoint, StoredSession
+from harnessed.sessions import CheckpointExtension, SessionCheckpoint, SessionState, StoredSession
 from harnessed.testing import ScriptedModel, call
 from tests._checkpoints import checkpoint
 
@@ -48,7 +48,7 @@ def test_checkpoint_has_typed_messages_and_nested_pydantic_roundtrip():
     assert message.message.id == "user-id" and message.message.text == "hello"
     assert restored.control.state is ControlState.PAUSED
     schema = BackendEnvelope.model_json_schema()
-    assert schema["$defs"]["SessionCheckpoint"]["properties"]["version"]["const"] == 3
+    assert schema["$defs"]["SessionCheckpoint"]["properties"]["version"]["const"] == 4
     assert "UserMessageEvent" in schema["$defs"]
 
 
@@ -77,7 +77,7 @@ def test_checkpoint_extensions_are_immutable_and_roundtrip_without_a_registry():
 def test_checkpoint_rejects_invalid_documents(change):
     data = json.loads(checkpoint().to_json())
     if change == "old-version":
-        data["version"] = 1
+        data["version"] = 3
     elif change == "bool-version":
         data["version"] = True
     elif change == "extra":

@@ -5,21 +5,12 @@ from typing import Annotated
 
 import pytest
 
-from harnessed import (
-    Agent,
-    AgentLoop,
-    ApprovalAnswer,
-    Plugin,
-    PluginState,
-    PolicyDecision,
-    ToolCall,
-    ToolContext,
-    tool,
-)
+from harnessed import Agent, AgentLoop, Approvals, Decision, Plugin, ToolContext, tool
 from harnessed.events import ApprovalRequestedEvent, ToolCallFinishedEvent
-from harnessed.kernel import Inject, InjectMarker, Key, Scope
-from harnessed.models import AssistantMessage, ModelResponse
-from harnessed.plugins import Approvals, Service
+from harnessed.kernel import Inject, InjectMarker, Key, PluginState, Scope
+from harnessed.models import AssistantMessage, ModelResponse, ToolCall
+from harnessed.models.messages import ApprovalResponse
+from harnessed.plugins import Service
 from harnessed.testing import ScriptedModel, call, reply
 from harnessed.tools import ToolRegistry, ToolSpec
 from tests._audit import Audit
@@ -45,17 +36,14 @@ class PointerTools(Plugin, needs=(PointerState,)):
 
 
 async def test_disabled_tool_is_hidden_and_unavailable_without_asking_for_approval():
-    def approve(request: ApprovalRequestedEvent) -> ApprovalAnswer:
+    def approve(request: ApprovalRequestedEvent) -> ApprovalResponse:
         pytest.fail("A disabled tool asked for approval")
 
     model = ScriptedModel([call(PointerTools.click_at, x=1.0, y=2.0), reply("done")])
     async with Agent(
         model=model,
-        plugins=[
-            PointerTools(),
-            Service(PointerState, PointerState()),
-            Approvals(approver=approve),
-        ],
+        approvals=Approvals(default=Decision.ASK, approver=approve),
+        plugins=[PointerTools(), Service(PointerState, PointerState())],
     ).session() as session:
         await session.run("click")
         assert [definition.name for definition in model.requests[0].tools] == ["wait"]
@@ -72,11 +60,8 @@ async def test_condition_refreshes_between_model_requests_and_keeps_its_schema()
     )
     async with Agent(
         model=model,
-        plugins=[
-            PointerTools(),
-            Service(PointerState, state),
-            Approvals(default=PolicyDecision.ALLOW),
-        ],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[PointerTools(), Service(PointerState, state)],
     ).session() as session:
         await session.run("click")
         state.has_snapshot = True
@@ -90,14 +75,15 @@ async def test_condition_refreshes_between_model_requests_and_keeps_its_schema()
 async def test_condition_is_rechecked_after_approval():
     state = PointerState(has_snapshot=True)
 
-    def approve(request: ApprovalRequestedEvent) -> ApprovalAnswer:
+    def approve(request: ApprovalRequestedEvent) -> ApprovalResponse:
         state.has_snapshot = False
-        return ApprovalAnswer.ALLOW
+        return Decision.ALLOW
 
     model = ScriptedModel([call(PointerTools.click_at, x=1.0, y=2.0), "done"])
     async with Agent(
         model=model,
-        plugins=[PointerTools(), Service(PointerState, state), Approvals(approver=approve)],
+        approvals=Approvals(default=Decision.ASK, approver=approve),
+        plugins=[PointerTools(), Service(PointerState, state)],
     ).session() as session:
         await session.run("click")
         assert "click_at" in [definition.name for definition in model.requests[0].tools]
@@ -124,8 +110,9 @@ async def test_condition_is_rechecked_after_an_earlier_tool_and_resource_wait(pa
     model = ScriptedModel([ModelResponse(AssistantMessage(tool_calls=calls)), "done"])
     async with Agent(
         model=model,
-        plugins=[Tools(), Service(PointerState, state), Approvals(default=PolicyDecision.ALLOW)],
         loop=AgentLoop(max_parallel_tools=2),
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[Tools(), Service(PointerState, state)],
     ).session() as session:
         session_audit = Audit(session)
         await session.run("invalidate then click")
@@ -306,10 +293,10 @@ async def test_predicate_exceptions_fail_closed_and_are_reported_as_tool_errors(
             raise RuntimeError("broken predicate")
         return True
 
-    def approve(request: ApprovalRequestedEvent) -> ApprovalAnswer:
+    def approve(request: ApprovalRequestedEvent) -> ApprovalResponse:
         nonlocal broken
         broken = True
-        return ApprovalAnswer.ALLOW
+        return Decision.ALLOW
 
     class Tools(Plugin):
         @tool(enabled=can_click)
@@ -318,7 +305,7 @@ async def test_predicate_exceptions_fail_closed_and_are_reported_as_tool_errors(
 
     model = ScriptedModel([call(Tools.click), "done"])
     async with Agent(
-        model=model, plugins=[Tools(), Approvals(approver=approve)]
+        model=model, approvals=Approvals(default=Decision.ASK, approver=approve), plugins=[Tools()]
     ).session() as session:
         await session.run("click")
         assert session.last(ToolCallFinishedEvent).result.text == "click failed: RuntimeError"

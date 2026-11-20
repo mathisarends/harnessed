@@ -3,21 +3,13 @@ from typing import Protocol
 
 import pytest
 
-from harnessed import (
-    Agent as Application,
-)
-from harnessed import (
-    ToolCall,
-    plugin,
-)
+from harnessed import Agent as Application
+from harnessed import Approvals, Plugin
 from harnessed.events import ToolCallFinishedEvent
-from harnessed.kernel import Scope
-from harnessed.models import Model, ModelChunk
-from harnessed.models.messages import ApprovalAnswer, PolicyDecision
-from harnessed.plugins import Approvals
-from harnessed.plugins.filesystem import FileSystemBackend, FilesystemTools
-from harnessed.plugins.shell import ProcResult, ShellTools
-from harnessed.plugins.shell import ShellBackend as Shell
+from harnessed.kernel import PluginScope
+from harnessed.models import Decision, Model, ModelChunk, ToolCall
+from harnessed.plugins.filesystem import Filesystem, FileSystemBackend
+from harnessed.plugins.shell import ProcResult, Shell, ShellBackend
 from harnessed.plugins.spill import SpillStore
 from harnessed.runtime.approval_policy import Approver
 from harnessed.runtime.compaction import Summarizer
@@ -31,7 +23,7 @@ from harnessed.testing import ScriptedModel
     [
         FileSystemBackend,
         Model,
-        Shell,
+        ShellBackend,
         Approver,
         TokenCounter,
         Summarizer,
@@ -77,16 +69,16 @@ async def test_foreign_fs_and_model_work_through_di_without_framework_inheritanc
         ]
     )
 
-    @plugin
-    async def foreign_files(scope: Scope):
-        scope.provide(FileSystemBackend, files)
-        yield
+    class FilesProvider(Plugin):
+        async def setup(self, scope: PluginScope) -> None:
+            scope.provide(FileSystemBackend, files)
 
     assert ForeignFiles.__bases__ == (object,)
     assert ForeignModel.__bases__ == (object,)
     async with Application(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), foreign_files(), FilesystemTools()],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[FilesProvider(), Filesystem()],
     ).session() as agent:
         result = await agent.run("Write and read the note.")
         assert result.text == "done"
@@ -122,35 +114,27 @@ class ForeignApprover:
 
 async def test_foreign_shell_and_approver_are_accepted_structurally(tmp_path):
     shell = ForeignShell(ProcResult(7, "failed test", ""))
-    approver = ForeignApprover(ApprovalAnswer.ALLOW)
+    approver = ForeignApprover(Decision.ALLOW)
     call = ToolCall("run_command", {"argv": ["python", "-m", "pytest"]})
     model = ForeignModel([[ModelChunk(tool_call=call)], [ModelChunk(text="reviewed")]])
 
-    @plugin
-    async def foreign_services(scope: Scope):
-        scope.provide(Shell, shell)
-        scope.provide(Approver, approver)
-        yield
+    class ForeignServices(Plugin):
+        async def setup(self, scope: PluginScope) -> None:
+            scope.provide(ShellBackend, shell)
+            scope.provide(Approver, approver)
 
-    @plugin(needs=[Approver])
-    async def policy(scope: Scope):
-
-        @scope.on(ToolPolicy)
-        async def ask(event, next_):
-            return PolicyDecision.ASK
-
-        yield
+    class Policy(Plugin, needs=[Approver]):
+        async def setup(self, scope: PluginScope) -> None:
+            @scope.on(ToolPolicy)
+            async def ask(event, next_):
+                return Decision.ASK
 
     assert ForeignShell.__bases__ == (object,)
     assert ForeignApprover.__bases__ == (object,)
     harness = Application(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            foreign_services(),
-            ShellTools(tmp_path),
-            policy(),
-        ],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[ForeignServices(), Shell(tmp_path), Policy()],
     )
     async with harness.session() as agent:
         result = await agent.run("Run the tests.")

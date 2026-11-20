@@ -15,7 +15,7 @@ the asking task's remaining execution budget.
 ```python
 from harnessed import Agent, Plugin, ToolContext, tool
 from harnessed.kernel import Inject
-from harnessed.plugins import Approvals
+from harnessed import Approvals
 
 
 class DeploymentTools(Plugin):
@@ -29,14 +29,8 @@ class DeploymentTools(Plugin):
 
 agent = Agent(
     model=model,
-    plugins=[
-        DeploymentTools(),
-        Approvals(
-            allow=[DeploymentTools.deploy],
-            approver=ask_user,
-            timeout=120,
-        ),
-    ],
+    plugins=[DeploymentTools()],
+    approvals=Approvals(approver=ask_user, timeout=120),
 )
 ```
 
@@ -44,13 +38,12 @@ agent = Agent(
 The framework supplies the `Inject[ToolContext]` parameter; its name `context` is ordinary
 Python naming. `deploy` is the model-facing tool. `context.approve()` asks for
 permission during that tool's execution; it is neither a tool nor a hook.
-The explicit allow rule lets this tool own its confirmation instead of also
-asking before entering the tool.
+The application allows the outer call by default. The tool asks when it reaches the deployment step.
 
 For an approval outside a tool, the existing lower-level API is
 `await session.approvals.request(call, reason, timeout=30)`, with a `ToolCall`
-identifying the action. It returns `ApprovalAnswer`; `context.approve()` returns
-`True` for `ALLOW` or `ALWAYS`, and `False` for `DENY`.
+identifying the action. It returns `Decision`; `context.approve()` returns
+`True` for `ALLOW`, and `False` for `DENY`.
 
 ## Two levels, one approval owner
 

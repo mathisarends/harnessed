@@ -2,7 +2,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal
 
-from harnessed.models.messages import SpillRef, UserMessage
+from harnessed.models import UserMessage
+from harnessed.models.messages import SpillRef
 
 from .base import DurableEvent, Identifier, StepNumber
 from .kinds import EventKind

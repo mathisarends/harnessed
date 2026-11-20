@@ -5,8 +5,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from harnessed.models.assets import AssetStore
-from harnessed.models.messages import (
+from harnessed.models import (
     ContentPart,
     ImageDetail,
     ImagePart,
@@ -16,6 +15,7 @@ from harnessed.models.messages import (
     UserMessage,
     user,
 )
+from harnessed.models.assets import AssetStore
 
 
 @dataclass(frozen=True)

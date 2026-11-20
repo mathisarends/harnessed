@@ -4,14 +4,13 @@ import json
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import AgentLoop, Plugin, PolicyDecision, StopReason, ToolCall, tool
+from harnessed import AgentLoop, Approvals, Decision, Plugin, tool
 from harnessed.errors import OutputTokenLimit
 from harnessed.events import InboxAddedEvent, InboxMode, TextDeltaEvent
 from harnessed.events.codec import decode_event, encode_event
 from harnessed.events.stream import TurnResultEvent
 from harnessed.events.turn import TurnLimits
-from harnessed.models import ModelChunk, ModelUsage, TokenLimitBehavior, user
-from harnessed.plugins import Approvals
+from harnessed.models import ModelChunk, ModelUsage, StopReason, TokenLimitBehavior, ToolCall, user
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit
 
@@ -35,7 +34,7 @@ class TwoTurns(CallbackModel):
 async def test_concurrent_runs_return_their_own_text_usage_and_turn_without_waiting_for_idle():
     model = TwoTurns()
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+        model=model, approvals=Approvals(default=Decision.ALLOW)
     ).session() as session:
         queued = asyncio.Event()
 
@@ -67,7 +66,7 @@ async def test_concurrent_runs_return_their_own_text_usage_and_turn_without_wait
 async def test_stream_ends_with_its_turn_and_does_not_emit_the_following_turn():
     model = TwoTurns()
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+        model=model, approvals=Approvals(default=Decision.ALLOW)
     ).session() as session:
 
         async def collect():
@@ -98,8 +97,8 @@ async def test_public_max_token_policies_return_typed_stop_reasons_or_fail(
 ) -> None:
     import pytest
 
-    from harnessed import Agent, StopReason
-    from harnessed.models import AssistantMessage, ModelResponse
+    from harnessed import Agent
+    from harnessed.models import AssistantMessage, ModelResponse, StopReason
     from harnessed.testing import ScriptedModel
 
     partial = ModelResponse(AssistantMessage("partial"), stop_reason=StopReason.MAX_TOKENS)
@@ -120,8 +119,8 @@ async def test_public_max_token_policies_return_typed_stop_reasons_or_fail(
 
 
 async def test_step_limit_takes_precedence_over_the_last_model_finish_reason():
-    from harnessed import Agent, StopReason
-    from harnessed.models import AssistantMessage, ModelResponse
+    from harnessed import Agent
+    from harnessed.models import AssistantMessage, ModelResponse, StopReason
     from harnessed.testing import ScriptedModel
 
     partial = ModelResponse(AssistantMessage("partial"), stop_reason=StopReason.MAX_TOKENS)

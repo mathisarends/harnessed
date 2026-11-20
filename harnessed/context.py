@@ -10,7 +10,9 @@ from harnessed.errors import ConfigError
 from harnessed.kernel import PluginScope
 from harnessed.models import Model
 from harnessed.models.pydantic_ai import PydanticAIModel
+from harnessed.runtime.budget import ContextBudget
 from harnessed.runtime.compaction import (
+    DEFAULT_COMPACTION_PROMPT,
     CompactionContext,
     CompactionPolicy,
     CompactionPrompt,
@@ -20,8 +22,6 @@ from harnessed.runtime.compaction import (
     Summarizer,
     Summary,
 )
-from harnessed.runtime.plugin import Plugin
-from harnessed.runtime.tokens import TokenCounter
 
 _CONFIG = ConfigDict(strict=True, extra="forbid", allow_inf_nan=False, hide_input_in_errors=True)
 
@@ -29,9 +29,12 @@ _CONFIG = ConfigDict(strict=True, extra="forbid", allow_inf_nan=False, hide_inpu
 @dataclass(frozen=True, config=_CONFIG)
 class _AtRatio:
     at: Annotated[float, Field(gt=0, le=1)]
+    fallback_tokens: Annotated[int, Field(ge=1)] | None = None
 
     def __call__(self, state: ContextState) -> bool:
         if state.ratio is None:
+            if self.fallback_tokens is not None:
+                return state.input_tokens + state.reserve_tokens >= self.fallback_tokens
             raise ConfigError("Ratio compaction requires a known or configured context window")
         return state.ratio >= self.at
 
@@ -68,7 +71,7 @@ class CompactionConfig(CompactionSettings):
     trigger: _Trigger = _DEFAULT_TRIGGER
 
 
-class Compaction(Plugin[CompactionConfig], slot="compaction"):
+class Compaction:
     """Summarize older history and retain complete steps across turn boundaries.
 
     Trigger ratios include reserved output; target ratios measure input only.
@@ -80,7 +83,9 @@ class Compaction(Plugin[CompactionConfig], slot="compaction"):
     def __init__(
         self,
         *,
-        trigger: Callable[[ContextState], bool] = _DEFAULT_TRIGGER,
+        trigger: Callable[[ContextState], bool] | None = None,
+        at: float | None = None,
+        fallback_tokens: int | None = None,
         llm: Model | str | None = None,
         prompt: CompactionPrompt | None = None,
         summarizer: Summarizer | None = None,
@@ -104,21 +109,22 @@ class Compaction(Plugin[CompactionConfig], slot="compaction"):
             and (not isinstance(prompt, str) or not prompt.strip())
         ):
             raise ConfigError("Compaction prompt must be a non-empty string or factory")
-        super().__init__(
-            needs=[Model, TokenCounter],
-            config=CompactionConfig(
-                trigger=trigger,
-                keep_last_steps=keep_last_steps,
-                target_ratio=target_ratio,
-                target_tokens=target_tokens,
-                max_summary_tokens=max_summary_tokens,
-            ),
+        if trigger is not None and (at is not None or fallback_tokens is not None):
+            raise ConfigError("Choose a custom trigger or a ratio")
+        self.config = CompactionConfig(
+            trigger=trigger
+            if trigger is not None
+            else _AtRatio(0.8 if at is None else at, fallback_tokens),
+            keep_last_steps=keep_last_steps,
+            target_ratio=target_ratio,
+            target_tokens=target_tokens,
+            max_summary_tokens=max_summary_tokens,
         )
         self.summarizer = summarizer
         self.llm = llm
         self.prompt = prompt
 
-    async def setup(self, scope: PluginScope) -> None:
+    async def install(self, scope: PluginScope) -> None:
         backend = PydanticAIModel(self.llm) if isinstance(self.llm, str) else self.llm
         if isinstance(backend, AbstractAsyncContextManager):
             await scope.enter(backend)
@@ -130,11 +136,30 @@ class Compaction(Plugin[CompactionConfig], slot="compaction"):
         )
 
 
+@dataclass(frozen=True, config=ConfigDict(strict=True, arbitrary_types_allowed=True))
+class Context:
+    """Bound model input and individual tool results. Summarize history when configured."""
+
+    max_tokens: Annotated[int, Field(ge=1)] | None = None
+    max_tool_output_chars: Annotated[int, Field(ge=256)] = 32_000
+    compaction: Compaction | None = None
+    reserve_tokens: Annotated[int, Field(ge=0)] = 0
+
+    async def install(self, scope: PluginScope) -> None:
+        scope.provide(ContextBudget, ContextBudget(self.max_tokens, self.reserve_tokens))
+        if self.compaction is not None:
+            await self.compaction.install(scope)
+
+
 __all__ = [
     "Compaction",
     "CompactionConfig",
     "CompactionContext",
+    "CompactionPrompt",
     "CompactionRequest",
+    "Context",
+    "ContextState",
+    "DEFAULT_COMPACTION_PROMPT",
     "Summarizer",
     "Summary",
     "at_ratio",

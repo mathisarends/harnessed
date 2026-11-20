@@ -3,7 +3,8 @@ from typing import Annotated
 
 from pydantic import Field
 
-from harnessed.models.messages import OutputTruncation, ToolResult
+from harnessed.models import ToolResult
+from harnessed.models.messages import OutputTruncation
 
 from .plugin import PluginConfig
 
@@ -18,7 +19,7 @@ _DEFAULTS = ToolOutputLimitConfig()
 class ToolOutputLimit:
     """Bound final tool results before they enter the durable log and model history.
 
-    The session-wide limit is ``AgentLoop(max_tool_output=...)``; tools may
+    The session-wide limit is ``Context(max_tool_output_chars=...)``; tools may
     declare their own limit for individual results.
     """
 

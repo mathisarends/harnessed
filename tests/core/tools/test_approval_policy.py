@@ -1,173 +1,96 @@
+from enum import StrEnum
+
 import pytest
 
-from harnessed import Agent, Plugin, PolicyDecision, ToolCall, tool
-from harnessed.events import PolicySource, ToolPolicyAppliedEvent
-from harnessed.hooks import ToolPolicy
-from harnessed.plugins import Approvals
-from harnessed.sessions import SessionContext
+from harnessed import Agent, Approvals, Decision, Plugin, tool
+from harnessed.models import ToolCall
 from harnessed.testing import ScriptedModel, call
 from harnessed.tools import ToolRegistry
 
 
-@pytest.mark.parametrize(
-    "allow,ask,deny,confirm,readonly,policy,default,expected,policy_called",
-    [
-        (True, True, True, True, False, None, PolicyDecision.ALLOW, PolicyDecision.DENY, False),
-        (
-            True,
-            True,
-            False,
-            False,
-            True,
-            PolicyDecision.DENY,
-            PolicyDecision.ALLOW,
-            PolicyDecision.ASK,
-            False,
-        ),
-        (
-            True,
-            False,
-            False,
-            True,
-            False,
-            PolicyDecision.DENY,
-            PolicyDecision.ASK,
-            PolicyDecision.ALLOW,
-            False,
-        ),
-        (
-            False,
-            False,
-            False,
-            True,
-            False,
-            PolicyDecision.ALLOW,
-            PolicyDecision.ALLOW,
-            PolicyDecision.ASK,
-            False,
-        ),
-        (
-            False,
-            False,
-            False,
-            False,
-            True,
-            PolicyDecision.DENY,
-            PolicyDecision.DENY,
-            PolicyDecision.ALLOW,
-            False,
-        ),
-        (
-            False,
-            False,
-            False,
-            False,
-            False,
-            PolicyDecision.DENY,
-            PolicyDecision.ALLOW,
-            PolicyDecision.DENY,
-            True,
-        ),
-        (False, False, False, False, False, None, PolicyDecision.ASK, PolicyDecision.ASK, True),
-        (False, False, False, False, False, None, PolicyDecision.ALLOW, PolicyDecision.ALLOW, True),
-        (
-            False,
-            False,
-            False,
-            False,
-            False,
-            PolicyDecision.ASK,
-            PolicyDecision.ALLOW,
-            PolicyDecision.ASK,
-            True,
-        ),
-        (False, False, False, False, False, None, PolicyDecision.DENY, PolicyDecision.DENY, True),
-    ],
-)
-async def test_approval_precedence(
-    allow: bool,
-    ask: bool,
-    deny: bool,
-    confirm: bool,
-    readonly: bool,
-    policy: PolicyDecision | None,
-    default: PolicyDecision,
-    expected: PolicyDecision,
-    policy_called: bool,
-) -> None:
-    asked, executed, policies = [], [], []
+class DocumentAction(StrEnum):
+    PUBLISH = "publish"
 
-    class Work(Plugin):
-        @tool(confirm=confirm, readonly=readonly)
-        def work(self) -> str:
-            executed.append(True)
-            return "done"
 
-    def decide(request: ToolCall) -> PolicyDecision | None:
-        policies.append(request)
-        return policy
+class OtherAction(StrEnum):
+    PUBLISH = "publish"
 
-    approvals = Approvals(
-        allow=[Work.work] if allow else (),
-        ask=[Work.work] if ask else (),
-        deny=[Work.work] if deny else (),
-        policy=decide,
-        default=default,
-        approver=lambda request: asked.append(request) or True,
-    )
+
+class Documents(Plugin):
+    @tool(action=DocumentAction.PUBLISH, name="publish_revision")
+    def send(self) -> str:
+        return "published"
+
+    @tool(readonly=True, action=OtherAction.PUBLISH)
+    def inspect(self) -> str:
+        return "read"
+
+
+async def test_actions_survive_method_renames_and_strict_defaults_cover_readonly():
+    result = await Agent(
+        model=ScriptedModel([call(Documents.send), call(Documents.inspect), "done"]),
+        plugins=[Documents()],
+        approvals=Approvals(allow=[DocumentAction.PUBLISH]),
+    ).run("publish")
+    assert [item.status for _, item in result.tool_calls] == ["ok", "denied"]
+
+
+def test_conflicting_rules_require_an_unambiguous_decision():
+    with pytest.raises(ValueError, match="Conflicting"):
+        Approvals(allow=[DocumentAction.PUBLISH], ask=[DocumentAction.PUBLISH])
+    Approvals(allow=[DocumentAction.PUBLISH], deny=[OtherAction.PUBLISH])
+
+
+async def test_method_policy_is_bound_to_the_prepared_registration():
+    policy = Approvals(allow=[Documents.send], default=Decision.DENY)
     async with Agent(
-        model=ScriptedModel([call(Work.work), "finished"]),
-        plugins=[Work(), approvals],
-    ).session() as session:
-        result = await session.run("Work")
-        applied = session.last(ToolPolicyAppliedEvent)
-    assert bool(asked) is (expected is PolicyDecision.ASK)
-    assert bool(policies) is policy_called
-    assert bool(executed) is (expected is not PolicyDecision.DENY)
-    assert result.tool_calls[0][1].is_error is (expected is PolicyDecision.DENY)
-    assert applied is not None
-    assert applied.decision is (
-        PolicyDecision.DENY if expected is PolicyDecision.DENY else PolicyDecision.ALLOW
-    )
-    assert applied.source is (
-        PolicySource.APPROVAL if expected is PolicyDecision.ASK else PolicySource.POLICY
-    )
-
-
-def test_convenience_policies_and_conflicting_tool_flags():
-    assert Approvals(default=PolicyDecision.ALLOW).default is PolicyDecision.ALLOW
-    assert Approvals(default=PolicyDecision.ASK).default is PolicyDecision.ASK
-    with pytest.raises(TypeError, match="cannot be combined"):
-        tool(readonly=True, confirm=True)(lambda: "unused")
-
-
-async def test_approval_uses_the_prepared_tool_flags_after_replacement():
-    asked = []
-
-    class Work(Plugin):
-        @tool(confirm=True)
-        def work(self) -> str:
-            return "original"
-
-    def replacement() -> str:
-        return "replacement"
-
-    async with Agent(
-        model=ScriptedModel([]),
-        plugins=[
-            Work(),
-            Approvals(
-                default=PolicyDecision.ALLOW, approver=lambda request: asked.append(request) or True
-            ),
-        ],
+        model=ScriptedModel([]), plugins=[Documents()], approvals=policy
     ).session() as session:
         registry = session.scope[ToolRegistry]
-        plan = registry.plan(ToolCall("work"))
-        registry.register(replacement, name="work", override=True, readonly=True)
-        assert plan.tool is not None and plan.tool.confirm
-        decision = await session.scope.dispatch(
-            ToolPolicy(plan.call, session.scope[SessionContext], tool=plan.tool),
-            default=lambda: PolicyDecision.ALLOW,
-        )
-    assert decision is PolicyDecision.ALLOW
-    assert len(asked) == 1
+        original = registry.plan(ToolCall("publish_revision"))
+        registry.register(lambda: "replacement", name="publish_revision", override=True)
+        replacement = registry.plan(ToolCall("publish_revision"))
+        assert policy.decide(original) is Decision.ALLOW
+        assert policy.decide(replacement) is Decision.DENY
+
+
+@pytest.mark.parametrize(
+    ("policy", "statuses"),
+    [
+        (None, ["ok", "ok"]),
+        (Approvals(), ["ok", "ok"]),
+        (Approvals(allow=[]), ["denied", "denied"]),
+        (Approvals(deny=[DocumentAction.PUBLISH]), ["denied", "ok"]),
+        (Approvals(ask=[DocumentAction.PUBLISH]), ["unavailable", "ok"]),
+    ],
+)
+async def test_omitted_empty_and_selective_rules(policy, statuses):
+    model = ScriptedModel([call(Documents.send), call(Documents.inspect), "done"])
+    agent = Agent(model=model, plugins=[Documents()], approvals=policy)
+    result = await agent.run("check")
+    assert [output.status for _, output in result.tool_calls] == statuses
+
+
+async def test_remembered_action_covers_new_wire_name_but_not_an_unrelated_registration():
+    class Exports(Plugin):
+        @tool(action=DocumentAction.PUBLISH)
+        def export(self) -> str:
+            return "exported"
+
+    requests = []
+
+    def respond(request):
+        requests.append(request.call.name)
+        return request.allow(remember=True)
+
+    model = ScriptedModel(
+        [call(Documents.send), call(Exports.export), call(Documents.inspect), "done"]
+    )
+    agent = Agent(
+        model=model,
+        plugins=[Documents(), Exports()],
+        approvals=Approvals(default=Decision.ASK, approver=respond),
+    )
+    result = await agent.run("publish and inspect")
+    assert [item.status for _, item in result.tool_calls] == ["ok", "ok", "ok"]
+    assert requests == ["publish_revision", "inspect"]

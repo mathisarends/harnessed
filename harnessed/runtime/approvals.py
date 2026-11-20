@@ -12,7 +12,8 @@ from harnessed.events import (
     ApprovalStatus,
 )
 from harnessed.kernel import Scope
-from harnessed.models.messages import ApprovalAnswer, ToolCall
+from harnessed.models import Decision, ToolCall
+from harnessed.models.messages import ApprovalResponse
 from harnessed.sessions import SessionContext
 from harnessed.sessions.log import SessionLog
 from harnessed.tools import suspend_tool_execution
@@ -40,16 +41,16 @@ class LiveApproval:
         self.call = request.call
         self.reason = request.reason
         loop = asyncio.get_running_loop()
-        self._decision: asyncio.Future[ApprovalAnswer | None] = loop.create_future()
+        self._decision: asyncio.Future[ApprovalResponse | None] = loop.create_future()
         self._ack: asyncio.Future[Exception | None] = loop.create_future()
 
-    async def answer(self, decision: ApprovalAnswer) -> None:
-        if not isinstance(decision, ApprovalAnswer):
-            raise TypeError("Approval answers must be ALLOW, DENY or ALWAYS")
+    async def answer(self, decision: ApprovalResponse) -> None:
+        if not isinstance(decision, ApprovalResponse):
+            raise TypeError("Approval answers must be an allow or deny response")
         if self._decision.done():
             if self._decision.cancelled() or self._decision.result() is None:
                 raise ApprovalUnavailable("This approval is no longer pending")
-            if self._decision.result() is not decision:
+            if self._decision.result() != decision:
                 raise ValueError("An approval cannot change its submitted decision")
         else:
             self._decision.set_result(decision)
@@ -57,7 +58,7 @@ class LiveApproval:
         if failure is not None:
             raise failure
 
-    async def decision(self) -> ApprovalAnswer | None:
+    async def decision(self) -> ApprovalResponse | None:
         """Wait for an answer; None means the approval closed without one."""
         return await self._decision
 
@@ -118,33 +119,13 @@ class SessionApprovals:
     def grant_for(self, tool: str, *, scope: str) -> Approval | None:
         return self.log.approvals.grant_for(tool, scope=scope)
 
-    async def answer(self, request_id: str, decision: ApprovalAnswer) -> None:
-        self.control.check_open()
-        if not isinstance(decision, ApprovalAnswer):
-            raise TypeError("Approval answers must be ALLOW, DENY or ALWAYS")
-        pending = self._live.get(request_id)
-        if pending is not None:
-            await pending.answer(decision)
-            return
-        record = self.log.approval(request_id)
-        if (
-            record is not None
-            and record.resolution is not None
-            and record.resolution.status == ApprovalStatus.ANSWERED
-        ):
-            if record.decision is not decision:
-                raise ValueError("An approval cannot change its submitted decision")
-            return
-        latest = self.log.last(ApprovalResolvedEvent)
-        if (
-            latest is not None
-            and latest.request_id == request_id
-            and latest.status == ApprovalStatus.ANSWERED
-        ):
-            if latest.decision is not decision:
-                raise ValueError("An approval cannot change its submitted decision")
-            return
-        raise ApprovalUnavailable("This approval is no longer pending")
+    async def allow(self, request_id: str, *, remember: bool = False) -> None:
+        """Approve this request, optionally retaining its grant for the current session."""
+        await self._answer(request_id, ApprovalResponse(Decision.ALLOW, remember=remember))
+
+    async def deny(self, request_id: str) -> None:
+        """Decline this request and acknowledge its durable resolution."""
+        await self._answer(request_id, ApprovalResponse(Decision.DENY))
 
     async def request(
         self,
@@ -152,9 +133,10 @@ class SessionApprovals:
         reason: str,
         *,
         scope: str = "tool-policy",
+        identity: str | None = None,
         approver: Approver | None = None,
         timeout: float | None = None,
-    ) -> ApprovalAnswer:
+    ) -> Decision:
         """Ask for approval using a response timeout in seconds.
 
         ``None`` inherits ``Approvals(timeout=...)``. A finite positive override
@@ -165,18 +147,24 @@ class SessionApprovals:
         if timeout is None:
             timeout = self.scope.get(ApprovalsConfig, DEFAULT_APPROVALS).timeout
         validate_approval_timeout(timeout)
-        grant = self.log.approval_grant(call.name, scope=scope)
+        grant = self.log.approval_grant(
+            identity if identity is not None else call.name, scope=scope
+        )
         request = ApprovalRequestedEvent(
-            uuid4().hex, call, reason, scope, grant.request_id if grant else None
+            uuid4().hex, call, reason, scope, grant.request_id if grant else None, identity
         )
         await self.log.append(request)
         try:
             if grant is not None:
-                decision = ApprovalAnswer.ALWAYS
+                decision = ApprovalResponse(Decision.ALLOW, remember=True)
             else:
                 decision = await self._answer_request(request, approver, timeout=timeout)
-            await self.log.append(ApprovalResolvedEvent(request.request_id, decision))
-            return decision
+            await self.log.append(
+                ApprovalResolvedEvent(
+                    request.request_id, decision.decision, remember=decision.remember
+                )
+            )
+            return decision.decision
         except BaseException as exc:
             record = self.log.approval(request.request_id)
             if record is not None and record.pending:
@@ -199,13 +187,42 @@ class SessionApprovals:
         if not record.revoked:
             await self.log.append(ApprovalRevokedEvent(request_id, reason))
 
+    async def _answer(self, request_id: str, decision: ApprovalResponse) -> None:
+        self.control.check_open()
+        pending = self._live.get(request_id)
+        if pending is not None:
+            await pending.answer(decision)
+            return
+        record = self.log.approval(request_id)
+        if (
+            record is not None
+            and record.resolution is not None
+            and record.resolution.status == ApprovalStatus.ANSWERED
+        ):
+            if (
+                record.decision is not decision.decision
+                or record.resolution.remember != decision.remember
+            ):
+                raise ValueError("An approval cannot change its submitted decision")
+            return
+        latest = self.log.last(ApprovalResolvedEvent)
+        if (
+            latest is not None
+            and latest.request_id == request_id
+            and latest.status == ApprovalStatus.ANSWERED
+        ):
+            if latest.decision is not decision.decision or latest.remember != decision.remember:
+                raise ValueError("An approval cannot change its submitted decision")
+            return
+        raise ApprovalUnavailable("This approval is no longer pending")
+
     async def _answer_request(
         self,
         request: ApprovalRequestedEvent,
         approver: Approver | None,
         *,
         timeout: float,
-    ) -> ApprovalAnswer:
+    ) -> ApprovalResponse:
         with span(
             "harnessed.approval_wait",
             scope=self.scope,
@@ -214,7 +231,7 @@ class SessionApprovals:
             call_id=request.call.id,
         ) as current:
             decision = await self._wait(request, approver, timeout=timeout)
-            current.set_attribute("decision", decision)
+            current.set_attribute("decision", decision.decision)
             return decision
 
     async def _wait(
@@ -223,7 +240,7 @@ class SessionApprovals:
         approver: Approver | None,
         *,
         timeout: float,
-    ) -> ApprovalAnswer:
+    ) -> ApprovalResponse:
         try:
             with suspend_tool_execution():
                 async with asyncio.timeout(timeout):
@@ -241,8 +258,10 @@ class SessionApprovals:
                         )
             if decision is None:
                 raise ApprovalUnavailable("No approval responder answered the request")
-            if not isinstance(decision, ApprovalAnswer):
-                raise TypeError("Approvers must return ALLOW, DENY or ALWAYS")
+            if isinstance(decision, Decision):
+                return ApprovalResponse(decision)
+            if not isinstance(decision, ApprovalResponse):
+                raise TypeError("Approvers must return an allow or deny response")
             return decision
         except ApprovalUnavailable:
             raise

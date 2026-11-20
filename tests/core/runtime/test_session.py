@@ -3,17 +3,7 @@ import asyncio
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import (
-    AgentLoop,
-    ApprovalAnswer,
-    Inject,
-    Plugin,
-    Session,
-    ToolCall,
-    ToolContext,
-    plugin,
-    tool,
-)
+from harnessed import AgentLoop, Approvals, Plugin, Session, ToolContext, tool
 from harnessed.events import (
     AssistantMessageEvent,
     ModelRequestedEvent,
@@ -24,11 +14,11 @@ from harnessed.events import (
     TurnOutcome,
     TurnStartedEvent,
 )
-from harnessed.kernel import hook
-from harnessed.models import ModelChunk, ModelInfo, StopReason
-from harnessed.models.messages import PolicyDecision, Role, ToolStatus
-from harnessed.plugins import Approvals, Service
-from harnessed.runtime.approval_policy import Approver, CallbackApprover, ToolApprovalGuard
+from harnessed.kernel import Inject, PluginScope, hook, needs
+from harnessed.models import Decision, ModelChunk, ModelInfo, Role, StopReason, ToolCall, ToolStatus
+from harnessed.models.messages import ApprovalResponse
+from harnessed.plugins import Service
+from harnessed.runtime.approval_policy import Approver, CallbackApprover
 from harnessed.runtime.hooks import (
     ExecuteTool,
     PreStep,
@@ -59,7 +49,9 @@ async def test_streaming_tool_loop_and_exact_recorded_requests():
         ],
         info=ModelInfo("test-model", context_window=128_000),
     )
-    harness = Application(model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), features])
+    harness = Application(
+        model=model, approvals=Approvals(default=Decision.ALLOW), plugins=[features]
+    )
     async with harness.session() as agent:
         agent_audit = Audit(agent)
         async with agent.stream("Add 1 and 2") as run_stream:
@@ -93,7 +85,7 @@ class PausingModel(CallbackModel):
 async def test_steering_enters_next_step_while_another_run_gets_its_own_turn():
     model = PausingModel()
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+        model=model, approvals=Approvals(default=Decision.ALLOW)
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.submit("first")
@@ -132,11 +124,10 @@ async def test_denied_policy_never_enters_execution_or_review_regardless_of_orde
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("remove"))], "Denied."])
     harness = Application(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            features,
-            ToolApprovalGuard(risky={"remove"}, ask=lambda call: False),
-        ],
+        approvals=Approvals(
+            default=Decision.ALLOW, ask={features.remove}, approver=lambda call: False
+        ),
+        plugins=[features],
     )
     async with harness.session() as agent:
         result = await agent.run("remove")
@@ -169,19 +160,15 @@ async def test_approval_always_is_session_local_and_review_can_steer_nudges():
 
     def approve(request):
         asked.append(request.call.name)
-        return ApprovalAnswer.ALWAYS
+        return ApprovalResponse(Decision.ALLOW, remember=True)
 
     model = ScriptedModel(
         [[ModelChunk(tool_call=ToolCall("work")), ModelChunk(tool_call=ToolCall("work"))], "Final."]
     )
     harness = Application(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            features,
-            Service(Approver, CallbackApprover(approve)),
-            ToolApprovalGuard(risky={"work"}),
-        ],
+        approvals=Approvals(default=Decision.ALLOW, ask={features.work}),
+        plugins=[features, Service(Approver, CallbackApprover(approve))],
     )
     async with harness.session() as agent:
         agent_audit = Audit(agent)
@@ -220,7 +207,9 @@ async def test_class_plugin_state_is_fresh_for_every_session_and_methods_support
             "two",
         ]
     )
-    harness = Application(model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), template])
+    harness = Application(
+        model=model, approvals=Approvals(default=Decision.ALLOW), plugins=[template]
+    )
     for _ in range(2):
         async with harness.session() as agent:
             result = await agent.run("count")
@@ -236,14 +225,20 @@ async def test_class_plugin_state_is_fresh_for_every_session_and_methods_support
 async def test_function_plugin_can_inject_session_context_with_explicit_needs():
     observed = []
 
-    @plugin(needs=(SessionContext, ToolRegistry))
-    async def observer(scope, agent: Inject[SessionContext], registry: Inject[ToolRegistry]):
-        observed.append((agent.id, registry))
-        yield
-        assert agent.status == "closed"
+    class Observer(Plugin, needs=(SessionContext, ToolRegistry)):
+        agent = needs(SessionContext)
+        registry = needs(ToolRegistry)
+
+        async def setup(self, scope: PluginScope) -> None:
+            observed.append((self.agent.id, self.registry))
+
+        async def teardown(self, scope: PluginScope) -> None:
+            assert self.agent.status == "closed"
 
     harness = Application(
-        model=ScriptedModel(["done"]), plugins=[Approvals(default=PolicyDecision.ALLOW), observer()]
+        model=ScriptedModel(["done"]),
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[Observer()],
     )
     async with harness.session() as agent:
         assert observed == [(agent.id, agent.scope[ToolRegistry])]
@@ -272,13 +267,12 @@ async def test_explicit_and_live_registration():
 
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("echo", {"text": "hello"}))], "done"])
     harness = Application(
-        model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), Echo(), Alias()],
+        model=model, approvals=Approvals(default=Decision.ALLOW), plugins=[Echo(), Alias()]
     )
     async with harness.session() as agent:
         handle = await agent.mount(Live())
         seen = []
-        agent.add_hook(ToolCallFinishedEvent, lambda event: seen.append(event.result.content))
+        agent.on(ToolCallFinishedEvent, lambda event: seen.append(event.result.content))
         await agent.run("echo")
         assert seen == ["hello\n\nok"]
         assert {d.name for d in model.requests[0].tools} == {"echo", "alias", "live"}
@@ -288,7 +282,7 @@ async def test_explicit_and_live_registration():
 
 async def test_pre_step_rejection_consumes_input_permanently():
     model = ScriptedModel(["second"])
-    harness = Application(model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)])
+    harness = Application(model=model, approvals=Approvals(default=Decision.ALLOW))
     async with harness.session() as agent:
         agent_audit = Audit(agent)
         reject = True
@@ -311,7 +305,7 @@ async def test_pre_step_rejection_consumes_input_permanently():
 async def test_cancel_before_driver_starts_and_reuse_agent():
     model = ScriptedModel(["after cancel"])
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+        model=model, approvals=Approvals(default=Decision.ALLOW)
     ).session() as agent:
         await agent.submit("discard")
         await agent.abort()
@@ -332,7 +326,7 @@ async def test_cancel_stream_preserves_visible_prefix_and_closes_turn():
             await asyncio.Event().wait()
 
     async with Application(
-        model=PartialModel(), plugins=[Approvals(default=PolicyDecision.ALLOW)]
+        model=PartialModel(), approvals=Approvals(default=Decision.ALLOW)
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.submit("go")
@@ -360,7 +354,7 @@ async def test_cancel_tool_answers_outstanding_call_and_sets_signal():
 
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("wait"))]])
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), bundle]
+        model=model, approvals=Approvals(default=Decision.ALLOW), plugins=[bundle]
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.submit("go")
@@ -383,8 +377,9 @@ async def test_same_harness_rejects_two_live_writers_and_max_steps_bounds_the_lo
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("again"))]] * 2)
     harness = Application(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), bundle],
         loop=AgentLoop(max_steps=2),
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[bundle],
     )
     async with harness.session() as agent:
         agent_audit = Audit(agent)
@@ -409,7 +404,7 @@ async def test_observer_failure_closes_model_iterator_before_run_returns():
                 closed.set()
 
     async with Application(
-        model=ResourceModel(), plugins=[Approvals(default=PolicyDecision.ALLOW)]
+        model=ResourceModel(), approvals=Approvals(default=Decision.ALLOW)
     ).session() as agent:
 
         @agent.on(TextDeltaEvent)
@@ -428,7 +423,7 @@ async def test_policy_ask_routes_to_approver_seam():
     class FeaturesPlugin(Plugin):
         @hook(ToolPolicy)
         async def policy(self, event, next_):
-            return PolicyDecision.ASK
+            return Decision.ASK
 
         @tool
         async def approved(self) -> str:
@@ -438,16 +433,13 @@ async def test_policy_ask_routes_to_approver_seam():
 
     def approve(request):
         asked.append(request.call.name)
-        return ApprovalAnswer.ALLOW
+        return Decision.ALLOW
 
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("approved"))], "done"])
     harness = Application(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            features,
-            Service(Approver, CallbackApprover(approve)),
-        ],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[features, Service(Approver, CallbackApprover(approve))],
     )
     async with harness.session() as agent:
         await agent.run("ask")
@@ -457,7 +449,7 @@ async def test_policy_ask_routes_to_approver_seam():
 async def test_canceling_when_idle_waiter_does_not_cancel_the_agent():
     model = PausingModel()
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+        model=model, approvals=Approvals(default=Decision.ALLOW)
     ).session() as agent:
         await agent.submit("go")
         await model.started.wait()

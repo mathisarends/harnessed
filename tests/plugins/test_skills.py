@@ -4,17 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from harnessed import (
-    Agent,
-    AgentLoop,
-    Instructions,
-    SystemPrompt,
-    ToolCall,
-)
+from harnessed import Agent, Compaction, Context, SystemPrompt
 from harnessed.errors import ConfigError
-from harnessed.models.messages import ToolStatus
-from harnessed.plugins import Compaction, Rules, Skill, Skills, Spill, when
+from harnessed.models import ToolCall, ToolStatus
+from harnessed.plugins import Rules, Skill, Skills, Spill, when
 from harnessed.plugins.skills import SkillCatalog
+from harnessed.prompts import Instructions, SectionDelivery
 from harnessed.prompts.plugin_instructions import PluginInstructions
 from harnessed.testing import ExtractiveSummarizer, ScriptedModel, call
 from harnessed.tools import ToolRegistry
@@ -79,8 +74,8 @@ async def test_catalog_reads_only_frontmatter_once_per_session_and_loads_body_fr
     instructions.write_text("Fixed project rules.", encoding="utf-8")
     app = Agent(
         model=ScriptedModel([]),
-        prompt=SystemPrompt.from_plugins(Instructions.from_file(path=instructions)),
         plugins=[recipe],
+        instructions=SystemPrompt.from_plugins(Instructions.from_file(path=instructions)),
     )
     assert phases == []
     async with app.session() as session:
@@ -320,9 +315,7 @@ async def test_complete_skill_output_is_never_truncated_or_spilled_and_needs_no_
     skills = Skills(Skill(name="notes", description="Write notes.", instructions=instructions))
     spill_9 = Spill(threshold_tokens=1)
     async with Agent(
-        model=model,
-        plugins=[skills, spill_9],
-        loop=AgentLoop(max_tool_output=256),
+        model=model, plugins=[skills, spill_9], context=Context(max_tool_output_chars=256)
     ).session() as session:
         result = (await session.run("Load the notes skill")).tool_calls[0][1]
         assert result.status == ToolStatus.OK and result.spill is None and result.truncation is None
@@ -333,18 +326,18 @@ async def test_complete_skill_output_is_never_truncated_or_spilled_and_needs_no_
 async def test_loaded_instructions_survive_compaction_and_restart_from_the_log(tmp_path):
     original = "Keep the first failing assertion and the exact command."
     skill = Skill(name="testing", description="Run project tests.", instructions=original)
-    policies = [
-        Skills(skill),
-        Compaction(
+    context = Context(
+        compaction=Compaction(
             trigger=lambda state: False,
             keep_last_steps=1,
             summarizer=ExtractiveSummarizer(),
             max_summary_tokens=32,
-        ),
-    ]
+        )
+    )
     app = Agent(
         model=ScriptedModel([call("load_skill", name="testing"), "noise " * 1000]),
-        plugins=policies,
+        plugins=[Skills(skill)],
+        context=context,
     )
     async with app.session() as session:
         await session.run("Run tests")
@@ -372,7 +365,8 @@ async def test_runtime_mount_rejects_system_catalog_before_installing_tools():
     async with Agent(model=ScriptedModel([]), instructions="Fixed rules.").session() as session:
         with pytest.raises(ConfigError, match="system sections"):
             await session.mount(
-                Skills(Skill(name="notes", description="Write notes.", instructions="Be concise."))
+                Skills(Skill(name="notes", description="Write notes.", instructions="Be concise.")),
+                section_delivery=SectionDelivery.ERROR,
             )
         assert session.scope[ToolRegistry].definitions == ()
         assert SkillCatalog not in session.scope
@@ -394,9 +388,7 @@ async def test_discovery_is_not_recursive_and_resource_output_is_complete(tmp_pa
     skills_12 = Skills(Skill.from_dir(root))
     spill_13 = Spill(threshold_tokens=1)
     async with Agent(
-        model=model,
-        plugins=[skills_12, spill_13],
-        loop=AgentLoop(max_tool_output=256),
+        model=model, plugins=[skills_12, spill_13], context=Context(max_tool_output_chars=256)
     ).session() as session:
         result = (await session.run("Read the reference")).tool_calls[0][1]
         assert result.text == text and result.spill is None and result.truncation is None
@@ -412,14 +404,16 @@ async def test_reloading_after_compaction_updates_the_retained_body_even_with_re
         model=model,
         plugins=[
             skills,
-            Compaction(
+            Rules([when(tool="load_skill").note("Follow the complete instructions.")]),
+        ],
+        context=Context(
+            compaction=Compaction(
                 trigger=lambda state: False,
                 keep_last_steps=1,
                 summarizer=ExtractiveSummarizer(),
                 max_summary_tokens=32,
-            ),
-            Rules([when(tool="load_skill").note("Follow the complete instructions.")]),
-        ],
+            )
+        ),
     ).session() as session:
         await session.run("Load")
         assert await session.compact() is not None

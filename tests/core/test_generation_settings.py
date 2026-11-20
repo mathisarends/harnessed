@@ -4,15 +4,12 @@ from dataclasses import FrozenInstanceError
 import pytest
 from pydantic import ValidationError
 
-from harnessed import Agent
+from harnessed import Agent, Plugin
 from harnessed.events import ModelRequestedEvent
 from harnessed.events.codec import decode_event, encode_event
-from harnessed.kernel import (  # smelt: ignore[SMT107] -- Public decorator, not a module.
-    Scope,
-    plugin,
-)
-from harnessed.models import GenerationSettings, ModelInfo
-from harnessed.models.model import Model, ModelRequest, resolve_request_settings
+from harnessed.kernel import PluginScope
+from harnessed.models import GenerationSettings, Model, ModelInfo, ModelRequest
+from harnessed.models.model import resolve_request_settings
 from harnessed.runtime.hooks import PrepareRequest
 from harnessed.testing import ScriptedModel
 
@@ -81,23 +78,22 @@ async def test_request_uses_the_model_binding_captured_before_request_hooks():
         ["replacement"], info=ModelInfo("replacement"), settings=GenerationSettings(max_tokens=200)
     )
 
-    @plugin
-    async def swap(scope: Scope):
-        changed = False
+    class Swap(Plugin):
+        async def setup(self, scope: PluginScope) -> None:
+            changed = False
 
-        async def configure(
-            event: PrepareRequest, next_: Callable[[], Awaitable[ModelRequest]]
-        ) -> ModelRequest:
-            nonlocal changed
-            if not changed:
-                scope.provide(Model, replacement)
-                changed = True
-            return await next_()
+            async def configure(
+                event: PrepareRequest, next_: Callable[[], Awaitable[ModelRequest]]
+            ) -> ModelRequest:
+                nonlocal changed
+                if not changed:
+                    scope.provide(Model, replacement)
+                    changed = True
+                return await next_()
 
-        scope.on(PrepareRequest, configure)
-        yield
+            scope.on(PrepareRequest, configure)
 
-    async with Agent(model=original, plugins=[swap()]).session() as session:
+    async with Agent(model=original, plugins=[Swap()]).session() as session:
         assert (await session.run("First")).text == "original"
         assert session.last(ModelRequestedEvent).model == original.info
         assert original.requests[0].settings.max_tokens == 100

@@ -4,16 +4,25 @@ from pathlib import Path
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import File, Image, Inject, Plugin, PolicyDecision, SessionState, ToolCall, tool
+from harnessed import Approvals, Decision, File, Image, Plugin, tool
 from harnessed.errors import SessionClosed
 from harnessed.events import ModelRequestedEvent, ObservationRecordedEvent
 from harnessed.events.codec import decode_event, encode_event
-from harnessed.kernel import hook
-from harnessed.models import ModelChunk
-from harnessed.models.messages import ImageDetail, ImagePart, Role, TextPart, UserMessage, user
-from harnessed.plugins import Approvals, Service
-from harnessed.plugins.filesystem import FileSystemBackend, LocalFileSystem
+from harnessed.kernel import Inject, hook
+from harnessed.models import (
+    ImageDetail,
+    ImagePart,
+    ModelChunk,
+    Role,
+    TextPart,
+    ToolCall,
+    UserMessage,
+    user,
+)
+from harnessed.plugins import LocalWorkspace
+from harnessed.plugins.filesystem import FileSystemBackend
 from harnessed.runtime.hooks import PrepareRequest, PreStep
+from harnessed.sessions import SessionState
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit, AuditProjection
 
@@ -36,7 +45,7 @@ async def test_file_and_image_attachments_are_snapshotted_in_log_and_wire_payloa
     image.write_bytes(b"image-test-bytes")
     model = ScriptedModel(["reviewed"])
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+        model=model, approvals=Approvals(default=Decision.ALLOW)
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("Review", attachments=[File(diff), Image(image)])
@@ -70,7 +79,7 @@ async def test_steering_carries_attachments_like_a_run(tmp_path):
 async def test_added_context_is_additive_quiet_and_retained_across_turns():
     model = ScriptedModel(["first", "second"])
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+        model=model, approvals=Approvals(default=Decision.ALLOW)
     ).session() as agent:
         await agent.append_message(UserMessage("External change"))
         await agent.append_message(UserMessage("External change"))
@@ -142,7 +151,7 @@ async def test_push_context_from_pre_step_is_in_the_current_request():
 
     model = ScriptedModel(["done"])
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), Recall()]
+        model=model, approvals=Approvals(default=Decision.ALLOW), plugins=[Recall()]
     ).session() as agent:
         await agent.run("my task")
         assert seen == [(True, "my task")]
@@ -164,11 +173,8 @@ async def test_explicit_class_needs_and_injected_dynamic_project_context(tmp_pat
     model = ScriptedModel(["one", "two"])
     async with Application(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            Service(FileSystemBackend, LocalFileSystem(tmp_path)),
-            Project(),
-        ],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[LocalWorkspace(root=tmp_path), Project()],
     ).session() as agent:
         await agent.run("one")
         instructions.write_text("second rules", encoding="utf-8")
@@ -196,7 +202,7 @@ async def test_observations_remain_unchanged_in_later_steps():
 
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("click", {"ref": "button-1"}))], "done"])
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), tools, BrowserObserver()]
+        model=model, approvals=Approvals(default=Decision.ALLOW), plugins=[tools, BrowserObserver()]
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("Open settings")

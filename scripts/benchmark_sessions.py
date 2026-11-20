@@ -11,7 +11,8 @@ from pathlib import Path
 from time import perf_counter
 from typing import override
 
-from harnessed import Agent, SessionState
+from harnessed import Agent, Compaction, Context
+from harnessed.context import every_turns
 from harnessed.models import (
     AssistantMessage,
     GenerationSettings,
@@ -22,7 +23,7 @@ from harnessed.models import (
     ModelResponse,
     ModelUsage,
 )
-from harnessed.plugins import Compaction, every_turns
+from harnessed.sessions import SessionState
 from harnessed.testing import ExtractiveSummarizer
 
 
@@ -71,14 +72,14 @@ class EchoModel(Model):
 async def measure(count: int, chars: int, *, one_shots: bool) -> dict[str, int | float | str]:
     agent = Agent(
         model=EchoModel("answer " * max(1, chars // 7)),
-        plugins=[
-            Compaction(
+        context=Context(
+            compaction=Compaction(
                 trigger=every_turns(4),
                 keep_last_steps=1,
                 max_summary_tokens=32,
                 summarizer=ExtractiveSummarizer(),
-            ),
-        ],
+            )
+        ),
     )
     gc.collect()
     tracemalloc.start()

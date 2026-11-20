@@ -2,11 +2,13 @@ import warnings
 
 import pytest
 
-from harnessed import Agent, Plugin, PluginValidation, Session, SessionLog, tool
+from harnessed import Agent, Plugin, Session, tool
 from harnessed.errors import ConfigError, PluginDependencyError, PluginDependencyWarning
 from harnessed.kernel import Key, PluginScope, needs, observes
 from harnessed.plugins import Service
+from harnessed.runtime.composition import PluginValidation
 from harnessed.sessions import SessionContext
+from harnessed.sessions.log import SessionLog
 from harnessed.testing import ScriptedModel
 
 

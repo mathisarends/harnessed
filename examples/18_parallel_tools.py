@@ -6,11 +6,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import override
 
-from harnessed import Agent, AgentLoop, Plugin, PolicyDecision, Role, ToolCall, tool
+from harnessed import Agent, AgentLoop, Plugin, tool
 from harnessed.events import ToolCallFinishedEvent
-from harnessed.kernel import Inject, PluginScope
-from harnessed.models import ModelChunk
-from harnessed.plugins import Approvals, Filesystem
+from harnessed.kernel import PluginScope, needs
+from harnessed.models import ModelChunk, Role, ToolCall
+from harnessed.plugins import Filesystem, LocalWorkspace
 from harnessed.plugins.filesystem import FileSystemBackend
 from harnessed.testing import ScriptedModel
 
@@ -40,8 +40,8 @@ async def independent_calls():
     model = ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "Lookups finished."])
     async with Agent(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), tools],
         loop=AgentLoop(max_parallel_tools=3),
+        plugins=[tools],
     ).session() as session:
         result = await session.run("Look up records 0, 1 and 2.")
         returned = [event for event in result.events if isinstance(event, ToolCallFinishedEvent)]
@@ -62,13 +62,13 @@ async def writes_with_resource_keys(root: Path):
         return (f"file:{os.path.normcase(str(path))}",)
 
     class DocumentsTools(Plugin):
-        needs = (FileSystemBackend,)
+        fs = needs(FileSystemBackend)
 
         @tool(parallel=True, resources=resources)
-        async def save_document(self, path: str, text: str, fs: Inject[FileSystemBackend]) -> str:
+        async def save_document(self, path: str, text: str) -> str:
             """Save one document in the workspace."""
             writes.append(text)
-            await fs.write(Path(path), text)
+            await self.fs.write(Path(path), text)
             return f"Saved {path}"
 
     tools = DocumentsTools()
@@ -79,14 +79,9 @@ async def writes_with_resource_keys(root: Path):
         ToolCall("save_document", {"path": "./a.txt", "text": "second version"}),
     ]
     model = ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "Documents saved."])
-    filesystem = Filesystem(root)
+    filesystem = Filesystem()
     async with Agent(
-        model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            filesystem,
-            tools,
-        ],
+        model=model, plugins=[LocalWorkspace(root=root), filesystem, tools]
     ).session() as session:
         result = await session.run("Save both documents and then update a.txt.")
         returned = [event for event in result.events if isinstance(event, ToolCallFinishedEvent)]

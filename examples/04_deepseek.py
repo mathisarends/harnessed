@@ -4,28 +4,25 @@ import asyncio
 import os
 from pathlib import Path
 
-from harnessed import (
-    Agent,
-    AgentLoop,
-    ApprovalAnswer,
-    Instructions,
-    SystemPrompt,
-)
+from harnessed import Agent, AgentLoop, Approvals, SystemPrompt
 from harnessed.events import ApprovalNeededEvent, TextDeltaEvent, ToolCallRequestedEvent
-from harnessed.plugins import Filesystem
+from harnessed.models import Decision
+from harnessed.plugins import Filesystem, LocalWorkspace
+from harnessed.prompts import Instructions
 
 
 async def main():
     workspace = Path.cwd()
-    filesystem = Filesystem(root=workspace)
+    filesystem = Filesystem()
     agent = Agent(
+        approvals=Approvals(default=Decision.ASK),
         model=f"deepseek:{os.environ.get('DEEPSEEK_MODEL', 'deepseek-chat')}",
-        prompt=SystemPrompt.from_plugins(
+        plugins=[LocalWorkspace(root=workspace), filesystem],
+        loop=AgentLoop(max_steps=8),
+        instructions=SystemPrompt.from_plugins(
             Instructions(text="Help the user understand this Python project. Answer in English."),
             Instructions.from_file(path=workspace / "AGENTS.md", missing_ok=True),
         ),
-        plugins=[filesystem],
-        loop=AgentLoop(max_steps=8),
     )
     async with agent.session() as session:
         async with session.stream("Read pyproject.toml and explain the package.") as run_stream:
@@ -37,10 +34,10 @@ async def main():
                         print(f"\n-> {call.name}")
                     case ApprovalNeededEvent(request_id=request_id, call=call):
                         answer = await asyncio.to_thread(input, f"Allow {call.name}? [y/N] ")
-                        await session.approvals.answer(
-                            request_id,
-                            ApprovalAnswer.ALLOW if answer.lower() == "y" else ApprovalAnswer.DENY,
-                        )
+                        if answer.lower() == "y":
+                            await session.approvals.allow(request_id)
+                        else:
+                            await session.approvals.deny(request_id)
         print()
 
 

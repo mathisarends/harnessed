@@ -2,30 +2,43 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Mapping
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Self
 
 from pydantic import Field, model_validator
 from pydantic.fields import FieldInfo
 
-from harnessed.kernel import Inject, PluginScope
-from harnessed.models.messages import ToolResult, ToolStatus, result_content, to_dict
-from harnessed.prompts.values import Instructions, SystemPrompt
+from harnessed.kernel import PluginScope, needs
+from harnessed.models import ToolResult, ToolStatus
+from harnessed.models.messages import result_content, to_dict
+from harnessed.prompts import Instructions, SystemPrompt
 from harnessed.runtime.hooks import SessionClosing
 from harnessed.runtime.inbox import SessionInbox
 from harnessed.runtime.plugin import Plugin, PluginConfig
 from harnessed.tools import ToolError, ToolRegistry, tool
+from harnessed.tools.workspace import BackgroundShellBackend as BackgroundShellBackend
+from harnessed.tools.workspace import LocalShell as LocalShell
+from harnessed.tools.workspace import ProcessSnapshot as ProcessSnapshot
+from harnessed.tools.workspace import ProcessState as ProcessState
+from harnessed.tools.workspace import ProcResult as ProcResult
+from harnessed.tools.workspace import ShellBackend as ShellBackend
+from harnessed.tools.workspace import ShellProcess as ShellProcess
 
 from .background import BackgroundCommands, command_result
 from .background import CommandInfo as CommandInfo
 from .background import CommandResult as CommandResult
-from .local import LocalShell as LocalShell
-from .process import BackgroundShellBackend as BackgroundShellBackend
-from .process import ProcessSnapshot as ProcessSnapshot
-from .process import ProcessState as ProcessState
-from .process import ProcResult as ProcResult
-from .process import ShellBackend as ShellBackend
-from .process import ShellProcess as ShellProcess
+
+
+class ShellAction(StrEnum):
+    """Stable approval keys for the built-in shell tools."""
+
+    EXECUTE = "execute"
+    START = "start"
+    READ_OUTPUT = "read_output"
+    WRITE_INPUT = "write_input"
+    TERMINATE = "terminate"
+    LIST = "list"
 
 
 def proc_result(value: ProcResult) -> ToolResult:
@@ -37,7 +50,12 @@ def proc_result(value: ProcResult) -> ToolResult:
     )
 
 
-class ShellToolsConfig(PluginConfig):
+_SHELL_INSTRUCTIONS = Instructions(
+    text=("Run executables with argv. Filter large output and check exit codes before continuing.")
+)
+
+
+class ShellConfig(PluginConfig):
     cwd: Path = Path()
     timeout: Annotated[float, Field(gt=0, le=600)] = 30.0
     max_timeout: Annotated[float, Field(gt=0, le=600)] = 600.0
@@ -49,19 +67,24 @@ class ShellToolsConfig(PluginConfig):
         return self
 
 
-class ShellTools[ConfigT: ShellToolsConfig](Plugin[ConfigT], needs=(ShellBackend, ToolRegistry)):
+class Shell(Plugin[ShellConfig], slot="shell"):
     """Expose commands through a separately owned, replaceable ShellBackend."""
 
+    backend = needs(ShellBackend)
+
     def __init__(
-        self: ShellTools[ShellToolsConfig],
+        self,
         cwd: str | Path = ".",
         *,
         timeout: float = 30.0,
         max_timeout: float = 600.0,
     ) -> None:
         super().__init__(
-            config=ShellToolsConfig(cwd=Path(cwd), timeout=timeout, max_timeout=max_timeout)
+            config=ShellConfig(cwd=Path(cwd), timeout=timeout, max_timeout=max_timeout)
         )
+
+    def instructions(self) -> SystemPrompt:
+        return SystemPrompt(_SHELL_INSTRUCTIONS)
 
     async def setup(self, scope: PluginScope) -> None:
         self.cwd = self.config.cwd
@@ -70,77 +93,20 @@ class ShellTools[ConfigT: ShellToolsConfig](Plugin[ConfigT], needs=(ShellBackend
     def _command_fields(self) -> Mapping[str, FieldInfo]:
         return {"timeout": Field(le=self.config.max_timeout)}
 
-    @tool(timeout_seconds=600, parameter_fields=_command_fields)
+    @tool(action=ShellAction.EXECUTE, timeout_seconds=600, parameter_fields=_command_fields)
     async def run_command(
         self,
         argv: Annotated[list[str], Field(min_length=1)],
         timeout: Annotated[float, Field(gt=0, le=600)] | None = None,
-        *,
-        shell: Inject[ShellBackend],
     ) -> ProcResult:
         """Run argv without shell expansion. Output and execution time are bounded."""
         limit = timeout if timeout is not None else self.config.timeout
         if limit > self.config.max_timeout:
             raise ToolError(f"timeout must not exceed {self.config.max_timeout:g} seconds")
-        return await shell.run(argv, cwd=self.cwd, timeout=limit)
+        return await self.backend.run(argv, cwd=self.cwd, timeout=limit)
 
 
-class ShellConfig(ShellToolsConfig):
-    max_output_bytes: Annotated[int, Field(ge=256)] = 1_048_576
-    env: dict[str, str] | None = None
-
-
-_SHELL_INSTRUCTIONS = Instructions(
-    text=("Run executables with argv. Filter large output and check exit codes before continuing.")
-)
-
-
-class Shell(ShellTools[ShellConfig], slot="shell"):
-    """Expose argv-based commands with safe approval defaults and bounded output."""
-
-    needs = (ToolRegistry,)
-
-    def __init__(
-        self,
-        cwd: str | Path = ".",
-        *,
-        implementation: ShellBackend | None = None,
-        timeout: float = 30.0,
-        max_timeout: float = 600.0,
-        max_output_bytes: int | None = None,
-        env: dict[str, str] | None = None,
-    ) -> None:
-        if implementation is not None and (max_output_bytes is not None or env is not None):
-            raise ValueError("Configure env and max_output_bytes on the supplied ShellBackend")
-        Plugin.__init__(
-            self,
-            config=ShellConfig(
-                cwd=Path(cwd),
-                timeout=timeout,
-                max_timeout=max_timeout,
-                max_output_bytes=max_output_bytes if max_output_bytes is not None else 1_048_576,
-                env=env,
-            ),
-        )
-        self.implementation = implementation
-
-    def instructions(self) -> SystemPrompt:
-        return SystemPrompt(_SHELL_INSTRUCTIONS)
-
-    async def setup(self, scope: PluginScope) -> None:
-        await super().setup(scope)
-        backend = self.implementation
-        if backend is None:
-            config = ShellConfig.model_validate(self.config)
-            backend = LocalShell(
-                max_timeout=config.max_timeout,
-                max_output_bytes=config.max_output_bytes,
-                env=config.env,
-            )
-        scope.provide(ShellBackend, backend)
-
-
-class BackgroundShellConfig(ShellToolsConfig):
+class BackgroundShellConfig(ShellConfig):
     timeout: Annotated[float, Field(gt=0, le=600)] = 600.0
     max_background_commands: Annotated[int, Field(ge=1)] = 32
 
@@ -155,10 +121,11 @@ _BACKGROUNDSHELL_INSTRUCTIONS = Instructions(
 )
 
 
-class BackgroundShell(
-    Plugin[BackgroundShellConfig], needs=(ShellBackend, ToolRegistry, SessionInbox)
-):
+class BackgroundShell(Plugin[BackgroundShellConfig]):
     """Opt in to session-owned background commands on an interactive ShellBackend."""
+
+    backend = needs(ShellBackend)
+    inbox = needs(SessionInbox)
 
     def __init__(
         self,
@@ -193,14 +160,11 @@ class BackgroundShell(
     def _command_fields(self) -> Mapping[str, FieldInfo]:
         return {"timeout": Field(le=self.config.max_timeout)}
 
-    @tool(timeout_seconds=600, parameter_fields=_command_fields)
+    @tool(action=ShellAction.START, timeout_seconds=600, parameter_fields=_command_fields)
     async def start_command(
         self,
         argv: Annotated[list[str], Field(min_length=1)],
         timeout: Annotated[float, Field(gt=0, le=600)] | None = None,
-        *,
-        shell: Inject[ShellBackend],
-        inbox: Inject[SessionInbox],
     ) -> CommandResult:
         """Start argv without shell expansion and return a command_id without waiting for exit.
 
@@ -211,11 +175,14 @@ class BackgroundShell(
         limit = timeout if timeout is not None else self.config.timeout
         if limit > self.config.max_timeout:
             raise ToolError(f"timeout must not exceed {self.config.max_timeout:g} seconds")
+        shell = self.backend
         if not isinstance(shell, BackgroundShellBackend):
             raise ToolError("This ShellBackend does not support background commands")
-        return await self._commands.start(shell, argv, cwd=self.cwd, timeout=limit, inbox=inbox)
+        return await self._commands.start(
+            shell, argv, cwd=self.cwd, timeout=limit, inbox=self.inbox
+        )
 
-    @tool(readonly=True, parallel=True, timeout_seconds=35)
+    @tool(action=ShellAction.READ_OUTPUT, readonly=True, parallel=True, timeout_seconds=35)
     async def read_command(
         self, command_id: str, wait: Annotated[float, Field(ge=0, le=30)] = 0.0
     ) -> CommandResult:
@@ -233,7 +200,7 @@ class BackgroundShell(
                 pass
         return command.result()
 
-    @tool
+    @tool(action=ShellAction.WRITE_INPUT)
     async def write_command(
         self,
         command_id: str,
@@ -249,7 +216,7 @@ class BackgroundShell(
         await command.process.write(text, eof=eof)
         return command.result()
 
-    @tool(timeout_seconds=600)
+    @tool(action=ShellAction.TERMINATE, timeout_seconds=600)
     async def terminate_command(self, command_id: str) -> CommandResult:
         """Kill a background command and its descendants, draining cleanup before returning.
 
@@ -259,7 +226,7 @@ class BackgroundShell(
         await command.process.terminate()
         return command.result()
 
-    @tool(readonly=True, parallel=True)
+    @tool(action=ShellAction.LIST, readonly=True, parallel=True)
     def list_commands(self) -> tuple[CommandInfo, ...]:
         """List this mount's retained command IDs, argv, states and exit codes."""
         return self._commands.summaries()
@@ -276,10 +243,9 @@ __all__ = [
     "ProcessSnapshot",
     "ProcessState",
     "Shell",
+    "ShellAction",
     "ShellBackend",
     "ShellConfig",
     "ShellProcess",
-    "ShellTools",
-    "ShellToolsConfig",
     "proc_result",
 ]

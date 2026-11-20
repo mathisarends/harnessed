@@ -3,18 +3,8 @@ import threading
 
 import pytest
 
-from harnessed import (
-    Agent as Application,
-)
-from harnessed import (
-    AgentLoop,
-    Inject,
-    Plugin,
-    ToolCall,
-    ToolContext,
-    plugin,
-    tool,
-)
+from harnessed import Agent as Application
+from harnessed import AgentLoop, Approvals, Plugin, ToolContext, tool
 from harnessed.events import (
     ToolCallFinishedEvent,
     ToolCallRequestedEvent,
@@ -22,11 +12,9 @@ from harnessed.events import (
     ToolProgressEvent,
 )
 from harnessed.events.codec import decode_event, encode_event
-from harnessed.kernel import hook
-from harnessed.models import ModelChunk
-from harnessed.models.messages import PolicyDecision, Role
-from harnessed.plugins import Approvals
-from harnessed.plugins.filesystem import FileSystemBackend, FilesystemTools, LocalFileSystem
+from harnessed.kernel import Inject, PluginScope, hook
+from harnessed.models import Decision, ModelChunk, Role, ToolCall
+from harnessed.plugins.filesystem import Filesystem, FileSystemBackend, LocalFileSystem
 from harnessed.runtime.hooks import ReviewToolResult
 from harnessed.testing import ScriptedModel
 from harnessed.tools import ToolRegistry
@@ -63,8 +51,9 @@ async def test_parallel_execution_overlaps_but_reviews_results_and_history_keep_
     model = ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "done"])
     async with Application(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), tools],
         loop=AgentLoop(max_parallel_tools=3),
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[tools],
     ).session() as agent:
         agent_audit = Audit(agent)
         running = asyncio.create_task(agent.run("go"))
@@ -130,8 +119,9 @@ async def test_resource_dependencies_are_fifo_and_do_not_hold_slots_while_waitin
     model = ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "done"])
     async with Application(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), tools],
         loop=AgentLoop(max_parallel_tools=2),
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[tools],
     ).session() as agent:
         agent_audit = Audit(agent)
         running = asyncio.create_task(agent.run("go"))
@@ -190,10 +180,9 @@ async def test_builtin_writes_are_barriers_between_read_groups_and_same_file_ali
     for name in ("a.txt", "b.txt"):
         await asyncio.to_thread((tmp_path / name).write_text, name)
 
-    @plugin
-    async def filesystem(scope):
-        scope.provide(FileSystemBackend, ObservedFS(tmp_path))
-        yield
+    class TrackedProvider(Plugin):
+        async def setup(self, scope: PluginScope) -> None:
+            scope.provide(FileSystemBackend, ObservedFS(tmp_path))
 
     calls = (
         ToolCall("read_file", {"path": "a.txt"}),
@@ -205,7 +194,8 @@ async def test_builtin_writes_are_barriers_between_read_groups_and_same_file_ali
     model = ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "done"])
     async with Application(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), filesystem(), FilesystemTools()],
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[TrackedProvider(), Filesystem()],
     ).session() as agent:
         agent_audit = Audit(agent)
         running = asyncio.create_task(agent.run("go"))
@@ -250,8 +240,9 @@ async def test_global_parallel_limit_bounds_execution_and_can_force_serial_mode(
     model = ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "done"])
     async with Application(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), tools],
         loop=AgentLoop(max_parallel_tools=limit),
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[tools],
     ).session() as agent:
         agent_audit = Audit(agent)
         await asyncio.wait_for(agent.run("go"), 3)
@@ -276,7 +267,7 @@ async def test_tool_errors_and_denials_do_not_cancel_independent_calls():
 
         @hook(ToolPolicy)
         async def policy(self, event, next_):
-            return PolicyDecision.DENY if event.call.arguments["index"] == 1 else await next_()
+            return Decision.DENY if event.call.arguments["index"] == 1 else await next_()
 
         @hook(ReviewToolResult)
         async def review(self, event, next_):
@@ -288,7 +279,7 @@ async def test_tool_errors_and_denials_do_not_cancel_independent_calls():
     calls = [ToolCall("work", {"index": index}) for index in range(3)]
     model = ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "done"])
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), tools]
+        model=model, approvals=Approvals(default=Decision.ALLOW), plugins=[tools]
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("go")
@@ -317,7 +308,7 @@ async def test_cancelling_a_parallel_batch_drains_tasks_and_repairs_results_in_m
     calls = [ToolCall("wait", {"index": index}) for index in range(3)]
     model = ScriptedModel([[ModelChunk(tool_call=call) for call in calls]])
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), tools]
+        model=model, approvals=Approvals(default=Decision.ALLOW), plugins=[tools]
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.submit("go")
@@ -351,7 +342,7 @@ async def test_fast_execution_is_durable_before_slow_sibling_review_and_safe_to_
 
         @hook(ReviewToolResult)
         async def review(self, event, next_):
-            from harnessed import ToolResult
+            from harnessed.models import ToolResult
 
             reviews.append(event.call.arguments["index"])
             return ToolResult("reviewed")
@@ -402,7 +393,7 @@ async def test_abort_during_review_preserves_raw_receipt_without_bypassing_revie
 
 
 async def test_abort_after_final_commit_keeps_the_reviewed_result_without_duplicate_completion():
-    from harnessed import ToolResult
+    from harnessed.models import ToolResult
 
     committed = asyncio.Event()
 
@@ -468,8 +459,9 @@ async def test_sync_timeout_keeps_resource_until_the_worker_finishes():
     model = ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "done"])
     async with Application(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), tools],
         loop=AgentLoop(max_parallel_tools=2),
+        approvals=Approvals(default=Decision.ALLOW),
+        plugins=[tools],
     ).session() as agent:
         agent_audit = Audit(agent)
         running = asyncio.create_task(agent.run("go"))
@@ -496,7 +488,7 @@ async def test_invalid_resource_resolver_is_a_bounded_tool_error():
 
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("invalid"))], "done"])
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), tools]
+        model=model, approvals=Approvals(default=Decision.ALLOW), plugins=[tools]
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("go")
@@ -534,7 +526,7 @@ async def test_replaced_tool_registration_cannot_run_with_stale_parallel_metadat
     calls = (ToolCall("work"), ToolCall("work"))
     model = ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "done"])
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW), tools]
+        model=model, approvals=Approvals(default=Decision.ALLOW), plugins=[tools]
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("go")
@@ -550,6 +542,6 @@ def test_parallel_limit_is_validated(limit):
     with pytest.raises(ValueError, match="max_parallel_tools"):
         Application(
             model=ScriptedModel([]),
-            plugins=[Approvals(default=PolicyDecision.ALLOW)],
             loop=AgentLoop(max_parallel_tools=limit),
+            approvals=Approvals(default=Decision.ALLOW),
         )

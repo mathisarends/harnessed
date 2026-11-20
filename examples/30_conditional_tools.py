@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import dataclass
 
 from harnessed import Agent, Plugin, tool
-from harnessed.kernel import Inject
+from harnessed.kernel import needs
 from harnessed.plugins import Service
 from harnessed.testing import ScriptedModel, call
 
@@ -14,13 +14,15 @@ class PointerState:
     has_snapshot: bool = False
 
 
-class PointerTools(Plugin, needs=(PointerState,)):
-    def can_click(self, *, state: Inject[PointerState]) -> bool:
-        return state.has_snapshot
+class PointerTools(Plugin):
+    state = needs(PointerState)
+
+    def can_click(self) -> bool:
+        return self.state.has_snapshot
 
     @tool(readonly=True)
-    async def observe(self, *, state: Inject[PointerState]) -> str:
-        state.has_snapshot = True
+    async def observe(self) -> str:
+        self.state.has_snapshot = True
         return "The offline example now has a snapshot."
 
     @tool(enabled=can_click, readonly=True)

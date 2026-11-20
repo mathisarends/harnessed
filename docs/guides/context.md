@@ -10,7 +10,8 @@ a message to the session only when it belongs in conversation history.
 A configured plugin supplies its content through one synchronous method:
 
 ```python
-from harnessed import Instructions, Plugin, PluginConfig, SystemPrompt
+from harnessed.prompts import Instructions
+from harnessed import Plugin, PluginConfig, SystemPrompt
 
 
 class ObserveConfig(PluginConfig):
@@ -50,12 +51,14 @@ Use `SystemPrompt.from_plugins(...)` to keep collection while adding fixed
 content or choosing a format:
 
 ```python
-from harnessed import Agent, PromptFormat, SystemPrompt
+from harnessed import Agent, SystemPrompt
+from harnessed.prompts import PromptFormat
 
 agent = Agent(
-    instructions="You are a browser agent.",
     plugins=[Observe(config=ObserveConfig())],
-    prompt=SystemPrompt.from_plugins(format=PromptFormat.MARKDOWN),
+    instructions=SystemPrompt.from_plugins(
+        "You are a browser agent.", format=PromptFormat.MARKDOWN
+    ),
 )
 ```
 
@@ -64,11 +67,11 @@ Dependency setup order never changes prompt order. Configuration providers run
 once when constructing the agent; sessions reuse that content.
 
 To own the complete system prompt, pass a document built with the constructor,
-such as `prompt=SystemPrompt("...")`. Plugin instruction blocks are then left out
+such as `instructions=SystemPrompt("...")`. Plugin instruction blocks are then left out
 without calling their providers, and `print(agent.prompt)` lists the omitted
 plugins so the choice stays visible.
 
-`Agent(instructions="...")` prepends application-owned text. `prompt=` accepts a
+`Agent(instructions="...")` prepends application-owned text. `instructions=` also accepts a
 `SystemPrompt` document or collection strategy. Fixed application content in
 `SystemPrompt.from_plugins(*parts)` follows the caller text and precedes
 plugin blocks. No plugin is moved to the end by its type or name: put completion
@@ -77,21 +80,19 @@ and policy components at their intended list positions.
 ## Share the strategy with a composition
 
 ```python
-from harnessed import Agent, PromptFormat, SystemPrompt
-from harnessed.plugins import Filesystem, Shell
+from harnessed import Agent, SystemPrompt
+from harnessed.prompts import PromptFormat
+from harnessed.plugins import Filesystem, LocalWorkspace, Shell
 
 agent = Agent(
-    instructions="Help with the workspace.",
-    prompt=SystemPrompt.from_plugins(format=PromptFormat.MARKDOWN),
-    plugins=[Filesystem(), Shell()],
+    instructions=SystemPrompt.from_plugins(
+        "Help with the workspace.", format=PromptFormat.MARKDOWN
+    ),
+    plugins=[LocalWorkspace(root="."), Filesystem(), Shell()],
 )
 ```
 
-The strategy is resolved against the complete plugin list. `None` entries are
-skipped. Libraries that share a composition return the plugin list and, if they
-need one, a `SystemPrompt` value from ordinary functions; the application passes
-both explicitly. Supplying `Agent(instructions=...)` adds caller text without
-replacing the selected strategy.
+The strategy collects instructions from the complete configured plugin list.
 
 ## Compose content and select a renderer
 
@@ -101,11 +102,12 @@ values raise `TypeError`. Empty rendered content is omitted. Equal or repeated
 content is retained; content values have no plugin-reference identity.
 
 ```python
-from harnessed import Agent, Instructions, PromptFormat, SystemPrompt
+from harnessed import Agent, SystemPrompt
+from harnessed.prompts import Instructions, PromptFormat
 
 agent = Agent(
-    instructions="Be concise.",
-    prompt=SystemPrompt(
+    instructions=SystemPrompt(
+        "Be concise.",
         Instructions(title="Workspace", text="Keep changes focused."),
         SystemPrompt("Report the result."),
         format=PromptFormat.MARKDOWN,
@@ -147,16 +149,9 @@ conversation view.
 
 ## Runtime section delivery
 
-`session.use(plugin)` defaults to `SectionDelivery.ERROR`: a runtime plugin with
-declared system sections is rejected before setup or event registration. Choose
-delivery explicitly when mounting such a capability:
-
-```python
-from harnessed import SectionDelivery
-
-handle = await session.mount(interaction, section_delivery=SectionDelivery.CONTEXT)
-await handle.aclose()
-```
+`async with session.mount(plugin)` installs the tools and delivers their guidance
+as mount-owned context. Use `section_delivery=SectionDelivery.ERROR` to reject
+plugins that declare instructions, or `IGNORE` to omit their guidance.
 
 `CONTEXT` evaluates configuration providers and session factories once per mount
 activation and owns their guidance on that mount. The guidance is immediately

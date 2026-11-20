@@ -207,16 +207,24 @@ class ToolResult:
         return replace(self, content=tuple(parts))
 
 
-class PolicyDecision(StrEnum):
+class Decision(StrEnum):
     ALLOW = "allow"
     DENY = "deny"
     ASK = "ask"
 
 
-class ApprovalAnswer(StrEnum):
-    ALLOW = "allow"
-    DENY = "deny"
-    ALWAYS = "always"
+@dataclass(frozen=True, slots=True)
+class ApprovalResponse:
+    """A final decision and whether its allow grant can be reused in this session."""
+
+    decision: Decision
+    remember: bool = field(default=False, kw_only=True)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.decision, Decision) or self.decision is Decision.ASK:
+            raise ValueError("Answer an approval with ALLOW or DENY")
+        if type(self.remember) is not bool or (self.remember and self.decision is Decision.DENY):
+            raise ValueError("Only an allow decision can be remembered")
 
 
 @dataclass(frozen=True)

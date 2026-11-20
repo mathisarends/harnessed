@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Callable, Iterable
 from contextlib import AbstractAsyncContextManager
 from types import get_original_bases
 from typing import Any, ClassVar, Self, TypeVar, cast, get_args, get_origin, overload
@@ -9,27 +8,19 @@ from typing import Any, ClassVar, Self, TypeVar, cast, get_args, get_origin, ove
 from pydantic import BaseModel, ConfigDict
 
 from harnessed.events import DurableEvent, TransientEvent
-from harnessed.kernel import Bundle as KernelBundle
 from harnessed.kernel import (
-    HookEntry,
     Key,
-    PluginLike,
     PluginScope,
     PluginSpec,
-    Registration,
     Scope,
-    ServiceKey,
     as_plugin_spec,
     binding_plan,
 )
 from harnessed.kernel import PluginBase as KernelPlugin
 from harnessed.models import Model
-from harnessed.prompts.values import PromptContribution, SystemPrompt
+from harnessed.prompts import SystemPrompt
+from harnessed.prompts.values import PromptContribution
 from harnessed.tools import ToolSpec, activation_tool
-
-
-class Bundle(KernelBundle):
-    """A collection of kernel hooks and registration recipes."""
 
 
 class PluginConfig(BaseModel):
@@ -58,9 +49,6 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         *,
         config: None = None,
         name: str | None = None,
-        hooks: Iterable[HookEntry] = (),
-        needs: Iterable[ServiceKey[Any]] | None = None,
-        registrations: Iterable[tuple[Registration, Callable]] = (),
     ) -> None: ...
 
     @overload
@@ -69,9 +57,6 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         *,
         config: ConfigT,
         name: str | None = None,
-        hooks: Iterable[HookEntry] = (),
-        needs: Iterable[ServiceKey[Any]] | None = None,
-        registrations: Iterable[tuple[Registration, Callable]] = (),
     ) -> None: ...
 
     def __init__(
@@ -79,11 +64,8 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         *,
         config: ConfigT | None = None,
         name: str | None = None,
-        hooks: Iterable[HookEntry] = (),
-        needs: Iterable[ServiceKey[Any]] | None = None,
-        registrations: Iterable[tuple[Registration, Callable]] = (),
     ) -> None:
-        super().__init__(name=name, hooks=hooks, needs=needs, registrations=registrations)
+        super().__init__(name=name)
         schema = self._configuration_type
         if config is None:
             if schema is not None and schema is not PluginConfig:
@@ -236,19 +218,15 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         await self.teardown(scope.plugin_scope)
 
 
-def plugin_events(value: PluginLike) -> tuple[type[DurableEvent | TransientEvent], ...]:
+def plugin_events(value: Plugin) -> tuple[type[DurableEvent | TransientEvent], ...]:
     """Event types a plugin declares; only core Plugin recipes declare any."""
-    return value.events if isinstance(value, Plugin) else ()
+    return value.events
 
 
-def plugin_contribution(value: PluginLike) -> PromptContribution:
+def plugin_contribution(value: Plugin) -> PromptContribution:
     """Normalize a plugin's prompt metadata once at the agent boundary."""
     spec = as_plugin_spec(value)
-    provider = (
-        value.instructions
-        if isinstance(value, Plugin) and type(value).instructions is not Plugin.instructions
-        else None
-    )
+    provider = value.instructions if type(value).instructions is not Plugin.instructions else None
     return PromptContribution(spec.name, provider)
 
 

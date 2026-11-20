@@ -154,7 +154,7 @@ ignore:
       - harnessed/integrations/bubblewrap.py
       - harnessed/integrations/json.py
       - harnessed/integrations/opentelemetry.py
-      - harnessed/plugins/compaction.py
+      - harnessed/context.py
       - harnessed/plugins/subagents.py
     reason: Single-module public facades are documented import paths; optional-extra modules cannot be re-exported eagerly from their package initializer.
   - rule: layout/file-name-convention

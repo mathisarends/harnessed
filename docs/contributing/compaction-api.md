@@ -54,13 +54,13 @@ The application-supplied `main_model` and `summary_llm` below implement
 part of this proposal.
 
 ```python
-from harnessed import Agent
-from harnessed.plugins import Compaction, at_ratio
+from harnessed import Agent, Context, Compaction
+from harnessed.context import at_ratio
 
 agent = Agent(
     model=main_model,
-    plugins=[
-        Compaction(
+    context=Context(
+        compaction=Compaction(
             llm=summary_llm,
             prompt="""
                 Write a handoff for continuing the user's task.
@@ -72,7 +72,7 @@ agent = Agent(
             target_ratio=0.4,
             keep_last_steps=2,
         ),
-    ],
+    ),
 )
 ```
 
@@ -109,7 +109,7 @@ error requesting an explicit ceiling; never generate without a bound.
 
 Unknown context windows require explicit configuration for ratio-based triggers
 or targets. Absolute token targets and custom triggers remain available. Do not
-introduce a global 100k fallback. Browserrig can retain its own `WindowRatio()`
+introduce a global 100k fallback. An application can retain its own `WindowRatio()`
 policy, including its fallback, by passing that trigger explicitly.
 
 ### Retention: append the last complete steps unchanged
@@ -159,14 +159,14 @@ retention are separate future requirements, not additional controls in this API.
 
 Export `CompactionPrompt` and `DEFAULT_COMPACTION_PROMPT` from
 `harnessed.plugins`, and the request/protocol types below from
-`harnessed.plugins.compaction`. The runtime owns summary planning and execution.
+`harnessed.context`. The runtime owns summary planning and execution.
 
 ```python
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from harnessed.models import Message, SystemMessage
-from harnessed.plugins import ContextState
+from harnessed.context import ContextState
 
 
 @dataclass(frozen=True)
@@ -212,7 +212,7 @@ request, including retained reference context, before calling the provider. It
 must not silently drop task inputs or instructions to fit a smaller summarizer
 window. A configured model that cannot fit the required inputs fails without
 committing a history change. Domain-specific browser state can be supplied by
-the application; no Browserrig dependency belongs in core.
+the application; no application dependency belongs in core.
 
 ### Custom summarizers
 
@@ -224,7 +224,7 @@ result contract; report available usage even for rejected output.
 from dataclasses import dataclass
 from typing import Protocol
 
-from harnessed.plugins.compaction import CompactionContext, Summary
+from harnessed.context import CompactionContext, Summary
 
 
 @dataclass(frozen=True)
@@ -381,8 +381,8 @@ the explicit session-state format version in the implementation change; do not
 add legacy migrations for unreleased formats. Update the current guide and SDK
 reference only when the runtime actually implements the new contracts.
 
-An explicit `Compaction(...)` still replaces the inherited plugin in its slot;
-it does not merge individual fields with Browserrig's recipe. Applications must
+The application supplies its compaction policy through `Context(compaction=...)`;
+it does not merge individual fields with the shared configuration. Applications must
 retain their custom trigger explicitly. A general recipe override API is outside
 this change and must not be introduced as hidden compaction behavior.
 

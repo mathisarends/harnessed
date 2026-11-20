@@ -1,6 +1,7 @@
 import inspect
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, replace
+from enum import StrEnum
 from typing import Annotated, Protocol, Self, runtime_checkable
 
 from pydantic import ConfigDict, Field, TypeAdapter
@@ -12,24 +13,29 @@ from harnessed.events import (
     ApprovalStatus,
     DurableEvent,
 )
-from harnessed.kernel import Inject, Next, PluginScope, Priority, hook, needs
-from harnessed.models.messages import ApprovalAnswer, PolicyDecision, ToolCall
-from harnessed.tools import ToolInfo, ToolRegistry
-from harnessed.tools.references import ToolReference, ToolSelector, tool_selector
+from harnessed.kernel import PluginScope
+from harnessed.models import Decision, ToolCall
+from harnessed.models.messages import ApprovalResponse
+from harnessed.tools import PreparedToolCall, ToolRegistry
+from harnessed.tools.references import ApprovalSelector, ToolReference, approval_selector
 
-from .hooks import ToolPolicy
-from .plugin import Plugin, PluginConfig
+from .plugin import PluginConfig
 
 
 @runtime_checkable
 class Approver(Protocol):
-    async def ask(self, request: ApprovalRequestedEvent) -> ApprovalAnswer | None:
+    async def ask(self, request: ApprovalRequestedEvent) -> ApprovalResponse | Decision | None:
         """Return an approval answer, or None when this responder cannot answer."""
         ...
 
 
 type ApprovalCallback = Callable[
-    [ApprovalRequestedEvent], ApprovalAnswer | bool | Awaitable[ApprovalAnswer | bool | None] | None
+    [ApprovalRequestedEvent],
+    ApprovalResponse
+    | Decision
+    | bool
+    | Awaitable[ApprovalResponse | Decision | bool | None]
+    | None,
 ]
 
 
@@ -39,63 +45,14 @@ class CallbackApprover:
     def __init__(self, callback: ApprovalCallback) -> None:
         self.callback = callback
 
-    async def ask(self, request: ApprovalRequestedEvent) -> ApprovalAnswer | None:
+    async def ask(self, request: ApprovalRequestedEvent) -> ApprovalResponse | Decision | None:
         value = self.callback(request)
         value = await value if inspect.isawaitable(value) else value
-        if value is None or isinstance(value, ApprovalAnswer):
+        if value is None or isinstance(value, ApprovalResponse | Decision):
             return value
         if type(value) is bool:
-            return ApprovalAnswer.ALLOW if value else ApprovalAnswer.DENY
-        raise TypeError("Approvers must return ApprovalAnswer or bool")
-
-
-class ToolApprovalGuardConfig(PluginConfig):
-    risky: Annotated[
-        tuple[Annotated[str, Field(min_length=1)] | Callable | ToolReference, ...],
-        Field(strict=False),
-    ]
-    ask: ApprovalCallback | None = None
-    scope: Annotated[str, Field(min_length=1)] = "approval-gate"
-    priority: int = Priority.GUARD
-
-
-class ToolApprovalGuard(Plugin[ToolApprovalGuardConfig]):
-    """Keep a scoped guard active even when its optional approver is unavailable."""
-
-    tools = needs(ToolRegistry)
-
-    def __init__(
-        self,
-        *,
-        risky: Iterable[ToolSelector],
-        ask: ApprovalCallback | None = None,
-        scope: str = "approval-gate",
-        priority: int = Priority.GUARD,
-    ) -> None:
-        super().__init__(
-            config=ToolApprovalGuardConfig(risky=risky, ask=ask, scope=scope, priority=priority)
-        )
-        self.risky = tuple(tool_selector(item) for item in self.config.risky)
-        self.ask = self.config.ask
-
-    async def setup(self, scope: PluginScope) -> None:
-        self.risky = tuple(self.tools.reference(item, owner=scope) for item in self.risky)
-        scope.on(ToolPolicy, self._gate, priority=self.config.priority)
-
-    async def _gate(
-        self, event: ToolPolicy, next_: Next[PolicyDecision], tools: Inject[ToolRegistry]
-    ) -> PolicyDecision:
-        if not any(tools.matches(item, event.call.name) for item in self.risky):
-            return await next_()
-        answer = await event.session.approvals.request(
-            event.call,
-            f"{event.call.name} is marked risky",
-            scope=self.config.scope,
-            approver=CallbackApprover(self.ask) if self.ask is not None else None,
-        )
-        if answer not in (ApprovalAnswer.ALLOW, ApprovalAnswer.ALWAYS):
-            return PolicyDecision.DENY
-        return await next_()
+            return Decision.ALLOW if value else Decision.DENY
+        raise TypeError("Approvers must return an approval response, Decision, bool or None")
 
 
 _APPROVAL_TIMEOUT = TypeAdapter(
@@ -125,14 +82,15 @@ class Approval:
         return self.resolution is None
 
     @property
-    def decision(self) -> ApprovalAnswer | None:
+    def decision(self) -> Decision | None:
         return self.resolution.decision if self.resolution is not None else None
 
     @property
     def is_grant(self) -> bool:
         return (
             not self.revoked
-            and self.decision is ApprovalAnswer.ALWAYS
+            and self.resolution is not None
+            and self.resolution.remember
             and self.request.grant_id is None
         )
 
@@ -184,7 +142,8 @@ def approval_transition(records, event: DurableEvent) -> Approval | None:
                 grant is None
                 or not grant.is_grant
                 or grant.request.scope != event.scope
-                or grant.request.call.name != event.call.name
+                or grant.request.identity != event.identity
+                or (event.identity is None and grant.request.call.name != event.call.name)
             ):
                 raise ValueError(
                     "Cached approval must reference an active grant for its tool and scope"
@@ -196,13 +155,13 @@ def approval_transition(records, event: DurableEvent) -> Approval | None:
             raise ValueError("Approval resolution requires a pending request")
         if record.request.grant_id is not None and event.status == ApprovalStatus.ANSWERED:
             grant = records[record.request.grant_id]
-            if not grant.is_grant or event.decision is not ApprovalAnswer.ALWAYS:
+            if not grant.is_grant or not event.remember:
                 raise ValueError("Cached approval grant is no longer active")
         return replace(record, resolution=event)
     elif isinstance(event, ApprovalRevokedEvent):
         record = records.get(event.request_id)
         if record is None or not record.is_grant:
-            raise ValueError("Approval revocation requires an active ALWAYS grant")
+            raise ValueError("Approval revocation requires an active remembered grant")
         return replace(record, revoked=True)
     return None
 
@@ -214,101 +173,78 @@ class ApprovalsConfig(PluginConfig):
 DEFAULT_APPROVALS = ApprovalsConfig()
 
 
-def _tool_flag_decision(tool: ToolInfo | None) -> PolicyDecision | None:
-    """Return the decision implied by ``confirm``/``readonly`` tool flags, if any."""
-    if tool is not None and tool.confirm:
-        return PolicyDecision.ASK
-    if tool is not None and tool.readonly:
-        return PolicyDecision.ALLOW
-    return None
-
-
-def unconfigured_tool_decision(tool: ToolInfo | None) -> PolicyDecision:
-    """Decide a call when no ``Approvals`` policy is configured.
-
-    Tools run without asking. A tool declared with ``confirm=True`` still asks,
-    so it stays unavailable until an approver can answer.
-    """
-    if tool is not None and tool.confirm:
-        return PolicyDecision.ASK
-    return PolicyDecision.ALLOW
-
-
-class Approvals(Plugin[ApprovalsConfig], slot="approvals"):
-    """Compose tool policy and the default response timeout for every approval.
-
-    ``timeout`` is a finite positive number of seconds. Individual approval
-    requests may replace it with their own response timeout.
-    """
-
-    tools = needs(ToolRegistry)
+class Approvals:
+    """Authorize prepared actions. Explicit defaults apply to every unmatched tool."""
 
     def __init__(
         self,
         *,
+        default: Decision | None = None,
+        allow: Iterable[ApprovalSelector] | None = None,
+        ask: Iterable[ApprovalSelector] = (),
+        deny: Iterable[ApprovalSelector] = (),
         approver: Approver | ApprovalCallback | None = None,
-        default: PolicyDecision = PolicyDecision.ASK,
-        allow: Iterable[ToolSelector] = (),
-        ask: Iterable[ToolSelector] = (),
-        deny: Iterable[ToolSelector] = (),
-        policy: Callable[[ToolCall], PolicyDecision | None] | None = None,
+        policy: Callable[[ToolCall], Decision | None] | None = None,
         timeout: float = DEFAULT_APPROVALS.timeout,
     ) -> None:
-        super().__init__(config=ApprovalsConfig(timeout=timeout))
-        self.approver: Approver | None = (
+        if default is not None and not isinstance(default, Decision):
+            raise TypeError("default must be a Decision")
+        if default is None:
+            default = Decision.ALLOW if allow is None else Decision.DENY
+        self.default = default
+        self.config = ApprovalsConfig(timeout=timeout)
+        self.approver = (
             approver
             if approver is None or isinstance(approver, Approver)
             else CallbackApprover(approver)
         )
-        if not isinstance(default, PolicyDecision):
-            raise TypeError("default must be a PolicyDecision")
-        if any(isinstance(items, str) for items in (allow, ask, deny)):
-            raise TypeError(
-                "Tool rules must be collections; use default=PolicyDecision.ALLOW for the fallback"
-            )
-        self.default = default
-        self.allow = tuple(tool_selector(item) for item in allow)
-        self.ask = tuple(tool_selector(item) for item in ask)
-        self.deny = tuple(tool_selector(item) for item in deny)
         self.policy = policy
+        self.rules: list[tuple[StrEnum | ToolReference, Decision]] = []
+        for items, decision in (
+            (() if allow is None else allow, Decision.ALLOW),
+            (ask, Decision.ASK),
+            (deny, Decision.DENY),
+        ):
+            if isinstance(items, str):
+                raise TypeError(
+                    "Approval rules require a collection of action enum members or decorated tools"
+                )
+            for item in items:
+                self._add(approval_selector(item), decision)
 
-    async def setup(self, scope: PluginScope) -> None:
+    def _add(self, selector: StrEnum | ToolReference, decision: Decision) -> None:
+        for existing, configured in self.rules:
+            if type(existing) is type(selector) and existing == selector:
+                if configured is not decision:
+                    raise ValueError("Conflicting approval rules for the same action")
+                return
+        self.rules.append((selector, decision))
+
+    def install(self, scope: PluginScope) -> None:
         scope.provide(ApprovalsConfig, self.config)
-        self.allow = tuple(self.tools.reference(item, owner=scope) for item in self.allow)
-        self.ask = tuple(self.tools.reference(item, owner=scope) for item in self.ask)
-        self.deny = tuple(self.tools.reference(item, owner=scope) for item in self.deny)
+        scope.provide(Approvals, self)
         if self.approver is not None:
-            # Tools and other guards asking mid-call reach the same human.
             scope.provide(Approver, self.approver)
+        for selector, _ in self.rules:
+            if isinstance(selector, ToolReference):
+                scope[ToolRegistry].reference(selector, owner=scope)
 
-    @hook(ToolPolicy, priority=Priority.GUARD)
-    async def authorize(
-        self, event: ToolPolicy, next_: Next[PolicyDecision], tools: Inject[ToolRegistry]
-    ) -> PolicyDecision:
-        session = event.session
-        if any(tools.matches(item, event.call.name) for item in self.deny):
-            return PolicyDecision.DENY
-        if any(tools.matches(item, event.call.name) for item in self.ask):
-            decision = PolicyDecision.ASK
-        elif any(tools.matches(item, event.call.name) for item in self.allow):
-            decision = PolicyDecision.ALLOW
-        else:
-            decision = _tool_flag_decision(event.tool)
-            if decision is None and self.policy is not None:
-                decision = self.policy(event.call)
-            if decision is None:
-                decision = self.default
-        if decision is not None and not isinstance(decision, PolicyDecision):
-            raise TypeError("Approval policies must return PolicyDecision or None")
-        if decision is PolicyDecision.ASK:
-            answer = await session.approvals.request(
-                event.call,
-                "Tool may have side effects",
-                approver=self.approver,
-            )
-            decision = (
-                PolicyDecision.DENY if answer is ApprovalAnswer.DENY else PolicyDecision.ALLOW
-            )
-        if decision is PolicyDecision.ALLOW:
-            return await next_()
-        return PolicyDecision.DENY
+    def decide(self, plan: PreparedToolCall) -> Decision:
+        decisions = {decision for selector, decision in self.rules if _matches(selector, plan)}
+        if len(decisions) > 1:
+            raise ValueError("Conflicting approval rules match this registration")
+        if decisions:
+            return decisions.pop()
+        if self.policy is not None:
+            decision = self.policy(plan.call)
+            if decision is not None:
+                if not isinstance(decision, Decision):
+                    raise TypeError("Approval policies must return Decision or None")
+                return decision
+        return self.default
+
+
+def _matches(selector: StrEnum | ToolReference, plan: PreparedToolCall) -> bool:
+    if isinstance(selector, ToolReference):
+        return plan.callback is not None and selector.matches(plan.callback)
+    return plan.tool is not None and selector is plan.tool.action

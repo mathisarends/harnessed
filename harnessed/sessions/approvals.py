@@ -54,7 +54,12 @@ class ApprovalProjection:
         self._state = None
 
     def _index_grant(self, record: Approval) -> None:
-        key = _GrantKey(record.request.scope, record.request.call.name)
+        key = _GrantKey(
+            record.request.scope,
+            record.request.identity
+            if record.request.identity is not None
+            else record.request.call.name,
+        )
         grants = self._grants.setdefault(key, {})
         if record.is_grant:
             grants.clear()

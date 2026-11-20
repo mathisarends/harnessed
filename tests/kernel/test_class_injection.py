@@ -1,14 +1,6 @@
 import pytest
 
-from harnessed.kernel import (
-    Key,
-    PluginBase,
-    PluginStatus,
-    Scope,
-    as_plugin_spec,
-    needs,
-    observes,
-)
+from harnessed.kernel import Key, PluginBase, PluginStatus, Scope, as_plugin_spec, needs, observes
 
 
 class Feature(PluginBase, provides=True):

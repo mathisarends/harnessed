@@ -2,10 +2,11 @@ from contextlib import asynccontextmanager
 
 import pytest
 
-from harnessed import Agent, SessionStatus
+from harnessed import Agent
 from harnessed.errors import RateLimited
 from harnessed.events import TurnOutcome
 from harnessed.models import UserMessage
+from harnessed.runtime.control import SessionStatus
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit
 

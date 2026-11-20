@@ -5,21 +5,8 @@ from contextlib import AsyncExitStack
 import pytest
 from pydantic import BaseModel, field_validator
 
-from harnessed import (
-    Agent,
-    ApprovalAnswer,
-    Plugin,
-    PolicyDecision,
-    RunHandle,
-    RunStream,
-    SessionStatus,
-    StopReason,
-    StreamOverflow,
-    ToolCall,
-    ToolContext,
-    tool,
-)
-from harnessed.errors import ApprovalUnavailable, OutputUnavailable, SessionClosed
+from harnessed import Agent, Approvals, Decision, Plugin, ToolContext, tool
+from harnessed.errors import ApprovalUnavailable, OutputUnavailable, SessionClosed, StreamOverflow
 from harnessed.events import (
     ApprovalNeededEvent,
     ApprovalResolvedEvent,
@@ -41,9 +28,9 @@ from harnessed.events import (
 )
 from harnessed.events.stream import StreamItem, TurnResultEvent
 from harnessed.kernel import Inject
-from harnessed.models import ModelChunk, ModelRequest
-from harnessed.models.messages import ToolStatus
-from harnessed.plugins import Approvals
+from harnessed.models import ModelChunk, ModelRequest, StopReason, ToolCall, ToolStatus
+from harnessed.runtime.control import SessionStatus
+from harnessed.runtime.handles import RunHandle, RunStream
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit
 
@@ -245,17 +232,19 @@ async def test_invalid_stream_buffer_is_rejected_before_enqueueing_input(capacit
 
 async def test_answering_through_a_closed_session_fails_even_for_an_acknowledged_id():
     async with Agent(
-        model=ScriptedModel([work(), "done"]), plugins=[Work([]), Approvals()]
+        model=ScriptedModel([work(), "done"]),
+        approvals=Approvals(default=Decision.ASK),
+        plugins=[Work([])],
     ).session() as session:
         request_id = None
         async with session.stream("Publish") as run_stream:
             async for event in run_stream:
                 if isinstance(event, ApprovalNeededEvent):
                     request_id = event.request_id
-                    await session.approvals.answer(request_id, ApprovalAnswer.ALLOW)
+                    await session.approvals.allow(request_id)
     assert request_id is not None
     with pytest.raises(SessionClosed):
-        await session.approvals.answer(request_id, ApprovalAnswer.ALLOW)
+        await session.approvals.allow(request_id)
 
 
 def work():
@@ -265,21 +254,23 @@ def work():
 async def test_stream_has_model_lifecycle_a_durable_approval_and_one_terminal_result():
     effects = []
     model = ScriptedModel([work(), [ModelChunk(reasoning="checked"), ModelChunk(text="Finished")]])
-    async with Agent(model=model, plugins=[Work(effects), Approvals()]).session() as session:
+    async with Agent(
+        model=model, approvals=Approvals(default=Decision.ASK), plugins=[Work(effects)]
+    ).session() as session:
         session_audit = Audit(session)
         events = []
         async with session.stream("Publish") as run_stream:
             async for event in run_stream:
                 events.append(event)
                 if isinstance(event, ApprovalNeededEvent):
-                    await session.approvals.answer(event.request_id, ApprovalAnswer.ALLOW)
+                    await session.approvals.allow(event.request_id)
                     resolution = session.last(ApprovalResolvedEvent)
                     assert resolution.request_id == event.request_id
                     assert resolution.status == ApprovalStatus.ANSWERED
                     # Repeating the same acknowledged decision is harmless.
-                    await session.approvals.answer(event.request_id, ApprovalAnswer.ALLOW)
+                    await session.approvals.allow(event.request_id)
                     with pytest.raises(ValueError, match="cannot change"):
-                        await session.approvals.answer(event.request_id, ApprovalAnswer.DENY)
+                        await session.approvals.deny(event.request_id)
         assert effects == ["published"]
         assert {type(e) for e in events} == {
             ModelRequestedEvent,
@@ -334,7 +325,8 @@ async def test_execution_start_precedes_progress_without_approval():
     async with (
         Agent(
             model=ScriptedModel([work(), "done"]),
-            plugins=[Work(effects), Approvals(default=PolicyDecision.ALLOW)],
+            approvals=Approvals(default=Decision.ALLOW),
+            plugins=[Work(effects)],
         ).session() as session,
         session.stream("Publish") as run_stream,
     ):
@@ -363,7 +355,9 @@ async def test_execution_start_precedes_progress_without_approval():
 async def test_closing_the_stream_resolves_pending_approval_and_removes_its_responder():
     effects = []
     model = ScriptedModel([work(), "disconnected", work(), "headless"])
-    async with Agent(model=model, plugins=[Work(effects), Approvals()]).session() as session:
+    async with Agent(
+        model=model, approvals=Approvals(default=Decision.ASK), plugins=[Work(effects)]
+    ).session() as session:
         question = None
         async with session.stream("Publish") as stream:
             async for event in stream:
@@ -372,7 +366,7 @@ async def test_closing_the_stream_resolves_pending_approval_and_removes_its_resp
                     break
         await asyncio.wait_for(session.wait_until_idle(), 3)
         with pytest.raises(ApprovalUnavailable):
-            await session.approvals.answer(question.request_id, ApprovalAnswer.ALLOW)
+            await session.approvals.allow(question.request_id)
         assert effects == [] and not session.approvals.pending
         result = await asyncio.wait_for(session.run("No UI"), 3)
         assert result.tool_calls[0][1].status == ToolStatus.UNAVAILABLE
@@ -382,7 +376,9 @@ async def test_answer_waits_for_admission_and_caller_cancellation_does_not_revok
     entered, release = asyncio.Event(), asyncio.Event()
     effects = []
     async with Agent(
-        model=ScriptedModel([work(), "done"]), plugins=[Work(effects), Approvals()]
+        model=ScriptedModel([work(), "done"]),
+        approvals=Approvals(default=Decision.ASK),
+        plugins=[Work(effects)],
     ).session() as session:
         original = session.log._append
 
@@ -403,9 +399,7 @@ async def test_answer_waits_for_admission_and_caller_cancellation_does_not_revok
                 if isinstance(event, ApprovalNeededEvent):
                     question = event
                     break
-            answering = asyncio.create_task(
-                session.approvals.answer(question.request_id, ApprovalAnswer.ALLOW)
-            )
+            answering = asyncio.create_task(session.approvals.allow(question.request_id))
             try:
                 await asyncio.wait_for(entered.wait(), 3)
                 assert not answering.done() and session.last(ApprovalResolvedEvent) is None
@@ -415,16 +409,18 @@ async def test_answer_waits_for_admission_and_caller_cancellation_does_not_revok
             finally:
                 release.set()
             events = [event async for event in stream]
-            await session.approvals.answer(question.request_id, ApprovalAnswer.ALLOW)
+            await session.approvals.allow(question.request_id)
             assert effects == ["published"]
             assert isinstance(events[-1], TurnResultEvent)
-            assert session.last(ApprovalResolvedEvent).decision is ApprovalAnswer.ALLOW
+            assert session.last(ApprovalResolvedEvent).decision is Decision.ALLOW
 
 
 async def test_a_queued_stream_cannot_answer_a_different_turns_approval():
     model = ScriptedModel([work(), "headless", work(), "streamed"])
     effects, asked = [], []
-    async with Agent(model=model, plugins=[Work(effects), Approvals()]).session() as session:
+    async with Agent(
+        model=model, approvals=Approvals(default=Decision.ASK), plugins=[Work(effects)]
+    ).session() as session:
         await session.pause()
         enqueued = asyncio.Event()
         submitted = []
@@ -440,7 +436,7 @@ async def test_a_queued_stream_cannot_answer_a_different_turns_approval():
                 async for event in run_stream:
                     if isinstance(event, ApprovalNeededEvent):
                         asked.append(event)
-                        await session.approvals.answer(event.request_id, ApprovalAnswer.ALLOW)
+                        await session.approvals.allow(event.request_id)
 
         headless = asyncio.create_task(session.run("No UI"))
         streaming = asyncio.create_task(consume())
@@ -455,7 +451,11 @@ async def test_expired_ui_approval_cannot_be_answered_and_still_finishes_the_tur
     effects = []
     model = ScriptedModel([work(), "timed out"])
     async with (
-        Agent(model=model, plugins=[Work(effects), Approvals(timeout=0.02)]).session() as session,
+        Agent(
+            model=model,
+            approvals=Approvals(default=Decision.ASK, timeout=0.02),
+            plugins=[Work(effects)],
+        ).session() as session,
         session.stream("Publish") as stream,
     ):
         async for event in stream:
@@ -464,7 +464,7 @@ async def test_expired_ui_approval_cannot_be_answered_and_still_finishes_the_tur
                 break
         await asyncio.wait_for(session.wait_until_idle(), 3)
         with pytest.raises(ApprovalUnavailable):
-            await session.approvals.answer(question.request_id, ApprovalAnswer.ALLOW)
+            await session.approvals.allow(question.request_id)
         rest = [event async for event in stream]
         assert isinstance(rest[-1], TurnResultEvent) and effects == []
         assert (
@@ -477,7 +477,9 @@ async def test_abort_during_ui_approval_returns_an_aborted_terminal_result():
     effects, questions = [], []
     ready = asyncio.Event()
     async with Agent(
-        model=ScriptedModel([work()]), plugins=[Work(effects), Approvals()]
+        model=ScriptedModel([work()]),
+        approvals=Approvals(default=Decision.ASK),
+        plugins=[Work(effects)],
     ).session() as session:
 
         async def consume():
@@ -498,7 +500,7 @@ async def test_abort_during_ui_approval_returns_an_aborted_terminal_result():
         assert events[-1].result.stop_reason is StopReason.ABORTED
         assert effects == [] and not session.approvals.pending
         with pytest.raises(ApprovalUnavailable):
-            await session.approvals.answer(questions[0].request_id, ApprovalAnswer.ALLOW)
+            await session.approvals.allow(questions[0].request_id)
 
 
 async def test_structured_stream_preserves_the_output_type_without_control_tool_spinners():

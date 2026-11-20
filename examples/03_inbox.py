@@ -2,9 +2,8 @@
 
 import asyncio
 
-from harnessed import Agent, PolicyDecision, Role
-from harnessed.models import ModelChunk, UserMessage
-from harnessed.plugins import Approvals
+from harnessed import Agent
+from harnessed.models import ModelChunk, Role, UserMessage
 from harnessed.testing import CallbackModel
 
 
@@ -24,7 +23,7 @@ class PausingModel(CallbackModel):
 
 async def main():
     model = PausingModel()
-    agent = Agent(model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)])
+    agent = Agent(model=model)
     async with agent.session() as session:
         await session.append_message(UserMessage("This project uses Python 3.12+."))
         print(f"After a quiet context update: {session.status}, {len(model.requests)} requests")

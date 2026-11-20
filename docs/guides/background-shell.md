@@ -3,7 +3,7 @@
 `BackgroundShell` is an opt-in plugin for commands that should keep running while
 the agent works on something else. It adds live output inspection, piped stdin,
 completion notifications and process-tree termination. No background tools are
-installed by default. `Shell()` and `ShellTools()` still expose only the
+installed by default. `Shell()` exposes the
 foreground `run_command` tool.
 
 ## Register the plugin
@@ -14,14 +14,15 @@ Compose a shell backend and the background tools explicitly:
 from pathlib import Path
 
 from harnessed import Agent
-from harnessed.plugins import BackgroundShell, Shell
+from harnessed.plugins import BackgroundShell, LocalWorkspace, Shell
 
 workspace = Path("my-project").resolve()
 agent = Agent(
     model="openai:gpt-4.1",
     plugins=[
-        Shell(workspace, max_output_bytes=1_048_576),
-        BackgroundShell(workspace, timeout=300, max_background_commands=8),
+        LocalWorkspace(root=workspace, max_output_bytes=1_048_576),
+        Shell(),
+        BackgroundShell(timeout=300, max_background_commands=8),
     ],
 )
 
@@ -36,21 +37,20 @@ async with agent.session() as session:
     await session.wait_until_idle()
 ```
 
-`Shell` supplies the local backend and foreground tool; `BackgroundShell` adds
-five tools to that backend. Both interpret their own `cwd` in the backend's
-filesystem, so pass the same workspace when they should work in the same directory.
+`LocalWorkspace` supplies the shell backend. `Shell` adds the foreground tool and
+`BackgroundShell` adds five tools for background jobs. Both run in the workspace
+root by default. Set `cwd=` on either tool plugin to use a subdirectory.
 The normal [approval policy](approvals.md) applies: starting, writing and
 terminating commands are mutating tools; reading and listing are readonly.
 
-For background tools without a foreground tool, register the backend as a service:
+For background tools without a foreground tool, select only the background tool plugin:
 
 ```python
-from harnessed.plugins import BackgroundShell, Service
-from harnessed.plugins.shell import LocalShell, ShellBackend
+from harnessed.plugins import BackgroundShell, LocalWorkspace
 
 plugins = [
-    Service(ShellBackend, LocalShell(max_output_bytes=262_144)),
-    BackgroundShell(workspace),
+    LocalWorkspace(root=workspace, max_output_bytes=262_144),
+    BackgroundShell(),
 ]
 ```
 
@@ -59,9 +59,7 @@ Missing services follow the normal [startup validation](plugins.md#session-start
 Mounting it on an already open session is also explicit:
 
 ```python
-from harnessed import SectionDelivery
-
-handle = await session.mount(BackgroundShell(workspace), section_delivery=SectionDelivery.CONTEXT)
+handle = await session.mount(BackgroundShell())
 # Later: terminate all jobs owned by this mount and remove its tools.
 await handle.aclose()
 ```
@@ -142,7 +140,7 @@ cancelling `wait()` must not cancel the process. Terminal snapshots become visib
 after cleanup has drained.
 
 Run-only backends, including the current Docker/Bubblewrap worker transports,
-continue to support `ShellTools`. `start_command` rejects them explicitly before
+continue to support `Shell`. `start_command` rejects them explicitly before
 launching anything; there is no fallback to an unsandboxed local process.
 
 Run `uv run python -m examples.35_background_shell` for an offline example showing

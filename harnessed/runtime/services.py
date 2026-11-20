@@ -4,7 +4,6 @@ from harnessed.models.model import UsagePurpose
 from harnessed.prompts import SystemPromptStore
 from harnessed.tools import ToolRegistry
 
-from .budget import ContextBudget
 from .hooks import SessionAppended
 from .plugin import Plugin
 from .tokens import CalibratedTokenCounter, TokenCounter
@@ -23,7 +22,6 @@ class RuntimeServices(Plugin):
         scope.provide(ToolRegistry, ToolRegistry(scope))
         scope.provide(SystemPromptStore, SystemPromptStore(scope))
         scope.provide(TokenCounter, counter)
-        scope.provide(ContextBudget, ContextBudget())
 
         def calibrate(event: SessionAppended) -> None:
             usage = event.event

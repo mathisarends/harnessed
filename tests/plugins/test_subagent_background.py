@@ -3,14 +3,7 @@ import json
 
 import pytest
 
-from harnessed import (
-    Agent,
-    Plugin,
-    PolicyDecision,
-    SessionState,
-    ToolCall,
-    tool,
-)
+from harnessed import Agent, Approvals, Decision, Plugin, tool
 from harnessed.events import (
     InboxAddedEvent,
     SubagentFinishedEvent,
@@ -22,10 +15,10 @@ from harnessed.events import (
 from harnessed.hooks import SessionAppended
 from harnessed.integrations.json import JsonSessionStore
 from harnessed.kernel import PluginScope
-from harnessed.models import ModelChunk
-from harnessed.models.messages import ToolMessage, ToolStatus
-from harnessed.plugins import Approvals, Subagents
+from harnessed.models import ModelChunk, ToolCall, ToolMessage, ToolStatus
+from harnessed.plugins import Subagents
 from harnessed.plugins.subagents import ChildActivity, ChildReportState
+from harnessed.sessions import SessionState
 from harnessed.testing import CallbackModel, ScriptedModel
 
 
@@ -36,10 +29,16 @@ def _spawn(task="Review the code", *, id=None):
 def _parent(child, model, **limits):
     return Agent(
         model=model,
-        plugins=[
-            Subagents({"review": child}, **limits),
-            Approvals(allow=[Subagents.spawn, Subagents.send, Subagents.cancel]),
-        ],
+        approvals=Approvals(
+            allow=[
+                Subagents.spawn,
+                Subagents.status,
+                Subagents.wait,
+                Subagents.send,
+                Subagents.cancel,
+            ]
+        ),
+        plugins=[Subagents({"review": child}, **limits)],
     )
 
 
@@ -292,8 +291,7 @@ async def test_background_children_are_drained_even_when_parent_is_idle(action):
             yield ModelChunk(text="Done")
 
     parent = Agent(
-        model=CallbackModel(parent_response),
-        plugins=[Approvals(default=PolicyDecision.ALLOW)],
+        model=CallbackModel(parent_response), approvals=Approvals(default=Decision.ALLOW)
     )
     async with parent.session() as session:
         mount = await session.mount(
@@ -418,6 +416,9 @@ async def test_status_while_awaiting_child_approval_returns_facts_then_terminal_
 
     parent = Agent(
         model=CallbackModel(parent_response),
+        approvals=Approvals(
+            allow=[Subagents.spawn, Subagents.status, Subagents.wait], approver=approver
+        ),
         plugins=[
             Subagents(
                 {
@@ -425,11 +426,11 @@ async def test_status_while_awaiting_child_approval_returns_facts_then_terminal_
                         model=ScriptedModel(
                             [[ModelChunk(tool_call=ToolCall("write"))], "Child done"]
                         ),
-                        plugins=[Write(), Approvals()],
+                        plugins=[Write()],
+                        approvals=Approvals(default=Decision.ASK),
                     )
                 }
-            ),
-            Approvals(allow=[Subagents.spawn], approver=approver),
+            )
         ],
     )
     async with parent.session() as session:

@@ -4,7 +4,7 @@ import pytest
 
 from harnessed.agent import Agent
 from harnessed.kernel import as_plugin_spec
-from harnessed.prompts.values import SystemPrompt
+from harnessed.prompts import SystemPrompt
 
 from .models import ScriptedModel
 
@@ -19,13 +19,10 @@ def harnessed_session():
         script=(),
         plugins=(),
         state=None,
-        instructions: str | None = None,
-        prompt: SystemPrompt | None = None,
+        instructions: str | SystemPrompt | None = None,
     ):
         plugins = tuple(plugins)
-        replaced = {as_plugin_spec(value).slot for value in plugins} | {"model"}
-        if prompt is not None or instructions is not None:
-            replaced.add("instructions")
+        replaced = {slot for value in plugins if (slot := as_plugin_spec(value).slot) is not None}
         configured = (
             tuple(value for value in agent.plugins if as_plugin_spec(value).slot not in replaced)
             if agent is not None
@@ -33,8 +30,12 @@ def harnessed_session():
         )
         app = Agent(
             model=ScriptedModel(script),
-            instructions=instructions,
-            prompt=prompt,
+            instructions=agent.instructions
+            if agent is not None and instructions is None
+            else instructions,
+            approvals=agent.approvals if agent is not None else None,
+            context=agent.context if agent is not None else None,
+            loop=agent.loop if agent is not None else None,
             plugins=(*configured, *plugins),
         )
         return app.session(state=state)

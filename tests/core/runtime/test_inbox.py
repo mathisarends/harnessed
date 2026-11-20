@@ -4,7 +4,7 @@ from dataclasses import FrozenInstanceError
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import PolicyDecision
+from harnessed import Approvals, Decision
 from harnessed.errors import SessionStateError
 from harnessed.events import (
     InboxAddedEvent,
@@ -15,7 +15,6 @@ from harnessed.events import (
 )
 from harnessed.events.codec import decode_event, encode_event
 from harnessed.models import ModelChunk, system, user
-from harnessed.plugins import Approvals
 from harnessed.sessions.inbox import Inbox
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit
@@ -109,7 +108,7 @@ class PausingModel(CallbackModel):
 async def test_steering_enters_the_running_turn_before_its_next_step():
     model = PausingModel()
     async with Application(
-        model=model, plugins=[Approvals(default=PolicyDecision.ALLOW)]
+        model=model, approvals=Approvals(default=Decision.ALLOW)
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.submit("task")
@@ -127,7 +126,9 @@ async def test_steering_enters_the_running_turn_before_its_next_step():
 
 
 async def test_public_inbox_removal_discards_only_the_selected_queued_run():
-    from harnessed import Agent, SessionStatus, StopReason
+    from harnessed import Agent
+    from harnessed.models import StopReason
+    from harnessed.runtime.control import SessionStatus
     from harnessed.runtime.inbox import InboxKind
 
     async with Agent(model=ScriptedModel(["kept"])).session() as session:

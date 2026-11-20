@@ -1,6 +1,7 @@
 import pytest
 
-from harnessed import Agent, AgentLoop, Plugin, tool
+from harnessed import Agent, Compaction, Context, Plugin, tool
+from harnessed.context import Summary
 from harnessed.errors import ContextLengthExceeded
 from harnessed.events import (
     AssistantMessageEvent,
@@ -16,18 +17,20 @@ from harnessed.events import (
     UserMessageEvent,
 )
 from harnessed.kernel import Scope
-from harnessed.models import ModelChunk, ModelInfo, ModelRequest, ModelResponse, ProviderState
-from harnessed.models.messages import (
+from harnessed.models import (
     AssistantMessage,
     Message,
+    ModelChunk,
+    ModelInfo,
+    ModelRequest,
+    ModelResponse,
+    ProviderState,
     SystemMessage,
     ToolCall,
     ToolMessage,
     ToolResult,
     UserMessage,
 )
-from harnessed.plugins import Compaction
-from harnessed.plugins.compaction import Summary
 from harnessed.runtime.compaction import CompactionManager, CompactionPolicy, CompactionSettings
 from harnessed.runtime.tokens import ApproximateTokenCounter, TokenCounter
 from harnessed.sessions import SessionState
@@ -90,7 +93,7 @@ async def compact(log: SessionLog, *, keep_last_steps: int = 1) -> CompactionApp
     async with Scope() as scope:
         scope.provide(TokenCounter, ApproximateTokenCounter())
         scope.provide(CompactionPolicy, CompactionPolicy(settings, lambda _: True, Brief()))
-        manager = CompactionManager(scope, log, context_window=None)
+        manager = CompactionManager(scope, log)
         applied, request = await manager.compact(
             ModelRequest(log.messages), model=ScriptedModel([])
         )
@@ -213,11 +216,13 @@ async def test_first_turn_compacts_automatically_without_changing_retained_provi
     brief = Brief()
     async with Agent(
         model=model,
-        plugins=[
-            Work(),
-            Compaction(trigger=lambda state: not over_budget, summarizer=brief, keep_last_steps=2),
-        ],
-        loop=AgentLoop(context_window=3000 if over_budget else 128_000),
+        plugins=[Work()],
+        context=Context(
+            max_tokens=3000 if over_budget else 128_000,
+            compaction=Compaction(
+                trigger=lambda state: not over_budget, summarizer=brief, keep_last_steps=2
+            ),
+        ),
     ).session() as session:
         session_audit = Audit(session)
         await session.run("original task")
@@ -258,10 +263,10 @@ async def test_nonshrinking_summary_retries_after_two_more_steps_in_the_same_tur
     brief = SometimesBrief()
     async with Agent(
         model=model,
-        plugins=[
-            Work(),
-            Compaction(trigger=lambda state: True, summarizer=brief, keep_last_steps=1),
-        ],
+        plugins=[Work()],
+        context=Context(
+            compaction=Compaction(trigger=lambda state: True, summarizer=brief, keep_last_steps=1)
+        ),
     ).session() as session:
         session_audit = Audit(session)
         await session.run("task")
@@ -292,10 +297,8 @@ async def test_provider_context_error_can_compact_completed_steps_in_the_first_t
     brief = Brief()
     async with Agent(
         model=model,
-        plugins=[
-            Work(),
-            Compaction(trigger=lambda state: False, summarizer=brief),
-        ],
+        plugins=[Work()],
+        context=Context(compaction=Compaction(trigger=lambda state: False, summarizer=brief)),
     ).session() as session:
         session_audit = Audit(session)
         result = await session.run("task")

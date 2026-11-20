@@ -3,22 +3,20 @@ from dataclasses import FrozenInstanceError
 import pytest
 from pydantic import ValidationError
 
-from harnessed import (
-    Agent,
-    Plugin,
+from harnessed import Agent, Approvals, Decision, Plugin, tool
+from harnessed.hooks import ExecuteTool
+from harnessed.kernel import hook
+from harnessed.models import ToolCall, ToolDefinition
+from harnessed.testing import ScriptedModel, call
+from harnessed.tools import (
     ToolAnnotations,
-    ToolCall,
+    ToolChain,
     ToolIcon,
     ToolInfo,
     ToolPresentation,
-    tool,
+    ToolRegistry,
+    ToolSpec,
 )
-from harnessed.hooks import ExecuteTool
-from harnessed.kernel import hook
-from harnessed.models import ToolDefinition
-from harnessed.plugins import Approvals
-from harnessed.testing import ScriptedModel, call
-from harnessed.tools import ToolRegistry, ToolSpec
 
 
 async def test_decorator_captures_immutable_presentation_without_changing_model_or_permissions():
@@ -52,7 +50,9 @@ async def test_decorator_captures_immutable_presentation_without_changing_model_
     model = ScriptedModel([call(Tools.inspect, path="document"), "done"])
     # The hint cannot bypass approval; allow execution explicitly for this test.
     async with Agent(
-        model=model, plugins=[Tools(), Approvals(approver=lambda request: True)]
+        model=model,
+        approvals=Approvals(default=Decision.ASK, approver=lambda request: True),
+        plugins=[Tools()],
     ).session() as session:
         registry = session.scope[ToolRegistry]
         assert not registry.is_readonly("inspect")
@@ -88,11 +88,14 @@ async def test_registration_routes_preserve_captured_presentation_after_replacem
         registry = session.scope[ToolRegistry]
         if route == "register":
             registry.register(
-                work, presentation=ToolPresentation(title="Original", tags={route}), confirm=True
+                work,
+                presentation=ToolPresentation(title="Original", tags={route}),
+                action=ToolChain.STOP_AFTER,
             )
         elif route == "decorator":
             registry.tool(
-                presentation=ToolPresentation(title="Original", tags={route}), confirm=True
+                presentation=ToolPresentation(title="Original", tags={route}),
+                action=ToolChain.STOP_AFTER,
             )(work)
         else:
             registry.register_external(
@@ -100,16 +103,17 @@ async def test_registration_routes_preserve_captured_presentation_after_replacem
                 external,
                 owner=session.scope,
                 spec=ToolSpec(
-                    presentation=ToolPresentation(title="Original", tags={route}), confirm=True
+                    presentation=ToolPresentation(title="Original", tags={route}),
+                    action=ToolChain.STOP_AFTER,
                 ),
             )
         plan = registry.plan(ToolCall("work"))
         registry.register(work, override=True, presentation=ToolPresentation(title="Replacement"))
         assert plan.tool.presentation.title == "Original"
         assert plan.tool.presentation.tags == frozenset({route})
-        assert plan.tool.confirm is True
+        assert plan.tool.action is ToolChain.STOP_AFTER
         assert registry.plan(ToolCall("work")).tool.presentation.title == "Replacement"
-        assert registry.plan(ToolCall("work")).tool.confirm is False
+        assert registry.plan(ToolCall("work")).tool.action is None
 
 
 @pytest.mark.parametrize(

@@ -3,7 +3,7 @@ import inspect
 from collections.abc import Awaitable, Callable, Iterable, Iterator
 from dataclasses import dataclass
 
-from harnessed.models.messages import ToolCall, ToolResult
+from harnessed.models import ToolCall, ToolResult
 
 from .info import ToolEnvelope, ToolInfo
 from .policy import OutputLimit, OutputLimitSetting
@@ -40,6 +40,8 @@ class PreparedToolCall:
     call: ToolCall
     scheduling: ToolScheduling
     error: ToolResult | None = None
+    callback: Callable | None = None
+    grant_key: str | None = None
     binding: object | None = None
     output_limit: OutputLimitSetting = OutputLimit.INHERIT
     tool: ToolInfo | None = None

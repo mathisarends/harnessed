@@ -1,21 +1,9 @@
-from collections.abc import AsyncGenerator
 from typing import assert_type
 
 from pydantic import BaseModel
 
 from harnessed import Agent as AppAgent
-from harnessed import (
-    AgentLoop,
-    OutputContract,
-    Plugin,
-    PluginState,
-    PluginValidation,
-    RunHandle,
-    RunStream,
-    SessionLog,
-    ToolContext,
-    tool,
-)
+from harnessed import AgentLoop, OutputContract, Plugin, ToolContext, tool
 from harnessed.errors import PluginDependencyError
 from harnessed.events import (
     AssistantMessageEvent,
@@ -41,26 +29,29 @@ from harnessed.kernel import (
     Inject,
     PluginDependencyIssue,
     PluginSpec,
+    PluginState,
     Scope,
     hook,
     needs,
-    plugin,
 )
-from harnessed.models import ToolArgumentsMode, ToolCallDelta, ToolCallStart
-from harnessed.models.messages import AssistantMessage, ToolMessage, UserMessage
-from harnessed.models.model import ModelRequest, ModelResponse, ToolDefinition
+from harnessed.models import (
+    AssistantMessage,
+    ModelRequest,
+    ModelResponse,
+    ToolArgumentsMode,
+    ToolCallDelta,
+    ToolCallStart,
+    ToolDefinition,
+    ToolMessage,
+    UserMessage,
+)
 from harnessed.plugins import Spill
+from harnessed.runtime.composition import PluginValidation
+from harnessed.runtime.handles import RunHandle, RunStream
 from harnessed.runtime.session import Session
+from harnessed.sessions.log import SessionLog
 from harnessed.sessions.result import RunResult
 from harnessed.tools import SessionTools, ToolAvailability, ToolExplanation
-
-
-@plugin
-async def configured(scope: Scope, root: str, *, enabled: bool = True) -> AsyncGenerator[None]:
-    yield
-
-
-assert_type(configured("workspace", enabled=False), PluginSpec)
 
 
 class EventObserver(Plugin):
@@ -272,7 +263,7 @@ def tool_diagnostics(tools: SessionTools) -> None:
 
 
 async def state_consumer(agent: AppAgent) -> None:
-    from harnessed import SessionState
+    from harnessed.sessions import SessionState
 
     result = await agent.run("first")
     assert_type(result.state, SessionState)

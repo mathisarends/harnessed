@@ -1,6 +1,5 @@
-from harnessed import SessionState
 from harnessed.events import ControlState, SessionControlChangedEvent
-from harnessed.sessions import SessionCheckpoint, SessionCommit
+from harnessed.sessions import SessionCheckpoint, SessionCommit, SessionState
 
 
 def checkpoint(marker: str = "") -> SessionCheckpoint:

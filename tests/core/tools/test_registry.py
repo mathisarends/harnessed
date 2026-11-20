@@ -4,11 +4,9 @@ from typing import Annotated, Protocol
 import pytest
 from pydantic import Field
 
-from harnessed import Agent, Plugin, ToolCall
-from harnessed.kernel import Inject, InjectMarker, PluginStatus, Scope
-from harnessed.models import ModelChunk, UserMessage
-from harnessed.models.messages import ToolResult
-from harnessed.runtime.plugin import Bundle
+from harnessed import Agent, Plugin
+from harnessed.kernel import Bundle, Inject, InjectMarker, PluginStatus, Scope
+from harnessed.models import ModelChunk, ToolCall, ToolResult, UserMessage
 from harnessed.sessions import SessionContext
 from harnessed.testing import ScriptedModel
 from harnessed.testing import call as scripted_call

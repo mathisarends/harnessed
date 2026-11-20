@@ -9,7 +9,7 @@ from harnessed.events import (
     TurnStartedEvent,
 )
 from harnessed.kernel import Priority, Scope
-from harnessed.models.messages import ApprovalAnswer
+from harnessed.models.messages import ApprovalResponse
 from harnessed.sessions.log import SessionLog
 
 from .approvals import LiveApproval, LiveApprovals
@@ -45,7 +45,7 @@ class StreamApprovals:
     def prepared(self, item: InboxAddedEvent) -> None:
         self.input_id = item.message.id
 
-    async def _answer(self, event: RequestApproval) -> ApprovalAnswer | None:
+    async def _answer(self, event: RequestApproval) -> ApprovalResponse | None:
         turn = self.log.open_turn
         start = turn.events[0] if turn is not None else None
         if (

@@ -3,13 +3,17 @@
 import asyncio
 from typing import override
 
-from harnessed import Agent, Plugin, SessionLog, ToolResult, tool
+from harnessed import Agent, Plugin, tool
 from harnessed.hooks import Next, ReviewToolResult
-from harnessed.kernel import Inject, PluginScope, hook
+from harnessed.kernel import PluginScope, hook, needs
+from harnessed.models import ToolResult
+from harnessed.sessions.log import SessionLog
 from harnessed.testing import ScriptedModel, call
 
 
-class Echo(Plugin, needs=(SessionLog,)):
+class Echo(Plugin):
+    log = needs(SessionLog)
+
     def __init__(self, prefix: str = ""):
         super().__init__()
         self.prefix = prefix
@@ -20,11 +24,9 @@ class Echo(Plugin, needs=(SessionLog,)):
         return self.prefix + text
 
     @hook(ReviewToolResult)
-    async def annotate(
-        self, event: ReviewToolResult, next_: Next[ToolResult], log: Inject[SessionLog]
-    ):
+    async def annotate(self, event: ReviewToolResult, next_: Next[ToolResult]):
         result = await next_()
-        print(f"Review in session {log.id}: {event.call.name}")
+        print(f"Review in session {self.log.id}: {event.call.name}")
         return result.with_note("Reviewed by an owned hook.")
 
 

@@ -2,7 +2,8 @@
 
 import asyncio
 
-from harnessed import Agent, SessionState
+from harnessed import Agent
+from harnessed.sessions import SessionState
 from harnessed.testing import ScriptedModel
 
 

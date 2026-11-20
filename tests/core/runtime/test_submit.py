@@ -3,10 +3,12 @@ import asyncio
 import pytest
 from pydantic import BaseModel, field_validator
 
-from harnessed import Agent, Plugin, RunHandle, RunStream, SessionStatus, StopReason, tool
+from harnessed import Agent, Plugin, tool
 from harnessed.events import ControlState, InboxAddedEvent, SessionControlChangedEvent
 from harnessed.hooks import PreStep, StepDecision
-from harnessed.models import ModelChunk, UserMessage
+from harnessed.models import ModelChunk, StopReason, UserMessage
+from harnessed.runtime.control import SessionStatus
+from harnessed.runtime.handles import RunHandle, RunStream
 from harnessed.testing import CallbackModel, ScriptedModel, call
 from tests._audit import Audit
 
@@ -288,7 +290,7 @@ async def test_driver_errors_are_delivered_through_the_run_handle():
 async def test_rejecting_queued_runs_completes_every_handle_without_another_wakeup():
     async with Agent(model=ScriptedModel([])).session() as session:
         session_audit = Audit(session)
-        session.add_hook(PreStep, lambda event, next_: StepDecision.reject())
+        session.on(PreStep, lambda event, next_: StepDecision.reject())
         await session.pause()
         handles = [await session.submit(str(index)) for index in range(3)]
         await session.resume()

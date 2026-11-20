@@ -1,15 +1,13 @@
 """Run with: uv run python -m examples.08_observations (uses an in-memory browser)."""
 
 import asyncio
-from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Protocol
 
-from harnessed import Agent, Plugin, PolicyDecision, ToolCall, tool
+from harnessed import Agent, Plugin, tool
 from harnessed.hooks import Next, PreStep, StepDecision
-from harnessed.kernel import Inject, Scope, hook, plugin
-from harnessed.models import ImagePart, ModelChunk, TextPart, UserMessage
-from harnessed.plugins import Approvals
+from harnessed.kernel import PluginScope, hook, needs
+from harnessed.models import ImagePart, ModelChunk, TextPart, ToolCall, UserMessage
 from harnessed.testing import ScriptedModel
 
 
@@ -46,21 +44,21 @@ class DemoBrowser:
         self.title = "Settings"
 
 
-@plugin
-async def browser_backend(scope: Scope) -> AsyncGenerator[None]:
-    scope.provide(Browser, DemoBrowser())
-    yield
+class BrowserBackend(Plugin):
+    async def setup(self, scope: PluginScope) -> None:
+        scope.provide(Browser, DemoBrowser())
 
 
-class BrowserObserver(Plugin, needs=(Browser,)):
+class BrowserObserver(Plugin):
+    browser = needs(Browser)
+
     @hook(PreStep)
     async def observe(
         self,
         event: PreStep,
         next_: Next[StepDecision],
-        browser: Inject[Browser],
     ) -> StepDecision:
-        state = await browser.snapshot()
+        state = await self.browser.snapshot()
         event.session.observe(
             UserMessage(
                 (
@@ -76,20 +74,20 @@ class BrowserObserver(Plugin, needs=(Browser,)):
 
 
 class BrowserTools(Plugin):
-    needs = (Browser,)
+    browser = needs(Browser)
 
     @tool
-    async def click(self, ref: str, browser: Inject[Browser]) -> str:
+    async def click(self, ref: str) -> str:
         """Click an element by its ref from the current page state."""
-        before = browser.current_url
-        await browser.click(ref)
-        after = browser.current_url
+        before = self.browser.current_url
+        await self.browser.click(ref)
+        after = self.browser.current_url
         return f"Clicked {ref}." + (f" Navigated to {after}." if after != before else "")
 
     @tool
-    async def snapshot(self, browser: Inject[Browser]) -> str:
+    async def snapshot(self) -> str:
         """Get the full current page state if the page may have changed."""
-        return (await browser.snapshot()).render()
+        return (await self.browser.snapshot()).render()
 
 
 browser_tools = BrowserTools()
@@ -101,12 +99,7 @@ async def main():
     )
     agent = Agent(
         model=model,
-        plugins=[
-            Approvals(default=PolicyDecision.ALLOW),
-            browser_backend(),
-            BrowserObserver(),
-            browser_tools,
-        ],
+        plugins=[BrowserBackend(), BrowserObserver(), browser_tools],
     )
     async with agent.session() as session:
         print((await session.run("Open Settings.")).text)

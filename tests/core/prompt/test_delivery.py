@@ -2,11 +2,12 @@ import asyncio
 
 import pytest
 
-from harnessed import Agent, Instructions, Plugin, SectionDelivery, SystemPrompt, tool
+from harnessed import Agent, Plugin, SystemPrompt, tool
 from harnessed.events import PluginInstructionsChangedEvent
 from harnessed.hooks import PrepareRequest
 from harnessed.kernel import PluginScope, PluginStatus, needs
 from harnessed.models import ModelRequest
+from harnessed.prompts import Instructions, SectionDelivery
 from harnessed.sessions import SessionContext
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit
@@ -25,7 +26,7 @@ class Feature(Plugin):
 async def test_use_owns_tools_and_guidance_through_normal_and_exceptional_exit(fail):
     async with Agent(model=ScriptedModel(["during", "after"])).session() as session:
         try:
-            async with session.use(Feature(), section_delivery=SectionDelivery.CONTEXT) as mount:
+            async with session.mount(Feature()) as mount:
                 assert mount.instance is not None
                 assert "inspect" in session.tools
                 await session.run("during")
