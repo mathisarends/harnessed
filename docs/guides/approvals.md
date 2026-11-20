@@ -1,6 +1,8 @@
 # Approval composition
 
-The default `Approvals()` permits read-only tools and asks before side effects.
+Approvals is an explicit plugin. Without it the agent fails closed: read-only
+tools run, and every other tool returns an unavailable result because nobody can
+answer. `Approvals()` permits read-only tools and asks before side effects.
 Use an enum for a different fallback and decorated method references for rules:
 
 ```python

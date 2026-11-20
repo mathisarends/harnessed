@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import Plugin, PolicyDecision, ToolCall, tool
+from harnessed import AgentLoop, Plugin, PolicyDecision, ToolCall, tool
 from harnessed.errors import ContextBudgetExceeded, ContextLengthExceeded
 from harnessed.events import (
     AssistantMessageEvent,
@@ -18,7 +18,7 @@ from harnessed.events import (
 from harnessed.events.codec import decode_event, encode_event
 from harnessed.models import GenerationSettings, Model, ModelChunk, ModelInfo
 from harnessed.models.messages import Role, SystemMessage
-from harnessed.plugins import AgentLoop, Approvals, Compaction, at_ratio, every_turns
+from harnessed.plugins import Approvals, Compaction, at_ratio, every_turns
 from harnessed.plugins.compaction import Summary
 from harnessed.runtime.budget import ContextBudget
 from harnessed.runtime.hooks import PrepareRequest
@@ -139,7 +139,6 @@ async def test_compaction_preserves_request_hook_context_and_combines_triggers_o
     harness = Application(
         model=model,
         plugins=[
-            AgentLoop(context_window=2000),
             Approvals(default=PolicyDecision.ALLOW),
             Compaction(
                 trigger=lambda state: ratio(state) or periodic(state),
@@ -149,6 +148,7 @@ async def test_compaction_preserves_request_hook_context_and_combines_triggers_o
             ),
             extensions,
         ],
+        loop=AgentLoop(context_window=2000),
     )
 
     @extensions.on(PrepareRequest)
@@ -286,10 +286,8 @@ async def test_budget_reserve_uses_maximum_and_keeps_the_stricter_window_limit()
         model.settings = GenerationSettings(max_tokens=max_tokens)
         app = Application(
             model=model,
-            plugins=[
-                AgentLoop(context_window=200),
-                Service(ContextBudget, ContextBudget(limit=100, reserve_tokens=20)),
-            ],
+            plugins=[Service(ContextBudget, ContextBudget(limit=100, reserve_tokens=20))],
+            loop=AgentLoop(context_window=200),
         )
         async with app.session() as session:
             if max_tokens == 80:
@@ -312,10 +310,8 @@ async def test_context_overflow_retry_uses_the_effective_turn_step_limit(default
     summaries = RecordingCompactor()
     async with Application(
         model=model,
-        plugins=[
-            AgentLoop(max_steps=default_steps),
-            Compaction(trigger=lambda state: False, summarizer=summaries, keep_last_steps=1),
-        ],
+        plugins=[Compaction(trigger=lambda state: False, summarizer=summaries, keep_last_steps=1)],
+        loop=AgentLoop(max_steps=default_steps),
     ).session() as session:
         session_audit = Audit(session)
         await session.run("old question " * 100)
@@ -388,10 +384,8 @@ async def test_explicit_loop_window_still_wins_after_model_replacement():
     windows = []
     async with Application(
         model=original,
-        plugins=[
-            AgentLoop(context_window=2000),
-            Compaction(trigger=lambda state: windows.append(state.context_window) or False),
-        ],
+        plugins=[Compaction(trigger=lambda state: windows.append(state.context_window) or False)],
+        loop=AgentLoop(context_window=2000),
     ).session() as session:
         await session.mount(Service(Model, replacement))
         result = await session.run("x" * 1000)

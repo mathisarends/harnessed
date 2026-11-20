@@ -87,17 +87,17 @@ console mode remains offline.
 ## System prompt composition
 
 `uv run python -m examples.32_system_prompts` declares literal and
-configuration-dependent plugin blocks, publishes a collection format through a
-pack, and renders the same document as plain
+configuration-dependent plugin blocks, selects a collection format with
+`prompt=`, and renders the same document as plain
 text, XML and Markdown.
 See [system prompts and changing context](context.md).
 
-## Plugin packs
+## Explicit composition
 
-`uv run python -m examples.36_plugin_packs` publishes library defaults, nests them
-in a project pack, excludes optional tools and replaces a library capability by
-slot. It prints static provenance and runs the selected tool with a scripted model.
-See [library composition](plugins.md#publish-library-defaults-with-pluginpack).
+`uv run python -m examples.36_explicit_composition` shares a composition through
+an ordinary function returning plugins, configures the loop with `AgentLoop`,
+prints the static description and shows a duplicate slot raising `PluginConflict`.
+See [composition](plugins.md#share-compositions-with-ordinary-functions).
 
 ## Plugin recipes and dependencies
 
@@ -105,7 +105,7 @@ See [library composition](plugins.md#publish-library-defaults-with-pluginpack).
 dependencies, `Plugin[FileToolsConfig]` with an explicit frozen config object and
 activation-owned state. It declares `FILE_EVENTS`, emits a `DocumentReadEvent`
 through `ToolContext.emit`, and handles it in an independent observer with `@hook`.
-The pack places its default `instructions` group without a `fragments` declaration.
+A `workspace(...)` factory returns the plugin list the agent mounts.
 It also tests the same recipe's configuration and fake dependencies with
 `mount_plugin`, without an agent.
 

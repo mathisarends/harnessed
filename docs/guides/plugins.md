@@ -12,206 +12,106 @@ Import `PluginScope` from `harnessed.kernel`. It is the resource and registratio
 view for this activation; the framework owns composition and closure. See the
 [activation contract](#activation-scope-and-lifecycle-contract) below.
 
-An Agent is a resolved plugin list. `model=` supplies `Service(Model, model)`;
-`prompt=` configures the `PromptRenderer` plugin; `instructions=` prepends caller text. The default runtime plugins are
-`AgentLoop`, `ToolOutputLimit`, `Approvals` and `NoopTracer`.
-Use their public imports from `harnessed.plugins`. The tool registry, system prompt,
-token counter and context budget come from an internal plugin without a slot that
-the Agent always installs first. A replacement `loop` therefore keeps the tools;
-replace a single service with `Service(TokenCounter, counter)`.
+An Agent is a fixed runtime core plus the plugins you list. The core is not made
+of plugins and cannot be replaced: the session log, tool registry, system prompt,
+token counter, context budget, prompt rendering and the loop itself. Everything
+else is visible in `plugins=`; the Agent adds no hidden default plugins.
 
-## Replace a default
+`model=` supplies `Service(Model, model)`, `prompt=` chooses the system prompt
+strategy, `instructions=` prepends caller text and `loop=` configures the loop
+with an `AgentLoop` value. `AgentLoop` is a value object, not a plugin: it owns
+step limits, tool timeouts, parallelism, the final tool-output limit, context
+window and output retries. Replace a single core service with
+`Service(TokenCounter, counter)`.
+
+Optional extension points have defined behavior when absent:
+
+| Extension | Without it |
+| --- | --- |
+| `Approvals(...)` | Fail closed: read-only tools run, tools marked `confirm` or unflagged side effects are unavailable |
+| A tracer, for example `OpenTelemetry(...)` | No tracing; nothing is recorded |
+| `Compaction(...)` | History is never summarized; requests fail once they exceed the context window |
+
+## Configure the loop and add features
 
 ```python
-from harnessed import Agent
-from harnessed.plugins import AgentLoop, Filesystem, ToolOutputLimit
+from harnessed import Agent, AgentLoop, PolicyDecision
+from harnessed.plugins import Approvals, Filesystem
 from harnessed.testing import ScriptedModel
 
-filesystem = Filesystem(root=".")
 agent = Agent(
     model=ScriptedModel(["done"]),
     plugins=[
-        AgentLoop(max_steps=50, max_parallel_tools=4),
-        ToolOutputLimit(max_chars=16_000),
-        filesystem,
+        Approvals(default=PolicyDecision.ALLOW),
+        Filesystem(root="."),
     ],
-)
-print(agent.plugins)
-```
-
-An explicit slot replaces the default in that slot. Two explicit plugins with
-the same slot raise `PluginConflict`. A custom plugin declares its slot with
-`class CustomLoop(Plugin, slot="loop")`. No hidden preset adds capabilities.
-
-## Publish library defaults with PluginPack
-
-Import `PluginPack` from `harnessed` to publish a named, reusable composition of
-configured plugins and application defaults. A plugin pack captures its name,
-ordered recipes and an optional explicit prompt strategy. It has no setup,
-teardown, hooks or tools of its own. Its factory may accept ordinary application
-configuration.
-
-```python
-from pathlib import Path
-
-from harnessed import Agent, PluginPack
-from harnessed.plugins import AgentLoop, Compaction, Filesystem, Shell
-from harnessed.testing import ScriptedModel
-
-
-def project_pack(root: str | Path = ".") -> PluginPack:
-    return PluginPack(
-        "project",
-        [
-            Filesystem(root),
-            Shell(root),
-            AgentLoop(max_steps=30),
-            Compaction(keep_last_steps=4),
-        ],
-    )
-
-
-project = project_pack().without(Shell)
-agent = Agent(
-    model=ScriptedModel(["done"]),
-    instructions="Help with the workspace.",
-    plugins=[
-        project,
-        AgentLoop(max_steps=10),
-        Compaction(keep_last_steps=8),
-    ],
+    loop=AgentLoop(max_steps=50, max_parallel_tools=4, max_tool_output=16_000),
 )
 print(agent.describe())
 ```
 
-The supplied `AgentLoop` and `Compaction` replace the pack recipes in their slots.
-The excluded Shell never mounts. Library defaults also replace Harnessed's
-built-in defaults; explicit agent inputs replace either. `model=` and
-`prompt=` are direct inputs, so they override pack-provided
-`Service(Model, ...)` and `PromptRenderer(...)`. Supplying the same slot twice
-directly, including through a keyword and `plugins`, remains an error.
+Slots detect conflicts; they never select or replace a plugin. Two plugins in the
+same slot raise `PluginConflict`, as do `model=` together with
+`Service(Model, ...)`. A custom plugin declares its slot with
+`class CustomApprovals(Plugin, slot="approvals")`. Plugins without a slot are
+additive. Namespaced slot strings such as `"my_library.observation"` avoid
+collisions with other libraries.
 
-### Local precedence and ordering
+## Share compositions with ordinary functions
 
-At each composition boundary, direct recipes override contributions exported by
-child packs with the same slot. Two direct recipes in one slot raise
-`PluginConflict`. Two child packs exporting the same slot also conflict unless
-that boundary supplies a direct recipe to decide it. Messages identify the slot
-and competing pack paths.
+Libraries publish reusable compositions as plain functions that return plugin
+lists. The caller spreads the result into `plugins=`, so every plugin remains
+visible at the call site and in `agent.describe()`. Entries may be `None` to
+toggle a feature inline.
 
 ```python
-research = PluginPack("research", [project_pack(), Compaction(keep_last_steps=6)])
+from pathlib import Path
+
+from harnessed import Agent, AgentLoop, Plugin
+from harnessed.plugins import Compaction, Filesystem, Shell
+from harnessed.testing import ScriptedModel
+
+
+def workspace(root: str | Path = ".", *, shell: bool = True) -> list[Plugin]:
+    return [Filesystem(root), Shell(root) if shell else None, Compaction(keep_last_steps=4)]
+
+
 agent = Agent(
-    model=model,
-    plugins=[research, Compaction(keep_last_steps=10)],
+    model=ScriptedModel(["done"]),
+    instructions="Help with the workspace.",
+    plugins=workspace(shell=False),
+    loop=AgentLoop(max_steps=10),
 )
 ```
 
-Inside `research`, the six-step recipe overrides the project default. At the
-agent boundary, the ten-step recipe overrides the result. Each pack must resolve
-its own internal conflicts: an override at a parent boundary does not repair an
-invalid child pack. Sibling packs have equal precedence regardless of their
-internal nesting; adding a wrapper pack never silently settles their conflict.
-The built-in defaults are the final fallback after supplied scopes are resolved.
+To change one part of a shared composition, give the factory a parameter. A
+composition has no override or exclusion mechanism, so the list you pass is
+exactly what mounts.
 
-Recipes keep their configured order within each scope. A replacement occupies
-the first inherited position for its slot, even if the direct override appears
-before the pack. When overriding several sibling packs, the first contributing
-pack determines that position. Recipes without a slot remain additive; neither
-their Python class nor their `provides` declarations cause implicit replacement.
-Namespaced slot strings such as `"my_library.observation"` avoid collisions with
-other libraries. Independent implementations can opt into the same slot without
-inheriting from each other.
-
-### Exclude recipes
-
-`pack.without(*types)` returns a new pack and recursively removes every recipe
-matching a requested type or subclass. Every requested type must match at least
-one remaining recipe, or it raises `ValueError`; non-type arguments raise
-`TypeError`. Chained calls search the remaining recipes. An empty call returns
-an equivalent pack. Inputs are captured as tuples, so generators can be reused
-through the resulting pack; recipes themselves remain shared configuration
-objects rather than deep copies.
-
-Only that pack and its children are affected. Exclusion does not remove dependents,
-install providers, or disable Harnessed's fallback plugins. For example, excluding
-a library's `AgentLoop` restores the built-in loop unless another override is
-supplied. Missing service requirements are still reported at session startup.
-
-### Resolve a pack into flat recipes
-
-`pack.resolve(*, prompt=PluginPackPromptPolicy.INCLUDE)` returns a frozen `ResolvedPluginPack`
-with `plugins` and `description`. Import both public types and `PluginPackPromptPolicy`
-from `harnessed`. Resolution applies the same nested slot, ordering and exclusion
-rules as Agent composition. It adds no agent defaults, mounts no plugins and
-does not evaluate instruction providers or render prompt files.
-
-```python
-from harnessed import PluginPackPromptPolicy
-
-resolved = project_pack().resolve(prompt=PluginPackPromptPolicy.OMIT)
-plugins = resolved.plugins
-print(resolved.description)
-```
-
-`INCLUDE` keeps each `PluginPack.prompt` as a prompt-renderer recipe, including its
-normal slot conflicts. `OMIT` skips those declarations recursively before slot
-resolution. Explicit `PromptRenderer(...)` recipes remain present. Selected
-plugins retain their own instructions, descriptions, tools and event declarations;
-the embedding application's prompt strategy determines how instructions render.
-The source pack is unchanged.
-
-`resolved.description` retains the original pack paths, replacement histories and
-exclusions. Passing `resolved.plugins` to an Agent supplies a flat list of direct
-inputs: the new Agent has no original pack scope, and its descriptions reflect
-that. Pass the original pack when its precedence and provenance should remain
-part of the Agent composition. A `ResolvedPluginPack` itself is an inspection result,
-not a mountable recipe or an Agent plugin input.
-
-### Inspect the resolved composition
+### Inspect the composition
 
 `agent.describe()` returns an immutable `CompositionDescription`, exported from
 `harnessed`. It does not open a session or execute setup or session prompt
-factories. Its fields are:
-
-| Field | Meaning |
-| --- | --- |
-| `plugins` | Tuple of plugin descriptions in final configured order, including built-in runtime services |
-| `removed` | Tuple of exclusions, each with a `plugin` description and `removed_by` pack path |
-
-Every plugin description exposes `name`, `pack_path`, `origin`, `slot`, `needs`,
-`observes`, `provides` and `replaces`. The latter is a tuple of replaced plugin descriptions,
-preserving earlier replacement histories. Direct agent inputs have an empty
-`pack_path`; built-ins use `("harnessed",)`. Service declarations reflect the
-recipe's metadata, not services dynamically published during setup.
+factories. Its `plugins` field is a tuple of plugin descriptions in configured
+order, each exposing `name`, `slot`, `needs`, `provides` and `observes`. Core
+runtime services are not plugins and do not appear. Service declarations reflect
+the recipe's metadata, not services dynamically published during setup.
 
 ```python
-description = agent.describe()
-for item in description.plugins:
-    print(item.origin, item.slot)
-    for previous in item.replaces:
-        print("  replaces", previous.origin)
-for removal in description.removed:
-    print("removed", removal.plugin.origin, "by", removal.removed_by)
+for item in agent.describe().plugins:
+    print(item.name, item.slot)
 ```
 
 `print(description)` provides a readable view of the same data. This is a static
 configuration snapshot; `session.scope.plugin_diagnostics()` remains the live view
 of waiting plugins and missing services.
 
-Composition completes before prompt contributions and event declarations are
-collected. Excluded and replaced recipes contribute no guidance, context metadata,
-events, hooks or tools. The agent collects complete instruction blocks in that
-final order. A pack may publish a `SystemPrompt.from_plugins(...)` strategy with
-`prompt=`, for example to choose a format. Caller `instructions=` are prepended;
-explicit agent `prompt=` overrides pack defaults. A selected instruction override
-without a collection strategy raises `ConfigError` before providers run.
-See [ordered plugin instructions](context.md#plugin-instructions-are-collected-by-default).
-
-Plugin packs are accepted by `Agent(plugins=...)` and other packs, not by kernel
-`Scope.plugin()` / `install()` or live `session.use()`. Runtime dependency
-injection, binding overlays and plugin lifetimes retain their existing semantics.
-Run `uv run python -m examples.36_plugin_packs` for a complete offline example.
+The agent collects complete instruction blocks in plugin order. Caller
+`instructions=` are prepended; `prompt=` chooses the strategy, for example
+`SystemPrompt.from_plugins(format=...)`. A selected instruction override without
+a collection strategy raises `ConfigError` before providers run. See
+[ordered plugin instructions](context.md#plugin-instructions-are-collected-by-default).
+Run `uv run python -m examples.36_explicit_composition` for a complete offline example.
 
 ## Per-mount state and cleanup
 
@@ -641,7 +541,7 @@ class FailureNudge(Plugin[FailureNudgeConfig]):
 ```
 
 Built-in features retain their typed constructors, such as
-`AgentLoop(max_steps=20)` and `Shell(root)`, and use this pattern internally.
+`Compaction(keep_last_steps=4)` and `Shell(root)`, and use this pattern internally.
 Callers of a custom constructor follow that class's explicit signature.
 Allocate mutable per-mount state with `PluginState` or in setup; constructors
 describe reusable recipes and acquire no resources.
@@ -649,12 +549,10 @@ describe reusable recipes and acquire no resources.
 Closed loop choices use enums, including `harnessed.models.TokenLimitBehavior`:
 
 ```python
+from harnessed import AgentLoop
 from harnessed.models import TokenLimitBehavior
-from harnessed.plugins import AgentLoop
 
-plugins = [
-    AgentLoop(on_max_tokens=TokenLimitBehavior.CONTINUE),
-]
+loop = AgentLoop(on_max_tokens=TokenLimitBehavior.CONTINUE)
 ```
 
 Plugin mount state, including Rules repetition counters, starts fresh in each live

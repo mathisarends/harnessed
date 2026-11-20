@@ -6,12 +6,13 @@ from pathlib import Path
 
 from harnessed import (
     Agent,
+    AgentLoop,
     ApprovalAnswer,
     Instructions,
     SystemPrompt,
 )
 from harnessed.events import ApprovalNeededEvent, TextDeltaEvent, ToolCallRequestedEvent
-from harnessed.plugins import AgentLoop, Filesystem
+from harnessed.plugins import Filesystem
 
 
 async def main():
@@ -23,7 +24,8 @@ async def main():
             Instructions(text="Help the user understand this Python project. Answer in English."),
             Instructions.from_file(path=workspace / "AGENTS.md", missing_ok=True),
         ),
-        plugins=[filesystem, AgentLoop(max_steps=8)],
+        plugins=[filesystem],
+        loop=AgentLoop(max_steps=8),
     )
     async with agent.session() as session:
         async with session.stream("Read pyproject.toml and explain the package.") as run_stream:

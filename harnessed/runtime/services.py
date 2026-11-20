@@ -4,7 +4,6 @@ from harnessed.models.model import UsagePurpose
 from harnessed.prompts import SystemPromptStore
 from harnessed.tools import ToolRegistry
 
-from .approval_policy import ApprovalsConfig
 from .budget import ContextBudget
 from .hooks import SessionAppended
 from .plugin import Plugin
@@ -12,16 +11,15 @@ from .tokens import CalibratedTokenCounter, TokenCounter
 
 
 class RuntimeServices(Plugin):
-    """Provide the tools, prompt and token services every loop shares.
+    """Provide the tool, prompt and token services of the runtime core.
 
-    Agent always installs this first, so replacing the ``loop`` slot keeps the
-    tools. Each service can still be replaced with ``Service(Key, value)``. The
-    default token counter calibrates itself against reported input tokens.
+    Agent installs this before any configured plugin; it is not part of the
+    plugin composition. The token counter calibrates itself against reported
+    input tokens and can be replaced with ``Service(TokenCounter, value)``.
     """
 
     async def setup(self, scope: PluginScope) -> None:
         counter = CalibratedTokenCounter()
-        scope.provide(ApprovalsConfig, ApprovalsConfig())
         scope.provide(ToolRegistry, ToolRegistry(scope))
         scope.provide(SystemPromptStore, SystemPromptStore(scope))
         scope.provide(TokenCounter, counter)

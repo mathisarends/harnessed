@@ -3,7 +3,17 @@ import asyncio
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import ApprovalAnswer, Inject, Plugin, Session, ToolCall, ToolContext, plugin, tool
+from harnessed import (
+    AgentLoop,
+    ApprovalAnswer,
+    Inject,
+    Plugin,
+    Session,
+    ToolCall,
+    ToolContext,
+    plugin,
+    tool,
+)
 from harnessed.events import (
     AssistantMessageEvent,
     ModelRequestedEvent,
@@ -17,7 +27,7 @@ from harnessed.events import (
 from harnessed.kernel import hook
 from harnessed.models import ModelChunk, ModelInfo, StopReason
 from harnessed.models.messages import PolicyDecision, Role, ToolStatus
-from harnessed.plugins import AgentLoop, Approvals, Service
+from harnessed.plugins import Approvals, Service
 from harnessed.runtime.approval_policy import Approver, CallbackApprover, ToolApprovalGuard
 from harnessed.runtime.hooks import (
     ExecuteTool,
@@ -373,7 +383,8 @@ async def test_same_harness_rejects_two_live_writers_and_max_steps_bounds_the_lo
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("again"))]] * 2)
     harness = Application(
         model=model,
-        plugins=[AgentLoop(max_steps=2), Approvals(default=PolicyDecision.ALLOW), bundle],
+        plugins=[Approvals(default=PolicyDecision.ALLOW), bundle],
+        loop=AgentLoop(max_steps=2),
     )
     async with harness.session() as agent:
         agent_audit = Audit(agent)

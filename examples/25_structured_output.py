@@ -3,9 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from harnessed import Agent, ToolCall
+from harnessed import Agent, AgentLoop, ToolCall
 from harnessed.models import ModelChunk
-from harnessed.plugins import AgentLoop
 from harnessed.testing import ScriptedModel
 
 
@@ -33,7 +32,7 @@ async def main():
             ],
         ]
     )
-    agent = Agent(model=model, plugins=[AgentLoop(output_retries=1)])
+    agent = Agent(model=model, loop=AgentLoop(output_retries=1))
     async with agent.session() as session:
         result = await session.run("Triage the stale-login bug.", output=Triage)
         report = result.require_output()

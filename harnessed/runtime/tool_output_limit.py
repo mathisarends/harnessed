@@ -3,28 +3,27 @@ from typing import Annotated
 
 from pydantic import Field
 
-from harnessed.kernel import PluginScope
 from harnessed.models.messages import OutputTruncation, ToolResult
 
-from .plugin import Plugin, PluginConfig
+from .plugin import PluginConfig
 
 
 class ToolOutputLimitConfig(PluginConfig):
     max_chars: Annotated[int, Field(ge=256)] = 32_000
 
 
-class ToolOutputLimit(Plugin[ToolOutputLimitConfig], slot="output_limit"):
-    """Bound final tool results before they enter the durable log and model history."""
+_DEFAULTS = ToolOutputLimitConfig()
 
-    def __init__(self, max_chars: int = 32_000) -> None:
-        super().__init__(config=ToolOutputLimitConfig(max_chars=max_chars))
 
-    @property
-    def max_chars(self) -> int:
-        return self.config.max_chars
+class ToolOutputLimit:
+    """Bound final tool results before they enter the durable log and model history.
 
-    async def setup(self, scope: PluginScope) -> None:
-        scope.provide(ToolOutputLimit, self)
+    The session-wide limit is ``AgentLoop(max_tool_output=...)``; tools may
+    declare their own limit for individual results.
+    """
+
+    def __init__(self, max_chars: int = _DEFAULTS.max_chars) -> None:
+        self.max_chars = ToolOutputLimitConfig(max_chars=max_chars).max_chars
 
     def apply(self, result: ToolResult) -> ToolResult:
         text = result.text

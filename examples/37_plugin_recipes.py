@@ -10,7 +10,6 @@ from harnessed import (
     Instructions,
     Plugin,
     PluginConfig,
-    PluginPack,
     SystemPrompt,
     ToolContext,
     tool,
@@ -80,16 +79,17 @@ class ReadObserver(Plugin):
         print(f"Event: read {event.name} ({event.characters} characters)")
 
 
+def workspace(backend: Documents, files: FileTools) -> list[Plugin]:
+    """Share a recipe as a plain list; callers see and change every entry."""
+    return [Service(Documents, backend), files]
+
+
 async def main() -> None:
     files = FileTools(config=FileToolsConfig(max_read_chars=200))
     backend = FakeDocuments()
-    workspace = PluginPack(
-        "workspace",
-        (Service(Documents, backend), files),
-    )
     agent = Agent(
         model=ScriptedModel([call(files.read_document, name="README.md"), "Read the document."]),
-        plugins=(workspace, ReadObserver()),
+        plugins=(*workspace(backend, files), ReadObserver()),
         prompt=SystemPrompt.from_plugins("Help with documents.", "Answer concisely."),
     )
     print(agent.describe())

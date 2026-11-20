@@ -3,7 +3,7 @@ from dataclasses import replace
 import pytest
 from pydantic import BaseModel
 
-from harnessed import Agent, Plugin, StopReason, ToolCall, ToolStatus, tool
+from harnessed import Agent, AgentLoop, Plugin, StopReason, ToolCall, ToolStatus, tool
 from harnessed.errors import OutputUnavailable
 from harnessed.events import (
     ModelRequestedEvent,
@@ -14,7 +14,7 @@ from harnessed.events import (
 from harnessed.hooks import PrepareRequest, PreStep, ToolPolicy, TurnStopping
 from harnessed.kernel import hook
 from harnessed.models import ModelChunk, ModelInfo, ModelUsage, ToolDefinition
-from harnessed.plugins import AgentLoop, FinalStepPolicy
+from harnessed.plugins import FinalStepPolicy
 from harnessed.testing import ScriptedModel, call
 from tests._audit import Audit
 
@@ -67,7 +67,8 @@ async def test_final_step_reserves_one_step_and_runtime_blocks_unadvertised_call
     )
     result = await Agent(
         model=model,
-        plugins=[Tools(), AgentLoop(max_steps=8, final_step=FinalStepPolicy.SUMMARIZE)],
+        plugins=[Tools()],
+        loop=AgentLoop(max_steps=8, final_step=FinalStepPolicy.SUMMARIZE),
     ).run("go", max_steps=2)
     assert executed == [True] and policies == ["work"]
     assert progress == [(1, 2, 2, False, False), (2, 2, 1, True, True)]
@@ -100,7 +101,8 @@ async def test_single_reserved_step_returns_text_without_validating_a_structured
     )
     result = await Agent(
         model=model,
-        plugins=[Reconfigure(), AgentLoop(max_steps=1, final_step=FinalStepPolicy.SUMMARIZE)],
+        plugins=[Reconfigure()],
+        loop=AgentLoop(max_steps=1, final_step=FinalStepPolicy.SUMMARIZE),
     ).run("go", output=Answer)
     assert result.text == "Incomplete: no data yet." and not result.completed
     assert model.requests[0].tools == () and model.requests[0].output_schema is None
@@ -115,7 +117,7 @@ async def test_single_reserved_step_returns_text_without_validating_a_structured
 async def test_early_structured_completion_keeps_the_declared_contract():
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("final_answer", {"value": 42}))]])
     result = await Agent(
-        model=model, plugins=[AgentLoop(max_steps=2, final_step=FinalStepPolicy.SUMMARIZE)]
+        model=model, loop=AgentLoop(max_steps=2, final_step=FinalStepPolicy.SUMMARIZE)
     ).run("go", output=Answer)
     assert result.completed and result.output == Answer(value=42)
     assert len(model.requests) == 1 and model.requests[0].output_schema is not None
@@ -127,7 +129,7 @@ async def test_reserved_summary_is_not_reported_as_a_successful_output_correctio
         info=ModelInfo("native", supports_structured_output=True),
     )
     result = await Agent(
-        model=model, plugins=[AgentLoop(max_steps=2, final_step=FinalStepPolicy.SUMMARIZE)]
+        model=model, loop=AgentLoop(max_steps=2, final_step=FinalStepPolicy.SUMMARIZE)
     ).run("go", output=Answer)
     requests = [e for e in result.events if isinstance(e, ModelRequestedEvent)]
     assert len(requests) == 2 and requests[1].retry_kind is None
@@ -149,14 +151,16 @@ async def test_token_exhaustion_does_not_start_an_extra_summary_step():
         ]
     )
     result = await Agent(
-        model=model, plugins=[Tools(), AgentLoop(max_steps=3, final_step=FinalStepPolicy.SUMMARIZE)]
+        model=model,
+        plugins=[Tools()],
+        loop=AgentLoop(max_steps=3, final_step=FinalStepPolicy.SUMMARIZE),
     ).run("go", token_budget=10)
     assert len(model.requests) == 1 and result.stop_reason is StopReason.TOKEN_BUDGET
 
 
 async def test_default_policy_keeps_the_last_step_available_for_normal_completion():
     model = ScriptedModel(["done"])
-    result = await Agent(model=model, plugins=[AgentLoop(max_steps=1)]).run("go")
+    result = await Agent(model=model, loop=AgentLoop(max_steps=1)).run("go")
     assert result.completed and result.text == "done"
     assert "final available step" not in str(model.requests[0].messages)
 
@@ -171,7 +175,7 @@ async def test_progress_uses_each_turns_effective_limit_without_leaking_override
             return await next_()
 
     async with Agent(
-        model=ScriptedModel(["first", "second"]), plugins=[Observe(), AgentLoop(max_steps=5)]
+        model=ScriptedModel(["first", "second"]), plugins=[Observe()], loop=AgentLoop(max_steps=5)
     ).session() as session:
         session_audit = Audit(session)
         await session.run("one", max_steps=1)

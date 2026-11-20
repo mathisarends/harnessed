@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 
 from harnessed import (
     Agent,
+    AgentLoop,
     Plugin,
     PolicyDecision,
     Role,
@@ -14,13 +15,12 @@ from harnessed import (
     tool,
 )
 from harnessed.events import ToolCallFinishedEvent
-from harnessed.hooks import ExecuteTool
-from harnessed.kernel import Inject, hook
-from harnessed.plugins import Approvals, Service, ToolOutputLimit
+from harnessed.kernel import Inject
+from harnessed.plugins import Approvals, Service
 from harnessed.plugins.filesystem import FileSystemBackend, FilesystemTools, LocalFileSystem
 from harnessed.testing import ScriptedModel, call
 
-budget = ToolOutputLimit(max_chars=1024)
+MAX_TOOL_OUTPUT_CHARS = 1024
 
 
 class LargeResultsTools(Plugin):
@@ -33,15 +33,6 @@ class LargeResultsTools(Plugin):
 
 
 tools = LargeResultsTools()
-
-
-class EarlyOutputLimitTools(Plugin):
-    @hook(ExecuteTool)
-    async def truncate(self, _event, next_):
-        return budget.apply(await next_())
-
-
-early_limit = EarlyOutputLimitTools()
 
 
 async def main():
@@ -60,12 +51,12 @@ async def main():
             model=model,
             plugins=[
                 Approvals(default=PolicyDecision.ALLOW),
-                budget,
                 Service(FileSystemBackend, LocalFileSystem(directory)),
                 FilesystemTools(),
                 tools,
-                early_limit,
             ],
+            # The loop truncates every tool result before it enters the model context.
+            loop=AgentLoop(max_tool_output=MAX_TOOL_OUTPUT_CHARS),
         )
         async with agent.session() as session:
             result = await session.run("Inspect the large log and read it in small ranges.")
@@ -82,7 +73,7 @@ async def main():
                 else:
                     print(output.content)
             assert all(
-                len(message.text) <= budget.max_chars
+                len(message.text) <= MAX_TOOL_OUTPUT_CHARS
                 for request in model.requests
                 for message in request.messages
                 if message.role == Role.TOOL

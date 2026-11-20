@@ -18,7 +18,8 @@ import re
 from harnessed.kernel import Scope, Key, needs
 assert 'pydantic' not in sys.modules
 from harnessed import (
-    Agent, CompositionDescription, PluginPack, SessionState, OutputContract, Plugin, PluginConfig,
+    Agent, AgentLoop, CompositionDescription, PluginConflict, SessionState, OutputContract,
+    Plugin, PluginConfig,
     RunHandle, RunStream, StopReason, ToolPresentation,
     PromptFormat, SectionDelivery,
     SystemPrompt, Instructions, tool,
@@ -94,17 +95,19 @@ class Guidance(Plugin, slot='wheel.guidance'):
         return SystemPrompt('Plugin guidance.')
 
 async def main():
-    defaults = PluginPack('library', [Guidance()])
     selected = Guidance()
-    configured = Agent(plugins=[defaults, selected])
+    configured = Agent(plugins=[selected], loop=AgentLoop(max_steps=4))
     description = configured.describe()
     assert isinstance(description, CompositionDescription)
-    assert configured.plugins[-1] is selected
-    assert description.plugins[-1].replaces[0].pack_path == ('library',)
+    assert configured.plugins == (selected,)
+    assert description.plugins[0].slot == 'wheel.guidance'
     assert await configured.prompt.render() == 'Plugin guidance.'
-    filtered = Agent(plugins=[defaults.without(Guidance)])
-    assert filtered.describe().removed[0].removed_by == ('library',)
-    assert await filtered.prompt.render() == ''
+    try:
+        Agent(plugins=[Guidance(), Guidance()])
+    except PluginConflict:
+        pass
+    else:
+        raise AssertionError('duplicate slots must conflict')
 
     config = CalculatorConfig(offset=1)
     async with mount_plugin(Calculator(config=config)) as active:

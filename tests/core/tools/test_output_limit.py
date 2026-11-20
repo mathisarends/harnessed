@@ -7,6 +7,7 @@ from harnessed import (
     Agent as Application,
 )
 from harnessed import (
+    AgentLoop,
     Plugin,
     PolicyDecision,
     ToolCall,
@@ -106,7 +107,8 @@ async def test_final_guard_also_limits_review_enrichment_and_tool_errors(stage):
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("large"))], "done"])
     async with Application(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), ToolOutputLimit(512), features],
+        plugins=[Approvals(default=PolicyDecision.ALLOW), features],
+        loop=AgentLoop(max_tool_output=512),
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("go")
@@ -121,7 +123,7 @@ async def test_final_guard_also_limits_review_enrichment_and_tool_errors(stage):
         assert model.requests[-1].messages[-1].text == result.content
 
 
-async def test_output_budget_is_configured_with_the_plugin_slot():
+async def test_output_budget_is_configured_on_the_loop():
 
     class FeaturesPlugin(Plugin):
         @tool
@@ -133,7 +135,8 @@ async def test_output_budget_is_configured_with_the_plugin_slot():
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("large"))], "done"])
     harness = Application(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), ToolOutputLimit(512), features],
+        plugins=[Approvals(default=PolicyDecision.ALLOW), features],
+        loop=AgentLoop(max_tool_output=512),
     )
     async with harness.session() as agent:
         agent_audit = Audit(agent)
@@ -156,7 +159,8 @@ async def test_spill_retains_full_output_before_the_final_limit_is_applied(tmp_p
     spill = Spill(threshold_tokens=100)
     async with Application(
         model=model,
-        plugins=[Approvals(default=PolicyDecision.ALLOW), ToolOutputLimit(4096), features, spill],
+        plugins=[Approvals(default=PolicyDecision.ALLOW), features, spill],
+        loop=AgentLoop(max_tool_output=4096),
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("go")
@@ -226,10 +230,10 @@ async def test_large_shell_stdout_stderr_and_exit_code_remain_bounded(tmp_path):
         model=model,
         plugins=[
             Approvals(default=PolicyDecision.ALLOW),
-            ToolOutputLimit(1024),
             Service(ShellBackend, LocalShell()),
             ShellTools(tmp_path),
         ],
+        loop=AgentLoop(max_tool_output=1024),
     ).session() as agent:
         agent_audit = Audit(agent)
         await agent.run("go")

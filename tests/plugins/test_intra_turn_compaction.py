@@ -1,6 +1,6 @@
 import pytest
 
-from harnessed import Agent, Plugin, tool
+from harnessed import Agent, AgentLoop, Plugin, tool
 from harnessed.errors import ContextLengthExceeded
 from harnessed.events import (
     AssistantMessageEvent,
@@ -26,7 +26,7 @@ from harnessed.models.messages import (
     ToolResult,
     UserMessage,
 )
-from harnessed.plugins import AgentLoop, Compaction
+from harnessed.plugins import Compaction
 from harnessed.plugins.compaction import Summary
 from harnessed.runtime.compaction import CompactionManager, CompactionPolicy, CompactionSettings
 from harnessed.runtime.tokens import ApproximateTokenCounter, TokenCounter
@@ -215,9 +215,9 @@ async def test_first_turn_compacts_automatically_without_changing_retained_provi
         model=model,
         plugins=[
             Work(),
-            AgentLoop(context_window=3000 if over_budget else 128_000),
             Compaction(trigger=lambda state: not over_budget, summarizer=brief, keep_last_steps=2),
         ],
+        loop=AgentLoop(context_window=3000 if over_budget else 128_000),
     ).session() as session:
         session_audit = Audit(session)
         await session.run("original task")

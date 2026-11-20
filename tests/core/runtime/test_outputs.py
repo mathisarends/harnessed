@@ -87,7 +87,7 @@ async def test_output_mode_uses_the_model_captured_before_request_hooks(
         yield
 
     async with Agent(
-        model=original, plugins=[swap(), AgentLoop(output_retries=0)]
+        model=original, plugins=[swap()], loop=AgentLoop(output_retries=0)
     ).session() as session:
         first = await session.run("First", output=Triage)
         assert first.output == Triage(severity=2, owner="sdk")
@@ -145,7 +145,7 @@ async def test_native_json_retries_once_and_preserves_the_accepted_raw_input():
 
 async def test_fallback_retry_is_bounded_and_never_executes_a_registered_answer_tool():
     model = ScriptedModel([answer(severity="bad"), answer(severity="bad")])
-    async with Agent(model=model, plugins=[AgentLoop(output_retries=1)]).session() as session:
+    async with Agent(model=model, loop=AgentLoop(output_retries=1)).session() as session:
         session_audit = Audit(session)
         with pytest.raises(OutputValidationError, match="retry limit"):
             await session.run("Triage", output=Triage)

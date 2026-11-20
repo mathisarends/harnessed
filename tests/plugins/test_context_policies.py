@@ -6,7 +6,7 @@ import pytest
 from harnessed import (
     Agent as Application,
 )
-from harnessed import Plugin, PolicyDecision, ToolCall, ToolResult, tool
+from harnessed import AgentLoop, Plugin, PolicyDecision, ToolCall, ToolResult, tool
 from harnessed.events import (
     CompactionAppliedEvent,
     ModelUsageRecordedEvent,
@@ -21,14 +21,7 @@ from harnessed.events.codec import decode_event, encode_event
 from harnessed.kernel import hook
 from harnessed.models import ModelChunk, ModelUsage
 from harnessed.models.messages import AssistantMessage, ToolStatus, UserMessage
-from harnessed.plugins import (
-    AgentLoop,
-    Approvals,
-    Compaction,
-    LatestObservationOnly,
-    at_ratio,
-    every_turns,
-)
+from harnessed.plugins import Approvals, Compaction, LatestObservationOnly, at_ratio, every_turns
 from harnessed.plugins.compaction import CompactionContext, CompactionRequest, Summary
 from harnessed.plugins.spill import Spill, SpillStore
 from harnessed.runtime.compaction import ContextState, ModelSummarizer
@@ -138,7 +131,6 @@ async def test_threshold_compaction_commits_once_and_replays_and_forks(tmp_path)
     harness = Application(
         model=model,
         plugins=[
-            AgentLoop(context_window=400),
             Approvals(default=PolicyDecision.ALLOW),
             tools,
             Compaction(
@@ -148,6 +140,7 @@ async def test_threshold_compaction_commits_once_and_replays_and_forks(tmp_path)
                 max_summary_tokens=24,
             ),
         ],
+        loop=AgentLoop(context_window=400),
     )
     async with harness.session() as agent:
         agent_audit = Audit(agent)
@@ -210,10 +203,10 @@ async def test_failed_or_cancelled_compactor_does_not_commit_partial_compaction(
     harness = Application(
         model=model,
         plugins=[
-            AgentLoop(context_window=500),
             Approvals(default=PolicyDecision.ALLOW),
             Compaction(trigger=at_ratio(0.5), summarizer=BlockingCompactor(), keep_last_steps=1),
         ],
+        loop=AgentLoop(context_window=500),
     )
     async with harness.session() as agent:
         agent_audit = Audit(agent)
@@ -236,10 +229,10 @@ async def test_compactor_error_is_reported_and_history_is_intact():
     harness = Application(
         model=model,
         plugins=[
-            AgentLoop(context_window=500),
             Approvals(default=PolicyDecision.ALLOW),
             Compaction(trigger=at_ratio(0.5), summarizer=Broken(), keep_last_steps=1),
         ],
+        loop=AgentLoop(context_window=500),
     )
     async with harness.session() as agent:
         agent_audit = Audit(agent)
@@ -256,7 +249,6 @@ async def test_keep_turns_retains_recent_work_and_later_compaction_merges_old_su
     harness = Application(
         model=model,
         plugins=[
-            AgentLoop(context_window=600),
             Approvals(default=PolicyDecision.ALLOW),
             Compaction(
                 trigger=every_turns(1),
@@ -265,6 +257,7 @@ async def test_keep_turns_retains_recent_work_and_later_compaction_merges_old_su
                 max_summary_tokens=16,
             ),
         ],
+        loop=AgentLoop(context_window=600),
     )
     async with harness.session() as agent:
         agent_audit = Audit(agent)
@@ -289,7 +282,6 @@ async def test_compaction_does_not_commit_a_summary_that_expands_the_request():
     harness = Application(
         model=model,
         plugins=[
-            AgentLoop(context_window=100),
             Approvals(default=PolicyDecision.ALLOW),
             Compaction(
                 trigger=at_ratio(0.5),
@@ -298,6 +290,7 @@ async def test_compaction_does_not_commit_a_summary_that_expands_the_request():
                 max_summary_tokens=2000,
             ),
         ],
+        loop=AgentLoop(context_window=100),
     )
     async with harness.session() as agent:
         agent_audit = Audit(agent)

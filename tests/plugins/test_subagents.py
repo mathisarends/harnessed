@@ -6,6 +6,7 @@ import pytest
 
 from harnessed import (
     Agent,
+    AgentLoop,
     ApprovalAnswer,
     Plugin,
     PolicyDecision,
@@ -31,7 +32,7 @@ from harnessed.integrations.json import JsonSessionStore
 from harnessed.kernel import Inject, PluginScope
 from harnessed.models import ModelChunk, ModelUsage, UserMessage
 from harnessed.models.messages import ToolStatus
-from harnessed.plugins import AgentLoop, Approvals, Subagents
+from harnessed.plugins import Approvals, Subagents
 from harnessed.sessions import SessionCommit, StoredSession
 from harnessed.sessions.log import SessionLog
 from harnessed.testing import CallbackModel, ScriptedModel
@@ -440,10 +441,10 @@ async def test_delegate_overrides_ordinary_tool_timeout():
     parent = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=delegate())], "Parent answer"]),
         plugins=[
-            AgentLoop(tool_timeout=0.001),
             Subagents({"review": Agent(model=CallbackModel(respond))}),
             Approvals(default=PolicyDecision.ALLOW),
         ],
+        loop=AgentLoop(tool_timeout=0.001),
     )
     async with parent.session() as session:
         await session.run("Delegate")

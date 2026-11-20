@@ -24,7 +24,7 @@ from harnessed.events import (
 from harnessed.kernel import PluginScope, needs
 from harnessed.models import Model, ModelChunk
 from harnessed.models.messages import PolicyDecision, ToolStatus
-from harnessed.plugins import Approvals, PromptRenderer, Service
+from harnessed.plugins import Approvals, Service
 from harnessed.prompts.plugin_instructions import PluginInstructions
 from harnessed.sessions.log import SessionLog
 from harnessed.testing import ScriptedModel
@@ -72,7 +72,7 @@ async def test_application_facade_composes_plugins_and_fixed_ordered_guidance(tm
     assert model.requests[0].messages[0].text == model.requests[-1].messages[0].text
 
 
-async def test_facade_parameters_are_equivalent_to_public_plugins():
+async def test_model_parameter_is_equivalent_to_model_service():
     one, two = ScriptedModel(["done"]), ScriptedModel(["done"])
     calculator = Calculator()
     await Agent(
@@ -82,11 +82,8 @@ async def test_facade_parameters_are_equivalent_to_public_plugins():
     ).run("Go")
     calculator_4 = Calculator()
     await Agent(
-        plugins=[
-            Service(Model, two),
-            PromptRenderer(SystemPrompt.from_plugins(Instructions(text="Rules."))),
-            calculator_4,
-        ]
+        prompt=SystemPrompt.from_plugins(Instructions(text="Rules.")),
+        plugins=[Service(Model, two), calculator_4],
     ).run("Go")
     assert [message.text for message in one.requests[0].messages] == [
         message.text for message in two.requests[0].messages

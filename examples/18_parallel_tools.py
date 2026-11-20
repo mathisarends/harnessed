@@ -6,11 +6,11 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import override
 
-from harnessed import Agent, Plugin, PolicyDecision, Role, ToolCall, tool
+from harnessed import Agent, AgentLoop, Plugin, PolicyDecision, Role, ToolCall, tool
 from harnessed.events import ToolCallFinishedEvent
 from harnessed.kernel import Inject, PluginScope
 from harnessed.models import ModelChunk
-from harnessed.plugins import AgentLoop, Approvals, Filesystem
+from harnessed.plugins import Approvals, Filesystem
 from harnessed.plugins.filesystem import FileSystemBackend
 from harnessed.testing import ScriptedModel
 
@@ -40,7 +40,8 @@ async def independent_calls():
     model = ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "Lookups finished."])
     async with Agent(
         model=model,
-        plugins=[AgentLoop(max_parallel_tools=3), Approvals(default=PolicyDecision.ALLOW), tools],
+        plugins=[Approvals(default=PolicyDecision.ALLOW), tools],
+        loop=AgentLoop(max_parallel_tools=3),
     ).session() as session:
         result = await session.run("Look up records 0, 1 and 2.")
         returned = [event for event in result.events if isinstance(event, ToolCallFinishedEvent)]

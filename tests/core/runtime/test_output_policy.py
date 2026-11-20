@@ -4,7 +4,7 @@ import json
 import pytest
 from pydantic import BaseModel, Field
 
-from harnessed import Agent, Plugin, SectionDelivery, ToolStatus, hook, tool
+from harnessed import Agent, AgentLoop, Plugin, SectionDelivery, ToolStatus, hook, tool
 from harnessed.errors import OutputUnavailable, OutputValidationError
 from harnessed.events import (
     ControlState,
@@ -19,7 +19,7 @@ from harnessed.hooks import Next, OutputDecision, PrepareOutput, TurnStopping
 from harnessed.integrations.json import JsonSessionStore
 from harnessed.kernel import PluginScope
 from harnessed.models import ModelChunk, ModelInfo, ModelUsage, StopReason
-from harnessed.plugins import AgentLoop, FinalStepPolicy
+from harnessed.plugins import FinalStepPolicy
 from harnessed.testing import CallbackModel, ScriptedModel, call, reply
 
 
@@ -84,7 +84,7 @@ async def test_progress_streams_before_native_output_and_correction(native: bool
 async def test_deferred_steps_do_not_bypass_retry_limits() -> None:
     model = ScriptedModel(["Working", call("done"), answer(False, 0)])
     with pytest.raises(OutputValidationError):
-        await Agent(model=model, plugins=[Phased(), AgentLoop(output_retries=0)]).run(
+        await Agent(model=model, plugins=[Phased()], loop=AgentLoop(output_retries=0)).run(
             "Count", output=Answer
         )
     assert len(model.requests) == 3
@@ -135,10 +135,8 @@ async def test_step_limits_remain_incomplete_without_validated_output(summary: b
     model = ScriptedModel(["Still working", "Summary"])
     result = await Agent(
         model=model,
-        plugins=[
-            Phased(),
-            AgentLoop(final_step=FinalStepPolicy.SUMMARIZE if summary else FinalStepPolicy.NONE),
-        ],
+        plugins=[Phased()],
+        loop=AgentLoop(final_step=FinalStepPolicy.SUMMARIZE if summary else FinalStepPolicy.NONE),
     ).run("Count", output=Answer, max_steps=2)
     assert not result.completed
     assert not any(isinstance(event, OutputValidatedEvent) for event in result.events)

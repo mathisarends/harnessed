@@ -9,7 +9,7 @@ The plugin-recipe design is implemented. Future API proposals belong in
 | `kernel.declarations` / `spec` | Repeatable recipe construction; normalized requirements and observations |
 | `kernel.plugin` / `scope` | Scoped binding visibility, activation replacement and owned cleanup |
 | `runtime.plugin` | Generic typed configuration and frozen instances, independent event declarations, normalized prompt contributions |
-| `runtime.composition` | PluginPack selection, override provenance and named fragment membership |
+| `runtime.composition` | Ordered plugin lists, slot conflict detection and static descriptions |
 | `prompts` | Explicit instruction coverage, placement, rendering and runtime context delivery |
 | `tools` | Declarative recipe references and activation-bound prepared calls |
 | `events` | Domain event values and their enums, independent of runtime orchestration |

@@ -7,8 +7,9 @@
 [![Status: Alpha](https://img.shields.io/badge/status-alpha-f59e0b?style=for-the-badge)](https://github.com/mathisarends/harnessed/blob/main/docs/releases.md)
 
 A composable Python agent SDK. Keep tools, instructions and event hooks together
-in plugins, combine them into reusable packs, and stream typed events from a live
-session. Harnessed owns the agent loop and plugin lifetimes.
+in plugins, list every plugin explicitly, and stream typed events from a live
+session. Harnessed owns the agent loop and plugin lifetimes; it adds no hidden
+default plugins.
 
 Python **3.12-3.14**, Pydantic v2. Optional provider integrations use PydanticAI's
 Direct API.
@@ -63,8 +64,11 @@ the tool. `@hook` observes the selected event type across the session.
 The agent appends each plugin's instruction block to its own instructions, in
 plugin-list order; `print(agent.prompt)` shows every section and its origin.
 
-`Agent` is reusable configuration. `agent.run()` opens a session for one turn;
-use `agent.session()` when several turns should share a conversation.
+`Agent` is reusable configuration: a fixed runtime core plus exactly the plugins
+you list. Configure the loop with `loop=AgentLoop(max_steps=...)`. Without an
+`Approvals(...)` plugin, read-only tools run and side-effecting tools are
+unavailable. `agent.run()` opens a session for one turn; use `agent.session()`
+when several turns should share a conversation.
 
 Select a model with a `provider:model` string, such as
 `Agent(model="openai-responses:gpt-6.1-terra")` (`OPENAI_API_KEY`). Harnessed
@@ -103,7 +107,7 @@ for restoration, cancellation and approvals.
 | Task | Guide |
 | --- | --- |
 | Configure providers and generation settings | [Models](https://github.com/mathisarends/harnessed/blob/main/docs/guides/models.md) |
-| Compose packs, inject services or mount temporary tools | [Plugins](https://github.com/mathisarends/harnessed/blob/main/docs/guides/plugins.md) |
+| Compose plugins, inject services or mount temporary tools | [Plugins](https://github.com/mathisarends/harnessed/blob/main/docs/guides/plugins.md) |
 | Define tools, deadlines and policies | [Tools](https://github.com/mathisarends/harnessed/blob/main/docs/guides/tools.md) |
 | Validate typed answers | [Structured output](https://github.com/mathisarends/harnessed/blob/main/docs/guides/structured-output.md) |
 | Test without credentials | [Testing](https://github.com/mathisarends/harnessed/blob/main/docs/guides/testing.md) |

@@ -5,8 +5,11 @@ from .system import SystemPromptStore
 from .values import PromptComposition, SystemPrompt
 
 
-class PromptRenderer(Plugin, slot="instructions", needs=(SystemPromptStore,)):
-    """Render literal instructions and file sections once when a session opens."""
+class PromptRenderer(Plugin, needs=(SystemPromptStore,)):
+    """Render the agent's composed prompt once when a session opens.
+
+    Part of the runtime core: Agent installs it from ``instructions=``/``prompt=``.
+    """
 
     def __init__(
         self,

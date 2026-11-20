@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 import pytest
 from pydantic import BaseModel, TypeAdapter
 
-from harnessed import Agent, Plugin, PolicyDecision, Session, ToolCall, tool
+from harnessed import Agent, AgentLoop, Plugin, PolicyDecision, Session, ToolCall, tool
 from harnessed.errors import ContextLengthExceeded, OutputValidationError, RateLimited
 from harnessed.events import (
     ModelAttemptFinishedEvent,
@@ -26,7 +26,7 @@ from harnessed.models import (
     ModelRetryScheduled,
     report_model_diagnostic,
 )
-from harnessed.plugins import AgentLoop, Approvals, Compaction
+from harnessed.plugins import Approvals, Compaction
 from harnessed.testing import CallbackModel, ExtractiveSummarizer, ScriptedModel
 from tests._audit import Audit
 
@@ -199,7 +199,7 @@ async def test_output_corrections_have_their_own_counter_and_durable_request_cor
     notifications = []
     async with Agent(
         model=ScriptedModel([[ModelChunk(tool_call=call)] for call in responses]),
-        plugins=[AgentLoop(output_retries=1)],
+        loop=AgentLoop(output_retries=1),
     ).session() as session:
         session_audit = Audit(session)
         if exhausted:
@@ -279,7 +279,8 @@ async def test_tool_steps_do_not_count_as_retries_and_new_groups_use_the_remaini
     ]
     async with Agent(
         model=ScriptedModel([[ModelChunk(tool_call=call)] for call in calls]),
-        plugins=[Tools(), Approvals(default=PolicyDecision.ALLOW), AgentLoop(output_retries=2)],
+        plugins=[Tools(), Approvals(default=PolicyDecision.ALLOW)],
+        loop=AgentLoop(output_retries=2),
     ).session() as session:
         session_audit = Audit(session)
         async with session.stream("work", output=Answer) as run_stream:

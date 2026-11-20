@@ -35,6 +35,7 @@ from harnessed.tools import (
     format_tool_error,
 )
 
+from .approval_policy import ApprovalsConfig, unconfigured_tool_decision
 from .approvals import SessionApprovals
 from .hooks import (
     ExecuteTool,
@@ -229,13 +230,19 @@ class ToolExecutor:
             # Policy hooks are user code; report their failures through the tool result boundary.
             return ToolResult.error(format_tool_error(call, exc, self.options.error_formatter))
 
+    def _unhandled_decision(self, plan: PreparedToolCall) -> PolicyDecision:
+        """Decide a call that no policy hook settled; Approvals has already ruled when present."""
+        if ApprovalsConfig in self.scope:
+            return PolicyDecision.ALLOW
+        return unconfigured_tool_decision(plan.tool)
+
     async def _apply_policy(self, plan: PreparedToolCall) -> ToolResult | None:
         """Record the policy decision; a denial result, or None when the call may run."""
         call = plan.call
         previous = self.log.latest_approval(call.id)
         decision = await self.scope.dispatch(
             ToolPolicy(call, self.context, tool=plan.tool, envelope=plan.envelope),
-            default=lambda: PolicyDecision.ALLOW,
+            default=lambda: self._unhandled_decision(plan),
         )
         if not isinstance(decision, PolicyDecision):
             raise TypeError("ToolPolicy hooks must return PolicyDecision")

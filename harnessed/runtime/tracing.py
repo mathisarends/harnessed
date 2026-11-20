@@ -8,8 +8,6 @@ from typing import Any, Protocol, cast, override
 
 from harnessed.kernel import HookInvocation, PluginScope, Scope
 
-from .plugin import Plugin
-
 
 class Span(Protocol):
     """Runtime span attributes may include typed request, usage and result values.
@@ -66,7 +64,7 @@ def traced[F: Callable[..., Any]](fn: F) -> F:
         @functools.wraps(fn)
         async def run_async(*args: Any, **kwargs: Any) -> Any:
             tracer = current()
-            if tracer is _NOOP or isinstance(tracer, NoopTracer):
+            if tracer is _NOOP:
                 return await fn(*args, **kwargs)
             with span(name, scope=None, **location):
                 return await fn(*args, **kwargs)
@@ -78,7 +76,7 @@ def traced[F: Callable[..., Any]](fn: F) -> F:
     @functools.wraps(fn)
     def run(*args: Any, **kwargs: Any) -> Any:
         tracer = current()
-        if tracer is _NOOP or isinstance(tracer, NoopTracer):
+        if tracer is _NOOP:
             return fn(*args, **kwargs)
         with span(name, scope=None, **location):
             return fn(*args, **kwargs)
@@ -157,17 +155,6 @@ class HookTracing:
                 },
             ):
                 yield
-
-
-class NoopTracer(Plugin, Tracer, slot="tracer"):
-    """Default tracing implementation with no exporter or third-party imports."""
-
-    @override
-    def span(self, name: str, **attributes: Any) -> AbstractContextManager[Span]:
-        return nullcontext(_NoopSpan())
-
-    async def setup(self, scope: PluginScope) -> None:
-        scope.provide(Tracer, self)
 
 
 class _NoopSpan:

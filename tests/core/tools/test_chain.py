@@ -3,7 +3,7 @@ from dataclasses import replace
 
 import pytest
 
-from harnessed import Agent, Plugin, ToolCall, ToolChain, ToolResult, ToolStatus, tool
+from harnessed import Agent, AgentLoop, Plugin, ToolCall, ToolChain, ToolResult, ToolStatus, tool
 from harnessed.events import (
     ToolCallFinishedEvent,
     ToolExecutionFinishedEvent,
@@ -13,7 +13,6 @@ from harnessed.hooks import ReviewToolResult, ToolPolicy
 from harnessed.kernel import hook
 from harnessed.models import ModelChunk
 from harnessed.models.messages import PolicyDecision
-from harnessed.plugins import AgentLoop
 from harnessed.testing import ScriptedModel
 
 
@@ -116,7 +115,7 @@ async def test_dynamic_parallel_break_drains_started_calls_and_prevents_further_
     calls = [ToolCall("work", {"index": index}) for index in range(5)]
     model = ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "done"])
     async with Agent(
-        model=model, plugins=[Tools(), AgentLoop(max_parallel_tools=2)]
+        model=model, plugins=[Tools()], loop=AgentLoop(max_parallel_tools=2)
     ).session() as s:
         s.on(ToolExecutionFinishedEvent, lambda event: break_recorded.set())
         task = asyncio.create_task(s.run("go"))

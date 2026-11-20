@@ -105,17 +105,6 @@ caching and duration filtering remain future work.
 See [tracing](../guides/tracing.md) for Phoenix and Langfuse configuration,
 content capture, parent context and the emitted attributes.
 
-## PluginPack resolution
-
-`PluginPack.resolve(*, prompt=PluginPackPromptPolicy.INCLUDE) -> ResolvedPluginPack` resolves one pack
-without agent defaults, plugin mounts or instruction rendering. Import these
-types from `harnessed`. The frozen result exposes a flat `plugins` tuple and a
-`CompositionDescription` in `description`, preserving original origins,
-replacements and exclusions. `PluginPackPromptPolicy.OMIT` recursively skips `PluginPack.prompt`
-declarations before conflict resolution; explicit prompt plugins and selected
-plugins' instruction contributions remain. Flattened plugins become direct
-inputs when passed to an Agent. See [pack resolution](../guides/plugins.md#resolve-a-pack-into-flat-recipes).
-
 ## MCP client
 
 Install `harnessed[mcp]` and import `MCP` from `harnessed.plugins.mcp`.
@@ -168,6 +157,8 @@ the supplied scope. See [method declarations](../guides/plugins.md#third-party-m
 
 ## Approval policy
 
+Approvals are not installed by default. Without an `Approvals` plugin, read-only
+tools run and other tools return `ToolStatus.UNAVAILABLE`.
 `Approvals(default=PolicyDecision.ALLOW)` and `Approvals(default=PolicyDecision.ASK)`
 select the fallback decision; both accept `approver=` and `timeout=`. Tool flags
 still take precedence over that fallback. `Approvals(allow=..., ask=..., deny=...)`
@@ -263,7 +254,7 @@ Run-only backends explicitly reject background starts. See
 
 ## Agent
 
-`Agent(*, model=None, instructions=None, prompt=None, plugins=(),
+`Agent(*, model=None, instructions=None, prompt=None, plugins=(), loop=None,
 plugin_validation=PluginValidation.ERROR, store=None)` resolves reusable configuration.
 
 | Member | Behavior |
@@ -271,10 +262,12 @@ plugin_validation=PluginValidation.ERROR, store=None)` resolves reusable configu
 | model | Harnessed Model or provider:model string; wrap native models with PydanticAIModel |
 | instructions | Caller-owned text prepended to the selected prompt |
 | prompt | Complete content document, or SystemPrompt.from_plugins(...) to keep collecting plugin blocks; defaults to collection |
-| plugins | Iterable of configured plugins or PluginPack values, resolved by local slots before mounting |
+| plugins | Iterable of configured plugins or `None`, mounted in order; duplicate slots raise PluginConflict |
+| loop | AgentLoop value with step, tool, output and context limits; defaults to `AgentLoop()` |
 | plugin_validation | ERROR rejects unresolved plugins at session startup; WARN emits PluginDependencyWarning and retains them for later activation |
-| agent.plugins | Tuple of resolved plugins |
-| agent.describe() | Immutable CompositionDescription with configured order, pack origins, replacement histories and exclusions |
+| agent.plugins | Tuple of configured plugins |
+| agent.loop | The configured AgentLoop |
+| agent.describe() | Immutable CompositionDescription with the configured plugins in order |
 | agent.prompt | Inspectable PromptComposition with final order, origins and format |
 | store | Optional application-owned SessionStore; None keeps sessions ephemeral |
 | agent.session(*, state=None, id=None, restore_outputs=()) | Open a Session from explicit state or a stored conversation; id requires a store |
@@ -321,36 +314,27 @@ tuple contains immutable `PluginDependencyIssue` snapshots with `.plugin`
 and permits later activation. Setup failures still propagate in either mode.
 See [startup validation](../guides/plugins.md#session-startup-validation).
 
-## PluginPack composition
+## Composition
 
-`from harnessed import PluginPack, CompositionDescription` exposes static library
-composition. `PluginPack(name: str, plugins: Iterable[PluginInput])` captures its inputs
-once as a tuple; `PluginInput` is a configured kernel plugin or another PluginPack.
-The name must be a nonempty string. A pack has no lifecycle of its own.
+`from harnessed import AgentLoop, CompositionDescription` covers static
+composition. An Agent is the fixed runtime core plus exactly the plugins passed in
+`plugins=`, in order; there are no default plugins, packs or replacement rules.
+`None` entries are skipped. Booleans and nested lists are not plugin inputs.
+Two plugins in one slot, including `model=` together with `Service(Model, ...)`,
+raise `PluginConflict`. Unslotted recipes are additive, regardless of class or
+service keys. Reusable compositions are ordinary functions returning plugin lists.
 
-`pack.without(*types)` returns a new pack excluding all matching recipe types and
-subclasses recursively. Each requested type must match a remaining recipe
-(`ValueError` otherwise); non-type arguments raise `TypeError`. The original pack
-and child packs remain unchanged. It does not remove dependent plugins or agent
-fallbacks. `None`, booleans and arbitrary nested lists are not plugin inputs.
+The core is not a plugin and cannot be replaced: session log, tool registry,
+system prompt store, token counter, context budget, prompt renderer and loop.
+`Service(TokenCounter, counter)` overrides the token counter service. Absent
+extension points behave explicitly: without `Approvals`, read-only tools run and
+other tools are unavailable; without a tracer, nothing is traced.
 
-At each boundary, direct plugins override child-pack exports by slot. Duplicate
-direct slots and conflicting sibling-pack exports raise `PluginConflict`; a
-direct entry at that boundary resolves a sibling conflict. Internal child-pack
-conflicts must be resolved inside that child. Nesting depth does not set global
-precedence. All resolved supplied plugins override the agent's built-in
-fallbacks. Unslotted recipes are additive, regardless of class or service keys.
-Replacements keep the first inherited slot position.
-
-`agent.describe()` returns a `CompositionDescription` with `plugins` and `removed`
-tuples and a readable `str()` rendering. Plugin descriptions contain `name`,
-`pack_path`, `origin`, `slot`, `needs`, `observes`, `provides` and recursive `replaces` tuples.
-Exclusions contain `plugin` and `removed_by`. Direct inputs use an empty pack
-path; built-ins use `("harnessed",)`. The result records static declarations,
-not live activation or services published dynamically by setup. Only selected
-recipes contribute prompts and event types. Plugin packs are not kernel plugin recipes
-and cannot be mounted with `session.use()`.
-See [library defaults](../guides/plugins.md#publish-library-defaults-with-pluginpack).
+`agent.describe()` returns a `CompositionDescription` with a `plugins` tuple and
+a readable `str()` rendering. Plugin descriptions contain `name`, `slot`,
+`needs`, `observes` and `provides`. The result records static declarations, not
+live activation or services published dynamically by setup.
+See [composition](../guides/plugins.md#share-compositions-with-ordinary-functions).
 
 Start with `Agent(model="openai-responses:gpt-6.1-terra")` to select a model.
 Provider strings automatically select the PydanticAI adapter. Use `PydanticAIModel` from `harnessed.models.pydantic_ai` for generation defaults
@@ -379,20 +363,16 @@ lines, MARKDOWN adds optional level-two headings, and XML escapes section conten
 
 `SystemPrompt.from_plugins(*parts, format=...)` collects plugin blocks; it is
 also the default when `Agent(prompt=)` is omitted. Fixed parts appear
-before complete plugin blocks in resolved plugin-list order. Nested packs expand
-at their list position; removals disappear and replacements keep inherited slot
-positions. Only final winners' providers run, once at agent construction.
+before complete plugin blocks in plugin-list order. Providers run once at agent
+construction.
 A plugin provider returns a content document and cannot request collection itself.
 A prompt built with the `SystemPrompt` constructor omits plugin blocks without
 calling their providers; `str(agent.prompt)` lists the omitted plugins.
 Collection strategies cannot be nested inside content.
 
 `Agent(instructions="...")` prepends caller text. `Agent(prompt=...)` selects the
-outer document or strategy. `PluginPack(name, plugins, prompt=...)` supplies a default
-using normal slot precedence: parent defaults override children and explicit
-agent prompts override packs. Conflicting sibling prompt defaults require a direct
-choice. Caller instructions do not replace a pack's strategy. Optional `None`
-entries in public plugin lists are ignored.
+outer document or strategy. Optional `None` entries in public plugin lists are
+ignored.
 
 `Instructions(text="", title=None, description="")` is a content value, not a
 plugin descriptor. `from_file(path=..., title=..., missing_ok=False)` and
@@ -482,13 +462,14 @@ corrupt stored records raise `SessionFormatError`, and `on_max_tokens=FAIL` rais
 `OutputTokenLimit`.
 See [session boundaries and restart behavior](../guides/sessions.md).
 
-Configure loop options on `AgentLoop(...)` in `plugins=`: step limits,
-parallel tool limits, tool execution timeouts and context-window overrides belong to the agent
+Configure loop options with `Agent(loop=AgentLoop(...))`: step limits,
+parallel tool limits, tool execution timeouts, the final tool-output limit
+(`max_tool_output`) and context-window overrides belong to the agent
 configuration. `session(id)` opens that configured runtime; it has no per-session
 loop overrides. A single run may narrow the step limit with `max_steps=` and cap
 the turn's billed input plus output tokens with `token_budget=`; both are stored
-with the turn and survive a restart. `ToolOutputLimit(...)` and `Approvals(...)` replace their default
-policy slots explicitly.
+with the turn and survive a restart. Add `Approvals(...)` to `plugins=` to permit
+side-effecting tools.
 
 `AgentLoop(final_step=FinalStepPolicy.SUMMARIZE)` reserves the last available
 step for an action-free text summary. Import `FinalStepPolicy` from

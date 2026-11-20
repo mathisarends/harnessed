@@ -59,12 +59,9 @@ agent = Agent(
 )
 ```
 
-Collection keeps complete instruction blocks in final configured
-plugin-list order. Nested packs expand at their list position. Removed and
-replaced recipes are discarded before providers run. A slot replacement retains
-the inherited position. Dependency setup order never changes prompt order.
-Configuration providers run once when constructing the agent, after plugin
-selection; sessions reuse that content.
+Collection keeps complete instruction blocks in configured plugin-list order.
+Dependency setup order never changes prompt order. Configuration providers run
+once when constructing the agent; sessions reuse that content.
 
 To own the complete system prompt, pass a document built with the constructor,
 such as `prompt=SystemPrompt("...")`. Plugin instruction blocks are then left out
@@ -77,35 +74,24 @@ plugins so the choice stays visible.
 plugin blocks. No plugin is moved to the end by its type or name: put completion
 and policy components at their intended list positions.
 
-## Publish the strategy in a pack
+## Share the strategy with a composition
 
 ```python
-from harnessed import Agent, PluginPack, PromptFormat, SystemPrompt
+from harnessed import Agent, PromptFormat, SystemPrompt
 from harnessed.plugins import Filesystem, Shell
 
-workspace = PluginPack(
-    "workspace",
-    plugins=[Filesystem(), Shell()],
-    prompt=SystemPrompt.from_plugins(
-        format=PromptFormat.MARKDOWN,
-    ),
-)
 agent = Agent(
     instructions="Help with the workspace.",
-    plugins=[workspace.without(Shell)],
+    prompt=SystemPrompt.from_plugins(format=PromptFormat.MARKDOWN),
+    plugins=[Filesystem(), Shell()],
 )
 ```
 
-The pack declares the strategy; the agent resolves it against the complete final
-plugin composition, including external plugins. `None` entries are skipped in
-both `Agent(plugins=...)` and `PluginPack(plugins=...)`. `without()` returns a new pack and
-preserves its prompt strategy.
-
-PluginPack prompts participate in the existing `instructions` slot: a parent pack's
-prompt overrides child defaults, and explicit `Agent(prompt=...)` overrides pack
-defaults. Competing sibling defaults require an explicit decision. Supplying
-`Agent(instructions=...)` adds caller text without replacing the selected strategy.
-See [pack composition](plugins.md#publish-library-defaults-with-pluginpack).
+The strategy is resolved against the complete plugin list. `None` entries are
+skipped. Libraries that share a composition return the plugin list and, if they
+need one, a `SystemPrompt` value from ordinary functions; the application passes
+both explicitly. Supplying `Agent(instructions=...)` adds caller text without
+replacing the selected strategy.
 
 ## Compose content and select a renderer
 

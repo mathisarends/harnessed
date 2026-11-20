@@ -32,6 +32,7 @@ class AgentLoopConfig(PluginConfig):
     on_max_tokens: TokenLimitBehavior = TokenLimitBehavior.ACCEPT
     output_retries: Annotated[int, Field(ge=0)] = 2
     final_step: FinalStepPolicy = FinalStepPolicy.NONE
+    max_tool_output: Annotated[int, Field(ge=256)] = 32_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,14 +54,13 @@ class AgentOptions:
         cls,
         config: AgentLoopConfig,
         *,
-        tool_output_limit: ToolOutputLimit,
         error_formatter: ErrorFormatter | None = None,
     ) -> Self:
         return cls(
             max_steps=config.max_steps,
             tool_timeout=config.tool_timeout,
             context_window=config.context_window,
-            tool_output_limit=tool_output_limit,
+            tool_output_limit=ToolOutputLimit(config.max_tool_output),
             max_parallel_tools=config.max_parallel_tools,
             error_formatter=error_formatter,
             on_max_tokens=config.on_max_tokens,

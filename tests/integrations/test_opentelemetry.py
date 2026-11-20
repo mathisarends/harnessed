@@ -1744,7 +1744,6 @@ import harnessed.plugins
 import harnessed.models
 import harnessed.integrations
 from harnessed import Agent
-from harnessed.runtime.tracing import NoopTracer
 from harnessed.tracing import current, record, span, traced
 @traced
 def work(value: int) -> int:

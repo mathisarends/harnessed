@@ -11,7 +11,7 @@ from harnessed import (
     tool,
 )
 from harnessed.models import Model, ModelChunk
-from harnessed.plugins import PromptRenderer, Service
+from harnessed.plugins import Service
 from harnessed.testing import ScriptedModel
 
 
@@ -32,14 +32,11 @@ async def main():
             "The result is 42.",
         ]
     )
-    # Equivalent to supplying model=... and prompt=... on Agent.
+    # Equivalent to supplying model=... on Agent; the prompt is part of the core.
     calculator = Calculator()
     agent = Agent(
-        plugins=[
-            Service(Model, model),
-            PromptRenderer(SystemPrompt.from_plugins(Instructions(text="Keep answers concise."))),
-            calculator,
-        ]
+        prompt=SystemPrompt.from_plugins(Instructions(text="Keep answers concise.")),
+        plugins=[Service(Model, model), calculator],
     )
     print("Composition:", [type(value).__name__ for value in agent.plugins])
     print(agent.prompt)
