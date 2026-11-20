@@ -56,9 +56,8 @@ from harnessed.models import (
     UserMessage,
 )
 from harnessed.runtime.hooks import SessionAppended, SessionClosing
-from harnessed.runtime.tracing import Tracer
 from harnessed.testing import CallbackModel, ScriptedModel, reply
-from harnessed.tracing import record, traced
+from harnessed.tracing import Tracer, record, traced
 from harnessed.tracing import span as library_span
 from tests._images import inline
 

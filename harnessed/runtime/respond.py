@@ -22,10 +22,10 @@ from harnessed.models import (
 )
 from harnessed.sessions import SessionContext
 from harnessed.sessions.log import SessionLog
+from harnessed.tracing import Span, span
 
 from .diagnostics import RequestDiagnostics
 from .hooks import StreamModel
-from .tracing import Span, span
 
 
 class ModelResponder:

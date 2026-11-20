@@ -31,8 +31,8 @@ from harnessed.models import (
 )
 from harnessed.runtime.control import StopAtBoundary
 from harnessed.runtime.plugin import Plugin, PluginConfig
-from harnessed.runtime.tracing import HookTracing, Span, Tracer
 from harnessed.sessions.turns import Step, Turn, recorded_usage
+from harnessed.tracing import HookTracing, Span, Tracer
 
 from .openinference import (
     ConversationExport,

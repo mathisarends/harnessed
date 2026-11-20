@@ -17,6 +17,7 @@ from harnessed.models.messages import ApprovalResponse
 from harnessed.sessions import SessionContext
 from harnessed.sessions.log import SessionLog
 from harnessed.tools import suspend_tool_execution
+from harnessed.tracing import span
 
 from .approval_policy import (
     DEFAULT_APPROVALS,
@@ -28,7 +29,6 @@ from .approval_policy import (
 from .child_contracts import ChildSessionRequest
 from .control import SessionControl
 from .hooks import RequestApproval
-from .tracing import span
 
 logger = logging.getLogger(__name__)
 
