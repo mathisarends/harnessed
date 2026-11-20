@@ -37,11 +37,11 @@ from harnessed.models.messages import to_dict
 from harnessed.models.model import UsagePurpose, resolve_request_settings, sum_usage
 from harnessed.sessions import HistoryEntry
 from harnessed.sessions.log import SessionLog
+from harnessed.tracing import Span, span
 
 from .budget import ContextBudget
 from .compaction_notes import CompactionNotes, FittedNotes, PrepareCompaction
 from .tokens import CalibratedTokenCounter, TokenCounter, count_request
-from .tracing import Span, span
 
 logger = logging.getLogger(__name__)
 _TRIGGER_RESULT = TypeAdapter(bool, config=ConfigDict(strict=True, hide_input_in_errors=True))

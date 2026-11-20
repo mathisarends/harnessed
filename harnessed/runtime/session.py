@@ -42,6 +42,7 @@ from harnessed.sessions.publishing import SessionPublished
 from harnessed.sessions.result import RunResult, RunResults
 from harnessed.sessions.turns import Turn
 from harnessed.tools import BoundToolContexts, SessionTools, ToolContexts, ToolRegistry
+from harnessed.tracing import TraceSession, bind_tracer
 
 from .approvals import LiveApprovals, SessionApprovals
 from .attachments import Attachment
@@ -64,7 +65,6 @@ from .stepper import StepRunner
 from .stream_approvals import StreamApprovals
 from .streaming import TurnStreams, project_stream_events
 from .submissions import RunSubmissions
-from .tracing import TraceSession, bind_tracer
 from .turns import TurnRunner
 
 _driving: ContextVar[Session | None] = ContextVar("harnessed_driving", default=None)

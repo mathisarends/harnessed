@@ -28,6 +28,7 @@ from harnessed.tools import (
     ToolScheduling,
     format_tool_error,
 )
+from harnessed.tracing import span
 
 from .approval_policy import Approvals
 from .approvals import SessionApprovals
@@ -38,7 +39,6 @@ from .hooks import (
 )
 from .options import AgentOptions
 from .tool_output_limit import ToolOutputLimit
-from .tracing import span
 
 
 @dataclass

@@ -19,12 +19,12 @@ from harnessed.models import GenerationSettings, StopReason, TokenLimitBehavior
 from harnessed.sessions import SessionContext
 from harnessed.sessions.log import SessionLog
 from harnessed.sessions.turns import Step, Turn, recorded_usage
+from harnessed.tracing import Span, span
 
 from .control import SessionControl
 from .hooks import TurnStopping
 from .options import AgentOptions
 from .stepper import StepRunner
-from .tracing import Span, span
 
 
 class TurnRunner:

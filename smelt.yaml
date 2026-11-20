@@ -38,11 +38,15 @@ architecture:
     harnessed.models.pydantic_ai: model_adapters
     harnessed.integrations: integrations
     harnessed.testing: testing
-    harnessed.tracing: sdk
+    harnessed.tracing: tracing
   layers:
     kernel:
       path: kernel
       may_depend_on: []
+      third_party: {default: deny}
+    tracing:
+      path: tracing
+      may_depend_on: [kernel]
       third_party: {default: deny}
     contracts:
       path: models
@@ -54,11 +58,11 @@ architecture:
       third_party: {default: deny, allow: [pydantic]}
     engine:
       path: runtime
-      may_depend_on: [kernel, contracts, events]
+      may_depend_on: [kernel, tracing, contracts, events]
       third_party: {default: deny, allow: [pydantic]}
     plugins:
       path: plugins
-      may_depend_on: [kernel, contracts, events, engine, model_adapters]
+      may_depend_on: [kernel, tracing, contracts, events, engine, model_adapters]
       third_party: {default: deny, allow: [pydantic, pydantic_ai, yaml, fastmcp, mcp, jsonschema, referencing, httpx2, anyio]}
     model_adapters:
       path: models.pydantic_ai
@@ -66,15 +70,15 @@ architecture:
       third_party: {default: deny, allow: [pydantic, pydantic_ai]}
     integrations:
       path: integrations
-      may_depend_on: [kernel, contracts, events, engine, plugins]
+      may_depend_on: [kernel, tracing, contracts, events, engine, plugins]
       third_party: {default: deny, allow: [pydantic, opentelemetry]}
     sdk:
       path: sdk
-      may_depend_on: [kernel, contracts, events, engine, plugins, model_adapters]
+      may_depend_on: [kernel, tracing, contracts, events, engine, plugins, model_adapters]
       third_party: {default: deny, allow: [pydantic, pydantic_ai]}
     testing:
       path: testing
-      may_depend_on: [kernel, contracts, events, engine, plugins, model_adapters, sdk]
+      may_depend_on: [kernel, tracing, contracts, events, engine, plugins, model_adapters, sdk]
       third_party: {default: deny, allow: [pydantic, pydantic_ai, pytest]}
   import_graph:
     type_checking: include

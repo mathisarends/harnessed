@@ -10,10 +10,9 @@ from harnessed.context import Summary, every_turns
 from harnessed.hooks import PreStep, SessionClosing, StepDecision
 from harnessed.kernel import Next, PluginScope, Scope, hook
 from harnessed.models import Decision, ModelChunk, ToolCall
-from harnessed.runtime.tracing import Tracer
 from harnessed.testing import ScriptedModel
 from harnessed.tools import tool
-from harnessed.tracing import current, record, span, traced
+from harnessed.tracing import Tracer, current, record, span, traced
 
 
 class Recorder(Plugin, slot="tracer"):
