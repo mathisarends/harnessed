@@ -37,7 +37,7 @@ from harnessed.events.child_status import (
     ChildReportState,
     ChildRuntimeState,
 )
-from harnessed.models import Decision, ModelUsage, ToolCall, UserMessage
+from harnessed.models import ApprovalResponse, ModelUsage, ToolCall, UserMessage
 from harnessed.models.messages import to_dict
 from harnessed.runtime.hooks import SessionAppended
 from harnessed.tools import ToolError
@@ -101,7 +101,7 @@ class ParentApprover:
         self._child_id = child_id
         self.agent = agent
 
-    async def ask(self, request: ApprovalRequestedEvent) -> Decision:
+    async def ask(self, request: ApprovalRequestedEvent) -> ApprovalResponse:
         call = ToolCall(
             request.call.name,
             request.call.arguments,
@@ -110,14 +110,14 @@ class ParentApprover:
         await self.parent.log.append(
             SubagentApprovalRequestedEvent(self._child_id, request.request_id, call.id)
         )
-        decision = await self.parent.approvals.request(
+        response = await self.parent.approvals.request_response(
             call,
             f"Subagent {self.agent} ({self._child_id}): {request.reason}",
             scope=f"subagent:{self._child_id}:{request.scope}",
             identity=request.identity,
         )
         # Grants remain parent-owned so revocation takes effect on the next request.
-        return decision
+        return replace(response, remember=False)
 
 
 @dataclass

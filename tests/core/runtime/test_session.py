@@ -16,8 +16,16 @@ from harnessed.events import (
     TurnStartedEvent,
 )
 from harnessed.kernel import Inject, PluginScope, hook, needs
-from harnessed.models import Decision, ModelChunk, ModelInfo, Role, StopReason, ToolCall, ToolStatus
-from harnessed.models.messages import ApprovalResponse
+from harnessed.models import (
+    ApprovalResponse,
+    Decision,
+    ModelChunk,
+    ModelInfo,
+    Role,
+    StopReason,
+    ToolCall,
+    ToolStatus,
+)
 from harnessed.plugins import Service
 from harnessed.runtime.hooks import (
     ExecuteTool,

@@ -6,14 +6,23 @@ import pytest
 
 from harnessed import Agent, Approvals, Plugin, SystemPrompt, tool
 from harnessed.events import (
+    ApprovalResolvedEvent,
     CompactionAppliedEvent,
     PluginValueChangedEvent,
     ToolPolicyAppliedEvent,
     TurnEndedEvent,
     TurnStartedEvent,
 )
+from harnessed.events.codec import decode_event, encode_event
 from harnessed.kernel import PluginScope
-from harnessed.models import Decision, ModelChunk, ToolCall, ToolStatus
+from harnessed.models import (
+    ApprovalResponse,
+    ApprovalSource,
+    Decision,
+    ModelChunk,
+    ToolCall,
+    ToolStatus,
+)
 from harnessed.prompts import Instructions
 from harnessed.sessions import SessionValue
 from harnessed.sessions.log import SessionLog
@@ -148,29 +157,54 @@ def test_explicit_duplicate_slots_raise_instead_of_silently_overriding():
         Agent(approvals=Approvals(), plugins=[Approvals(default=Decision.ALLOW)])
 
 
-@pytest.mark.parametrize("user_answer", [False, True])
-async def test_denials_distinguish_policy_from_the_user_in_log_and_result(user_answer):
+@pytest.mark.parametrize(
+    ("source", "denied_by", "message"),
+    [
+        (None, "policy", "Denied by policy"),
+        (ApprovalSource.USER, "user", "User declined this action"),
+        (ApprovalSource.REVIEWER, "reviewer", "Reviewer declined this action"),
+    ],
+)
+async def test_denial_provenance_is_recorded_in_log_and_result(source, denied_by, message):
     class Write(Plugin):
         @tool
         async def write(self) -> str:
             pytest.fail("Denied tool executed")
 
+    def respond(request):
+        match source:
+            case ApprovalSource.REVIEWER:
+                return ApprovalResponse(
+                    Decision.DENY, source=source, reason="The destination is outside the workspace."
+                )
+            case ApprovalSource.USER:
+                return request.deny()
+        pytest.fail("A policy denial must bypass the approver")
+
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("write"))], "blocked"])
-    policy = (
-        Approvals(default=Decision.ASK, approver=lambda request: Decision.DENY)
-        if user_answer
-        else Approvals(deny=[Write.write])
-    )
+    policy = Approvals(deny=[Write.write], approver=respond)
+    if source is not None:
+        policy = Approvals(ask=[Write.write], approver=respond)
     async with Agent(model=model, approvals=policy, plugins=[Write()]).session() as session:
         result = await session.run("Write")
         denied = result.tool_calls[0][1]
-        assert denied.denied_by == ("user" if user_answer else "policy")
-        assert denied.content == (
-            "User declined this action" if user_answer else "Denied by policy"
-        )
+        assert denied.denied_by == denied_by
+        assert denied.content == message
         applied = session.last(ToolPolicyAppliedEvent)
         assert applied.decision is Decision.DENY
-        assert applied.source == ("approval" if user_answer else "policy")
+        assert applied.source == ("policy" if source is None else "approval")
+        resolution = session.last(ApprovalResolvedEvent)
+        if source is None:
+            assert resolution is None
+        else:
+            assert resolution.source is source
+            expected_reason = (
+                "The destination is outside the workspace."
+                if source is ApprovalSource.REVIEWER
+                else None
+            )
+            assert resolution.reason == expected_reason
+            assert decode_event(encode_event(resolution)) == resolution
 
 
 async def test_feature_instruction_state_survives_compaction_without_creating_messages():

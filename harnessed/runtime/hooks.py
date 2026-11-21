@@ -10,6 +10,7 @@ from harnessed.events.turn import FinalStepPolicy
 from harnessed.kernel import Bail, Emit, Waterfall
 from harnessed.kernel import Next as Next
 from harnessed.models import (
+    ApprovalResponse,
     Decision,
     Message,
     Model,
@@ -20,7 +21,6 @@ from harnessed.models import (
     ToolCall,
     ToolResult,
 )
-from harnessed.models.messages import ApprovalResponse
 from harnessed.tools import (
     OutputLimit,
     OutputLimitSetting,

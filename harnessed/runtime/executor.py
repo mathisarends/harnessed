@@ -17,7 +17,7 @@ from harnessed.events import (
     ToolPolicyAppliedEvent,
 )
 from harnessed.kernel import Scope
-from harnessed.models import Decision, ToolCall, ToolResult, ToolStatus
+from harnessed.models import ApprovalSource, Decision, ToolCall, ToolResult, ToolStatus
 from harnessed.models.messages import DenialSource
 from harnessed.sessions import SessionContext
 from harnessed.sessions.log import SessionLog
@@ -255,6 +255,11 @@ class ToolExecutor:
         if decision is not Decision.DENY:
             return None
         if answered and record.decision is Decision.DENY:
+            resolution = record.resolution
+            if resolution is not None and resolution.source is ApprovalSource.REVIEWER:
+                return ToolResult.denied(
+                    "Reviewer declined this action", source=DenialSource.REVIEWER
+                )
             return ToolResult.denied("User declined this action", source=DenialSource.USER)
         return ToolResult.denied("Denied by policy", source=DenialSource.POLICY)
 

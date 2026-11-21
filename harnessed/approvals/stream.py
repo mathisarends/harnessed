@@ -9,7 +9,7 @@ from harnessed.events import (
     TurnStartedEvent,
 )
 from harnessed.kernel import Priority, Scope
-from harnessed.models.messages import ApprovalResponse
+from harnessed.models import ApprovalResponse
 from harnessed.runtime.hooks import RequestApproval, SessionAppended
 from harnessed.sessions.log import SessionLog
 

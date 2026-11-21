@@ -1,5 +1,6 @@
 from harnessed.agent import Agent as Agent
 from harnessed.approvals import Approvals as Approvals
+from harnessed.auto_review import AutoReview as AutoReview
 from harnessed.context import Compaction as Compaction
 from harnessed.context import Context as Context
 from harnessed.models import Decision as Decision
@@ -23,6 +24,7 @@ __all__ = [
     "Agent",
     "AgentLoop",
     "Approvals",
+    "AutoReview",
     "Compaction",
     "Context",
     "Decision",

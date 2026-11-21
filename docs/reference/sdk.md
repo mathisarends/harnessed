@@ -167,6 +167,9 @@ sets an explicit fallback. Rules take `StrEnum` action keys and decorated method
 MCP clients bind remote names to the same action keys using `actions=`.
 Callbacks answer with `request.allow(remember=True)`, `request.allow()` or
 `request.deny()`. The corresponding session operations accept a request ID.
+Supply `reviewer=AutoReview(model=..., instructions=...)` for model review of
+pending approvals. Custom reviewers implement `ApprovalReviewer` from
+`harnessed.approvals`. A deferred review uses the existing approval responders.
 See [approval configuration and response timeouts](../guides/approvals.md).
 
 ## Tool presentation
@@ -419,6 +422,7 @@ after completion it raises `SessionStateError` instead of starting a new turn.
 | status | SessionStatus: IDLE, RUNNING, PAUSED, STOPPING, CLOSED |
 | emit(event) | Admit a declared execution event or publish a transient notification |
 | `approvals.request(call, reason)` | Ask for approval in the live session |
+| `approvals.request_response(call, reason)` | Ask for approval and return the answer with its source and optional rationale |
 | `approvals.allow(id, remember=False)` / `approvals.deny(id)` | Answer a pending approval. Set `remember=True` to grant future calls for the same action and scope |
 | `approvals.revoke(id)` | Revoke a remembered grant. Use `pending`, `grants` and `grant_for()` to inspect approvals |
 | id / prompt | Session ID / effective system prompt |

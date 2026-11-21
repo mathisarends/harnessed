@@ -221,6 +221,7 @@ def test_application_facade_stays_small_and_has_no_transitional_names():
         "Agent",
         "AgentLoop",
         "Approvals",
+        "AutoReview",
         "Compaction",
         "Context",
         "Decision",
@@ -287,6 +288,7 @@ def test_package_root_has_only_public_entrypoints_and_no_transition_modules():
     assert {path.name for path in PACKAGE.glob("*.py")} == {
         "__init__.py",
         "agent.py",
+        "auto_review.py",
         "errors.py",
         "hooks.py",
         "tracing.py",

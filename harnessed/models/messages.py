@@ -66,6 +66,7 @@ class ToolStatus(StrEnum):
 class DenialSource(StrEnum):
     POLICY = "policy"
     USER = "user"
+    REVIEWER = "reviewer"
 
 
 class ContentKind(StrEnum):
@@ -215,18 +216,33 @@ class Decision(StrEnum):
     ASK = "ask"
 
 
+class ApprovalSource(StrEnum):
+    """Who supplied the final answer to an approval request."""
+
+    USER = "user"
+    REVIEWER = "reviewer"
+
+
 @dataclass(frozen=True, slots=True)
 class ApprovalResponse:
-    """A final decision and whether its allow grant can be reused in this session."""
+    """A final answer with its origin, optional rationale and grant preference."""
 
     decision: Decision
     remember: bool = field(default=False, kw_only=True)
+    source: ApprovalSource = field(default=ApprovalSource.USER, kw_only=True)
+    reason: str | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         if not isinstance(self.decision, Decision) or self.decision is Decision.ASK:
             raise ValueError("Answer an approval with ALLOW or DENY")
         if type(self.remember) is not bool or (self.remember and self.decision is Decision.DENY):
             raise ValueError("Only an allow decision can be remembered")
+        if not isinstance(self.source, ApprovalSource):
+            raise TypeError("Approval source must be an ApprovalSource")
+        if self.remember and self.source is ApprovalSource.REVIEWER:
+            raise ValueError("Reviewer approval applies to one request")
+        if self.reason is not None and not isinstance(self.reason, str):
+            raise TypeError("Approval response reason must be a string")
 
 
 @dataclass(frozen=True)

@@ -12,6 +12,8 @@ from .diagnostics import (
     report_model_diagnostic,
 )
 from .messages import (
+    ApprovalResponse,
+    ApprovalSource,
     AssistantMessage,
     ContentPart,
     Decision,
@@ -51,6 +53,8 @@ from .model import (
 )
 
 __all__ = [
+    "ApprovalResponse",
+    "ApprovalSource",
     "AssetRef",
     "AssistantMessage",
     "ContentPart",

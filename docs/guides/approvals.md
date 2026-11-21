@@ -63,6 +63,55 @@ A repeated identical response is idempotent. A contradictory response fails.
 A question without a responder yields an unavailable result.
 `run()`, `submit()` and raw subscriptions install no UI responder.
 
+## Review an approval with a model
+
+Use `reviewer=AutoReview(...)` to give a model the first chance to answer an
+approval request. The same policy still controls which calls require approval.
+
+```python
+from harnessed import Approvals, AutoReview
+from harnessed.plugins import ShellAction
+
+approvals = Approvals(
+    ask=[ShellAction.EXECUTE],
+    reviewer=AutoReview(model=review_model, instructions=review_policy),
+)
+```
+
+`AutoReview` runs each request in a separate agent session with a structured
+verdict and no application tools. It sends the pending call and its exact
+arguments alongside a bounded text transcript of the retained conversation.
+The transcript prioritizes user inputs and gives recent tool calls and results a
+separate budget. It excludes system messages, private reasoning, images, and
+synthetic observations. The review policy is provided independently from the
+transcript, which the reviewer receives as evidence.
+
+To extend, redact, or replace the transcript, pass
+`context(request, transcript) -> str` to `AutoReview`. The callback receives
+an `ApprovalReviewRequest` with the pending `approval` and retained `history`.
+For shell commands, this is where the application can add the effective working
+directory or workspace boundary. The pending call remains a separate field.
+
+For a custom reviewer, implement
+`async review(request: ApprovalReviewRequest) -> ApprovalResponse | None`.
+Import the request and the optional `ApprovalReviewer` protocol from
+`harnessed.approvals` and `ApprovalResponse` from `harnessed.models`.
+A final reviewer answer applies to one call. `ApprovalResolvedEvent` records its
+source and optional rationale, and a denied tool result identifies the reviewer.
+
+When the model answers `ask` or a custom reviewer returns `None`, the configured
+`approver=` takes over. Without one, the existing approval hooks and active UI
+stream can answer. A reviewer denial ends the request. A failed or timed-out
+review or a handoff without a responder leaves the call blocked. The reviewer
+and any subsequent responder share the same approval timeout.
+For actions that need review each time, UI responders should approve individual
+requests. An existing remembered grant may satisfy an approval before review.
+Forwarded child requests use the parent's approval route and conversation.
+
+The [command reviewer example](examples.md#reviewing-approvals) shows this flow
+with a simulated shell backend. Backend permissions and sandbox restrictions
+still apply to approved calls.
+
 ## Response timeouts
 
 `Approvals(timeout_seconds=120)` sets the default approval response timeout for the whole

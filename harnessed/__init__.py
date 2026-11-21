@@ -21,6 +21,7 @@ _EXPORTS = {
     "Agent": ("harnessed.agent", "Agent"),
     "AgentLoop": ("harnessed.runtime.agent_loop", "AgentLoop"),
     "Approvals": ("harnessed.approvals", "Approvals"),
+    "AutoReview": ("harnessed.auto_review", "AutoReview"),
     "Compaction": ("harnessed.context", "Compaction"),
     "Context": ("harnessed.context", "Context"),
     "Decision": ("harnessed.models", "Decision"),

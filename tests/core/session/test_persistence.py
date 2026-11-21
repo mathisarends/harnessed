@@ -10,8 +10,7 @@ from harnessed import Agent, OutputContract, Plugin, tool
 from harnessed.errors import ConfigError, SessionClosed, SessionFormatError, SessionWriteConflict
 from harnessed.events import ApprovalRequestedEvent, MessageAppendedEvent
 from harnessed.integrations.json import JsonSessionStore
-from harnessed.models import Decision, ImageReference, ToolCall, UserMessage
-from harnessed.models.messages import ApprovalResponse
+from harnessed.models import ApprovalResponse, Decision, ImageReference, ToolCall, UserMessage
 from harnessed.plugins import Spill
 from harnessed.plugins.spill import SpillStore
 from harnessed.runtime.control import SessionStatus

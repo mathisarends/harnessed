@@ -5,10 +5,12 @@ from dataclasses import replace
 import pytest
 
 from harnessed import Agent, AgentLoop, Approvals, Decision, Plugin, ToolContext, tool
+from harnessed.approvals import ApprovalReviewRequest
 from harnessed.errors import SessionWriteConflict
 from harnessed.events import (
     ApprovalNeededEvent,
     ApprovalRequestedEvent,
+    ApprovalResolvedEvent,
     ApprovalStatus,
     SubagentApprovalRequestedEvent,
     SubagentFinishedEvent,
@@ -20,7 +22,16 @@ from harnessed.events import (
 from harnessed.events.codec import decode_event, encode_event
 from harnessed.integrations.json import JsonSessionStore
 from harnessed.kernel import Inject, PluginScope
-from harnessed.models import ModelChunk, ModelUsage, ToolCall, ToolStatus, UserMessage
+from harnessed.models import (
+    ApprovalResponse,
+    ApprovalSource,
+    ModelChunk,
+    ModelUsage,
+    ToolCall,
+    ToolMessage,
+    ToolStatus,
+    UserMessage,
+)
 from harnessed.plugins import Subagents
 from harnessed.sessions import SessionCommit, SessionState, StoredSession
 from harnessed.sessions.log import SessionLog
@@ -161,6 +172,54 @@ async def test_parent_stream_exposes_child_lifecycle_and_routes_approvals():
     assert any(isinstance(event, SubagentStartedEvent) for event in events)
     assert any(isinstance(event, SubagentFinishedEvent) for event in events)
     assert any(isinstance(event, SubagentApprovalRequestedEvent) for event in events)
+
+
+async def test_forwarded_reviewer_denial_keeps_its_source_and_reason_in_the_child():
+    class Write(Plugin):
+        @tool
+        async def write(self) -> str:
+            pytest.fail("Denied child tool executed")
+
+    class ChildReviewer:
+        async def review(self, _request: ApprovalReviewRequest) -> ApprovalResponse:
+            pytest.fail("A child approval must route through its parent")
+
+    class ParentReviewer:
+        async def review(self, request: ApprovalReviewRequest) -> ApprovalResponse:
+            assert request.approval.scope.startswith("subagent:")
+            assert any(entry.message.text == "Delegate" for entry in request.history)
+            return ApprovalResponse(Decision.DENY, reason="Read-only task.")
+
+    child_store = RecordingStore()
+    child_model = ScriptedModel([[ModelChunk(tool_call=ToolCall("write"))], "Blocked"])
+    child = Agent(
+        model=child_model,
+        approvals=Approvals(ask=[Write.write], reviewer=ChildReviewer()),
+        plugins=[Write()],
+        store=child_store,
+    )
+
+    parent = Agent(
+        model=ScriptedModel([[ModelChunk(tool_call=delegate())], "Done"]),
+        approvals=Approvals(reviewer=ParentReviewer()),
+        plugins=[Subagents({"review": child})],
+    )
+    await parent.run("Delegate")
+
+    resolutions = [
+        change.event
+        for commit in child_store.commits
+        for change in commit.changes
+        if isinstance(change.event, ApprovalResolvedEvent)
+    ]
+    assert len(resolutions) == 1
+    assert resolutions[0].source is ApprovalSource.REVIEWER
+    assert resolutions[0].reason == "Read-only task."
+    tool_message = next(
+        message for message in child_model.requests[-1].messages if isinstance(message, ToolMessage)
+    )
+    assert tool_message.status is ToolStatus.DENIED
+    assert tool_message.content == "Reviewer declined this action"
 
 
 @pytest.mark.parametrize(
@@ -550,8 +609,6 @@ async def test_always_grants_are_scoped_to_child_and_parent_revocation_is_effect
         child_id = session.children[0].id
     async with child.session(id=child_id) as session:
         assert not session.approvals.grants
-    from harnessed.events import ApprovalResolvedEvent
-
     decisions = [
         change.event.decision
         for commit in store.commits

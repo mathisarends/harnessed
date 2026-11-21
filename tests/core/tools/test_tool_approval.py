@@ -6,8 +6,7 @@ from harnessed import Agent, AgentLoop, Approvals, Decision, Plugin, ToolContext
 from harnessed.approvals.policy import ApprovalState
 from harnessed.events import ApprovalRequestedEvent, ApprovalStatus
 from harnessed.kernel import Inject
-from harnessed.models import ModelChunk, ToolCall, ToolStatus
-from harnessed.models.messages import ApprovalResponse
+from harnessed.models import ApprovalResponse, ModelChunk, ToolCall, ToolStatus
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit
 from tests._clock import AdvancingClock

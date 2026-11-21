@@ -9,8 +9,7 @@ from harnessed.errors import ApprovalUnavailable
 from harnessed.events import ApprovalStatus, ToolCallFinishedEvent
 from harnessed.hooks import RequestApproval, ToolPolicy
 from harnessed.kernel import hook
-from harnessed.models import ModelChunk, ToolCall, ToolStatus
-from harnessed.models.messages import ApprovalResponse
+from harnessed.models import ApprovalResponse, ModelChunk, ToolCall, ToolStatus
 from harnessed.testing import ScriptedModel, call
 
 

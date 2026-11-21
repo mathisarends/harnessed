@@ -2,8 +2,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal
 
-from harnessed.models import Decision, ToolCall
-from harnessed.models.messages import ApprovalResponse
+from harnessed.models import ApprovalResponse, ApprovalSource, Decision, ToolCall
 
 from .base import DurableEvent, Identifier, TransientEvent
 from .kinds import EventKind
@@ -65,6 +64,7 @@ class ApprovalResolvedEvent(DurableEvent):
     remember: bool = field(default=False, kw_only=True)
     status: ApprovalStatus = ApprovalStatus.ANSWERED
     reason: str | None = None
+    source: ApprovalSource | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "status", ApprovalStatus(self.status))
@@ -76,6 +76,10 @@ class ApprovalResolvedEvent(DurableEvent):
             raise ValueError("Only allow decisions can be remembered")
         if self.reason is not None and not isinstance(self.reason, str):
             raise TypeError("Approval resolution reason must be a string")
+        if self.source is not None:
+            object.__setattr__(self, "source", ApprovalSource(self.source))
+        if self.remember and self.source is ApprovalSource.REVIEWER:
+            raise ValueError("Reviewer approval applies to one request")
         if self.status == ApprovalStatus.ANSWERED and self.decision in (
             Decision.ALLOW,
             Decision.DENY,
@@ -84,6 +88,7 @@ class ApprovalResolvedEvent(DurableEvent):
         if (
             self.status in (ApprovalStatus.INTERRUPTED, ApprovalStatus.UNAVAILABLE)
             and self.decision is None
+            and self.source is None
         ):
             return
         raise ValueError("Approval must be answered, interrupted or unavailable")
