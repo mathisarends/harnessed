@@ -1,10 +1,10 @@
 """OpenInference message attributes for model spans, independent of the OTel SDK.
 
 Messages first become portable JSON values in which every image is an opaque
-identifier. Content filters and redaction see only these values, so images are
-either exported whole or dropped whole. ``MessageAttributes`` then flattens the
-filtered values into ``llm.input_messages.*`` / ``llm.output_messages.*`` keys and
-attaches image data at most once per conversation.
+identifier. Content filters see those stand-ins. The export policy can withhold
+external image URLs separately. ``MessageAttributes`` then flattens the filtered
+values into ``llm.input_messages.*`` / ``llm.output_messages.*`` keys and attaches
+available image data at most once per conversation.
 """
 
 import base64
@@ -22,10 +22,11 @@ type AttributeScalar = str | bool | int | float
 
 
 class TraceImage(NamedTuple):
-    """Image data available to one export; references the tracer cannot read have no URL."""
+    """Exportable image data, or the metadata for an unavailable or redacted image."""
 
     url: str | None
     size_bytes: int
+    redacted: bool = False
 
 
 class LimitedText(NamedTuple):
@@ -177,6 +178,7 @@ class MessageAttributes:
         self._claimed: dict[str, str] = {}
         self._truncated = False
         self._omitted = 0
+        self._image_urls_redacted = 0
 
     @property
     def truncated(self) -> bool:
@@ -186,6 +188,11 @@ class MessageAttributes:
     def omitted(self) -> int:
         """Older messages left out because they did not fit the attribute budget."""
         return self._omitted
+
+    @property
+    def image_urls_redacted(self) -> int:
+        """Image parts in the exported messages whose URLs redaction withheld."""
+        return self._image_urls_redacted
 
     def messages(
         self, prefix: str, value: JsonValue, *, budget: int | None = None
@@ -273,6 +280,9 @@ class MessageAttributes:
 
     def _image(self, image_id: str) -> tuple[str | None, str]:
         image = self._images.get(image_id)
+        if image is not None and image.redacted:
+            self._image_urls_redacted += 1
+            return None, "[image omitted because its URL contains a registered secret]"
         if image is None or image.url is None:
             return None, f"[image {image_id}, data unavailable to the tracer]"
         if image.size_bytes > self._image_limit:
