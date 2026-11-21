@@ -693,6 +693,11 @@ Reuse the same immutable state for independent continuations. See
 
 ## Compaction policy and services
 
+`ContextMeter` from `harnessed.context` is a session service. Plugins declare
+`needs(ContextMeter)` and call `await meter.measure(request)` to get the
+`ContextState` (input tokens, reserved output, effective window, turns since
+compaction, `ratio`) that compaction triggers receive.
+
 `Context(compaction=Compaction(...))` enables summarization. `Compaction` accepts these keyword arguments:
 
 | Argument | Default | Contract |

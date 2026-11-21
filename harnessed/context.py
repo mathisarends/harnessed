@@ -18,10 +18,10 @@ from harnessed.runtime.compaction import (
     CompactionPrompt,
     CompactionRequest,
     CompactionSettings,
-    ContextState,
     Summarizer,
     Summary,
 )
+from harnessed.runtime.meter import ContextMeter, ContextState
 
 _CONFIG = ConfigDict(strict=True, extra="forbid", allow_inf_nan=False, hide_input_in_errors=True)
 
@@ -158,6 +158,7 @@ __all__ = [
     "CompactionPrompt",
     "CompactionRequest",
     "Context",
+    "ContextMeter",
     "ContextState",
     "DEFAULT_COMPACTION_PROMPT",
     "Summarizer",
