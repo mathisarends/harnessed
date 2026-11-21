@@ -5,6 +5,7 @@ from dataclasses import replace
 import pytest
 
 from harnessed import Agent, AgentLoop, Approvals, Decision, Plugin, ToolContext, tool
+from harnessed.approvals import ApprovalReviewRequest
 from harnessed.errors import SessionWriteConflict
 from harnessed.events import (
     ApprovalNeededEvent,
@@ -179,23 +180,28 @@ async def test_forwarded_reviewer_denial_keeps_its_source_and_reason_in_the_chil
         async def write(self) -> str:
             pytest.fail("Denied child tool executed")
 
+    class ChildReviewer:
+        async def review(self, _request: ApprovalReviewRequest) -> ApprovalResponse:
+            pytest.fail("A child approval must route through its parent")
+
+    class ParentReviewer:
+        async def review(self, request: ApprovalReviewRequest) -> ApprovalResponse:
+            assert request.approval.scope.startswith("subagent:")
+            assert any(entry.message.text == "Delegate" for entry in request.history)
+            return ApprovalResponse(Decision.DENY, reason="Read-only task.")
+
     child_store = RecordingStore()
     child_model = ScriptedModel([[ModelChunk(tool_call=ToolCall("write"))], "Blocked"])
     child = Agent(
         model=child_model,
-        approvals=Approvals(ask=[Write.write]),
+        approvals=Approvals(ask=[Write.write], reviewer=ChildReviewer()),
         plugins=[Write()],
         store=child_store,
     )
 
-    def respond(_request: ApprovalRequestedEvent) -> ApprovalResponse:
-        return ApprovalResponse(
-            Decision.DENY, source=ApprovalSource.REVIEWER, reason="Read-only task."
-        )
-
     parent = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=delegate())], "Done"]),
-        approvals=Approvals(approver=respond),
+        approvals=Approvals(reviewer=ParentReviewer()),
         plugins=[Subagents({"review": child})],
     )
     await parent.run("Delegate")

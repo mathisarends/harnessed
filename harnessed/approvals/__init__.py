@@ -1,3 +1,4 @@
 from .policy import Approvals
+from .responders import ApprovalReviewer, ApprovalReviewRequest
 
-__all__ = ["Approvals"]
+__all__ = ["ApprovalReviewRequest", "ApprovalReviewer", "Approvals"]

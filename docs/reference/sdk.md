@@ -167,6 +167,9 @@ sets an explicit fallback. Rules take `StrEnum` action keys and decorated method
 MCP clients bind remote names to the same action keys using `actions=`.
 Callbacks answer with `request.allow(remember=True)`, `request.allow()` or
 `request.deny()`. The corresponding session operations accept a request ID.
+Supply `reviewer=AutoReview(model=..., instructions=...)` for model review of
+pending approvals. Custom reviewers implement `ApprovalReviewer` from
+`harnessed.approvals`. A deferred review uses the existing approval responders.
 See [approval configuration and response timeouts](../guides/approvals.md).
 
 ## Tool presentation

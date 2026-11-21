@@ -2,23 +2,18 @@
 
 import argparse
 import asyncio
-import json
-from enum import StrEnum
 from pathlib import Path
-from typing import Annotated
 
-from pydantic import BaseModel, Field
-
-from harnessed import Agent, AgentLoop, Approvals, Decision, Plugin
+from harnessed import Agent, Approvals, AutoReview, Decision
+from harnessed.approvals import ApprovalReviewRequest
 from harnessed.events import ApprovalNeededEvent, ApprovalResolvedEvent
-from harnessed.hooks import RequestApproval
-from harnessed.kernel import hook
-from harnessed.models import ApprovalResponse, ApprovalSource, Model
+from harnessed.models import ApprovalSource
 from harnessed.plugins import Shell, ShellAction, WorkspaceBackends
 from harnessed.plugins.shell import ProcResult
 from harnessed.testing import ScriptedModel, call
 
 _APPROVAL_TIMEOUT_SECONDS = 90
+_WORKSPACE = Path("/demo-workspace")
 _TASK = "Check whether the local demo repository has uncommitted changes."
 _POLICY = (
     "Review the exact argv against the user's task. Allow git status, deny git push, "
@@ -27,51 +22,8 @@ _POLICY = (
 )
 
 
-class Verdict(StrEnum):
-    ALLOW = "allow"
-    DENY = "deny"
-    ESCALATE = "escalate"
-
-
-class Review(BaseModel):
-    verdict: Verdict
-    reason: Annotated[str, Field(min_length=1, max_length=240)]
-
-
-class ReviewCommands(Plugin):
-    """Review pending shell calls before the stream asks for a human answer."""
-
-    def __init__(self, model: Model | str, *, policy: str, cwd: Path, task: str) -> None:
-        super().__init__()
-        self.reviewer = Agent(
-            model=model,
-            instructions=policy,
-            loop=AgentLoop(max_steps=2, output_retries=1),
-        )
-        self.cwd = cwd
-        self.task = task
-
-    @hook(RequestApproval)
-    async def review(self, event: RequestApproval) -> ApprovalResponse | None:
-        if event.request.scope != "tool-policy":
-            return None
-        tool = event.session.tools.resolve(ShellAction.EXECUTE)
-        if tool is None or event.call.name != tool.definition.name:
-            return None
-        evidence = json.dumps(
-            {
-                "task": self.task,
-                "cwd": self.cwd.as_posix(),
-                "argv": event.call.arguments.get("argv"),
-            }
-        )
-        result = await self.reviewer.run(evidence, output=Review)
-        review = result.require_output()
-        if review.verdict is Verdict.ESCALATE:
-            return None
-        return ApprovalResponse(
-            Decision(review.verdict.value), source=ApprovalSource.REVIEWER, reason=review.reason
-        )
+def command_context(_request: ApprovalReviewRequest, transcript: str) -> str:
+    return f"Working directory {_WORKSPACE.as_posix()}\n{transcript}"
 
 
 class DemoShell:
@@ -87,12 +39,11 @@ class DemoShell:
 
 async def main(model_name: str | None) -> None:
     demo = DemoShell()
-    cwd = Path("/demo-workspace")
     scripted_reviewer = ScriptedModel(
         [
-            call("final_answer", verdict="allow", reason="Reads the working tree status."),
-            call("final_answer", verdict="deny", reason="Push changes a remote repository."),
-            call("final_answer", verdict="escalate", reason="Fetch needs a network decision."),
+            call("final_answer", decision="allow", reason="Reads the working tree status."),
+            call("final_answer", decision="deny", reason="Push changes a remote repository."),
+            call("final_answer", decision="ask", reason="Fetch needs a network decision."),
         ]
     )
     review_model = scripted_reviewer if model_name is None else model_name
@@ -106,13 +57,16 @@ async def main(model_name: str | None) -> None:
             ]
         ),
         approvals=Approvals(
-            default=Decision.DENY, ask=[ShellAction.EXECUTE], timeout=_APPROVAL_TIMEOUT_SECONDS
+            default=Decision.DENY,
+            ask=[ShellAction.EXECUTE],
+            reviewer=AutoReview(
+                model=review_model,
+                instructions=_POLICY,
+                context=command_context,
+            ),
+            timeout=_APPROVAL_TIMEOUT_SECONDS,
         ),
-        plugins=[
-            WorkspaceBackends(shell=demo),
-            Shell(cwd=cwd),
-            ReviewCommands(review_model, policy=_POLICY, cwd=cwd, task=_TASK),
-        ],
+        plugins=[WorkspaceBackends(shell=demo), Shell(cwd=_WORKSPACE)],
     )
 
     async with agent.session() as session, session.stream(_TASK) as stream:
