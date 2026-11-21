@@ -1,11 +1,13 @@
 from collections.abc import Callable
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from enum import StrEnum
+from types import MethodType
 from typing import Any
 
 from harnessed.kernel import PluginBase, binding_plan
 
 from .arguments import ToolArguments
+from .overrides import callback_override
 
 
 @dataclass(frozen=True)
@@ -60,26 +62,31 @@ def tool_name(value: Callable | ToolReference) -> str:
     return tool_reference(value).name
 
 
-def call_arguments(reference: ToolReference, arguments: dict) -> dict:
-    """Validate scripted model arguments, excluding self and injected parameters."""
+def declared_arguments(reference: ToolReference) -> ToolArguments:
+    """Build the static argument model before activation-specific parameter fields."""
     plan = binding_plan(reference.declaration)
     parameters = list(plan.signature.parameters.values())
     if parameters and parameters[0].name in ("self", "cls"):
         parameters.pop(0)
     signature = plan.signature.replace(parameters=parameters)
-    plan = replace(plan, signature=signature)
+
     spec = getattr(reference.declaration, "_harnessed_tool", None)
     if spec is None:
         raise TypeError("Tool references must point to a @tool method")
-    form = ToolArguments.from_signature(
+    return ToolArguments.from_signature(
         reference.name,
-        plan.signature,
+        signature,
         plan.hints,
         injected=plan.dependencies,
         params=spec.params,
     )
-    parsed = form.parse(arguments)
-    # A scripted response carries wire arguments, not the Python parameter object.
-    # Conditions need a mounted scope. Keep omitted defaults off the wire so a
-    # scripted response does not explicitly supply a potentially disabled field.
-    return arguments if spec.params is not None or form.conditions else parsed
+
+
+def call_arguments(reference: ToolReference, arguments: dict) -> dict:
+    """Validate scripted arguments and leave omitted defaults to the mounted recipe."""
+    form = declared_arguments(reference)
+    if reference.owner is not None:
+        callback = MethodType(reference.declaration, reference.owner)
+        form = form.configured(callback_override(callback), tool_name=reference.name)
+    form.parse(arguments)
+    return arguments

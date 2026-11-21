@@ -16,6 +16,7 @@ from harnessed.models.messages import result_content, to_dict
 
 from .context import ToolContext
 from .enabled import bind_enabled
+from .overrides import ToolOverride
 from .parameters import (
     DisabledToolParameterError,
     ToolParameter,
@@ -92,6 +93,12 @@ class ToolArguments:
             if model.model_fields[conditional.internal].is_required():
                 raise TypeError(f"Conditional parameter {conditional.name!r} requires a default")
         return cls(model, names, conditions=tuple(conditions))
+
+    def configured(self, settings: ToolOverride, *, tool_name: str) -> Self:
+        if not settings.parameters:
+            return self
+        model = settings.derive(self.model, self.schema, tool_name=tool_name)
+        return replace(self, model=model)
 
     def activate(
         self,

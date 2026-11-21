@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import AbstractAsyncContextManager
 from copy import copy
 from types import get_original_bases
@@ -22,8 +22,15 @@ from harnessed.kernel import PluginBase as KernelPlugin
 from harnessed.models import Model
 from harnessed.prompts import SystemPrompt
 from harnessed.prompts.values import PromptContribution
-from harnessed.tools import ToolReference, ToolRegistry, ToolSpec, activation_tool
-from harnessed.tools.references import tool_reference
+from harnessed.tools import (
+    Param,
+    ToolOverride,
+    ToolReference,
+    ToolRegistry,
+    ToolSpec,
+    activation_tool,
+)
+from harnessed.tools.references import declared_arguments, tool_reference
 
 
 class PluginConfig(BaseModel):
@@ -83,6 +90,7 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
             raise TypeError("Plugin Config models must be frozen; inherit PluginConfig")
         self.config = config
         self._excluded_tools: frozenset[ToolReference] = frozenset()
+        self._tool_overrides: dict[Callable[..., Any], ToolOverride] = {}
         self._instruction_override: SystemPrompt | None = None
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
@@ -136,21 +144,32 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
     def without_tools(self, *tools: Callable[..., Any] | ToolReference) -> Self:
         """Return a recipe copy excluding the selected declared tools from registration."""
         configured: Self = self._configured_copy()
-        declarations = {
-            member
-            for _, member in inspect.getmembers_static(type(self))
-            if callable(member) and isinstance(getattr(member, "_harnessed_tool", None), ToolSpec)
-        }
         excluded = set(self._excluded_tools)
         for tool in tools:
-            reference = tool_reference(tool)
-            if reference.declaration not in declarations or (
-                reference.owner is not None and reference.owner is not self
-            ):
-                raise ValueError(f"Tool {reference.name!r} does not belong to this plugin recipe")
-            excluded.add(tool_reference(reference.declaration))
+            excluded.add(self._declared_reference(tool))
         configured._excluded_tools = frozenset(excluded)
         return configured
+
+    def with_tool(
+        self,
+        tool: Callable[..., Any] | ToolReference,
+        *,
+        description: str | None = None,
+        parameters: Mapping[str, Param] | None = None,
+    ) -> Self:
+        """Return a recipe copy with updated settings for one declared tool."""
+        configured: Self = self._configured_copy()
+        ref = self._declared_reference(tool)
+        settings = self.tool_override(ref.declaration).updated(description, parameters)
+        if settings.parameters:
+            form = declared_arguments(ref)
+            form.configured(settings, tool_name=f"{type(self).__name__}.{ref.name}")
+        configured._tool_overrides = self._tool_overrides | {ref.declaration: settings}
+        return configured
+
+    def tool_override(self, declaration: Callable[..., Any]) -> ToolOverride:
+        """Read the settings for a tool declaration on this recipe."""
+        return self._tool_overrides.get(declaration, ToolOverride())
 
     def without_instructions(self) -> Self:
         """Return a configured copy that contributes no prompt block."""
@@ -191,6 +210,19 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         This method is skipped when setup fails; register partial-acquisition
         cleanup immediately with scope.enter(), effect() or register().
         """
+
+    def _declared_reference(self, tool: Callable[..., Any] | ToolReference) -> ToolReference:
+        reference = tool_reference(tool)
+        declarations = (
+            member
+            for _, member in inspect.getmembers_static(type(self))
+            if callable(member) and isinstance(getattr(member, "_harnessed_tool", None), ToolSpec)
+        )
+        if reference.declaration not in declarations or (
+            reference.owner is not None and reference.owner is not self
+        ):
+            raise ValueError(f"Tool {reference.name!r} does not belong to this plugin recipe")
+        return tool_reference(reference.declaration)
 
     def _configured_copy(self) -> Self:
         if self.recipe is not self:

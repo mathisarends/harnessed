@@ -551,6 +551,7 @@ unhashable. See [values and record versions](../concepts/values.md).
 | class Capability(Plugin, provides=True) | Publish the mount under the declaring class; provides=Key selects another key |
 | Plugin.create_instance() | Customize fresh instance construction; defaults to replaying explicit constructor arguments |
 | Plugin.with_instructions(str \| SystemPrompt) | Return a recipe with a replacement prompt block. An empty SystemPrompt removes the block |
+| Plugin.with_tool(method, *, description=..., parameters=...) | Return a recipe copy with a configured tool description and model-facing fields. `harnessed.tools.Param` accepts `description`, `default`, `ge` and `le` |
 | Plugin.without_tools(*methods) | Return a recipe copy that skips registration of the selected `@tool` methods |
 | Plugin.without_instructions() | Return a recipe that contributes no prompt block |
 | Plugin.setup(scope: PluginScope) / teardown(scope: PluginScope) | Async activation lifecycle; dependencies bind first and cleanup remains framework-owned |

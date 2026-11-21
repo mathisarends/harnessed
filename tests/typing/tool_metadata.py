@@ -7,6 +7,7 @@ from harnessed.kernel import hook
 from harnessed.models import ToolResult
 from harnessed.plugins import FinalStepPolicy
 from harnessed.tools import (
+    Param,
     ToolAnnotations,
     ToolChain,
     ToolIcon,
@@ -53,6 +54,8 @@ class Tools(Plugin):
         return await next_()
 
 
+assert_type(Tools().with_tool(Tools.switch, description="Switch to another workspace"), Tools)
+assert_type(Param(default=0.15, le=1), Param)
 assert_type(Tools().without_tools(Tools.switch), Tools)
 Tools().without_tools("switch")  # ty: ignore[invalid-argument-type]
 

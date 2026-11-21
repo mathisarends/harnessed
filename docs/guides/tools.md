@@ -139,6 +139,33 @@ schema property. For example, `search(self, params: SearchParams)` with plain
 Scripted calls use the same top-level arguments:
 `call(CatalogTools.search, query="keyboard")`.
 
+## Customize a declared tool
+
+Use `with_tool(...)` when composing an agent to adapt one tool on a plugin recipe.
+
+```python
+from harnessed.tools import Param
+
+touch_pointer = PointerTools().with_tool(
+    PointerTools.drag_at,
+    description="Press, move, and release. Use this for drags or swipes.",
+    parameters={
+        "duration_seconds": Param(default=0.15, le=1.0, description="Duration in seconds."),
+    },
+)
+```
+
+When the model omits `duration_seconds`, the method receives `0.15`. The model can
+supply another duration within the effective bounds. Both the model and
+`session.tools` see the configured description, default and constraints.
+
+Use model-facing field names, including aliases on a `params` model. Unknown
+fields and references to another recipe raise an error during configuration.
+`ge` and `le` set inclusive bounds on numeric fields. They must respect the
+tool's declared limits, including bounds supplied by `parameter_fields` at mount.
+Each call returns a new recipe. Chained calls retain earlier settings and
+replace each explicitly supplied option.
+
 ## Exclude tools from a plugin
 
 Call `without_tools(...)` on a plugin recipe when composing an agent. This pointer

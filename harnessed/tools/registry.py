@@ -51,6 +51,7 @@ from .info import (
     ToolMetadata,
     ToolPresentation,
 )
+from .overrides import ToolOverride, callback_override
 from .parameters import DisabledToolParameterError
 from .policy import OutputLimit, OutputLimitSetting, validate_output_limit
 from .references import ToolReference, ToolSelector, tool_selector
@@ -256,7 +257,12 @@ class ToolRegistry:
             if not isinstance(callback, MethodType):
                 raise TypeError("parameter_fields requires a bound @tool method")
             fields = spec.parameter_fields(callback.__self__)
-        return self.register(callback, spec=spec, owner=owner, parameter_fields=fields)
+        settings = callback_override(callback)
+        if settings.description is not None:
+            spec = replace(spec, description=settings.description)
+        return self.register(
+            callback, spec=spec, owner=owner, parameter_fields=fields, settings=settings
+        )
 
     def reference(self, selected: ToolReference, *, owner: Scope | PluginScope) -> None:
         def install(_registration: RegistrationState):
@@ -456,6 +462,7 @@ class ToolRegistry:
         override: bool = False,
         owner: Scope | PluginScope | None = None,
         spec: ToolSpec | None = None,
+        settings: ToolOverride | None = None,
         parameter_fields: Mapping[str, FieldInfo] | None = None,
         params: type[BaseModel] | None = None,
         metadata: tuple[object, ...] = (),
@@ -502,6 +509,8 @@ class ToolRegistry:
             parameter_fields=parameter_fields,
             params=spec.params,
         )
+        if settings is not None:
+            arguments = arguments.configured(settings, tool_name=tool_name)
 
         def install(registration: RegistrationState):
             effective = arguments.activate(callback, registration, scope=owner)
