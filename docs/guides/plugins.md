@@ -148,12 +148,14 @@ class Todos(Plugin):
         return len(items)
 ```
 
-`get()` returns the committed value, or the default before the first write.
-Without `default=`, the value type includes `None`. `await set(value)` commits
-a new value; writing an equal value appends nothing. `await update(change)`
-applies a synchronous function to the current value and commits the result
-atomically. Values must be JSON-serializable through the declared schema.
-Reading a stored value that no longer matches the schema raises `ValueError`.
+`get()` returns a fresh copy of the committed value, or of the default before
+the first write. Without `default=`, the value type includes `None`.
+`await set(value)` commits a new value. Writing an equal value appends nothing.
+`await update(change)` applies a synchronous function to a copy of the current
+value and commits the result atomically. A callback or validation failure
+leaves the current value intact. Values must round-trip through the declared
+schema as JSON. Reading a stored value that no longer matches the schema
+raises `ValueError`.
 
 The key is the stored identity. Every instance of the plugin class shares it,
 so give it a namespace you own and keep it stable: renaming the key or changing

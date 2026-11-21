@@ -4,6 +4,20 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
+## 0.24.0 (Unreleased)
+
+Plugins can persist typed [session values](guides/plugins.md#session-values),
+observe [committed events](guides/streaming.md#observe-from-a-plugin), and
+[select tools by method or action](guides/tools.md#select-tools-without-repeating-names).
+Request and step hooks share turn progress, and plugins can measure model
+context occupancy with `ContextMeter`.
+
+**Upgrade.** Export conversations with `0.23.0` and convert their snapshots
+before importing them into a fresh store. Conversation snapshots use format
+**4** and audit envelopes use version **8**. Review the
+[0.23.0 upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0230)
+for the storage conversion and changes to hooks, tool selectors and imports.
+
 ## 0.23.0 (2026-11-20)
 
 Override or omit a plugin's prompt block with `with_instructions()` and
