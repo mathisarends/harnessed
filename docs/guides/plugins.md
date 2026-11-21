@@ -417,6 +417,34 @@ option is unchanged. `scope.plugin_diagnostics()` provides a read-only snapshot 
 waiting plugins in its shared runtime after `await scope.settle()`, resolving each
 plugin's needs in its own mount scope.
 
+## Observe the opening of a session
+
+Register the observer when building the agent. Harnessed awaits
+`SessionOpened` once per opening, after restoring state and validating plugins
+and tools, before queued work starts or the caller enters the session block.
+The hook carries the live `SessionContext` and one `time.monotonic()` reading
+shared by all listeners. Opening the same conversation again gives it a fresh
+timestamp. Plugins mounted later receive future lifecycle notifications only.
+
+```python
+from harnessed import Agent, Plugin
+from harnessed.hooks import SessionOpened
+from harnessed.kernel import hook
+
+
+class SessionClock(Plugin, provides=True):
+    started: float
+
+    @hook(SessionOpened)
+    def record_start(self, event: SessionOpened) -> None:
+        self.started = event.at
+
+
+agent = Agent(model=model, plugins=[SessionClock()])
+async with agent.session() as session:
+    started = session.scope[SessionClock].started
+```
+
 ## Separate a backend from its tools
 
 Choose a provider for the execution environment and add the tools the agent may

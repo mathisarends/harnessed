@@ -63,6 +63,7 @@ async def test_repository_reopens_by_id_and_saves_context_and_results_before_ret
         assert stored.checkpoint.state.history[-1].message.text == "first"
         assert result.state.history[0].message.text == "The customer is Ada."
     async with agent.session(id="tenant:customer/4711") as restored:
+        assert restored.model_request_count == 0
         assert restored.messages[0].text == "The customer is Ada."
         await restored.run("Continue.")
     assert [message.text for message in model.requests[-1].messages] == [
@@ -117,11 +118,13 @@ async def test_paused_turn_reopens_without_repeating_tools_and_keeps_limits(stor
         await handle.result()
     async with agent.session(id="paused") as restored:
         assert restored.status is SessionStatus.PAUSED
+        assert restored.model_request_count == 1
         assert restored.log.open_turn.id == turn_id
         assert restored.log.open_turn.start.limits.max_steps == 2
         await restored.resume()
         await asyncio.wait_for(restored.wait_until_idle(), timeout=5)
         assert restored.messages[-1].text == "finished"
+        assert restored.model_request_count == 2
     assert executions == ["work"]
     assert len(model.requests) == 2
 

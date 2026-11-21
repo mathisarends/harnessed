@@ -1,3 +1,4 @@
+from time import monotonic
 from uuid import uuid4
 
 from harnessed.errors import ConfigError
@@ -10,11 +11,13 @@ from harnessed.sessions.files import MemoryFiles, SessionFiles
 from harnessed.sessions.log import SessionLog
 from harnessed.sessions.store import SessionPersistence, SessionStore
 from harnessed.tools import ToolRegistry
+from harnessed.tracing import bind_tracer
 
 from .agent_loop import AgentLoop
 from .child_contracts import ChildSessionRequest
 from .child_reports import ChildReports
 from .composition import PluginValidation, validate_plugins
+from .hooks import SessionOpened
 from .outputs import OutputTypes
 from .plugin import Service
 from .session import Session
@@ -98,6 +101,8 @@ async def open_session(
     await scope.settle()
     validate_plugins(scope, plugin_validation)
     scope[ToolRegistry].validate_references()
+    with bind_tracer(scope):
+        await scope.dispatch(SessionOpened(runtime.plugin_context, at=monotonic()))
     runtime.start()
     return runtime
 

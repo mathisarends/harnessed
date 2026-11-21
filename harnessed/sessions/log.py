@@ -350,6 +350,10 @@ class SessionLog:
         )
 
     @property
+    def model_request_count(self) -> int:
+        return self._requests.model_request_count
+
+    @property
     def usage(self) -> ModelUsage:
         return self._requests.usage
 

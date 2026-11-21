@@ -150,6 +150,11 @@ class Session:
         return self.log.messages
 
     @property
+    def model_request_count(self) -> int:
+        """Count local ModelRequestedEvent records, including failed invocations."""
+        return self.log.model_request_count
+
+    @property
     def usage(self) -> ModelUsage:
         return self.log.usage
 
