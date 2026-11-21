@@ -19,6 +19,7 @@ from .info import (
     ToolMetadata,
     ToolPresentation,
 )
+from .overrides import Param, ToolOverride
 from .parameters import ToolParameter
 from .policy import OutputLimit, OutputLimitSetting
 from .references import ToolReference, ToolSelector, tool_name
@@ -34,6 +35,7 @@ __all__ = [
     "InvalidEnvelope",
     "OutputLimit",
     "OutputLimitSetting",
+    "Param",
     "PreparedToolCall",
     "SessionTools",
     "ToolAnnotations",
@@ -47,6 +49,7 @@ __all__ = [
     "ToolIcon",
     "ToolInfo",
     "ToolMetadata",
+    "ToolOverride",
     "ToolParameter",
     "ToolPresentation",
     "ToolReference",
