@@ -4,7 +4,7 @@ import pytest
 
 from harnessed import Agent, Plugin, SystemPrompt, tool
 from harnessed.events import PluginInstructionsChangedEvent
-from harnessed.hooks import PrepareRequest
+from harnessed.hooks import PrepareRequest, TurnProgress
 from harnessed.kernel import PluginScope, PluginStatus, needs
 from harnessed.models import ModelRequest
 from harnessed.prompts import Instructions, SectionDelivery
@@ -247,7 +247,8 @@ async def test_owned_request_hook_is_inactive_during_its_plugin_teardown():
         async def teardown(self, scope: PluginScope) -> None:
             request = ModelRequest(())
             result = await scope.dispatch(
-                PrepareRequest(self.context, request), default=lambda: request
+                PrepareRequest(self.context, request, TurnProgress("turn", 1, 1)),
+                default=lambda: request,
             )
             observed.append(result.messages)
 

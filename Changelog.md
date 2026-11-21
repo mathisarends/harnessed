@@ -5,6 +5,31 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## Unreleased
+
+### Added
+
+- `PreStep` and `PrepareRequest` carry `progress`, a frozen `TurnProgress` from
+  `harnessed.hooks` with the turn ID, current step, effective `max_steps` and
+  final-step policy. It derives `remaining_steps`, `is_last_step`,
+  `is_final_step`, `is_turn_start` and `last_tool_step`, the last step that still
+  offers tools. Plugins no longer rebuild step progress from the session log.
+  See [step progress](docs/guides/sessions.md#step-progress-and-a-reserved-summary).
+
+### Breaking changes
+
+- `PreStep.step`, `max_steps`, `is_final_step`, `remaining_steps`,
+  `is_last_step` and `is_turn_start` moved to `PreStep.progress`.
+- `PrepareRequest` requires a `progress` argument.
+
+### Upgrade from 0.23.0
+
+- In `PreStep` hooks, replace `event.step`, `event.max_steps`,
+  `event.remaining_steps`, `event.is_last_step`, `event.is_final_step` and
+  `event.is_turn_start` with the same names on `event.progress`.
+- Code that dispatches `PrepareRequest` itself passes a `TurnProgress`.
+- Persisted formats are unchanged.
+
 ## 0.23.0 (2026-11-20)
 
 ### Added

@@ -601,9 +601,11 @@ from `harnessed` reads `M | None` from a call's raw arguments without raising.
 See [tool call envelopes](../guides/tools.md#tool-call-envelopes) and
 [envelopes for every tool](../guides/tools.md#envelopes-for-every-tool).
 Skipped calls have `ToolStatus.SKIPPED` and retain their model-history pairing.
-`PreStep.max_steps` is the effective turn limit; `remaining_steps` includes the
-current step, `is_last_step` indicates one remaining step, and `is_final_step`
-identifies an action-free reserved summary.
+`PreStep.progress` and `PrepareRequest.progress` are a frozen `TurnProgress`
+(`turn_id`, `step`, `max_steps`, `final_step`). `max_steps` is the effective turn
+limit; `remaining_steps` includes the current step, `is_last_step` indicates one
+remaining step, `is_final_step` identifies an action-free reserved summary, and
+`last_tool_step` is the last step that offers tools.
 
 `PreStep` runs in the harness before the model call. Its `StepDecision` accepts
 or filters queued input messages; `StepDecision.reject()` ends the turn without
