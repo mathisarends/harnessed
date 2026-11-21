@@ -267,7 +267,7 @@ async def test_resume_from_a_durable_pause_listener_does_not_deadlock():
             if event.state == ControlState.PAUSED:
                 await session.resume()
 
-        session.on(SessionControlChangedEvent, resume)
+        session.scope.on(SessionControlChangedEvent, resume)
         await wait(session.pause())
         assert session.status is SessionStatus.IDLE
         assert (await session.run("task")).text == "done"

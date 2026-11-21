@@ -116,7 +116,7 @@ async def test_explicit_approver_then_service_take_precedence_over_request_liste
         model=ScriptedModel([]), approvals=Approvals(default=Decision.ALLOW)
     ).session() as agent:
         agent.scope.provide(Approver, Answer(Decision.DENY))
-        agent.on(RequestApproval, lambda ev: pytest.fail("Explicit approver was bypassed"))
+        agent.scope.on(RequestApproval, lambda ev: pytest.fail("Explicit approver was bypassed"))
         assert (
             await agent.approvals.request(
                 ToolCall("work"), "permission", approver=Answer(Decision.ALLOW)
@@ -131,7 +131,7 @@ async def test_approval_listeners_bail_by_priority_and_can_explicitly_abstain_or
     async with Application(
         model=ScriptedModel([]), approvals=Approvals(default=Decision.ALLOW)
     ).session() as agent:
-        agent.on(RequestApproval, lambda ev: asked.append("late"), priority=100)
+        agent.scope.on(RequestApproval, lambda ev: asked.append("late"), priority=100)
 
         def answer(event):
             assert event.call.name == "work" and event.reason == "permission"
@@ -141,8 +141,8 @@ async def test_approval_listeners_bail_by_priority_and_can_explicitly_abstain_or
             asked.append("deny")
             return Decision.DENY
 
-        remove_answer = agent.on(RequestApproval, answer, priority=0)
-        agent.on(RequestApproval, lambda ev: asked.append("abstain"), priority=-100)
+        remove_answer = agent.scope.on(RequestApproval, answer, priority=0)
+        agent.scope.on(RequestApproval, lambda ev: asked.append("abstain"), priority=-100)
         assert await agent.approvals.request(ToolCall("work"), "permission") is Decision.DENY
         assert asked == ["abstain", "deny"]
         await remove_answer()
@@ -173,7 +173,7 @@ async def test_unresponsive_approval_uses_the_session_timeout_and_cancels_the_re
     )
     async with harness.session() as agent:
         if transport == "listener":
-            agent.on(RequestApproval, wait)
+            agent.scope.on(RequestApproval, wait)
         elif transport == "service":
             agent.scope.provide(Approver, WaitingApprover())
         with pytest.raises(ApprovalUnavailable, match=r"timed out after 0.02 seconds"):
@@ -194,7 +194,7 @@ async def test_responder_abstention_invalid_answers_and_failures_are_unavailable
     async with Application(
         model=ScriptedModel([]), approvals=Approvals(default=Decision.ALLOW)
     ).session() as agent:
-        agent.on(RequestApproval, respond)
+        agent.scope.on(RequestApproval, respond)
         with pytest.raises(ApprovalUnavailable):
             await agent.approvals.request(ToolCall("work"), "permission")
         record = agent.log.approvals.records[-1]
@@ -393,7 +393,7 @@ async def test_all_approval_sources_use_the_configured_response_timeout(source):
         plugins=[Work()],
     ).session() as session:
         if source == "hook":
-            session.on(ToolPolicy, lambda event, next_: Decision.ASK)
+            session.scope.on(ToolPolicy, lambda event, next_: Decision.ASK)
         audit = Audit(session)
         async with asyncio.timeout(2):
             result = await session.run("work")

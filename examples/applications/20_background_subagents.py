@@ -11,6 +11,13 @@ from harnessed.plugins.subagents import ChildReportState
 from harnessed.testing import CallbackModel
 
 
+def _report_requested(event: object) -> bool:
+    if not isinstance(event, SubagentUpdatedEvent):
+        return False
+    report = event.runtime.report
+    return report is not None and report.state is ChildReportState.PENDING
+
+
 async def main() -> None:
     report_requested = asyncio.Event()
     finish_work = asyncio.Event()
@@ -80,15 +87,15 @@ async def main() -> None:
         plugins=[Subagents({"review": reviewer})],
     )
 
-    # Offline coordination only: let inspection finish once a real report is requested.
-    def on_child_update(event: SubagentUpdatedEvent) -> None:
-        report = event.runtime.report
-        if report is not None and report.state is ChildReportState.PENDING:
-            report_requested.set()
-
-    async with coordinator.session() as session:
-        session.on(SubagentUpdatedEvent, on_child_update)
-        result = await session.run("Start the review and work independently; then ask for status.")
+    async with (
+        coordinator.session() as session,
+        session.stream("Start the review and work independently; then ask for status.") as run,
+    ):
+        # Offline coordination only: let inspection finish once a real report is requested.
+        async for event in run:
+            if _report_requested(event):
+                report_requested.set()
+        result = await run.result()
         print(result.text)
         print(session.children[0].status, session.children[0].text)
 

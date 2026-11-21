@@ -425,7 +425,7 @@ async def test_a_queued_stream_cannot_answer_a_different_turns_approval():
         enqueued = asyncio.Event()
         submitted = []
 
-        @session.on(InboxAddedEvent)
+        @session.scope.on(InboxAddedEvent)
         def sent(event):
             submitted.append(event)
             if len(submitted) == 2:
@@ -533,7 +533,7 @@ async def test_discarded_structured_stream_has_a_terminal_result_without_an_outp
     async with Agent(model=ScriptedModel([])).session() as session:
         await session.pause()
         ready = asyncio.Event()
-        session.on(InboxAddedEvent, lambda event: ready.set())
+        session.scope.on(InboxAddedEvent, lambda event: ready.set())
 
         async def consume():
             async with session.stream("Report", output=Report) as run_stream:

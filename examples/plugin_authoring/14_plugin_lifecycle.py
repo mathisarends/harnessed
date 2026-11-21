@@ -6,7 +6,7 @@ from typing import Protocol, override
 
 from harnessed import Agent, Approvals, Plugin, SystemPrompt, tool
 from harnessed.events import TurnEndedEvent
-from harnessed.hooks import ExecuteTool, SessionAppended
+from harnessed.hooks import ExecuteTool
 from harnessed.kernel import PluginScope, PluginState, needs
 from harnessed.models import Decision, ModelChunk, ToolCall
 from harnessed.testing import ScriptedModel
@@ -71,10 +71,10 @@ class Trace(Plugin):
             print(f"after {event.call.name}: {result.status}")
             return result
 
-        @scope.on(SessionAppended)
-        def record(event):
-            if isinstance(event.event, TurnEndedEvent):
-                print(f"{event.log.id}: turn ended at event {event.seq}")
+        # Committed durable events are hooks themselves; no wrapper event is needed.
+        @scope.on(TurnEndedEvent)
+        def record(event: TurnEndedEvent):
+            print(f"turn {event.turn_id} ended: {event.reason}")
 
 
 async def main():

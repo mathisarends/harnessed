@@ -125,7 +125,7 @@ async def test_note_selection_is_recomputed_for_a_smaller_candidate():
         await session.run("x" * 500)
         await session.run("keep")
         preparations: list[PrepareCompaction] = []
-        session.on(PrepareCompaction, preparations.append)
+        session.scope.on(PrepareCompaction, preparations.append)
         applied = await session.compact()
         assert applied is not None and applied.summary == "ok"
         assert applied.accepted_note_keys == ()
@@ -182,8 +182,8 @@ async def test_targets_measure_complete_request_and_capture_reserve(target):
         original = session.messages
         audit = Audit(session)
         notices = []
-        session.on(CompactionStartedEvent, notices.append)
-        session.on(CompactionFinishedEvent, notices.append)
+        session.scope.on(CompactionStartedEvent, notices.append)
+        session.scope.on(CompactionFinishedEvent, notices.append)
         applied = await session.compact()
         assert applied is not None
         expected_before = 7 + sum(10 + len(m.text) for m in original)
@@ -285,7 +285,7 @@ async def test_explicit_summary_ceiling_retries_without_slicing_text(texts, expe
         await session.run("kept")
         original = session.messages
         finished = []
-        session.on(CompactionFinishedEvent, finished.append)
+        session.scope.on(CompactionFinishedEvent, finished.append)
         applied = await session.compact()
         assert (applied.summary if applied is not None else None) == expected
         assert len(summaries.requests) == 2
@@ -410,7 +410,7 @@ async def test_calibration_and_request_snapshot_survive_start_observer_changes()
         def change(event):
             counter.ratio = 4.0
 
-        session.on(CompactionStartedEvent, change)
+        session.scope.on(CompactionStartedEvent, change)
         applied = await session.compact()
         assert applied is not None
         assert applied.before_tokens == summaries.requests[0].context.state.input_tokens
@@ -434,7 +434,7 @@ async def test_context_arriving_at_start_is_outside_the_attempt_snapshot():
         async def append(event):
             await session.log.append(MessageAppendedEvent(late))
 
-        session.on(CompactionStartedEvent, append)
+        session.scope.on(CompactionStartedEvent, append)
         applied = await session.compact()
         assert applied is not None
         assert late in session.messages

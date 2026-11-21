@@ -351,7 +351,7 @@ async def test_fast_execution_is_durable_before_slow_sibling_review_and_safe_to_
     model = ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "done"])
     async with Application(model=model, plugins=[Work()]).session() as session:
         session_audit = Audit(session)
-        session.on(ToolExecutionFinishedEvent, lambda event: receipt.set())
+        session.scope.on(ToolExecutionFinishedEvent, lambda event: receipt.set())
         handle = await session.submit("go")
         try:
             await asyncio.wait_for(receipt.wait(), 2)
@@ -411,7 +411,7 @@ async def test_abort_after_final_commit_keeps_the_reviewed_result_without_duplic
     async with Application(model=model, plugins=[Work()]).session() as session:
         session_audit = Audit(session)
 
-        @session.on(ToolCallFinishedEvent)
+        @session.scope.on(ToolCallFinishedEvent)
         async def observe(event):
             committed.set()
             await asyncio.Event().wait()

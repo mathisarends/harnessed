@@ -139,7 +139,7 @@ async def test_cancelling_the_cancel_waiter_still_finishes_cleanup_and_starts_th
 
     async with Agent(model=CallbackModel(chunks)).session() as session:
 
-        @session.on(SessionControlChangedEvent)
+        @session.scope.on(SessionControlChangedEvent)
         async def hold_cancellation(event):
             if event.state is ControlState.ABORTING:
                 cancelling.set()
@@ -243,7 +243,7 @@ async def test_reusing_a_consumed_message_does_not_overwrite_a_running_submissio
 async def test_removing_input_in_an_observer_before_submit_returns_still_completes_handle():
     async with Agent(model=ScriptedModel([])).session() as session:
 
-        @session.on(InboxAddedEvent)
+        @session.scope.on(InboxAddedEvent)
         async def discard(event):
             await session.inbox.remove(event.message.id)
 
@@ -290,7 +290,7 @@ async def test_driver_errors_are_delivered_through_the_run_handle():
 async def test_rejecting_queued_runs_completes_every_handle_without_another_wakeup():
     async with Agent(model=ScriptedModel([])).session() as session:
         session_audit = Audit(session)
-        session.on(PreStep, lambda event, next_: StepDecision.reject())
+        session.scope.on(PreStep, lambda event, next_: StepDecision.reject())
         await session.pause()
         handles = [await session.submit(str(index)) for index in range(3)]
         await session.resume()

@@ -131,7 +131,7 @@ async def test_checkpoint_can_defer_only_one_eligible_attempt(manual):
             checkpoints.append(event.state)
             return True
 
-        session.on(DeferCompaction, checkpoint)
+        session.scope.on(DeferCompaction, checkpoint)
         for index in range(3):
             await session.run(f"task {index} " + "x" * 500)
         assert len(checkpoints) == 1 and not summaries.sources
@@ -184,7 +184,7 @@ async def test_compaction_preserves_request_hook_context_and_combines_triggers_o
         return replace(request, messages=(*request.messages, SystemMessage("HOOK CONTEXT")))
 
     async with harness.session() as agent:
-        agent.on(PrepareRequest, request_context)
+        agent.scope.on(PrepareRequest, request_context)
         agent_audit = Audit(agent)
         await agent.run("x" * 2000)
         await agent.run("kept")
@@ -242,7 +242,7 @@ async def test_budget_guard_blocks_oversized_requests_after_configure_hooks():
         return replace(request, messages=(*request.messages, SystemMessage("x" * 1000)))
 
     async with harness.session() as agent:
-        agent.on(PrepareRequest, inflate)
+        agent.scope.on(PrepareRequest, inflate)
         agent_audit = Audit(agent)
         with pytest.raises(ContextBudgetExceeded) as error:
             await agent.run("small")
