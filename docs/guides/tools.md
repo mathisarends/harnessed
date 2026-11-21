@@ -479,6 +479,41 @@ registration by name. Calls without a registered tool have `tool=None`; syntheti
 structured-answer results do not pass through these hooks. Import `ToolInfo`,
 `ToolMetadata` and `ToolChain` from `harnessed` when annotating consumers.
 
+### Select tools without repeating names
+
+Approvals, tool hooks and `session.tools` accept the same `ToolSelector`: an
+action enum member or a decorated `@tool` method. Plain strings are rejected, so
+renaming a tool with `@tool(name=...)` cannot silently break a rule.
+
+```python
+from harnessed import Plugin
+from harnessed.hooks import ReviewToolResult
+from harnessed.kernel import Next, hook
+from harnessed.models import ToolResult
+from harnessed.plugins import Shell
+
+
+class ShellNotes(Plugin):
+    @hook(ReviewToolResult)
+    async def review(self, event: ReviewToolResult, next_: Next[ToolResult]) -> ToolResult:
+        result = await next_()
+        if event.matches(Shell.run_command) and result.is_error:
+            return result.with_note("Read the command output before retrying.")
+        return result
+```
+
+`event.matches(selector)` on `ToolPolicy`, `ExecuteTool` and `ReviewToolResult`
+checks the registration captured for the call; unknown tool names never match.
+`ToolInfo.matches(selector)` applies the same rule, including in `CallEnvelope`
+selectors. A method accessed on the class matches every registration of that
+method; a method bound to a plugin recipe matches only that recipe's mounts.
+
+`session.tools.resolve(selector)` returns the model-visible `ToolInfo`, or `None`
+when the selected tool is missing, disabled or lacks services. Use
+`tool_name(Shell.run_command)` from `harnessed.tools` for static text such as plugin
+instructions. Scripted tests may still call `call("unknown_tool")` to reproduce
+what a model sends on the wire.
+
 Direct registry registration accepts the same metadata and chain options.
 Schema-defined integrations use `register_external(..., spec=ToolSpec(metadata=...))`
 and receive the same captured descriptions, without introducing provider metadata

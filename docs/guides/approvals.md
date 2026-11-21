@@ -42,7 +42,9 @@ match the same call. A single action can cover several tools. Enum members of
 different classes have separate identities even when their values coincide.
 The SDK publishes `FilesystemAction`, `ShellAction` and `SubagentAction` in
 `harnessed.plugins` for its built-in operations. Local one-off rules can reference a decorated method, for example
-`ask=[Documents.publish_revision]`. String selectors are rejected.
+`ask=[Documents.publish_revision]`. String selectors are rejected. Tool hooks and
+`session.tools.resolve()` accept the same
+[selectors](tools.md#select-tools-without-repeating-names).
 For external tools bind wire names once at the adapter using `actions=`.
 The runtime checks the captured registration when it executes the scheduled call.
 `readonly=True` describes tool behavior and does not decide permission.

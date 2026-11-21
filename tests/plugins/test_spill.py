@@ -38,7 +38,7 @@ async def test_spill_is_owned_by_its_session_and_resumes_with_exact_content(tmp_
         ScriptedModel([call("source", text=text), "stored"]),
         plugins=[
             Spill(threshold_tokens=32, preview_tokens=8),
-            Rules([when(tool="source", result_tokens_over=100).note("Important note.")]),
+            Rules([when(tool=Source.source, result_tokens_over=100).note("Important note.")]),
         ],
     )
     async with app.session() as session:

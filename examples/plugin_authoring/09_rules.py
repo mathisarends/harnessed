@@ -7,6 +7,7 @@ from harnessed.events import InboxAddedEvent, InboxMode, ToolCallFinishedEvent
 from harnessed.hooks import ReviewToolResult
 from harnessed.kernel import hook
 from harnessed.models import ModelChunk, ToolCall, ToolResult, ToolStatus, UserMessage, user
+from harnessed.plugins import Filesystem
 from harnessed.plugins.rules import Rules, when
 from harnessed.testing import ScriptedModel
 
@@ -99,16 +100,20 @@ async def main():
         "declarative-rules",
         Rules(
             [
-                when(tool="run_command", command_contains="git push").steer(
+                when(tool=SimulatedCommandsTools.run_command, command_contains="git push").steer(
                     "Never push directly. Open a PR instead."
                 ),
-                when(tool="run_command", exit_code=lambda code: code != 0, repeated=3).context(
-                    "Same command failed three times. Try something different."
-                ),
-                when(tool="run_command", exit_code=lambda code: code != 0, repeated=5).steer(
-                    "Stop editing. Summarize what you tried."
-                ),
-                when(tool="read_file", result_tokens_over=20000).note(
+                when(
+                    tool=SimulatedCommandsTools.run_command,
+                    exit_code=lambda code: code != 0,
+                    repeated=3,
+                ).context("Same command failed three times. Try something different."),
+                when(
+                    tool=SimulatedCommandsTools.run_command,
+                    exit_code=lambda code: code != 0,
+                    repeated=5,
+                ).steer("Stop editing. Summarize what you tried."),
+                when(tool=Filesystem.read_file, result_tokens_over=20000).note(
                     "File is large. Use a line range next time."
                 ),
             ],

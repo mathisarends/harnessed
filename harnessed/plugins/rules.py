@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass as event_dataclass
 from dataclasses import field, replace
 from enum import StrEnum
-from typing import Annotated, Literal, Self, override
+from typing import Annotated, Any, Literal, Self, override
 
 from pydantic import AfterValidator, ConfigDict, Field, StringConstraints, TypeAdapter
 from pydantic.dataclasses import dataclass
@@ -23,6 +23,8 @@ from harnessed.runtime.plugin import Plugin
 from harnessed.runtime.tokens import TokenCounter, count_content
 from harnessed.sessions import SessionValue
 from harnessed.sessions.log import SessionLog
+from harnessed.tools import ToolInfo, ToolReference, ToolSelector
+from harnessed.tools.references import tool_selector
 
 
 class RuleEventKind(StrEnum):
@@ -58,6 +60,8 @@ def _synchronous(callback):
 
 
 type RuleText = Annotated[str, StringConstraints(min_length=1, pattern=r"\S")]
+# Selectors hold arbitrary callables; normalization rejects plain tool names.
+type RuleTool = Annotated[Any, AfterValidator(tool_selector)]
 type ExitCondition = Annotated[Callable[[int], bool], AfterValidator(_synchronous)]
 type ResultCondition = Annotated[
     Callable[[ToolCall, ToolResult], bool], AfterValidator(_synchronous)
@@ -77,7 +81,7 @@ def _condition(callback, *args) -> bool:
 class Rule:
     __hash__ = None
 
-    tools: tuple[RuleText, ...] = ()
+    tools: tuple[RuleTool, ...] = ()
 
     command_contains: str | None = None
 
@@ -119,22 +123,29 @@ class Rule:
             return False
         return self.predicate is None or _condition(self.predicate, call, result)
 
+    def selects(self, tool: ToolInfo | None) -> bool:
+        """Whether the rule applies to a call of this registration; no tools selects all."""
+        if not self.tools:
+            return True
+        return tool is not None and any(tool.matches(selector) for selector in self.tools)
+
     def _action(self, kind: RuleAction, text: str) -> Rule:
         return replace(self, actions=(*self.actions, (kind, text)))
 
 
 def when(
     *,
-    tool: str | Iterable[str] | None = None,
+    tool: ToolSelector | Iterable[ToolSelector] | None = None,
     command_contains: str | None = None,
     exit_code: int | Callable[[int], bool] | None = None,
     repeated: int = 1,
     result_tokens_over: int | None = None,
     predicate: Callable[[ToolCall, ToolResult], bool] | None = None,
 ) -> Rule:
+    """Start a rule; `tool` takes action enum members or decorated `@tool` methods."""
     if tool is None:
         tools = ()
-    elif isinstance(tool, str):
+    elif isinstance(tool, str | ToolReference) or callable(tool):
         tools = (tool,)
     else:
         tools = tuple(tool)
@@ -170,10 +181,11 @@ class Rules(Plugin):
         rule: Rule,
         call: ToolCall,
         *,
+        tool: ToolInfo | None,
         result: ToolResult,
         matched: bool | None = None,
     ) -> tuple[tuple[int, str] | None, int]:
-        if rule.tools and call.name not in rule.tools:
+        if not rule.selects(tool):
             return None, 0
         arguments = call.command or json.dumps(to_dict(call.arguments), sort_keys=True)
         key = (index, json.dumps([call.name, arguments], ensure_ascii=False))
@@ -193,7 +205,7 @@ class Rules(Plugin):
         matches = list(result.rule_matches)
         for index, rule in enumerate(self.rules):
             rule_id = f"{self.name}:{index}"
-            key, count = self._count(index, rule, event.call, result=event.result)
+            key, count = self._count(index, rule, event.call, tool=event.tool, result=event.result)
             if key is not None:
                 if any(name == rule_id for name, _ in matches):
                     raise ValueError(f"Duplicate rules plugin name: {self.name!r}")

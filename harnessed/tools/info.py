@@ -1,4 +1,4 @@
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal, cast
@@ -8,6 +8,8 @@ from pydantic.dataclasses import dataclass as validated_dataclass
 
 from harnessed.models import ToolDefinition
 from harnessed.models.messages import JSONMapping, freeze
+
+from .references import ToolReference, ToolSelector, tool_selector
 
 
 class ToolChain(StrEnum):
@@ -140,3 +142,16 @@ class ToolInfo:
     presentation: ToolPresentation = ToolPresentation()
     action: StrEnum | None = field(default=None, kw_only=True)
     envelope: tuple[type[BaseModel], ...] = field(default=(), kw_only=True)
+    callback: Callable[..., object] | None = field(
+        default=None, kw_only=True, repr=False, compare=False
+    )
+
+    def matches(self, selector: ToolSelector) -> bool:
+        """Whether this registration declares the selected action or runs the selected method.
+
+        External tools have no Python method and match only by action.
+        """
+        selected = tool_selector(selector)
+        if isinstance(selected, ToolReference):
+            return self.callback is not None and selected.matches(self.callback)
+        return selected is self.action
