@@ -23,6 +23,7 @@ class RequestProjection:
         self._finished: set[str] = set()
         self._open_executions: set[str] = set()
         self._snapshot: tuple[ModelRequest, ...] | None = None
+        self.model_request_count = 0
         self._usage: ModelUsage | None = None
 
     @property
@@ -53,6 +54,7 @@ class RequestProjection:
         elif isinstance(event, ToolExecutionFinishedEvent):
             self._open_executions.discard(event.call_id)
         elif isinstance(event, ModelRequestedEvent):
+            self.model_request_count += 1
             self._requests.append(event.request)
             self._by_id[event.request_id] = event.request
             self._snapshot = None

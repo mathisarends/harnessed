@@ -181,6 +181,14 @@ class SessionAborting(Emit):
 
 
 @dataclass(frozen=True)
+class SessionOpened(Emit):
+    """Observe the validated session before queued work starts."""
+
+    session: SessionContext
+    at: float  # time.monotonic() at dispatch, shared by all listeners.
+
+
+@dataclass(frozen=True)
 class SessionClosing(Emit):
     """Release live resources after driver shutdown, before plugin disposal.
 

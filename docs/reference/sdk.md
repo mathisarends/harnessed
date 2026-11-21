@@ -411,6 +411,7 @@ after completion it raises `SessionStateError` instead of starting a new turn.
 | flush() | Await pending checkpoint persistence; no I/O without a store |
 | subscribe(transient=False) | Independent raw log subscription |
 | events / turns | Current-turn execution buffers, released after terminal delivery |
+| model_request_count | Number of local `ModelRequestedEvent` records across turns, including failed and cancelled requests. Provider transport retries share one request. On reopen, only requests in a restored in-progress turn carry over. |
 | messages / usage / last(Event) | Retained working context, live-session usage and recent diagnostics |
 | status | SessionStatus: IDLE, RUNNING, PAUSED, STOPPING, CLOSED |
 | emit(event) | Admit a declared execution event or publish a transient notification |

@@ -31,8 +31,10 @@ def completions(events, request_id):
 async def test_response_and_usage_share_the_request_identity():
     async with Agent(model=ScriptedModel(["done", "again"])).session() as session:
         session_audit = Audit(session)
+        assert session.model_request_count == 0
         await session.run("first")
         await session.run("second")
+        assert session.model_request_count == 2
         requests = [
             event for event in session_audit.events if isinstance(event, ModelRequestedEvent)
         ]
@@ -69,6 +71,7 @@ async def test_model_failure_closes_the_request(error, outcome):
         (terminal,) = completions(session_audit.events, requested.request_id)
         assert isinstance(terminal, ModelRequestFailedEvent)
         assert terminal.outcome is outcome
+        assert session.model_request_count == 1
 
 
 @pytest.mark.parametrize("partial", [False, True])
@@ -87,6 +90,7 @@ async def test_abort_closes_request_once_with_or_without_partial_output(partial)
         await session.submit("start")
         await asyncio.wait_for(entered.wait(), 3)
         await session.abort()
+        assert session.model_request_count == 1
         requested = session.last(ModelRequestedEvent)
         (terminal,) = completions(session_audit.events, requested.request_id)
         if partial:
