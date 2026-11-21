@@ -3,6 +3,8 @@ import json
 import pytest
 
 from harnessed import Agent, Context, Plugin
+from harnessed.context.tokens import ApproximateTokenCounter, count_content
+from harnessed.context.tool_output_limit import ToolOutputLimit
 from harnessed.models import (
     ImageDetail,
     ImagePart,
@@ -16,8 +18,6 @@ from harnessed.models import (
 )
 from harnessed.plugins import Rules, when
 from harnessed.plugins.spill import Spill, SpillStore
-from harnessed.runtime.tokens import ApproximateTokenCounter, count_content
-from harnessed.runtime.tool_output_limit import ToolOutputLimit
 from harnessed.testing import ScriptedModel, call
 from harnessed.tools import tool
 from tests._audit import Audit, AuditProjection

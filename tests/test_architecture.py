@@ -31,7 +31,17 @@ def test_event_vocabulary_does_not_depend_on_runtime():
             else:
                 continue
             if any(
-                module.startswith(("harnessed.runtime", "harnessed.sessions")) for module in modules
+                module.startswith(
+                    (
+                        "harnessed.runtime",
+                        "harnessed.sessions",
+                        "harnessed.children",
+                        "harnessed.approvals",
+                        "harnessed.context",
+                        "harnessed.output",
+                    )
+                )
+                for module in modules
             ):
                 violations.append(path.name)
     assert violations == []
@@ -40,19 +50,24 @@ def test_event_vocabulary_does_not_depend_on_runtime():
 def test_runtime_components_and_hooks_do_not_reference_the_application_session():
     # Composition and child-session ownership boundaries may name the application session.
     owners = {
-        "session.py",
-        "opener.py",
-        "agent_loop.py",
-        "child_contracts.py",
-        "child_execution.py",
+        "runtime/session.py",
+        "runtime/opener.py",
+        "runtime/agent_loop.py",
+        "children/contracts.py",
+        "children/execution.py",
     }
-    paths = [path for path in (PACKAGE / "runtime").glob("*.py") if path.name not in owners]
+    parts = ("runtime", "children", "approvals", "context", "output")
+    paths = (path for part in parts for path in (PACKAGE / part).glob("*.py"))
     violations = [
-        path.name
+        path.relative_to(PACKAGE).as_posix()
         for path in paths
+        if path.relative_to(PACKAGE).as_posix() not in owners
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
         if isinstance(node, ast.ImportFrom)
-        and node.module in {"harnessed.runtime.session", "session"}
+        and (
+            node.module == "harnessed.runtime.session"
+            or (path.parent.name == "runtime" and node.level == 1 and node.module == "session")
+        )
     ]
     assert violations == []
 
@@ -159,6 +174,8 @@ def test_validation_is_explicit_and_otel_is_optional_and_isolated():
         "harnessed.models",
         "harnessed.plugins",
         "harnessed.context",
+        "harnessed.approvals",
+        "harnessed.output",
         "harnessed.prompts",
         "harnessed.sessions",
         "harnessed.tools",
@@ -268,7 +285,6 @@ def test_package_root_has_only_public_entrypoints_and_no_transition_modules():
     assert {path.name for path in PACKAGE.glob("*.py")} == {
         "__init__.py",
         "agent.py",
-        "context.py",
         "errors.py",
         "hooks.py",
         "tracing.py",

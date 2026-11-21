@@ -9,19 +9,15 @@ from pydantic.dataclasses import dataclass
 from harnessed.errors import ConfigError
 from harnessed.kernel import PluginScope
 from harnessed.models import Model
-from harnessed.models.pydantic_ai import PydanticAIModel
-from harnessed.runtime.budget import ContextBudget
-from harnessed.runtime.compaction import (
-    DEFAULT_COMPACTION_PROMPT,
-    CompactionContext,
+
+from .budget import ContextBudget
+from .compaction import (
     CompactionPolicy,
     CompactionPrompt,
-    CompactionRequest,
     CompactionSettings,
     Summarizer,
-    Summary,
 )
-from harnessed.runtime.meter import ContextMeter, ContextState
+from .meter import ContextState
 
 _CONFIG = ConfigDict(strict=True, extra="forbid", allow_inf_nan=False, hide_input_in_errors=True)
 
@@ -124,8 +120,10 @@ class Compaction:
         self.llm = llm
         self.prompt = prompt
 
-    async def install(self, scope: PluginScope) -> None:
-        backend = PydanticAIModel(self.llm) if isinstance(self.llm, str) else self.llm
+    async def install(
+        self, scope: PluginScope, *, resolve_model: Callable[[Model | str | None], Model | None]
+    ) -> None:
+        backend = resolve_model(self.llm)
         if isinstance(backend, AbstractAsyncContextManager):
             await scope.enter(backend)
         scope.provide(
@@ -145,24 +143,9 @@ class Context:
     compaction: Compaction | None = None
     reserve_tokens: Annotated[int, Field(ge=0)] = 0
 
-    async def install(self, scope: PluginScope) -> None:
+    async def install(
+        self, scope: PluginScope, *, resolve_model: Callable[[Model | str | None], Model | None]
+    ) -> None:
         scope.provide(ContextBudget, ContextBudget(self.max_tokens, self.reserve_tokens))
         if self.compaction is not None:
-            await self.compaction.install(scope)
-
-
-__all__ = [
-    "Compaction",
-    "CompactionConfig",
-    "CompactionContext",
-    "CompactionPrompt",
-    "CompactionRequest",
-    "Context",
-    "ContextMeter",
-    "ContextState",
-    "DEFAULT_COMPACTION_PROMPT",
-    "Summarizer",
-    "Summary",
-    "at_ratio",
-    "every_turns",
-]
+            await self.compaction.install(scope, resolve_model=resolve_model)

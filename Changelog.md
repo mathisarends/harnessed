@@ -81,8 +81,14 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   `Skills` stores loaded skill instructions under `harnessed.skills.loaded`.
 - Conversation snapshots move to format **4** and standalone audit envelopes to
   version **8**.
-- `ContextState` moved from the internal `harnessed.runtime.compaction` module
-  to `harnessed.runtime.meter`; import it from `harnessed.context`.
+- Context measurement and compaction, child sessions, approvals and structured
+  output moved out of `harnessed.runtime` into `harnessed.context`,
+  `harnessed.children`, `harnessed.approvals` and `harnessed.output`.
+  The former runtime module paths have been removed.
+- Import `TokenCounter`, `ContextMeter` and `ContextState` from `harnessed.context`.
+  Custom summarizers import `CompactionContext`, `CompactionPrompt`, `CompactionRequest`,
+  `DEFAULT_COMPACTION_PROMPT`, `Summarizer` and `Summary` from
+  `harnessed.context.compaction`. `CompactionConfig` now lives in `harnessed.context.config`.
 - `PreStep.step`, `max_steps`, `is_final_step`, `remaining_steps`,
   `is_last_step` and `is_turn_start` moved to `PreStep.progress`.
 - `PrepareRequest` requires a `progress` argument.

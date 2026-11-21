@@ -10,10 +10,10 @@ from harnessed.events import (
 )
 from harnessed.kernel import Priority, Scope
 from harnessed.models.messages import ApprovalResponse
+from harnessed.runtime.hooks import RequestApproval, SessionAppended
 from harnessed.sessions.log import SessionLog
 
-from .approvals import LiveApproval, LiveApprovals
-from .hooks import RequestApproval, SessionAppended
+from .session import LiveApproval, LiveApprovals
 
 
 class StreamApprovals:

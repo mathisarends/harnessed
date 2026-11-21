@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 
 from harnessed import Session
+from harnessed.approvals.policy import ApprovalState
 from harnessed.events import (
     DurableEvent,
     ModelUsageRecordedEvent,
@@ -12,7 +13,6 @@ from harnessed.events import (
 from harnessed.events.registry import EventRegistry
 from harnessed.models import ModelRequest, ModelUsage
 from harnessed.models.model import sum_usage
-from harnessed.runtime.approval_policy import ApprovalState
 from harnessed.runtime.hooks import SessionAppended
 from harnessed.sessions.control import RunControl
 from harnessed.sessions.history import derive_messages, derive_requests

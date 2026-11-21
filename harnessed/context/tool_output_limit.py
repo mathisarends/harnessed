@@ -5,8 +5,7 @@ from pydantic import Field
 
 from harnessed.models import ToolResult
 from harnessed.models.messages import OutputTruncation
-
-from .plugin import PluginConfig
+from harnessed.runtime.plugin import PluginConfig
 
 
 class ToolOutputLimitConfig(PluginConfig):

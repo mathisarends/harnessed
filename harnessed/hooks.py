@@ -1,6 +1,6 @@
+from harnessed.context.compaction import DeferCompaction
+from harnessed.context.compaction_notes import PrepareCompaction
 from harnessed.kernel import Priority
-from harnessed.runtime.compaction import DeferCompaction
-from harnessed.runtime.compaction_notes import PrepareCompaction
 from harnessed.runtime.hooks import (
     ExecuteTool,
     Next,

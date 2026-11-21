@@ -12,6 +12,8 @@ from typing import Annotated, Any, Literal, Self, override
 from pydantic import AfterValidator, ConfigDict, Field, StringConstraints, TypeAdapter
 from pydantic.dataclasses import dataclass
 
+from harnessed.context import TokenCounter
+from harnessed.context.tokens import count_content
 from harnessed.events import DurableEvent
 from harnessed.events.base import Identifier
 from harnessed.kernel import Next, PluginScope, PluginState, hook, needs
@@ -20,7 +22,6 @@ from harnessed.models.messages import to_dict
 from harnessed.runtime.hooks import PrepareRequest, ReviewToolResult
 from harnessed.runtime.inbox import SessionInbox
 from harnessed.runtime.plugin import Plugin
-from harnessed.runtime.tokens import TokenCounter, count_content
 from harnessed.sessions import SessionValue
 from harnessed.sessions.log import SessionLog
 from harnessed.tools import ToolInfo, ToolReference, ToolSelector

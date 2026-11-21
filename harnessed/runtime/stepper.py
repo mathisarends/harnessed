@@ -2,6 +2,9 @@ import asyncio
 from dataclasses import replace
 from uuid import uuid4
 
+from harnessed.context import TokenCounter
+from harnessed.context.budget import ContextBudget
+from harnessed.context.compaction import CompactionManager, CompactionPolicy
 from harnessed.errors import ContextLengthExceeded, OutputValidationError
 from harnessed.events import (
     AssistantMessageEvent,
@@ -39,13 +42,12 @@ from harnessed.models import (
     UserMessage,
 )
 from harnessed.models.model import resolve_request_settings
+from harnessed.output.handler import OutputHandler
 from harnessed.prompts import SystemPromptStore
 from harnessed.sessions.context import PendingObservations, SessionContext
 from harnessed.sessions.log import SessionLog
 from harnessed.tools import ToolRegistry
 
-from .budget import ContextBudget
-from .compaction import CompactionManager, CompactionPolicy
 from .control import SessionControl
 from .executor import ToolExecutor
 from .hooks import (
@@ -57,10 +59,8 @@ from .hooks import (
     TurnProgress,
 )
 from .options import AgentOptions
-from .output import OutputHandler
 from .respond import ModelResponder
 from .retries import RequestRetries
-from .tokens import TokenCounter
 
 
 class StepRunner:

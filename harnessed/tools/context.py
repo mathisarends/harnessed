@@ -8,7 +8,7 @@ from harnessed.events import DurableEvent, ToolProgressEvent, TransientEvent
 from harnessed.models import Decision, ToolCall
 
 if TYPE_CHECKING:
-    from harnessed.runtime.approvals import SessionApprovals
+    from harnessed.approvals.session import SessionApprovals
     from harnessed.runtime.inbox import SessionInbox
     from harnessed.sessions.log import SessionLog
 

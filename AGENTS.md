@@ -31,8 +31,8 @@ Kernel implementation modules may use sibling imports to avoid import cycles.
 Keep imports pointed at their owning layer. From lowest to highest, the layers
 are the standard-library-only `kernel`, model contracts and errors, the event
 vocabulary, the execution engine, optional features, and the application SDK.
-The engine includes `runtime`, `sessions`, `tools`, `prompts` and event stream
-and persistence modules. Features never import another plugin.
+The engine includes `runtime`, `context`, `children`, `approvals`, `output`,
+`sessions`, `tools`, `prompts` and event stream and persistence modules. Features never import another plugin.
 Only `models/pydantic_ai/` imports PydanticAI; only `plugins/skills.py` imports
 YAML. Internal modules import their owning layer, not the root facade.
 

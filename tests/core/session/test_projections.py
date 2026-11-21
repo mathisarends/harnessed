@@ -2,6 +2,7 @@ import random
 
 import pytest
 
+from harnessed.approvals.policy import ApprovalState
 from harnessed.events import (
     ApprovalRequestedEvent,
     ApprovalResolvedEvent,
@@ -26,7 +27,6 @@ from harnessed.models import (
     ToolCall,
     UserMessage,
 )
-from harnessed.runtime.approval_policy import ApprovalState
 from harnessed.sessions.control import RunControl
 from harnessed.sessions.inbox import Inbox
 from harnessed.sessions.log import SessionLog, derive_messages, derive_requests

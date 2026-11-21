@@ -4,13 +4,13 @@ from typing import Annotated, Self, TypedDict
 
 from pydantic import Field
 
+from harnessed.context.tool_output_limit import ToolOutputLimit
 from harnessed.events.turn import FinalStepPolicy
 from harnessed.models import GenerationSettings, TokenLimitBehavior
 from harnessed.tools import ErrorFormatter
 
 from .attachments import Attachment
 from .plugin import PluginConfig
-from .tool_output_limit import ToolOutputLimit
 
 
 class RunOptions(TypedDict, total=False):

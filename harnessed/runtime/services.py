@@ -1,3 +1,5 @@
+from harnessed.context import TokenCounter
+from harnessed.context.tokens import CalibratedTokenCounter
 from harnessed.events import ModelRequestedEvent, ModelUsageRecordedEvent
 from harnessed.kernel import PluginScope
 from harnessed.models.model import UsagePurpose
@@ -6,7 +8,6 @@ from harnessed.tools import ToolRegistry
 
 from .hooks import SessionAppended
 from .plugin import Plugin
-from .tokens import CalibratedTokenCounter, TokenCounter
 
 
 class RuntimeServices(Plugin):

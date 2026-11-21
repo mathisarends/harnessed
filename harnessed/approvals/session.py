@@ -14,21 +14,15 @@ from harnessed.events import (
 from harnessed.kernel import Scope
 from harnessed.models import Decision, ToolCall
 from harnessed.models.messages import ApprovalResponse
+from harnessed.runtime.control import SessionControl
+from harnessed.runtime.hooks import RequestApproval
 from harnessed.sessions import SessionContext
 from harnessed.sessions.log import SessionLog
 from harnessed.tools import suspend_tool_execution
 from harnessed.tracing import span
 
-from .approval_policy import (
-    DEFAULT_APPROVALS,
-    Approval,
-    ApprovalsConfig,
-    Approver,
-    validate_approval_timeout,
-)
-from .child_contracts import ChildSessionRequest
-from .control import SessionControl
-from .hooks import RequestApproval
+from .policy import DEFAULT_APPROVALS, Approval, ApprovalsConfig, validate_approval_timeout
+from .responders import PARENT_APPROVER, Approver
 
 logger = logging.getLogger(__name__)
 
@@ -244,8 +238,8 @@ class SessionApprovals:
         try:
             with suspend_tool_execution():
                 async with asyncio.timeout(timeout):
-                    if ChildSessionRequest in self.scope:
-                        selected = self.scope[ChildSessionRequest].approver
+                    if PARENT_APPROVER in self.scope:
+                        selected = self.scope[PARENT_APPROVER]
                     elif approver is not None:
                         selected = approver
                     else:

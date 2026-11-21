@@ -1,3 +1,4 @@
+from harnessed.context.tool_output_limit import ToolOutputLimit
 from harnessed.events.turn import FinalStepPolicy
 from harnessed.kernel import Scope
 from harnessed.models import Model, TokenLimitBehavior
@@ -6,7 +7,6 @@ from harnessed.tools import ErrorFormatter
 
 from .options import AgentLoopConfig, AgentOptions
 from .session import Session
-from .tool_output_limit import ToolOutputLimit
 
 _DEFAULTS = AgentLoopConfig()
 

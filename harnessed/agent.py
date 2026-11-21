@@ -3,18 +3,22 @@ from contextlib import asynccontextmanager
 from itertools import chain
 from typing import Any, Unpack, overload
 
+from harnessed.approvals import Approvals
+from harnessed.approvals.responders import PARENT_APPROVER
+from harnessed.children.contracts import ChildSessionRequest
 from harnessed.context import Context
+from harnessed.context.tool_output_limit import ToolOutputLimit
 from harnessed.errors import ConfigError
 from harnessed.events.registry import EventRegistry
 from harnessed.kernel import Scope
 from harnessed.models import Model, UserMessage
 from harnessed.models.pydantic_ai import PydanticAIModel
+from harnessed.output import OutputContract
+from harnessed.output.contracts import OutputTypes
 from harnessed.prompts import SystemPrompt
 from harnessed.prompts.instructions import PromptRenderer
 from harnessed.prompts.values import PromptComposition
 from harnessed.runtime.agent_loop import AgentLoop
-from harnessed.runtime.approval_policy import Approvals
-from harnessed.runtime.child_contracts import ChildSessionRequest
 from harnessed.runtime.composition import (
     CompositionDescription,
     PluginValidation,
@@ -22,11 +26,9 @@ from harnessed.runtime.composition import (
 )
 from harnessed.runtime.opener import open_session
 from harnessed.runtime.options import RunOptions
-from harnessed.runtime.outputs import OutputContract, OutputTypes
 from harnessed.runtime.plugin import Plugin, Service, plugin_events
 from harnessed.runtime.services import RuntimeServices
 from harnessed.runtime.session import Session
-from harnessed.runtime.tool_output_limit import ToolOutputLimit
 from harnessed.sessions import SessionState, SessionStore
 from harnessed.sessions.result import RunResult
 
@@ -115,6 +117,7 @@ class Agent:
         async with Scope() as scope:
             if child is not None:
                 scope.provide(ChildSessionRequest, child)
+                scope.provide(PARENT_APPROVER, child.approver)
             scope.provide(EventRegistry, self._events.copy())
             # Validators are per session, so dynamic output types never leak between them.
             outputs = OutputTypes()
@@ -124,7 +127,7 @@ class Agent:
             scope.provide(ToolOutputLimit, ToolOutputLimit(self.context.max_tool_output_chars))
             if self.model is not None:
                 await scope.install([Service(Model, self.model)], settle=True)
-            await self.context.install(scope.plugin_scope)
+            await self.context.install(scope.plugin_scope, resolve_model=_resolve_model)
             core = (
                 RuntimeServices(),
                 PromptRenderer(self.prompt.document, composition=self.prompt),

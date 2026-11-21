@@ -5,13 +5,13 @@ import pytest
 
 from harnessed import Agent as Application
 from harnessed import Approvals, Context, Decision, Plugin, tool
+from harnessed.context.tool_output_limit import ToolOutputLimit
 from harnessed.events import ToolCallFinishedEvent, ToolExecutionFinishedEvent
 from harnessed.events.codec import decode_event, encode_event
 from harnessed.kernel import hook
 from harnessed.models import ModelChunk, ToolCall, ToolResult, ToolStatus
 from harnessed.plugins import Filesystem, LocalWorkspace, Shell, Spill
 from harnessed.runtime.hooks import ReviewToolResult
-from harnessed.runtime.tool_output_limit import ToolOutputLimit
 from harnessed.sessions.files import SessionFiles
 from harnessed.testing import ScriptedModel
 from harnessed.tools import ToolError, ToolRegistry

@@ -2,10 +2,10 @@ from typing import Annotated
 
 from pydantic import Field
 
+from harnessed.runtime.plugin import Plugin
 from harnessed.tools import tool
 
-from .child_contracts import ChildStatusReporter
-from .plugin import Plugin
+from .contracts import ChildStatusReporter
 
 
 class ChildReports(Plugin):

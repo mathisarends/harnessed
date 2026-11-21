@@ -7,7 +7,7 @@ from harnessed.events import DurableEvent, MessageAppendedEvent, SessionStatus, 
 from harnessed.models import Message, UserMessage
 
 if TYPE_CHECKING:
-    from harnessed.runtime.approvals import SessionApprovals
+    from harnessed.approvals.session import SessionApprovals
     from harnessed.runtime.control import SessionControl
     from harnessed.runtime.inbox import SessionInbox
     from harnessed.tools import SessionTools
