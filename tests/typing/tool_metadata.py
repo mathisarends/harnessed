@@ -53,6 +53,10 @@ class Tools(Plugin):
         return await next_()
 
 
+assert_type(Tools().without_tools(Tools.switch), Tools)
+Tools().without_tools("switch")  # ty: ignore[invalid-argument-type]
+
+
 def inspect_hooks(policy: ToolPolicy, review: ReviewToolResult, step: PreStep) -> None:
     assert_type(policy.tool, ToolInfo | None)
     assert_type(review.tool, ToolInfo | None)

@@ -2,14 +2,17 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
-from harnessed.kernel import ServiceKey
+from harnessed.kernel import RegistrationState, ServiceKey
 from harnessed.models import ToolDefinition
+
+from .references import ToolReference
 
 
 class ToolAvailability(StrEnum):
     AVAILABLE = "available"
     MISSING_SERVICES = "missing_services"
     DISABLED = "disabled"
+    EXCLUDED = "excluded"
     NOT_REGISTERED = "not_registered"
 
 
@@ -25,3 +28,13 @@ class ToolExplanation:
     availability: ToolAvailability
     definition: ToolDefinition | None = None
     missing_services: tuple[ServiceKey[Any], ...] = ()
+
+
+@dataclass(frozen=True)
+class RecipeExclusions:
+    references: frozenset[ToolReference]
+    registration: RegistrationState
+
+    def explains(self, name: str) -> bool:
+        """Whether this active recipe excluded a declaration with the model-facing name."""
+        return self.registration.active and any(ref.name == name for ref in self.references)

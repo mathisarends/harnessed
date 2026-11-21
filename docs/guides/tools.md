@@ -139,6 +139,22 @@ schema property. For example, `search(self, params: SearchParams)` with plain
 Scripted calls use the same top-level arguments:
 `call(CatalogTools.search, query="keyboard")`.
 
+## Exclude tools from a plugin
+
+Call `without_tools(...)` on a plugin recipe when composing an agent. This pointer
+plugin keeps its click and move tools while omitting its drag tool.
+
+```python
+pointer = PointerTools().without_tools(PointerTools.drag_at)
+agent = Agent(plugins=[pointer])
+```
+
+Pass one or more decorated methods from the plugin class or the same recipe.
+Inherited tools are supported. Each call returns a new recipe and accumulates
+its exclusions. Activation skips the selected declarations before building their
+schemas or evaluating their predicates. Other plugins can still supply the same
+model-facing names.
+
 ## Conditional tools
 
 `@tool(enabled=False)` hides a tool from model requests and prevents its execution.
@@ -306,7 +322,7 @@ mapping. It returns a frozen `ToolExplanation` with `name`, `availability`,
 `definition` and `missing_services`. Import `ToolExplanation` and `ToolAvailability`
 from `harnessed.tools`.
 
-`ToolAvailability` distinguishes `AVAILABLE`, `MISSING_SERVICES`, `DISABLED` and
+`ToolAvailability` distinguishes `AVAILABLE`, `MISSING_SERVICES`, `DISABLED`, `EXCLUDED` and
 `NOT_REGISTERED`. Missing required tool and enabled-predicate services are reported
 by their original class or named key, without evaluating the predicate until all
 are present. Optional injections do not block availability. Session-provided
@@ -315,9 +331,10 @@ are present. Optional injections do not block availability. Session-provided
 Explanations inspect the current overriding registration and never fall back to an
 older enabled tool. A waiting plugin has not registered its tools, so its tool
 names report `NOT_REGISTERED`; use startup dependency errors for that composition.
-Snapshots retain their values as providers change. Predicate exceptions propagate
-as during request construction, and an available tool still needs normal policy
-and approval checks to execute.
+An active recipe's excluded name reports `EXCLUDED` with no definition when no
+registered tool supplies that name. Snapshots retain their values as providers
+change. Predicate exceptions propagate as during request construction, and an
+available tool still needs normal policy and approval checks to execute.
 
 ## Ask for approval inside a tool
 

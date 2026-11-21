@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from copy import copy
 from types import get_original_bases
@@ -21,7 +22,8 @@ from harnessed.kernel import PluginBase as KernelPlugin
 from harnessed.models import Model
 from harnessed.prompts import SystemPrompt
 from harnessed.prompts.values import PromptContribution
-from harnessed.tools import ToolSpec, activation_tool
+from harnessed.tools import ToolReference, ToolRegistry, ToolSpec, activation_tool
+from harnessed.tools.references import tool_reference
 
 
 class PluginConfig(BaseModel):
@@ -80,6 +82,7 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         if not config.model_config.get("frozen"):
             raise TypeError("Plugin Config models must be frozen; inherit PluginConfig")
         self.config = config
+        self._excluded_tools: frozenset[ToolReference] = frozenset()
         self._instruction_override: SystemPrompt | None = None
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
@@ -121,21 +124,32 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
 
         An empty SystemPrompt removes the block.
         """
-        if self.recipe is not self:
-            raise TypeError("Configure instructions on the plugin recipe")
         if not isinstance(instructions, str | SystemPrompt):
             raise TypeError("instructions must be text or a SystemPrompt")
         document = SystemPrompt(instructions) if isinstance(instructions, str) else instructions
         if document.collects_plugins:
             raise ValueError("Plugin instructions must supply content, not plugin collection")
-        configured: Self = copy(self)
-        if (
-            configured is self
-            or type(configured) is not type(self)
-            or configured.recipe is not configured
-        ):
-            raise TypeError("Copying a plugin recipe must return a fresh recipe of the same class")
+        configured: Self = self._configured_copy()
         configured._instruction_override = document
+        return configured
+
+    def without_tools(self, *tools: Callable[..., Any] | ToolReference) -> Self:
+        """Return a recipe copy excluding the selected declared tools from registration."""
+        configured: Self = self._configured_copy()
+        declarations = {
+            member
+            for _, member in inspect.getmembers_static(type(self))
+            if callable(member) and isinstance(getattr(member, "_harnessed_tool", None), ToolSpec)
+        }
+        excluded = set(self._excluded_tools)
+        for tool in tools:
+            reference = tool_reference(tool)
+            if reference.declaration not in declarations or (
+                reference.owner is not None and reference.owner is not self
+            ):
+                raise ValueError(f"Tool {reference.name!r} does not belong to this plugin recipe")
+            excluded.add(tool_reference(reference.declaration))
+        configured._excluded_tools = frozenset(excluded)
         return configured
 
     def without_instructions(self) -> Self:
@@ -177,6 +191,18 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         This method is skipped when setup fails; register partial-acquisition
         cleanup immediately with scope.enter(), effect() or register().
         """
+
+    def _configured_copy(self) -> Self:
+        if self.recipe is not self:
+            raise TypeError("Configure tools and instructions on the plugin recipe")
+        configured: Self = copy(self)
+        if (
+            configured is self
+            or type(configured) is not type(self)
+            or configured.recipe is not configured
+        ):
+            raise TypeError("Copying a plugin recipe must return a fresh recipe of the same class")
+        return configured
 
     @classmethod
     def _configuration_schema(cls) -> type[BaseModel] | None:
@@ -254,6 +280,10 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
 
     async def _setup(self, scope: Scope) -> None:
         await self.setup(scope.plugin_scope)
+        recipe: Self = self.recipe
+        excluded = recipe._excluded_tools
+        if excluded:
+            scope[ToolRegistry].exclude(excluded, owner=scope)
 
     async def _teardown(self, scope: Scope) -> None:
         await self.teardown(scope.plugin_scope)
