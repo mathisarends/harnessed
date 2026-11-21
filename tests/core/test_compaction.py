@@ -1,11 +1,14 @@
 import pytest
 
-from harnessed.context import (
+from harnessed.context import ContextState
+from harnessed.context.compaction import (
     DEFAULT_COMPACTION_PROMPT,
     CompactionContext,
     CompactionRequest,
-    ContextState,
+    ModelSummarizer,
+    SummaryError,
 )
+from harnessed.context.tokens import ApproximateTokenCounter
 from harnessed.errors import ContextBudgetExceeded
 from harnessed.models import (
     AssistantMessage,
@@ -17,8 +20,6 @@ from harnessed.models import (
     ToolCall,
     UserMessage,
 )
-from harnessed.runtime.compaction import ModelSummarizer, SummaryError
-from harnessed.runtime.tokens import ApproximateTokenCounter
 from harnessed.testing import ScriptedModel
 
 

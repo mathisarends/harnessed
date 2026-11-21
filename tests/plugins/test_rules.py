@@ -343,7 +343,7 @@ def test_rule_option_constraints_reject_ambiguous_values(options):
 def test_rule_conditions_are_sync_and_must_return_booleans():
     from pydantic import ValidationError
 
-    from harnessed.runtime.tokens import ApproximateTokenCounter
+    from harnessed.context.tokens import ApproximateTokenCounter
 
     async def async_exit(code):
         return code != 0
@@ -364,11 +364,12 @@ def test_rule_conditions_are_sync_and_must_return_booleans():
 
 
 async def test_rule_and_observation_policies_mount_with_narrow_services_without_a_driver():
+    from harnessed.context import TokenCounter
+    from harnessed.context.tokens import ApproximateTokenCounter
     from harnessed.kernel import Scope
     from harnessed.plugins import LatestObservationOnly
     from harnessed.runtime.control import SessionControl
     from harnessed.runtime.inbox import InboxWriter, SessionInbox
-    from harnessed.runtime.tokens import ApproximateTokenCounter, TokenCounter
 
     async def unused_driver():
         pytest.fail("Mounting a policy started the driver")

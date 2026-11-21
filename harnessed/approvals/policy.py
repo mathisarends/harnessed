@@ -1,8 +1,7 @@
-import inspect
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from typing import Annotated, Protocol, Self, runtime_checkable
+from typing import Annotated, Self
 
 from pydantic import ConfigDict, Field, TypeAdapter
 
@@ -15,45 +14,11 @@ from harnessed.events import (
 )
 from harnessed.kernel import PluginScope
 from harnessed.models import Decision, ToolCall
-from harnessed.models.messages import ApprovalResponse
+from harnessed.runtime.plugin import PluginConfig
 from harnessed.tools import PreparedToolCall, ToolRegistry
 from harnessed.tools.references import ToolReference, ToolSelector, tool_selector
 
-from .plugin import PluginConfig
-
-
-@runtime_checkable
-class Approver(Protocol):
-    async def ask(self, request: ApprovalRequestedEvent) -> ApprovalResponse | Decision | None:
-        """Return an approval answer, or None when this responder cannot answer."""
-        ...
-
-
-type ApprovalCallback = Callable[
-    [ApprovalRequestedEvent],
-    ApprovalResponse
-    | Decision
-    | bool
-    | Awaitable[ApprovalResponse | Decision | bool | None]
-    | None,
-]
-
-
-class CallbackApprover:
-    """Adapt a request callback to the narrow Approver service."""
-
-    def __init__(self, callback: ApprovalCallback) -> None:
-        self.callback = callback
-
-    async def ask(self, request: ApprovalRequestedEvent) -> ApprovalResponse | Decision | None:
-        value = self.callback(request)
-        value = await value if inspect.isawaitable(value) else value
-        if value is None or isinstance(value, ApprovalResponse | Decision):
-            return value
-        if type(value) is bool:
-            return Decision.ALLOW if value else Decision.DENY
-        raise TypeError("Approvers must return an approval response, Decision, bool or None")
-
+from .responders import ApprovalCallback, Approver, CallbackApprover
 
 _APPROVAL_TIMEOUT = TypeAdapter(
     Annotated[float, Field(gt=0)],

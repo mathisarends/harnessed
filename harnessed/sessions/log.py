@@ -5,6 +5,7 @@ from dataclasses import replace
 from functools import partial
 from typing import cast
 
+from harnessed.approvals.policy import Approval, ApprovalState
 from harnessed.errors import RunUnavailable, SessionFormatError, SessionStateError
 from harnessed.events import (
     ApprovalResolvedEvent,
@@ -49,7 +50,6 @@ from harnessed.models import (
 from harnessed.models.assets import AssetStore, MemoryAssets
 from harnessed.models.messages import JSONValue, SpillRef
 from harnessed.models.model import sum_usage
-from harnessed.runtime.approval_policy import Approval, ApprovalState
 from harnessed.runtime.hooks import SessionAppended
 
 from .approvals import ApprovalProjection

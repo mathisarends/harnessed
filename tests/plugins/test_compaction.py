@@ -5,7 +5,8 @@ from dataclasses import replace
 import pytest
 
 from harnessed import Agent, AgentLoop, Compaction, Context, Plugin
-from harnessed.context import ContextState, Summary, at_ratio, every_turns
+from harnessed.context import ContextState, at_ratio, every_turns
+from harnessed.context.compaction import Summary
 from harnessed.errors import ConfigError, ContextLengthExceeded, SessionStateError
 from harnessed.events import (
     CompactionAppliedEvent,

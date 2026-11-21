@@ -1,7 +1,14 @@
 import pytest
 
 from harnessed import Agent, Compaction, Context, Plugin, tool
-from harnessed.context import Summary
+from harnessed.context import TokenCounter
+from harnessed.context.compaction import (
+    CompactionManager,
+    CompactionPolicy,
+    CompactionSettings,
+    Summary,
+)
+from harnessed.context.tokens import ApproximateTokenCounter
 from harnessed.errors import ContextLengthExceeded
 from harnessed.events import (
     AssistantMessageEvent,
@@ -31,8 +38,6 @@ from harnessed.models import (
     ToolResult,
     UserMessage,
 )
-from harnessed.runtime.compaction import CompactionManager, CompactionPolicy, CompactionSettings
-from harnessed.runtime.tokens import ApproximateTokenCounter, TokenCounter
 from harnessed.sessions import SessionState
 from harnessed.sessions.log import SessionLog
 from harnessed.testing import CallbackModel, ScriptedModel

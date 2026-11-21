@@ -5,15 +5,14 @@ import pytest
 
 from harnessed import Agent as Application
 from harnessed import Approvals, Compaction, Context, Decision, Plugin, tool
-from harnessed.context import (
+from harnessed.context import ContextMeter, ContextState, at_ratio, every_turns
+from harnessed.context.compaction import (
     CompactionContext,
     CompactionRequest,
-    ContextMeter,
-    ContextState,
+    ModelSummarizer,
     Summary,
-    at_ratio,
-    every_turns,
 )
+from harnessed.context.tokens import ApproximateTokenCounter
 from harnessed.events import (
     CompactionAppliedEvent,
     ModelUsageRecordedEvent,
@@ -40,9 +39,7 @@ from harnessed.models import (
 )
 from harnessed.plugins import LatestObservationOnly
 from harnessed.plugins.spill import Spill, SpillStore
-from harnessed.runtime.compaction import ModelSummarizer
 from harnessed.runtime.hooks import PreStep
-from harnessed.runtime.tokens import ApproximateTokenCounter
 from harnessed.sessions.files import SessionFiles
 from harnessed.sessions.log import SessionLog
 from harnessed.testing import ExtractiveSummarizer, ScriptedModel

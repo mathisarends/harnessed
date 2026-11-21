@@ -1,7 +1,10 @@
 import pytest
 
 from harnessed import Agent, AgentLoop, Compaction, Context, Plugin, tool
-from harnessed.context import CompactionRequest, Summary
+from harnessed.context import TokenCounter
+from harnessed.context.budget import ContextBudget
+from harnessed.context.compaction import CompactionRequest, Summary
+from harnessed.context.tokens import CalibratedTokenCounter
 from harnessed.errors import ConfigError
 from harnessed.events import (
     CompactionAppliedEvent,
@@ -22,9 +25,7 @@ from harnessed.models import (
     UserMessage,
 )
 from harnessed.plugins import FinalStepPolicy
-from harnessed.runtime.budget import ContextBudget
 from harnessed.runtime.plugin import Service
-from harnessed.runtime.tokens import CalibratedTokenCounter, TokenCounter
 from harnessed.sessions import SessionState
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit

@@ -4,12 +4,12 @@ import pytest
 from pydantic import ValidationError
 
 from harnessed import Agent, Approvals, Decision, Plugin, tool
+from harnessed.approvals.responders import CallbackApprover
 from harnessed.events import ApprovalRequestedEvent
 from harnessed.hooks import ReviewToolResult
 from harnessed.kernel import Next, hook
 from harnessed.models import ToolResult
 from harnessed.plugins import Filesystem
-from harnessed.runtime.approval_policy import CallbackApprover
 from harnessed.testing import ScriptedModel, call
 from harnessed.tools import tool_name
 

@@ -8,15 +8,15 @@ from typing import Annotated, Protocol
 
 from pydantic import Field
 
+from harnessed.context import TokenCounter
+from harnessed.context.budget import truncate
 from harnessed.events import SpillCreatedEvent, SpillExpirationReason, SpillExpiredEvent
 from harnessed.kernel import PluginScope, Priority, hook, needs
 from harnessed.models import ToolResult
 from harnessed.models.messages import SpillRef
 from harnessed.prompts import Instructions, SystemPrompt
-from harnessed.runtime.budget import truncate
 from harnessed.runtime.hooks import Next, ReviewToolResult, SessionAppended
 from harnessed.runtime.plugin import Plugin, PluginConfig
-from harnessed.runtime.tokens import TokenCounter
 from harnessed.sessions.files import FileOffset, ReadLimit, SessionFiles
 from harnessed.sessions.log import SessionLog
 from harnessed.tools import ToolError, tool

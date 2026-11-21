@@ -3,11 +3,11 @@ import asyncio
 import pytest
 
 from harnessed import Agent, AgentLoop, Approvals, Decision, Plugin, ToolContext, events, tool
+from harnessed.approvals.policy import ApprovalState
 from harnessed.events import ApprovalRequestedEvent, ApprovalStatus
 from harnessed.kernel import Inject
 from harnessed.models import ModelChunk, ToolCall, ToolStatus
 from harnessed.models.messages import ApprovalResponse
-from harnessed.runtime.approval_policy import ApprovalState
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit
 from tests._clock import AdvancingClock

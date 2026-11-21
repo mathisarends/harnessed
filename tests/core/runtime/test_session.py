@@ -4,6 +4,7 @@ import pytest
 
 from harnessed import Agent as Application
 from harnessed import AgentLoop, Approvals, Plugin, Session, ToolContext, tool
+from harnessed.approvals.responders import Approver, CallbackApprover
 from harnessed.events import (
     AssistantMessageEvent,
     ModelRequestedEvent,
@@ -18,7 +19,6 @@ from harnessed.kernel import Inject, PluginScope, hook, needs
 from harnessed.models import Decision, ModelChunk, ModelInfo, Role, StopReason, ToolCall, ToolStatus
 from harnessed.models.messages import ApprovalResponse
 from harnessed.plugins import Service
-from harnessed.runtime.approval_policy import Approver, CallbackApprover
 from harnessed.runtime.hooks import (
     ExecuteTool,
     PreStep,

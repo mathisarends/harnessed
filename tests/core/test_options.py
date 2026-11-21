@@ -1,9 +1,9 @@
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
+from harnessed.context.budget import ContextBudget
 from harnessed.kernel import Scope
 from harnessed.models import GenerationSettings, ModelInfo, ModelRequest, ModelUsage
-from harnessed.runtime.budget import ContextBudget
 from harnessed.runtime.options import AgentLoopConfig
 from harnessed.tools import ToolRegistry
 

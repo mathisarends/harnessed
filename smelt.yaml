@@ -30,6 +30,10 @@ architecture:
     harnessed.events.live: engine
     harnessed.events.registry: engine
     harnessed.events.stream: engine
+    harnessed.context: engine
+    harnessed.approvals: engine
+    harnessed.children: engine
+    harnessed.output: engine
     harnessed.runtime: engine
     harnessed.prompts: engine
     harnessed.sessions: engine
@@ -89,6 +93,18 @@ architecture:
     type_checking_cycles: ignore
 
   packages:
+    context-api:
+      match: harnessed.context
+      required: [config, meter, tokens, budget, compaction, compaction_notes, tool_output_limit]
+    approval-api:
+      match: harnessed.approvals
+      required: [policy, responders, session, stream]
+    children-engine:
+      match: harnessed.children
+      required: [contracts, execution, reports, supervisor]
+    output-api:
+      match: harnessed.output
+      required: [contracts, handler]
     model-adapter-api:
       match: harnessed.models.pydantic_ai
       required: [adapter, conversion]
@@ -148,7 +164,14 @@ tests:
 
 ignore:
   - rule: architecture/unknown-layer
-    paths: [harnessed/prompts/__init__.py, harnessed/sessions/__init__.py, harnessed/tools/__init__.py]
+    paths:
+      - harnessed/approvals/__init__.py
+      - harnessed/children/__init__.py
+      - harnessed/context/__init__.py
+      - harnessed/output/__init__.py
+      - harnessed/prompts/__init__.py
+      - harnessed/sessions/__init__.py
+      - harnessed/tools/__init__.py
     reason: These packages are explicitly mapped to the engine layer; the directory check recognizes only that layer's primary path.
   - rule: visibility/misplaced-dunder-all
     paths:
@@ -158,7 +181,6 @@ ignore:
       - harnessed/integrations/bubblewrap.py
       - harnessed/integrations/json.py
       - harnessed/integrations/opentelemetry.py
-      - harnessed/context.py
       - harnessed/plugins/subagents.py
     reason: Single-module public facades are documented import paths; optional-extra modules cannot be re-exported eagerly from their package initializer.
   - rule: layout/file-name-convention

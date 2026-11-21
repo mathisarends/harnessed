@@ -13,6 +13,7 @@ from harnessed.events import (
 )
 from harnessed.events.turn import TurnLimits
 from harnessed.models import GenerationSettings, OutputSchema, UserMessage
+from harnessed.output.contracts import OutputValues
 from harnessed.sessions import SessionState
 from harnessed.sessions.log import SessionLog
 from harnessed.sessions.result import RunResult, RunResults
@@ -21,7 +22,6 @@ from .attachments import Attachment
 from .control import SessionControl
 from .handles import RunEvents, RunHandle, RunStream, SubmittedRun
 from .inbox import InboxWriter
-from .outputs import OutputValues
 
 
 class RunSubmissions:

@@ -664,9 +664,9 @@ async def test_repeated_cancellation_does_not_interrupt_child_cleanup():
 
 
 async def test_child_factory_rejects_existing_stored_conversation():
+    from harnessed.approvals.responders import CallbackApprover
     from harnessed.errors import ConfigError
     from harnessed.plugins.subagents import ChildSessionRequest
-    from harnessed.runtime.approval_policy import CallbackApprover
 
     child = Agent(model=ScriptedModel(["Existing answer"]), store=RecordingStore())
     async with child.session(id="occupied") as session:

@@ -157,9 +157,7 @@ retention are separate future requirements, not additional controls in this API.
 
 ### Prompt replacement and runtime context
 
-Export `CompactionPrompt` and `DEFAULT_COMPACTION_PROMPT` from
-`harnessed.plugins`, and the request/protocol types below from
-`harnessed.context`. The runtime owns summary planning and execution.
+`harnessed.context.compaction` owns the prompt and summarizer contracts, summary planning and execution.
 
 ```python
 from collections.abc import Awaitable, Callable
@@ -224,7 +222,7 @@ result contract; report available usage even for rejected output.
 from dataclasses import dataclass
 from typing import Protocol
 
-from harnessed.context import CompactionContext, Summary
+from harnessed.context.compaction import CompactionContext, Summary
 
 
 @dataclass(frozen=True)

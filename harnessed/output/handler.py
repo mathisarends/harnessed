@@ -21,10 +21,10 @@ from harnessed.models import (
     ToolResult,
     UserMessage,
 )
+from harnessed.runtime.options import AgentOptions
 from harnessed.sessions.log import SessionLog
 
-from .options import AgentOptions
-from .outputs import FINAL_ANSWER, OutputTypes, OutputValues, validation_note
+from .contracts import FINAL_ANSWER, OutputTypes, OutputValues, validation_note
 
 
 class OutputHandler:

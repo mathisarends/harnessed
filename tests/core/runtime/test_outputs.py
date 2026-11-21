@@ -27,9 +27,10 @@ from harnessed.models import (
     StopReason,
     ToolCall,
 )
+from harnessed.output import OutputContract
+from harnessed.output.contracts import OutputTypes
 from harnessed.runtime.agent_loop import AgentLoop
 from harnessed.runtime.hooks import PrepareRequest, ToolPolicy
-from harnessed.runtime.outputs import OutputContract, OutputTypes
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit
 

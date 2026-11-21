@@ -75,7 +75,7 @@ fails without changing history if required references do not fit.
 Custom implementations use the public service contracts:
 
 ```python
-from harnessed.context import CompactionRequest, Summary
+from harnessed.context.compaction import CompactionRequest, Summary
 
 
 class MySummarizer:
@@ -87,7 +87,7 @@ class MySummarizer:
 Pass an implementation with `summarizer=MySummarizer()`. This is mutually
 exclusive with explicit `llm` and `prompt`. `Summary(text, usage=...)` reports
 incurred `ModelUsage`, including for rejected candidates. A plain string is not
-a valid result. `Summarizer` is exported by `harnessed.context`.
+a valid result. `Summarizer` is exported by `harnessed.context.compaction`.
 
 ## Budgets and targets
 

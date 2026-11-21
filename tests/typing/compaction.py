@@ -1,12 +1,12 @@
 from typing import assert_type
 
 from harnessed import Compaction
-from harnessed.context import (
+from harnessed.context import ContextState
+from harnessed.context.compaction import (
     DEFAULT_COMPACTION_PROMPT,
     CompactionContext,
     CompactionPrompt,
     CompactionRequest,
-    ContextState,
     Summarizer,
     Summary,
 )

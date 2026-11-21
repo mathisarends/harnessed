@@ -22,7 +22,7 @@ from pydantic_ai import direct
 from pydantic_ai import messages as native
 from pydantic_ai.models.function import DeltaThinkingPart, DeltaToolCall, FunctionModel
 
-from harnessed import Agent, Context, Plugin, events
+from harnessed import Agent, Compaction, Context, Plugin, events
 from harnessed.errors import (
     AuthError,
     ConfigError,
@@ -35,7 +35,20 @@ from harnessed.events import ModelUsageRecordedEvent
 from harnessed.events.codec import decode_event, encode_event
 from harnessed.models import ImagePart, ModelRequest, StopReason, TextPart, ToolArgumentsMode
 from harnessed.models.pydantic_ai import PydanticAIModel
+from harnessed.testing import ScriptedModel
 from harnessed.tools import tool
+
+
+async def test_agent_resolves_named_compaction_model_independently_of_turn_model():
+    context = Context(compaction=Compaction(llm="test", trigger=lambda _: False, keep_last_steps=1))
+    async with Agent(
+        model=ScriptedModel(["first", "second"]), context=context
+    ).session() as session:
+        await session.run("Old history. " * 500)
+        await session.run("Retained input")
+        applied = await session.compact()
+        assert applied is not None
+        assert applied.summary == "success (no tool calls)"
 
 
 def _stream_model(monkeypatch: pytest.MonkeyPatch, stream: object) -> PydanticAIModel:

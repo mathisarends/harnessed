@@ -4,9 +4,8 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from harnessed.approvals.responders import Approver
 from harnessed.events import SubagentLinkedEvent
-
-from .approval_policy import Approver
 
 if TYPE_CHECKING:
     from harnessed.runtime.session import Session

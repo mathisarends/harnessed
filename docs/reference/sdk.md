@@ -719,8 +719,8 @@ compaction, `ratio`) that compaction triggers receive.
 | `target_tokens` | `None` | Positive absolute whole-input target; mutually exclusive with `target_ratio`. |
 | `max_summary_tokens` | `None` | Positive strict summary-text ceiling, measured by the session counter. |
 
-`CompactionPrompt` and `DEFAULT_COMPACTION_PROMPT` are exported by `harnessed.context`.
-`harnessed.context` exports frozen `CompactionContext`, `CompactionRequest`,
+`CompactionPrompt` and `DEFAULT_COMPACTION_PROMPT` are exported by `harnessed.context.compaction`.
+The same module exports frozen `CompactionContext`, `CompactionRequest`,
 `Summary` and the structural `Summarizer` protocol:
 
 ```python

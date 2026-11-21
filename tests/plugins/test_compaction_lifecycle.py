@@ -3,7 +3,8 @@ import asyncio
 import pytest
 
 from harnessed import Agent, Compaction, Context, Plugin
-from harnessed.context import Summary, every_turns
+from harnessed.context import every_turns
+from harnessed.context.compaction import Summary
 from harnessed.events import (
     CompactionAppliedEvent,
     CompactionFinishedEvent,

@@ -4,6 +4,9 @@ import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 
+from harnessed.approvals import Approvals
+from harnessed.approvals.session import SessionApprovals
+from harnessed.context.tool_output_limit import ToolOutputLimit
 from harnessed.errors import ApprovalUnavailable
 from harnessed.events import (
     PolicySource,
@@ -30,15 +33,12 @@ from harnessed.tools import (
 )
 from harnessed.tracing import span
 
-from .approval_policy import Approvals
-from .approvals import SessionApprovals
 from .hooks import (
     ExecuteTool,
     ReviewToolResult,
     ToolPolicy,
 )
 from .options import AgentOptions
-from .tool_output_limit import ToolOutputLimit
 
 
 @dataclass

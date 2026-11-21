@@ -6,7 +6,9 @@ import pytest
 
 from harnessed import Agent as Application
 from harnessed import AgentLoop, Approvals, Compaction, Context, Decision, Plugin, tool
-from harnessed.context import Summary, at_ratio, every_turns
+from harnessed.context import at_ratio, every_turns
+from harnessed.context.budget import ContextBudget
+from harnessed.context.compaction import Summary
 from harnessed.errors import ContextBudgetExceeded, ContextLengthExceeded
 from harnessed.events import (
     AssistantMessageEvent,
@@ -27,7 +29,6 @@ from harnessed.models import (
     SystemMessage,
     ToolCall,
 )
-from harnessed.runtime.budget import ContextBudget
 from harnessed.runtime.hooks import PrepareRequest
 from harnessed.runtime.plugin import Service
 from harnessed.testing import CallbackModel, ExtractiveSummarizer, ScriptedModel

@@ -8,7 +8,8 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 
 import harnessed.sessions.store as persistence_store
 from harnessed import Agent, Compaction, Context, Plugin
-from harnessed.context import CompactionRequest, Summary, every_turns
+from harnessed.context import every_turns
+from harnessed.context.compaction import CompactionRequest, Summary
 from harnessed.errors import SessionWriteConflict
 from harnessed.events import (
     CompactionAppliedEvent,

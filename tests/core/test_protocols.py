@@ -5,16 +5,16 @@ import pytest
 
 from harnessed import Agent as Application
 from harnessed import Approvals, Plugin
+from harnessed.approvals.responders import Approver
+from harnessed.context import TokenCounter
+from harnessed.context.compaction import Summarizer
 from harnessed.events import ToolCallFinishedEvent
 from harnessed.kernel import PluginScope
 from harnessed.models import Decision, Model, ModelChunk, ToolCall
 from harnessed.plugins.filesystem import Filesystem, FileSystemBackend
 from harnessed.plugins.shell import ProcResult, Shell, ShellBackend
 from harnessed.plugins.spill import SpillStore
-from harnessed.runtime.approval_policy import Approver
-from harnessed.runtime.compaction import Summarizer
 from harnessed.runtime.hooks import ToolPolicy
-from harnessed.runtime.tokens import TokenCounter
 from harnessed.testing import ScriptedModel
 
 
