@@ -4,7 +4,7 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
-## 0.24.0 (Unreleased)
+## 0.24.0 (2026-11-21)
 
 Plugins can persist typed [session values](guides/plugins.md#session-values),
 observe [committed events](guides/streaming.md#observe-from-a-plugin), and
