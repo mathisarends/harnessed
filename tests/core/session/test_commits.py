@@ -21,13 +21,13 @@ from harnessed.events import (
 )
 from harnessed.hooks import SessionAppended
 from harnessed.models import ModelChunk, ModelRequest, ToolCallDelta, UserMessage
-from harnessed.prompts.plugin_instructions import PluginInstructions
 from harnessed.sessions import (
     CheckpointExtension,
     SessionChange,
     SessionCommit,
     StoredSession,
 )
+from harnessed.sessions.values import PluginValues
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._checkpoints import checkpoint
 
@@ -161,7 +161,7 @@ async def test_coalescing_retains_ordered_changes_and_empty_flush_does_not_write
     monkeypatch.setattr(persistence_store, "_CHECKPOINT_INTERVAL_SECONDS", 60.0)
     store = RecordingStore()
     async with Agent(model=ScriptedModel([]), store=store).session(id="batch") as session:
-        await session.scope[PluginInstructions].set("seed", "ready")
+        await session.scope[PluginValues].commit("seed", "ready")
         before = len(store.commits)
         await session.emit(MessageAppendedEvent(UserMessage("first")))
         await session.emit(MessageAppendedEvent(UserMessage("second")))

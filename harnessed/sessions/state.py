@@ -10,7 +10,7 @@ from harnessed.errors import SessionFormatError
 from harnessed.events import IncludedObservation, MessageLifetime, SubagentLinkedEvent
 from harnessed.models import AssistantMessage, ImageReference, Message, ToolMessage
 from harnessed.models.assets import AssetRef, AssetValue
-from harnessed.models.messages import SpillRef, freeze
+from harnessed.models.messages import JSONValue, SpillRef, freeze, to_dict
 
 from .children import ChildSession
 from .files import TextValue
@@ -93,11 +93,11 @@ class SessionState:
 
     __hash__ = None
 
-    version: Literal[3] = 3
+    version: Literal[4] = 4
     history: tuple[HistoryEntry, ...] = ()
-    plugin_instructions: Annotated[Mapping[str, str], PlainSerializer(dict, when_used="json")] = (
-        field(default_factory=dict)
-    )
+    plugin_values: Annotated[
+        Mapping[str, JSONValue], PlainSerializer(to_dict, when_used="json")
+    ] = field(default_factory=dict)
     turns: tuple[HistoryTurn, ...] = ()
     steps: tuple[HistoryStep, ...] = ()
     turns_since_compaction: Annotated[int, Field(ge=0)] = 0
@@ -112,7 +112,7 @@ class SessionState:
     def __post_init__(self) -> None:
         if type(self.version) is not int:
             raise ValueError("State versions must be integers")
-        object.__setattr__(self, "plugin_instructions", freeze(self.plugin_instructions))
+        object.__setattr__(self, "plugin_values", freeze(self.plugin_values))
         self._check_links()
         self._check_history_order()
         _check_tool_pairs(self.history)

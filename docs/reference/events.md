@@ -115,7 +115,7 @@ raises or disconnects; neither event means that the session has no queued work.
 | `SystemMessageEvent` | `system.message` | Yes | No | Effective fixed system content |
 | `UserMessageEvent` | `user.message` | Yes | No | Accepted user `message` |
 | `MessageAppendedEvent` | `message.appended` | Yes | No | Scope `message` with its lifetime and optional `turn_id` |
-| `PluginInstructionsChangedEvent` | `plugin.instructions.changed` | Yes | No | Feature-owned instruction state changed; rendered by its request hook |
+| `PluginValueChangedEvent` | `plugin.value.changed` | Yes | No | A plugin committed the JSON `value` of its `SessionValue` under `key` |
 | `ObservationRecordedEvent` | `observation.recorded` | Yes | No | User `message`, source and refs captured at `(turn_id, step)` |
 | `ObservationPolicyAppliedEvent` | `observation.policy.applied` | Yes | No | Explicit observation-count retention policy changed |
 

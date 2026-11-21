@@ -16,9 +16,9 @@ from harnessed.kernel import PluginScope, Scope, needs
 from harnessed.models import ImageReference, UserMessage
 from harnessed.plugins import LatestObservationOnly, Spill
 from harnessed.plugins.spill import SpillStore
-from harnessed.prompts.plugin_instructions import PluginInstructions
 from harnessed.sessions import SessionContext, SessionState
 from harnessed.sessions.log import SessionLog
+from harnessed.sessions.values import PluginValues
 from harnessed.testing import ExtractiveSummarizer, ScriptedModel, call
 
 
@@ -26,7 +26,7 @@ async def test_roundtrip_continuation_matches_a_live_conversation_and_uses_curre
     model = ScriptedModel(["first", "second", "third"])
     agent = Agent(model=model, instructions="Original instructions.")
     async with agent.session() as session:
-        await session.scope[PluginInstructions].set("customer", "one")
+        await session.scope[PluginValues].commit("customer", "one")
         first = await session.run("Remember this.")
         saved = first.state.to_json()
         await session.run("Continue.")
@@ -36,15 +36,15 @@ async def test_roundtrip_continuation_matches_a_live_conversation_and_uses_curre
         await session.run("Continue.")
         actual = model.requests[-1].messages
         assert [(m.role, m.text) for m in actual] == [(m.role, m.text) for m in expected]
-        assert session.scope[PluginInstructions].values == {"customer": "one"}
+        assert session.snapshot().plugin_values == {"customer": "one"}
         assert not session.events and not session.turns
     newer = ScriptedModel(["updated"])
     async with Agent(model=newer, instructions="New instructions.").session(
         state=restored
     ) as session:
-        await session.scope[PluginInstructions].set("customer", "two")
+        await session.scope[PluginValues].commit("customer", "two")
         result = await session.run("Update.")
-        assert result.state.plugin_instructions == {"customer": "two"}
+        assert result.state.plugin_values == {"customer": "two"}
     assert newer.requests[0].messages[0].text == "New instructions."
     assert sum(m.id == "system" for m in newer.requests[0].messages) == 1
     assert restored.to_json() == saved
@@ -55,17 +55,17 @@ async def test_two_imports_are_independent_and_snapshots_are_immutable():
     state = (await agent.run("Initial.")).state
     saved = state.to_json()
     async with agent.session(state=state) as a, agent.session(state=state) as b:
-        await a.scope[PluginInstructions].set("branch", "a")
+        await a.scope[PluginValues].commit("branch", "a")
         result_a = await a.run("Approach A.")
-        assert "branch" not in b.scope[PluginInstructions].values
+        assert "branch" not in b.snapshot().plugin_values
         result_b = await b.run("Approach B.")
     assert state.to_json() == saved
-    assert result_a.state.plugin_instructions == {"branch": "a"}
-    assert not result_b.state.plugin_instructions
+    assert result_a.state.plugin_values == {"branch": "a"}
+    assert not result_b.state.plugin_values
     with pytest.raises(FrozenInstanceError):
         state.version = 2
     with pytest.raises(TypeError):
-        state.plugin_instructions["branch"] = "changed"
+        state.plugin_values["branch"] = "changed"
 
 
 @pytest.mark.parametrize("change", ["version", "unknown", "incomplete_tools", "duplicate_position"])
@@ -247,12 +247,12 @@ async def test_repeated_imports_compact_the_active_state_without_resurrecting_ol
     state = None
     for index in range(10):
         async with agent.session(state=state) as session:
-            await session.scope[PluginInstructions].set("iteration", str(index))
+            await session.scope[PluginValues].commit("iteration", str(index))
             session.observe(UserMessage(f"frame {index}"), source="browser", refs=(str(index),))
             result = await session.run(f"task {index} " * 200)
             state = SessionState.from_json(result.state.to_json())
             assert result.messages[-1].text == f"reply {index}"
-            assert state.plugin_instructions == {"iteration": str(index)}
+            assert state.plugin_values == {"iteration": str(index)}
             assert len(state.history) < 12
             assert sum(entry.observation is not None for entry in state.history) == 1
             assert sum(entry.message.id.startswith("compaction:") for entry in state.history) <= 1

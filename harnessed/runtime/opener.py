@@ -5,11 +5,11 @@ from harnessed.errors import ConfigError
 from harnessed.events import TurnStartedEvent
 from harnessed.kernel import Scope
 from harnessed.models.assets import AssetStore, MemoryAssets
-from harnessed.prompts.plugin_instructions import PluginInstructions
 from harnessed.sessions import SessionContext, SessionState
 from harnessed.sessions.files import MemoryFiles, SessionFiles
 from harnessed.sessions.log import SessionLog
 from harnessed.sessions.store import SessionPersistence, SessionStore
+from harnessed.sessions.values import PluginValues
 from harnessed.tools import ToolRegistry
 from harnessed.tracing import bind_tracer
 
@@ -87,7 +87,7 @@ async def open_session(
             [
                 Service(SessionLog, log),
                 Service(SessionContext, runtime.plugin_context),
-                Service(PluginInstructions, PluginInstructions(log)),
+                Service(PluginValues, PluginValues(log)),
             ]
         )
     except BaseException:

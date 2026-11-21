@@ -13,7 +13,7 @@ from .inbox import InboxAddedEvent, InboxRemovedEvent
 from .messages import (
     AssistantMessageEvent,
     MessageAppendedEvent,
-    PluginInstructionsChangedEvent,
+    PluginValueChangedEvent,
     SystemMessageEvent,
     UserMessageEvent,
 )
@@ -71,7 +71,7 @@ type LogEvent = Annotated[
         | SystemMessageEvent
         | UserMessageEvent
         | MessageAppendedEvent
-        | PluginInstructionsChangedEvent
+        | PluginValueChangedEvent
         | ObservationRecordedEvent
         | ObservationsIncludedEvent
         | ModelRequestedEvent

@@ -5,7 +5,7 @@ from harnessed import Approvals, Context, Decision, Plugin, tool
 from harnessed.errors import SessionFormatError
 from harnessed.events import (
     InboxAddedEvent,
-    PluginInstructionsChangedEvent,
+    PluginValueChangedEvent,
     ToolCallFinishedEvent,
 )
 from harnessed.events.codec import decode_event, encode_event
@@ -13,10 +13,12 @@ from harnessed.kernel import PluginScope, PluginStatus
 from harnessed.models import ModelChunk, Role, ToolCall, ToolResult, ToolStatus
 from harnessed.plugins.rules import RuleAction, Rules, RuleTriggeredEvent, when
 from harnessed.plugins.shell import ProcResult
-from harnessed.prompts.plugin_instructions import PluginInstructions
 from harnessed.sessions.log import SessionLog
+from harnessed.sessions.values import PluginValues
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit, AuditProjection
+
+RULES_CONTEXT = "harnessed.rules.context"
 
 
 def scripted_commands(commands):
@@ -70,7 +72,7 @@ async def test_rule_note_context_steer_order_and_structured_exit_code():
         assert [e.mode for e in inbox] == ["followup", "steer"]
         assert inbox[-1].message.role == Role.USER
         assert any("Consider the failure." in m.text for m in model.requests[-1].messages)
-        assert agent.scope[PluginInstructions].values["rule:rules:1"] == "Consider the failure."
+        assert agent.snapshot().plugin_values[RULES_CONTEXT]["rules:1"] == "Consider the failure."
         triggered = [e for e in agent_audit.events if isinstance(e, RuleTriggeredEvent)]
         assert triggered[0].actions == ("note", "steer")
         assert AuditProjection(agent_audit.events).messages == agent.log.messages
@@ -108,7 +110,9 @@ async def test_repeated_failures_are_grouped_by_command_reset_on_success_and_fir
         triggers = [e for e in agent_audit.events if isinstance(e, RuleTriggeredEvent)]
         assert len(triggers) == 1 and triggers[0].occurrence == 3
         messages = [
-            e.value for e in agent_audit.events if isinstance(e, PluginInstructionsChangedEvent)
+            e.value.get("rules:0")
+            for e in agent_audit.events
+            if isinstance(e, PluginValueChangedEvent)
         ]
         assert messages.count("Third failure") == 1
 
@@ -297,10 +301,10 @@ async def test_canonical_match_metadata_survives_output_limits_and_context_reset
         assert len(first.tool_calls[0][1].content) == 256
         assert dict(first.tool_calls[0][1].rule_matches)["rules:0"] is True
         await session.run("Second")
-        assert session.scope[PluginInstructions].values["rule:rules:0"] == "Use a smaller range."
+        assert session.snapshot().plugin_values[RULES_CONTEXT]["rules:0"] == "Use a smaller range."
         source[0] = "fixed"
         await session.run("Success")
-        assert "rule:rules:0" not in session.scope[PluginInstructions].values
+        assert "rules:0" not in session.snapshot().plugin_values[RULES_CONTEXT]
 
 
 def test_rules_are_immutable_and_require_actions():
@@ -348,7 +352,6 @@ def test_rule_conditions_are_sync_and_must_return_booleans():
 async def test_rule_and_observation_policies_mount_with_narrow_services_without_a_driver():
     from harnessed.kernel import Scope
     from harnessed.plugins import LatestObservationOnly
-    from harnessed.prompts.plugin_instructions import PluginInstructions
     from harnessed.runtime.control import SessionControl
     from harnessed.runtime.inbox import InboxWriter, SessionInbox
     from harnessed.runtime.tokens import ApproximateTokenCounter, TokenCounter
@@ -360,7 +363,7 @@ async def test_rule_and_observation_policies_mount_with_narrow_services_without_
         log = SessionLog("policy", scope=scope)
         control = SessionControl(log, unused_driver, lambda: False)
         scope.provide(SessionLog, log)
-        scope.provide(PluginInstructions, PluginInstructions(log))
+        scope.provide(PluginValues, PluginValues(log))
         scope.provide(SessionInbox, SessionInbox(log, control, InboxWriter(log, control)))
         scope.provide(TokenCounter, ApproximateTokenCounter())
         handles = await scope.install(

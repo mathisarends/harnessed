@@ -538,6 +538,7 @@ unhashable. See [values and record versions](../concepts/values.md).
 | ToolResult(..., break_chain=True) | Request the same boundary dynamically; already-started parallel calls finish |
 | Plugin[MyConfig] / config=MyConfig(...) | One frozen module-level model supplies runtime validation and the type of self.config |
 | PluginState(factory) | Typed state freshly created before each mount's setup; available through cleanup |
+| SessionValue(schema, key=..., default=...) | Typed conversation value persisted under a stable key; `get()`, `await set(value)`, `await update(change)`. From `harnessed.sessions` |
 | name = needs(T) | Stable typed service binding and lifetime requirement; no duplicate needs entry |
 | name = observes(T) | Nonblocking service-or-None binding; provider changes restart the activation |
 | class Capability(Plugin, provides=True) | Publish the mount under the declaring class; provides=Key selects another key |
@@ -571,6 +572,9 @@ Declare stable service bindings with `needs` and `observes` from `harnessed.kern
 `needs=(...)` for lifetime requirements without an attribute. Optional fields are
 reported as `observes`. Class-level `Inject` fields were removed. Callable `Inject`
 parameters bind values without adding lifetime dependencies.
+Both fields are `ServiceView` descriptors. Subclass `ServiceView[S, V]` and
+override `present(service)` to expose a required service as a typed view, as
+`SessionValue` does; the binding remains a lifetime requirement of the plugin.
 Higher-level `Plugin.setup()` and `teardown()` require service fields instead of
 `Inject` parameters; standalone kernel lifecycle injection remains available.
 `session.tools.explain(name)` returns a frozen `ToolExplanation` distinguishing
@@ -674,8 +678,8 @@ reaching into those implementations.
 
 `SessionState` is exported from `harnessed.sessions`. `state=None` starts a conversation
 without history. `SessionState.from_json(str_or_bytes)` validates format version
-3 and resource integrity; `state.to_json()` returns a string without I/O. State
-contains retained history and provenance, feature-owned instruction state, compaction metadata,
+4 and resource integrity; `state.to_json()` returns a string without I/O. State
+contains retained history and provenance, plugin session values, compaction metadata,
 parent/child references and terminal child receipts, and
 referenced image/text resources. It contains no runtime handles, queued turns,
 Python validators, approval grants or historical request/event archive.

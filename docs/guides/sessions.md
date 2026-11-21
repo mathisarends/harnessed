@@ -329,7 +329,7 @@ is active. Queued work is never imported by a conversation snapshot.
 ## Snapshot contents and compaction
 
 Snapshots contain the active summary, retained messages and the small amount of
-metadata needed for feature-owned instructions, observation provenance and future compaction.
+metadata needed for plugin session values, observation provenance and future compaction.
 Full typed assistant messages preserve provider replay data and tool-call/result
 pairs. The final assistant reply is included; exporting only the last model
 request would omit that reply.
@@ -349,7 +349,7 @@ provided for each new turn. Python validators and pending output contracts are
 not imported. Approval grants and plugin counters belong to the live session;
 new sessions evaluate their current approval policy again.
 
-`SessionState.to_json()` and `SessionState.from_json()` use state format **1**.
+`SessionState.to_json()` and `SessionState.from_json()` use state format **4**.
 Unknown versions, unknown fields, incomplete tool pairs and corrupt stored
 resources fail explicitly. Old JSONL event logs are not conversation snapshots
 and are not automatically migrated. The standalone audit-event codec has its own

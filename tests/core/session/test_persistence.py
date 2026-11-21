@@ -14,9 +14,9 @@ from harnessed.models import Decision, ImageReference, ToolCall, UserMessage
 from harnessed.models.messages import ApprovalResponse
 from harnessed.plugins import Spill
 from harnessed.plugins.spill import SpillStore
-from harnessed.prompts.plugin_instructions import PluginInstructions
 from harnessed.runtime.control import SessionStatus
 from harnessed.sessions import SessionCheckpoint, SessionCommit, SessionStore, StoredSession
+from harnessed.sessions.values import PluginValues
 from harnessed.testing import ScriptedModel, call
 
 
@@ -348,7 +348,7 @@ async def test_intermediate_changes_coalesce_and_restore_at_the_requested_bounda
     repository = ConversationRepository()
     agent = Agent(model=ScriptedModel([]), store=repository)
     async with agent.session(id="batch") as session:
-        await session.scope[PluginInstructions].set("seed", "ready")
+        await session.scope[PluginValues].commit("seed", "ready")
         before = repository.rows["batch"].revision
         await session.emit(MessageAppendedEvent(UserMessage("first")))
         await session.emit(MessageAppendedEvent(UserMessage("second")))

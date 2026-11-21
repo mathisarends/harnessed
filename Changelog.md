@@ -5,6 +5,72 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## Unreleased
+
+### Added
+
+- Declare typed conversation values on a plugin with
+  `SessionValue(schema, key=..., default=...)` from `harnessed.sessions`. Values
+  survive compaction, plugin restarts, snapshots and session stores. Read them
+  with `get()` and change them with `await set(value)` or `await update(change)`;
+  `update()` serializes concurrent read-modify-write changes. See
+  [session values](docs/guides/plugins.md#session-values).
+- `ServiceView` in `harnessed.kernel` is the base for class attributes that
+  present an injected service as a view. `DependencyField` is now a `ServiceView`
+  that returns the service unchanged.
+- Plugins observe the opening of a session with `@hook(SessionOpened)` from
+  `harnessed.hooks`. The hook runs once per opening, after state restoration and
+  plugin validation and before queued work starts, and carries the
+  `SessionContext` and a shared `time.monotonic()` reading. See
+  [observe the opening of a session](docs/guides/plugins.md#observe-the-opening-of-a-session).
+- `session.model_request_count` counts local `ModelRequestedEvent` records across
+  turns, including failed and cancelled requests. Provider transport retries
+  share one request.
+
+### Changed
+
+- `harnessed.tracing` is the canonical tracing module; the internal
+  `harnessed.runtime.tracing` module was removed. Public imports are unchanged.
+
+### Fixed
+
+- Traces no longer export external image URLs that contain a value registered
+  with `ContentCapture.redacted(...)`. A text placeholder replaces the image and
+  `harnessed.input_messages.image_urls_redacted` counts the replacements; the
+  model still receives the original URL.
+
+### Breaking changes
+
+- `PluginInstructionsChangedEvent` (`plugin.instructions.changed`) is replaced
+  by `PluginValueChangedEvent` (`plugin.value.changed`) with the fields `key`
+  and `value`. The value is any JSON value, not only a string.
+- `SessionState.plugin_instructions` is replaced by `SessionState.plugin_values`,
+  which maps each key to a frozen JSON value. Removing a value is no longer a
+  separate operation; a plugin writes its declared default instead.
+- The internal `harnessed.prompts.plugin_instructions` module is removed.
+  `Rules` stores its active context facts under `harnessed.rules.context`, and
+  `Skills` stores loaded skill instructions under `harnessed.skills.loaded`.
+- Conversation snapshots move to format **4** and standalone audit envelopes to
+  version **8**.
+
+### Upgrade from 0.23.0
+
+1. Replace `PluginInstructionsChangedEvent` with `PluginValueChangedEvent` and
+   read `event.key` and `event.value` instead of `event.name` and `event.value`.
+2. Replace `state.plugin_instructions` with `state.plugin_values`.
+3. Plugins that persisted conversation facts through the internal
+   `PluginInstructions` service declare a `SessionValue` instead.
+4. Replace imports of `harnessed.runtime.tracing` with `harnessed.tracing`.
+5. Execution checkpoints stay at format **4** and JSON store envelopes at
+   version **3**, but both contain conversation state, so entries written by
+   `0.23.0` raise `SessionFormatError`. There is no automatic migration. To keep
+   a conversation, finish its open turn with `0.23.0` and export
+   `session.snapshot().to_json()`. In the exported JSON, set `version` to `4`
+   and replace the `plugin_instructions` object with `"plugin_values": {}`.
+   Active rule context and skills loaded before the last compaction are not
+   carried over. Import the result with `SessionState.from_json(payload)` into a
+   fresh store. Switch producers and consumers of audit envelopes together.
+
 ## 0.23.0 (2026-11-20)
 
 ### Added

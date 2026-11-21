@@ -104,7 +104,7 @@ def test_checkpoint_construction_and_type_adapter_validate_without_json():
         SessionCheckpoint.from_json("{}")
     value = checkpoint("typed")
     assert TypeAdapter(SessionCheckpoint).validate_python(value) is value
-    assert value.state.plugin_instructions == {"marker": "typed"}
+    assert value.state.plugin_values == {"marker": "typed"}
     with pytest.raises(TypeError, match="SessionCheckpoint"):
         StoredSession("{}", 1)
 

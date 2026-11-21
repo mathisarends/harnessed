@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Self, overload
+from typing import TYPE_CHECKING, Self, overload, override
 
 from .di import Dependency
 from .keys import Key, ServiceKey
@@ -9,10 +9,14 @@ if TYPE_CHECKING:
     from .declarations import PluginBase
 
 
-class DependencyField[T]:
-    """A stable, read-only service binding owned by one plugin activation."""
+class ServiceView[S, V]:
+    """A read-only class attribute that presents an injected service as a view.
 
-    def __init__(self, key: ServiceKey[T], *, optional: bool = False) -> None:
+    The kernel treats every ``ServiceView`` as a dependency of its plugin class.
+    Subclasses define ``present`` to wrap the bound service for one activation.
+    """
+
+    def __init__(self, key: ServiceKey[S], *, optional: bool = False) -> None:
         if not isinstance(key, type | Key):
             raise TypeError("Service bindings require a service class, Protocol or named Key")
         self.binding = Dependency(key, optional)
@@ -25,9 +29,9 @@ class DependencyField[T]:
     def __get__(self, instance: None, owner: type | None = None) -> Self: ...
 
     @overload
-    def __get__(self, instance: PluginBase, owner: type | None = None) -> T: ...
+    def __get__(self, instance: PluginBase, owner: type | None = None) -> V: ...
 
-    def __get__(self, instance: PluginBase | None, owner: type | None = None) -> T | Self:
+    def __get__(self, instance: PluginBase | None, owner: type | None = None) -> V | Self:
         if instance is None:
             return self
         if instance._mount_injections is None:
@@ -35,10 +39,22 @@ class DependencyField[T]:
                 f"Dependency {type(instance).__name__}.{self._name} is available only on a "
                 "mounted plugin, not its recipe (or a disposed activation)"
             )
-        return instance._mount_injections[self._name]
+        return self.present(instance._mount_injections[self._name])
 
-    def __set__(self, instance: PluginBase, value: T) -> None:
+    def __set__(self, instance: PluginBase, value: V) -> None:
         raise AttributeError("Dependency bindings are read-only for the entire activation")
+
+    def present(self, service: S) -> V:
+        """Return what plugin code sees for the bound service."""
+        raise NotImplementedError
+
+
+class DependencyField[T](ServiceView[T, T]):
+    """A stable, read-only service binding owned by one plugin activation."""
+
+    @override
+    def present(self, service: T) -> T:
+        return service
 
 
 def needs[T](key: ServiceKey[T]) -> DependencyField[T]:

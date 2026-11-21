@@ -4,6 +4,7 @@ from typing import Literal
 from uuid import uuid4
 
 from harnessed.models import AssistantMessage, Message, StopReason, UserMessage
+from harnessed.models.messages import JSONValue, freeze
 
 from .base import DurableEvent, Identifier, TransientEvent
 from .kinds import EventKind
@@ -47,15 +48,22 @@ class MessageAppendedEvent(DurableEvent):
 
 
 @dataclass(frozen=True)
-class PluginInstructionsChangedEvent(DurableEvent):
+class PluginValueChangedEvent(DurableEvent):
+    """Record the JSON value a plugin committed under its stable session key."""
+
     __hash__ = None
 
-    type: Literal[EventKind.PLUGIN_INSTRUCTIONS_CHANGED] = field(
-        default=EventKind.PLUGIN_INSTRUCTIONS_CHANGED, kw_only=True
+    type: Literal[EventKind.PLUGIN_VALUE_CHANGED] = field(
+        default=EventKind.PLUGIN_VALUE_CHANGED, kw_only=True
     )
-    name: str
-    value: str | None
+    key: str
+    value: JSONValue
     id: str = field(default_factory=lambda: uuid4().hex)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.key, str) or not self.key:
+            raise ValueError("Plugin value keys must be non-empty strings")
+        object.__setattr__(self, "value", freeze(self.value))
 
 
 @dataclass(frozen=True)
