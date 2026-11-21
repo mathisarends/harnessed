@@ -55,6 +55,7 @@ from .hooks import (
     SessionClosing,
 )
 from .inbox import InboxItem, InboxWriter, SessionInbox
+from .meter import ContextMeter
 from .mounts import PluginMount
 from .options import AgentOptions, RunOptions
 from .output import OutputHandler
@@ -83,6 +84,7 @@ class Session:
         scope.provide(TraceSession, TraceSession(self.id))
         self._boundary_state = session.boundary_state
         self._compaction = CompactionManager(scope, session)
+        scope.provide(ContextMeter, ContextMeter(scope, session))
         self.control = SessionControl(session, self._drive, lambda: _driving.get() is self)
         self._live_approvals = LiveApprovals()
         self.approvals = SessionApprovals(scope, session, self.control, self._live_approvals)

@@ -5,6 +5,30 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## Unreleased
+
+### Added
+
+- Plugins measure how full the model context is with `ContextMeter` from
+  `harnessed.context`. Declare `meter = needs(ContextMeter)` and call
+  `await self.meter.measure(request)` to get the `ContextState` that compaction
+  triggers receive: estimated input tokens, the output reserve, turns since the
+  last compaction, and the effective window, which is the model window capped by
+  `Context(max_tokens=...)` or that cap alone when the model reports none.
+  See [measure context occupancy](docs/guides/compaction.md#measure-context-occupancy-in-a-plugin).
+
+### Breaking changes
+
+- `ContextState` moved from the internal `harnessed.runtime.compaction` module
+  to `harnessed.runtime.meter`; import it from `harnessed.context`.
+
+### Upgrade from 0.23.0
+
+- Replace plugin code that combines `harnessed.runtime.budget.ContextBudget`,
+  `harnessed.runtime.tokens.count_request` or `harnessed.runtime.compaction` to
+  measure context occupancy with `needs(ContextMeter)`.
+- Persisted formats are unchanged.
+
 ## 0.23.0 (2026-11-20)
 
 ### Added

@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 
 from harnessed import Agent, AgentLoop, Compaction, Context, Plugin
-from harnessed.context import Summary, at_ratio, every_turns
+from harnessed.context import ContextState, Summary, at_ratio, every_turns
 from harnessed.errors import ConfigError, ContextLengthExceeded, SessionStateError
 from harnessed.events import (
     CompactionAppliedEvent,
@@ -29,7 +29,6 @@ from harnessed.models import (
     ToolCall,
 )
 from harnessed.models.model import UsagePurpose
-from harnessed.runtime.compaction import ContextState
 from harnessed.runtime.control import SessionStatus
 from harnessed.runtime.hooks import PrepareRequest
 from harnessed.testing import CallbackModel, ScriptedModel, reply

@@ -5,7 +5,15 @@ import pytest
 
 from harnessed import Agent as Application
 from harnessed import Approvals, Compaction, Context, Decision, Plugin, tool
-from harnessed.context import CompactionContext, CompactionRequest, Summary, at_ratio, every_turns
+from harnessed.context import (
+    CompactionContext,
+    CompactionRequest,
+    ContextMeter,
+    ContextState,
+    Summary,
+    at_ratio,
+    every_turns,
+)
 from harnessed.events import (
     CompactionAppliedEvent,
     ModelUsageRecordedEvent,
@@ -17,10 +25,13 @@ from harnessed.events import (
     UserMessageEvent,
 )
 from harnessed.events.codec import decode_event, encode_event
-from harnessed.kernel import hook
+from harnessed.hooks import PrepareRequest
+from harnessed.kernel import Next, hook, needs
 from harnessed.models import (
     AssistantMessage,
     ModelChunk,
+    ModelInfo,
+    ModelRequest,
     ModelUsage,
     ToolCall,
     ToolResult,
@@ -29,7 +40,7 @@ from harnessed.models import (
 )
 from harnessed.plugins import LatestObservationOnly
 from harnessed.plugins.spill import Spill, SpillStore
-from harnessed.runtime.compaction import ContextState, ModelSummarizer
+from harnessed.runtime.compaction import ModelSummarizer
 from harnessed.runtime.hooks import PreStep
 from harnessed.runtime.tokens import ApproximateTokenCounter
 from harnessed.sessions.files import SessionFiles
@@ -388,3 +399,36 @@ async def test_model_summarizer_keeps_tool_names_and_arguments_in_summary_input(
 def test_strategy_configuration_is_validated(create):
     with pytest.raises(ValueError):
         create()
+
+
+@pytest.mark.parametrize(
+    ("window", "max_tokens", "effective"),
+    [(None, 2_000, 2_000), (128_000, 4_000, 4_000), (None, None, None)],
+)
+async def test_plugins_measure_requests_against_the_effective_context_window(
+    window, max_tokens, effective
+):
+    measured: list[ContextState] = []
+
+    class Gauge(Plugin):
+        meter = needs(ContextMeter)
+
+        @hook(PrepareRequest)
+        async def prepare(self, _event: PrepareRequest, next_: Next[ModelRequest]) -> ModelRequest:
+            request = await next_()
+            measured.append(await self.meter.measure(request))
+            return request
+
+    model = ScriptedModel(["done"], info=ModelInfo("scripted", context_window=window))
+    agent = Application(
+        model=model, plugins=[Gauge()], context=Context(max_tokens=max_tokens, reserve_tokens=64)
+    )
+    await agent.run("Measure this request")
+    [state] = measured
+    assert state.context_window == effective
+    assert state.input_tokens > 0 and state.reserve_tokens == 64
+    assert state.turns_since_compaction == 0
+    if effective is None:
+        assert state.ratio is None
+    else:
+        assert state.ratio == (state.input_tokens + 64) / effective
