@@ -96,8 +96,8 @@ class ForeignShell:
         self.result = result
         self.calls = []
 
-    async def run(self, argv, *, cwd, timeout):
-        self.calls.append((argv, cwd, timeout))
+    async def run(self, argv, *, cwd, timeout_seconds):
+        self.calls.append((argv, cwd, timeout_seconds))
         return self.result
 
 

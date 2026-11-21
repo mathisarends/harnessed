@@ -39,7 +39,7 @@ async def test_capture_is_bounded_before_results_are_created(tmp_path):
             "import sys; sys.stdout.write('x'*4000000); sys.stderr.write('y'*4000000)",
         ],
         cwd=tmp_path,
-        timeout=10,
+        timeout_seconds=10,
     )
     assert result.returncode == 0
     assert len(result.stdout) + len(result.stderr) < 4600
@@ -65,7 +65,7 @@ async def test_descendants_end_with_the_command(tmp_path, end):
         LocalShell().run(
             [sys.executable, "-u", "parent.py"],
             cwd=tmp_path,
-            timeout=1.5 if end == "timeout" else 10,
+            timeout_seconds=1.5 if end == "timeout" else 10,
         )
     )
     try:
@@ -95,7 +95,7 @@ async def test_descendants_end_with_the_command(tmp_path, end):
 
 async def test_shell_limits_are_schema_visible_and_configured_backends_are_used(tmp_path):
     with pytest.raises(ValidationError):
-        await LocalShell().run([sys.executable], cwd=tmp_path, timeout=601)
+        await LocalShell().run([sys.executable], cwd=tmp_path, timeout_seconds=601)
     workspace = LocalWorkspace(root=tmp_path)
     shell = Shell()
     async with Agent(
@@ -103,7 +103,7 @@ async def test_shell_limits_are_schema_visible_and_configured_backends_are_used(
         plugins=[workspace, shell],
     ).session() as session:
         definition = session.scope[ToolRegistry].definitions[0]
-        assert definition.parameters["properties"]["timeout"]["anyOf"][0]["maximum"] == 600
+        assert definition.parameters["properties"]["timeout_seconds"]["anyOf"][0]["maximum"] == 600
         result = await session.scope[ToolRegistry].execute(
             ToolCall("run_command", {"argv": [sys.executable, "-c", "raise SystemExit(7)"]})
         )
@@ -115,25 +115,29 @@ async def test_shell_command_deadline_overrides_the_generic_tool_timeout(tmp_pat
     seen = []
 
     class Backend:
-        async def run(self, argv, *, cwd, timeout):
-            seen.append(timeout)
+        async def run(self, argv, *, cwd, timeout_seconds):
+            seen.append(timeout_seconds)
             await asyncio.sleep(0.03)
             return ProcResult(0, "finished", "")
 
     workspace = WorkspaceBackends(shell=Backend())
-    shell = Shell(tmp_path, timeout=0.1, max_timeout=0.2)
+    shell = Shell(tmp_path, timeout_seconds=0.1, max_timeout_seconds=0.2)
     async with Agent(
         model=ScriptedModel([]),
         plugins=[workspace, shell],
-        loop=AgentLoop(tool_timeout=0.01),
+        loop=AgentLoop(tool_timeout_seconds=0.01),
     ).session() as session:
         registry = session.scope[ToolRegistry]
         result = await registry.execute(
-            ToolCall("run_command", {"argv": ["test"], **({"timeout": 0.15} if explicit else {})})
+            ToolCall(
+                "run_command", {"argv": ["test"], **({"timeout_seconds": 0.15} if explicit else {})}
+            )
         )
         assert not result.is_error and "finished" in result.content
         assert seen == [0.15 if explicit else 0.1]
-        result = await registry.execute(ToolCall("run_command", {"argv": ["test"], "timeout": 0.3}))
+        result = await registry.execute(
+            ToolCall("run_command", {"argv": ["test"], "timeout_seconds": 0.3})
+        )
         assert result.is_error and "0.2" in result.content
         assert len(seen) == 1
 
@@ -141,11 +145,11 @@ async def test_shell_command_deadline_overrides_the_generic_tool_timeout(tmp_pat
 @pytest.mark.parametrize("maximum", [0.2, 60, 600])
 async def test_shell_schema_and_validation_use_each_mounts_timeout_limit(tmp_path, maximum):
     class Backend:
-        async def run(self, argv, *, cwd, timeout):
-            return ProcResult(0, str(timeout), "")
+        async def run(self, argv, *, cwd, timeout_seconds):
+            return ProcResult(0, str(timeout_seconds), "")
 
     workspace = WorkspaceBackends(shell=Backend())
-    shell = Shell(tmp_path, timeout=min(30, maximum), max_timeout=maximum)
+    shell = Shell(tmp_path, timeout_seconds=min(30, maximum), max_timeout_seconds=maximum)
     app = Agent(
         model=ScriptedModel([]),
         plugins=[workspace, shell],
@@ -153,16 +157,16 @@ async def test_shell_schema_and_validation_use_each_mounts_timeout_limit(tmp_pat
     async with app.session() as session:
         registry = session.scope[ToolRegistry]
         definition = registry.definitions[0]
-        schema = definition.parameters["properties"]["timeout"]
+        schema = definition.parameters["properties"]["timeout_seconds"]
         assert schema["anyOf"][0]["maximum"] == maximum
         assert schema["default"] is None
         assert session.tools.explain("run_command").name == "run_command"
         accepted = await registry.execute(
-            ToolCall("run_command", {"argv": ["test"], "timeout": maximum})
+            ToolCall("run_command", {"argv": ["test"], "timeout_seconds": maximum})
         )
         assert not accepted.is_error
         rejected = await registry.execute(
-            ToolCall("run_command", {"argv": ["test"], "timeout": maximum + 1})
+            ToolCall("run_command", {"argv": ["test"], "timeout_seconds": maximum + 1})
         )
         assert rejected.is_error and "ValidationError" in rejected.text
 
@@ -172,5 +176,7 @@ async def test_shell_schema_and_validation_use_each_mounts_timeout_limit(tmp_pat
         model=ScriptedModel([]),
         plugins=[LocalWorkspace(root=tmp_path), shell_3],
     ).session() as session:
-        schema = session.scope[ToolRegistry].definitions[0].parameters["properties"]["timeout"]
+        schema = (
+            session.scope[ToolRegistry].definitions[0].parameters["properties"]["timeout_seconds"]
+        )
         assert schema["anyOf"][0]["maximum"] == 600

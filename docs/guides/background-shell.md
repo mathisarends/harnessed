@@ -22,7 +22,7 @@ agent = Agent(
     plugins=[
         LocalWorkspace(root=workspace, max_output_bytes=1_048_576),
         Shell(),
-        BackgroundShell(timeout=300, max_background_commands=8),
+        BackgroundShell(timeout_seconds=300, max_background_commands=8),
     ],
 )
 
@@ -68,8 +68,8 @@ await handle.aclose()
 
 | Tool | Arguments | Result |
 | --- | --- | --- |
-| `start_command` | `argv`, optional `timeout` | Returns a `command_id` promptly, without waiting for exit |
-| `read_command` | `command_id`, optional `wait=0` | Repeatable snapshot of state, exit code, stdout, stderr and any launch/timeout error; waits at most 30 seconds when requested |
+| `start_command` | `argv`, optional `timeout_seconds` | Returns a `command_id` promptly, without waiting for exit |
+| `read_command` | `command_id`, optional `wait_seconds=0` | Repeatable snapshot of state, exit code, stdout, stderr and any launch/timeout error; waits at most 30 seconds when requested |
 | `write_command` | `command_id`, `text=""`, `eof=False` | Sends UTF-8 stdin; `eof=True` closes stdin after the supplied text |
 | `terminate_command` | `command_id` | Kills the command and descendants, then waits for cleanup; repeated termination is safe |
 | `list_commands` | None | Retained IDs, argv, states and exit codes, without output bodies |
@@ -77,14 +77,14 @@ await handle.aclose()
 A typical tool sequence is:
 
 ```text
-start_command(argv=["python", "-m", "pytest"], timeout=300)
+start_command(argv=["python", "-m", "pytest"], timeout_seconds=300)
   -> {"command_id": "...", "state": "running", ...}
   ...the agent continues other work...
 read_command(command_id="...")
   -> {"state": "running", "stdout": "...", "stderr": "...", ...}
 terminate_command(command_id="...")
   -> {"state": "cancelled", ...}
-start_command(argv=["python", "-m", "pytest", "tests/test_target.py"], timeout=120)
+start_command(argv=["python", "-m", "pytest", "tests/test_target.py"], timeout_seconds=120)
   -> a new command_id
 ```
 
@@ -106,7 +106,7 @@ Raw log subscribers can observe the notification as `InboxAddedEvent`.
 States are `running`, `exited`, `timed_out`, `cancelled` and `failed`. A nonzero
 exit, timeout, cancellation or launch failure retains its bounded output and
 returns the corresponding error status. No command is retried automatically.
-Cancelling a read or reaching its `wait` limit leaves the command running.
+Cancelling a read or reaching its `wait_seconds` limit leaves the command running.
 
 Jobs belong to one plugin mount in one open session. They survive turn completion,
 pause, stop and abort of the agent driver. `terminate_command`, plugin disposal,
@@ -115,7 +115,7 @@ the owned process tree. Keep the session context open for background work;
 `agent.run(...)` closes its temporary session when that run returns.
 `wait_until_idle()` waits for the agent and its inbox, not for running shell jobs.
 
-The default command timeout is 600 seconds; `timeout` and `max_timeout` can narrow
+The default command timeout is 600 seconds; `timeout_seconds` and `max_timeout_seconds` can narrow
 it, up to a hard maximum of 600 seconds. `max_background_commands=32` bounds
 retained commands per mount. At capacity, a new start evicts the oldest completed
 command whose notification has been queued. If none can be evicted, the start
@@ -133,7 +133,7 @@ are rejected.
 
 `LocalShell` implements the optional `BackgroundShellBackend` protocol from
 `harnessed.plugins.shell`. Additional backends implement `start(argv, *, cwd,
-timeout) -> ShellProcess` as well as the existing `run` contract. The returned
+timeout_seconds) -> ShellProcess` as well as the existing `run` contract. The returned
 handle supplies `snapshot()`, `wait()`, `write(text, *, eof=False)` and
 `terminate()`. It owns bounded capture, its deadline and descendant cleanup;
 cancelling `wait()` must not cancel the process. Terminal snapshots become visible

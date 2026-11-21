@@ -75,7 +75,7 @@ class BackgroundCommands:
         argv: list[str],
         *,
         cwd: Path,
-        timeout: float,
+        timeout_seconds: float,
         inbox: SessionInbox,
     ) -> CommandResult:
         async with self._starting:
@@ -88,7 +88,7 @@ class BackgroundCommands:
                         break
                 else:
                     raise ToolError("Background command limit reached; terminate a running command")
-            process = await backend.start(argv, cwd=cwd, timeout=timeout)
+            process = await backend.start(argv, cwd=cwd, timeout_seconds=timeout_seconds)
             command = _Command(uuid4().hex, tuple(argv), process)
             self._commands[command.id] = command
             command.notification = asyncio.create_task(

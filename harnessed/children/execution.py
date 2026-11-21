@@ -170,7 +170,7 @@ class ChildExecution:
         text = "Child session failed to start"
         try:
             await self._admit()
-            async with asyncio.timeout(self.limits.timeout), self.slots:
+            async with asyncio.timeout(self.limits.timeout_seconds), self.slots:
                 status, text = await self._execute()
         except asyncio.CancelledError:
             status = SubagentStatus.CANCELLED
@@ -220,7 +220,7 @@ class ChildExecution:
         await self.parent.log.flush()
         await self._deliver(message)
 
-    async def status(self, timeout: float) -> None:
+    async def status(self, timeout_seconds: float) -> None:
         async with self._report_lock:
             if self.completion.done() or not self._accepting:
                 return
@@ -249,7 +249,7 @@ class ChildExecution:
                     )
                 )
         try:
-            await asyncio.wait((request.completion,), timeout=timeout)
+            await asyncio.wait((request.completion,), timeout=timeout_seconds)
         finally:
             if not request.completion.done():
                 request.notify_late = True

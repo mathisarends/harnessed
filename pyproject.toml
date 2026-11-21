@@ -86,7 +86,7 @@ select = [
     # Interface hygiene: unused parameters, boolean flags and private access.
     "ARG", "FBT", "SLF001",
 ]
-# Shell's public timeout parameter is implemented with asyncio.timeout internally.
+# Duration units are checked by Smelt MOD010.
 # Smelt IDM006 requires reasons for broad exception handlers.
 # Architecture tests require plain sorted `__all__`; RUF022 uses isort-style order.
 # FBT001/FBT002 guard our signatures; FBT003 would only flag external positional APIs

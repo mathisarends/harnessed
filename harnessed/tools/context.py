@@ -36,19 +36,23 @@ class ToolContext:
         await self.log.emit(event)
 
     async def approve(
-        self, reason: str, *, scope: str = "tool-call", timeout: float | None = None
+        self, reason: str, *, scope: str = "tool-call", timeout_seconds: float | None = None
     ) -> bool:
         """Ask a human to approve a step of this call; True for allow or always.
 
         Uses the session's approval flow: a durable request, an existing ``ALWAYS``
         grant for this tool and scope, the configured approver or a stream
         responder. Raises ``ApprovalUnavailable`` when nobody can answer.
-        ``timeout=None`` inherits ``Approvals(timeout=...)``; a finite positive
-        value replaces that response timeout for this question. Approval waits
+        ``timeout_seconds=None`` inherits ``Approvals(timeout_seconds=...)``. A
+        finite positive value replaces the configured limit for this question. Approval waits
         do not consume the tool's execution timeout.
         """
         answer = await self.approvals.request(
-            self.call, reason, scope=scope, timeout=timeout, identity=self.approval_identity
+            self.call,
+            reason,
+            scope=scope,
+            timeout_seconds=timeout_seconds,
+            identity=self.approval_identity,
         )
         return answer is Decision.ALLOW
 

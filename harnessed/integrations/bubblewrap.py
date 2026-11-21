@@ -151,14 +151,14 @@ class BubblewrapBackend(WorkerRuntime):
         try:
             await self.channel.start(
                 argv,
-                timeout=config.startup_timeout,
+                timeout_seconds=config.startup_timeout_seconds,
                 maximum=6 * max(limits.max_transfer_bytes, config.max_output_bytes) + 65_536,
             )
         except FileNotFoundError as error:
             raise SandboxError("Bubblewrap requires bwrap, systemd-run and systemctl") from error
         group = await run_process(
             [self.systemctl, "--user", "show", "--property=ControlGroup", "--value", self.unit],
-            timeout=config.startup_timeout,
+            timeout_seconds=config.startup_timeout_seconds,
         )
         if group.returncode:
             raise SandboxError("Cannot inspect bubblewrap resource controls")
@@ -177,7 +177,7 @@ class BubblewrapBackend(WorkerRuntime):
             if self._attempted:
                 output = await run_process(
                     [self.systemctl, "--user", "kill", "--signal=KILL", self.unit],
-                    timeout=10,
+                    timeout_seconds=10,
                 )
                 if output.returncode and not any(
                     text in output.stderr for text in (b"not loaded", b"not found", b"not running")
@@ -191,12 +191,14 @@ class BubblewrapBackend(WorkerRuntime):
         self._removed = True
 
     async def exchange(
-        self, payload: bytes, *, timeout: float, max_output_bytes: int
+        self, payload: bytes, *, timeout_seconds: float, max_output_bytes: int
     ) -> ProcessOutput:
         if self._state not in (RuntimeState.STARTING, RuntimeState.READY):
             raise SandboxError(f"Bubblewrap sandbox is not available: {self._state}")
         try:
-            return await self.channel.request(payload, timeout=timeout, maximum=max_output_bytes)
+            return await self.channel.request(
+                payload, timeout_seconds=timeout_seconds, maximum=max_output_bytes
+            )
         except OSError as error:
             await finish(self.aclose())
             raise SandboxError("Bubblewrap worker connection was lost") from error
@@ -217,7 +219,7 @@ class BubblewrapSandbox(Sandbox):
         env: dict[str, str] | None = None,
         limits: SandboxLimits | None = None,
         max_output_bytes: int = 1_048_576,
-        startup_timeout: float = 60.0,
+        startup_timeout_seconds: float = 60.0,
         executable: str = "bwrap",
         systemd_run: str = "systemd-run",
         systemctl: str = "systemctl",
@@ -237,7 +239,7 @@ class BubblewrapSandbox(Sandbox):
             env=env,
             limits=limits,
             max_output_bytes=max_output_bytes,
-            startup_timeout=startup_timeout,
+            startup_timeout_seconds=startup_timeout_seconds,
         )
 
 

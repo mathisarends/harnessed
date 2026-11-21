@@ -20,7 +20,7 @@ async def finish[T](work: Awaitable[T]) -> T:
 async def run_process(
     argv: list[str],
     *,
-    timeout: float,
+    timeout_seconds: float,
     input: bytes = b"",
     max_output_bytes: int = 1_048_576,
 ) -> ProcessOutput:
@@ -59,7 +59,7 @@ async def run_process(
 
     sending: asyncio.Task[None] | None = None
     try:
-        async with asyncio.timeout(timeout):
+        async with asyncio.timeout(timeout_seconds):
             process = await asyncio.shield(spawning)
             assert process.stdout is not None and process.stderr is not None
             readers = [
@@ -102,7 +102,7 @@ class WorkerProcess:
         self._drain: asyncio.Task[None] | None = None
         self._lock = asyncio.Lock()
 
-    async def start(self, argv: list[str], *, timeout: float, maximum: int) -> None:
+    async def start(self, argv: list[str], *, timeout_seconds: float, maximum: int) -> None:
         spawning = asyncio.create_task(
             asyncio.create_subprocess_exec(
                 *argv,
@@ -125,14 +125,16 @@ class WorkerProcess:
                 self.stderr.extend(chunk[: max(0, 8192 - len(self.stderr))])
 
         self._drain = asyncio.create_task(drain())
-        async with asyncio.timeout(timeout):
+        async with asyncio.timeout(timeout_seconds):
             assert self.process.stdout is not None
             ready = await self.process.stdout.readline()
         if ready.strip() != b'{"ready":true}':
             raise SandboxError("Sandbox worker did not become ready: " + self._diagnostics())
 
-    async def request(self, payload: bytes, *, timeout: float, maximum: int) -> ProcessOutput:
-        async with asyncio.timeout(timeout), self._lock:
+    async def request(
+        self, payload: bytes, *, timeout_seconds: float, maximum: int
+    ) -> ProcessOutput:
+        async with asyncio.timeout(timeout_seconds), self._lock:
             process = self.process
             if process is None or process.returncode is not None:
                 raise SandboxError("Sandbox worker is closed: " + self._diagnostics())

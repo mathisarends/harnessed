@@ -119,7 +119,7 @@ async def response_timeout():
             stopped.set()
 
     async with Agent(
-        model=ScriptedModel([]), approvals=Approvals(timeout=0.02, approver=disconnected)
+        model=ScriptedModel([]), approvals=Approvals(timeout_seconds=0.02, approver=disconnected)
     ).session() as session:
         try:
             await session.approvals.request(ToolCall("publish"), "Publish the artifact?")

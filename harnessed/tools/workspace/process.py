@@ -19,7 +19,7 @@ class ShellBackend(Protocol):
     Configure environment and capture limits on the backend itself.
     """
 
-    async def run(self, argv: list[str], *, cwd: Path, timeout: float) -> ProcResult:
+    async def run(self, argv: list[str], *, cwd: Path, timeout_seconds: float) -> ProcResult:
         """Run argv within timeout seconds; drain owned cleanup before returning or raising."""
         ...
 
@@ -77,6 +77,6 @@ class BackgroundShellBackend(ShellBackend, Protocol):
     process tree until termination, including after its parent tool call ends.
     """
 
-    async def start(self, argv: list[str], *, cwd: Path, timeout: float) -> ShellProcess:
+    async def start(self, argv: list[str], *, cwd: Path, timeout_seconds: float) -> ShellProcess:
         """Launch within timeout seconds and return an owned handle without waiting for exit."""
         ...

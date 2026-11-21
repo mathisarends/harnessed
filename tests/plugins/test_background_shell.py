@@ -91,7 +91,7 @@ async def test_background_plugin_can_use_an_explicit_backend_without_foreground_
             "list_commands",
         }
         command_id = await start(session, "print('explicit backend')")
-        result = await execute(session, "read_command", command_id=command_id, wait=5)
+        result = await execute(session, "read_command", command_id=command_id, wait_seconds=5)
         assert "explicit backend" in result.text and result.exit_code == 0
 
 
@@ -117,7 +117,7 @@ async def test_background_returns_live_output_and_accepts_stdin(tmp_path):
             session, "write_command", command_id=command_id, text="Grüße\n", eof=True
         )
         assert not written.is_error
-        result = await execute(session, "read_command", command_id=command_id, wait=5)
+        result = await execute(session, "read_command", command_id=command_id, wait_seconds=5)
         final = json.loads(result.text)
         assert final["state"] == "exited" and result.exit_code == 0
         assert "received: Grüße" in final["stdout"]
@@ -205,7 +205,7 @@ async def test_completion_arrives_in_next_step_while_agent_keeps_working(tmp_pat
 
 
 @pytest.mark.parametrize(
-    ("source", "timeout", "status", "state", "exit_code"),
+    ("source", "timeout_seconds", "status", "state", "exit_code"),
     [
         ("import sys; print('bad'); sys.exit(7)", 10, ToolStatus.ERROR, "exited", 7),
         (
@@ -218,12 +218,12 @@ async def test_completion_arrives_in_next_step_while_agent_keeps_working(tmp_pat
     ],
 )
 async def test_background_failure_and_timeout_retain_output(
-    tmp_path, source, timeout, status, state, exit_code
+    tmp_path, source, timeout_seconds, status, state, exit_code
 ):
     async with agent(tmp_path).session() as session:
         await session.pause()
-        command_id = await start(session, source, timeout=timeout)
-        result = await execute(session, "read_command", command_id=command_id, wait=5)
+        command_id = await start(session, source, timeout_seconds=timeout_seconds)
+        result = await execute(session, "read_command", command_id=command_id, wait_seconds=5)
         snapshot = json.loads(result.text)
         assert result.status == status and result.exit_code == exit_code
         assert snapshot["state"] == state and snapshot["stdout"]
@@ -236,7 +236,7 @@ async def test_launch_failure_notifies_without_retry(tmp_path):
         await session.pause()
         result = await execute(session, "start_command", argv=["missing-harnessed-command"])
         command_id = json.loads(result.text)["command_id"]
-        result = await execute(session, "read_command", command_id=command_id, wait=5)
+        result = await execute(session, "read_command", command_id=command_id, wait_seconds=5)
         assert result.is_error
         snapshot = json.loads(result.text)
         assert snapshot["state"] == "failed" and "FileNotFoundError" in snapshot["error"]
@@ -247,7 +247,7 @@ async def test_cancelled_or_expired_reads_do_not_cancel_command(tmp_path):
     process = await LocalShell().start(
         [sys.executable, "-u", "-c", "import sys; print(sys.stdin.read())"],
         cwd=tmp_path,
-        timeout=10,
+        timeout_seconds=10,
     )
     try:
         waiter = asyncio.create_task(process.wait())
@@ -299,7 +299,7 @@ async def test_background_process_tree_cleanup_and_retry(tmp_path, end):
             retried = await start(session, "print('retry worked')")
             assert retried != command_id
             assert (
-                await execute(session, "read_command", command_id=retried, wait=5)
+                await execute(session, "read_command", command_id=retried, wait_seconds=5)
             ).exit_code == 0
         elif end == "close":
             await session.aclose()
@@ -325,7 +325,7 @@ async def test_background_output_is_bounded_while_running(tmp_path):
             "print('latest diagnostic'); sys.stdin.read()",
         ],
         cwd=tmp_path,
-        timeout=10,
+        timeout_seconds=10,
     )
     try:
         await eventually(
@@ -365,7 +365,7 @@ async def test_run_only_backend_rejects_background_without_launching(tmp_path):
     seen = []
 
     class RunOnly:
-        async def run(self, argv, *, cwd, timeout):
+        async def run(self, argv, *, cwd, timeout_seconds):
             seen.append(argv)
             return ProcResult(0, "foreground", "")
 

@@ -11,13 +11,13 @@ from dataclasses import asdict
 from pathlib import PurePosixPath
 
 from . import filesystem
-from .models import CommandResult, Operation, Request
+from .models import PROTOCOL_VERSION, CommandResult, Operation, Request
 
 
 def command(request: Request) -> CommandResult:
     if sys.platform == "win32":
         raise RuntimeError("The sandbox worker must execute inside a POSIX sandbox")
-    if not request.argv or request.timeout <= 0 or request.max_output_bytes < 256:
+    if not request.argv or request.timeout_seconds <= 0 or request.max_output_bytes < 256:
         raise ValueError("Invalid command arguments or limits")
     components = filesystem.parts(request.path)
     process = subprocess.Popen(
@@ -32,7 +32,7 @@ def command(request: Request) -> CommandResult:
     captures = {"stdout": bytearray(), "stderr": bytearray()}
     totals = {"stdout": 0, "stderr": 0}
     budget = request.max_output_bytes // 2
-    deadline = time.monotonic() + request.timeout
+    deadline = time.monotonic() + request.timeout_seconds
     timed_out = False
 
     def kill() -> None:
@@ -81,6 +81,8 @@ def command(request: Request) -> CommandResult:
 def response(payload: str) -> str:
     try:
         data = json.loads(payload)
+        if data.get("version", PROTOCOL_VERSION) != PROTOCOL_VERSION:
+            raise ValueError("Unsupported sandbox protocol version")
         data["operation"] = Operation(data["operation"])
         request = Request(**data)
         value = _dispatch(request)
@@ -104,8 +106,6 @@ def main() -> None:
 def _dispatch(request: Request) -> object:
     if sys.platform == "win32":
         raise RuntimeError("The sandbox worker must execute inside a POSIX sandbox")
-    if request.version != 1:
-        raise ValueError("Unsupported sandbox protocol version")
     handler = _HANDLERS.get(request.operation)
     if handler is None:
         raise ValueError("Unknown sandbox operation")

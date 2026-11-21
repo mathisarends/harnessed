@@ -50,7 +50,7 @@ async def main() -> None:
             )
         elif step == 3:
             yield ModelChunk(
-                tool_call=ToolCall("read_command", {"command_id": command_id, "wait": 0.2})
+                tool_call=ToolCall("read_command", {"command_id": command_id, "wait_seconds": 0.2})
             )
         elif step == 4:
             yield ModelChunk(tool_call=ToolCall("terminate_command", {"command_id": command_id}))
@@ -63,7 +63,7 @@ async def main() -> None:
             )
         elif step == 6:
             yield ModelChunk(
-                tool_call=ToolCall("read_command", {"command_id": command_id, "wait": 5})
+                tool_call=ToolCall("read_command", {"command_id": command_id, "wait_seconds": 5})
             )
         else:
             yield ModelChunk(text="Background work inspected, terminated and retried.")
@@ -73,7 +73,7 @@ async def main() -> None:
         agent = Agent(
             model=CallbackModel(respond),
             approvals=Approvals(default=Decision.ASK, approver=lambda _: Decision.ALLOW),
-            plugins=[LocalWorkspace(root=workspace), Shell(), BackgroundShell(timeout=10)],
+            plugins=[LocalWorkspace(root=workspace), Shell(), BackgroundShell(timeout_seconds=10)],
         )
         async with agent.session() as session:
             result = await session.run("Demonstrate background shell control.")

@@ -258,7 +258,9 @@ async def test_http_startup_rejection_releases_connection(serve_http, status):
     async with serve_http(app) as url:
         model = ScriptedModel(["unused"])
         with pytest.raises(MCPError, match="Server returned an error response"):
-            await Agent(model=model, plugins=[MCP.http("web", url=url, startup_timeout=1)]).run("x")
+            await Agent(
+                model=model, plugins=[MCP.http("web", url=url, startup_timeout_seconds=1)]
+            ).run("x")
         assert model.requests == []
     assert requests == ["POST", "POST"]
 
@@ -361,7 +363,7 @@ async def test_malformed_http_response_fails_without_waiting_for_call_timeout(se
             await inner(scope, receive, send)
 
     async with serve_http(app) as url, Agent(model=ScriptedModel(["unused"])).session() as session:
-        await session.mount(MCP.http("web", url=url, call_timeout=1))
+        await session.mount(MCP.http("web", url=url, call_timeout_seconds=1))
         fail = True
         registry = session.scope[ToolRegistry]
         async with asyncio.timeout(0.5):
@@ -382,7 +384,7 @@ async def test_http_startup_timeout_cleans_up_pending_request(serve_http):
     app = Starlette(routes=[Route("/mcp", hang, methods=["POST"])])
     async with serve_http(app) as url:
         model = ScriptedModel(["unused"])
-        agent = Agent(model=model, plugins=[MCP.http("web", url=url, startup_timeout=0.5)])
+        agent = Agent(model=model, plugins=[MCP.http("web", url=url, startup_timeout_seconds=0.5)])
         opening = asyncio.create_task(agent.run("x"))
         try:
             await asyncio.wait_for(received.wait(), 2)
@@ -524,7 +526,12 @@ async def test_http_timeout_abort_and_unmount_wake_shared_connection_waiters(ser
         Agent(model=ScriptedModel(["unused"])).session() as session,
     ):
         mount = await session.mount(
-            MCP.http("web", url=url, parallel=True, call_timeout=0.5 if action == "timeout" else 10)
+            MCP.http(
+                "web",
+                url=url,
+                parallel=True,
+                call_timeout_seconds=0.5 if action == "timeout" else 10,
+            )
         )
         registry = session.scope[ToolRegistry]
         first = asyncio.create_task(registry.execute(ToolCall("web__slow", {"query": "one"})))
@@ -734,7 +741,8 @@ async def test_oauth_issuer_binding_prevents_credential_disclosure(serve_http, s
         model = ScriptedModel(["unused"])
         with pytest.raises((OAuthFlowError, RuntimeError), match="issuer"):
             await Agent(
-                model=model, plugins=[MCP.http("web", url=url, auth=auth, startup_timeout=2)]
+                model=model,
+                plugins=[MCP.http("web", url=url, auth=auth, startup_timeout_seconds=2)],
             ).run("x")
     assert metadata_requests
     assert token_requests == []

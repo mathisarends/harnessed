@@ -115,7 +115,7 @@ HTTP through FastMCP. `auth` accepts a bearer-token string, `"oauth"` or an
 `httpx.Auth` instance. `MCP.stdio(name, *, command, args=(), env=None, cwd=None, ...)`
 connects to an installed stdio MCP server, managing its subprocess for the client.
 Both accept `include_tools=None`, `readonly_tools=()`,
-`startup_timeout=10.0`, `call_timeout=60.0`, `parallel=False` and `enabled=True`.
+`startup_timeout_seconds=10.0`, `call_timeout_seconds=60.0`, `parallel=False` and `enabled=True`.
 `MCP(name, *, transport: MCPTransport, ...)` accepts a custom transport recipe
 implementing `create() -> fastmcp.client.transports.ClientTransport`.
 Each mount owns one connection and a fixed catalog of namespaced tools. See
@@ -180,10 +180,10 @@ values do not change model argument schemas or grant approval. See
 
 ## Subagents
 
-`Subagents(agents, *, max_parallel=3, max_calls=16, max_depth=1, timeout=180.0,
+`Subagents(agents, *, max_parallel=3, max_calls=16, max_depth=1, timeout_seconds=180.0,
 max_steps=8, token_budget=None)` from `harnessed.plugins` adds `spawn(agent, task)`,
-`status(child_id, timeout=10.0)`, `send(child_id, message)`,
-`wait(child_id, timeout=30.0)`, `cancel(child_id)` and `delegate(agent, task)`.
+`status(child_id, timeout_seconds=10.0)`, `send(child_id, message)`,
+`wait(child_id, timeout_seconds=30.0)`, `cancel(child_id)` and `delegate(agent, task)`.
 These tools are absent without the plugin. Values in `agents` implement
 `ChildSessionFactory`, including `Agent`. `spawn` returns after admission;
 `delegate` waits for a receipt. `status` asks the child for an explicit report,
@@ -208,7 +208,7 @@ shell/filesystem backends; compose them with `Shell()` and `Filesystem()`.
 Docker requires an explicit `image`; Bubblewrap requires a dedicated `rootfs`.
 Both accept `workspace=Workspace.copy_from(path)` or `Workspace.mount(path,
 readonly=True)`, `network=NetworkAccess.NONE`, explicit `env`, `SandboxLimits`,
-`max_output_bytes` and `startup_timeout`. No extra Python dependencies are required;
+`max_output_bytes` and `startup_timeout_seconds`. No extra Python dependencies are required;
 their native runtimes must be installed separately. Docker also accepts `runtime`
 for an application-configured OCI runtime.
 
@@ -221,7 +221,7 @@ returns typed `SandboxServices`: assign `shell = services.shell` and
 `SearchResult(matches, scanned_files, notes)` and executes in one built-in worker
 request. Text ranges count Unicode characters; a range that exceeds the transfer
 byte budget raises `ValueError`. Invalid UTF-8 raises `UnicodeError`.
-`Shell` accepts only `cwd`, `timeout` and `max_timeout`; configure `env` and
+`Shell` accepts only `cwd`, `timeout_seconds` and `max_timeout_seconds`; configure `env` and
 `max_output_bytes` on the sandbox/backend. Shell deadlines include queueing and
 launcher startup, and expired sandbox startup raises `TimeoutError`.
 `Sandbox(backend=MyBackend, workspace=...)` accepts a zero-argument constructor or
@@ -235,9 +235,9 @@ runtime requirements and the extension protocol.
 
 Import `BackgroundShell` from `harnessed.plugins` and register it explicitly with
 `LocalWorkspace(root=...)`, a sandbox, or `WorkspaceBackends(shell=backend)` in `Agent(plugins=...)`.
-`BackgroundShell(cwd=".", *, timeout=600.0, max_timeout=600.0,
+`BackgroundShell(cwd=".", *, timeout_seconds=600.0, max_timeout_seconds=600.0,
 max_background_commands=32)` requires an existing shell backend and a live session.
-It adds `start_command(argv, timeout=None)`, `read_command(command_id, wait=0.0)`,
+It adds `start_command(argv, timeout_seconds=None)`, `read_command(command_id, wait_seconds=0.0)`,
 `write_command(command_id, text="", *, eof=False)`, `terminate_command(command_id)` and
 `list_commands()`. `Shell` exposes the foreground command tool.
 

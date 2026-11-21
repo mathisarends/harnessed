@@ -111,8 +111,8 @@ Runtime tool events, tracing, output limits and spill use the existing pipeline.
 
 ## Lifetimes and failures
 
-`startup_timeout=10.0` bounds connection, initialization and catalog discovery.
-`call_timeout=60.0` bounds each tool execution, including result validation.
+`startup_timeout_seconds=10.0` bounds connection, initialization and catalog discovery.
+`call_timeout_seconds=60.0` bounds each tool execution, including result validation.
 Both must be finite positive numbers. Failed startup unwinds acquired resources.
 
 Timeout or cancellation closes that mount's connection and hides its tools.

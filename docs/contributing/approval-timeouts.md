@@ -4,8 +4,8 @@ Status: implemented. This is the current API contract.
 
 ## TL;DR
 
-Configure `Approvals(timeout=120)` once for every approval question in a session.
-Use `context.approve(reason, timeout=30)` only for a deliberate exception. A local
+Configure `Approvals(timeout_seconds=120)` once for every approval question in a session.
+Use `context.approve(reason, timeout_seconds=30)` only for a deliberate exception. A local
 value replaces the default and may be shorter or longer; omission and `None`
 inherit it. `AgentLoop` owns tool execution settings. Approval waiting preserves
 the asking task's remaining execution budget.
@@ -21,7 +21,7 @@ from harnessed import Approvals
 class DeploymentTools(Plugin):
     @tool
     async def deploy(self, *, context: Inject[ToolContext]) -> str:
-        if not await context.approve("Deploy to production?", timeout=30):
+        if not await context.approve("Deploy to production?", timeout_seconds=30):
             return "Deployment declined."
         # Perform the approved deployment here.
         return "Deployment approved."
@@ -30,7 +30,7 @@ class DeploymentTools(Plugin):
 agent = Agent(
     model=model,
     plugins=[DeploymentTools()],
-    approvals=Approvals(approver=ask_user, timeout=120),
+    approvals=Approvals(approver=ask_user, timeout_seconds=120),
 )
 ```
 
@@ -41,7 +41,7 @@ permission during that tool's execution; it is neither a tool nor a hook.
 The application allows the outer call by default. The tool asks when it reaches the deployment step.
 
 For an approval outside a tool, the existing lower-level API is
-`await session.approvals.request(call, reason, timeout=30)`, with a `ToolCall`
+`await session.approvals.request(call, reason, timeout_seconds=30)`, with a `ToolCall`
 identifying the action. It returns `Decision`; `context.approve()` returns
 `True` for `ALLOW`, and `False` for `DENY`.
 
@@ -49,11 +49,11 @@ identifying the action. It returns `Decision`; `context.approve()` returns
 
 | Level | API | Meaning |
 | --- | --- | --- |
-| Session default | `Approvals(timeout=120)` | Wait up to 120 seconds for each approval answer by default. |
-| One question | `context.approve(reason, timeout=30)` or `session.approvals.request(call, reason, timeout=30)` | Replace the default for this question only. |
+| Session default | `Approvals(timeout_seconds=120)` | Wait up to 120 seconds for each approval answer by default. |
+| One question | `context.approve(reason, timeout_seconds=30)` or `session.approvals.request(call, reason, timeout_seconds=30)` | Replace the default for this question only. |
 
 The default remains 300 seconds. All explicit values must be finite and positive.
-`None` means inheritance, not unlimited waiting. `timeout=300` can therefore
+`None` means inheritance, not unlimited waiting. `timeout_seconds=300` can therefore
 extend one question beyond a 120-second default. This setting is a default, not
 an application-enforced maximum. Outer application and subagent deadlines remain
 authoritative.
@@ -116,6 +116,6 @@ forwarding cannot extend the child's deadline.
 
 ## Migration
 
-Replace `AgentLoop(approval_timeout=value)` with `Approvals(timeout=value)`.
+Replace `AgentLoop(approval_timeout=value)` with `Approvals(timeout_seconds=value)`.
 Remove the loop argument when both were configured. The removed argument has
 no compatibility alias. Existing explicit request overrides retain their meaning.

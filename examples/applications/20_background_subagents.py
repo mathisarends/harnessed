@@ -70,11 +70,15 @@ async def main() -> None:
         elif parent_steps == 2:
             child_id = json.loads(request.messages[-1].text)["child_id"]
             print("Coordinator continues while child runs:", child_id)
-            yield ModelChunk(tool_call=ToolCall("status", {"child_id": child_id, "timeout": 2}))
+            yield ModelChunk(
+                tool_call=ToolCall("status", {"child_id": child_id, "timeout_seconds": 2})
+            )
         elif parent_steps == 3:
             print("Requested report:", json.loads(request.messages[-1].text)["report"]["text"])
             finish_work.set()
-            yield ModelChunk(tool_call=ToolCall("wait", {"child_id": child_id, "timeout": 2}))
+            yield ModelChunk(
+                tool_call=ToolCall("wait", {"child_id": child_id, "timeout_seconds": 2})
+            )
         else:
             yield ModelChunk(text="Coordinator received the review.")
 

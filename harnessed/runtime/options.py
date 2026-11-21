@@ -26,7 +26,7 @@ class AgentLoopConfig(PluginConfig):
     """Validated loop settings; the single source of their defaults."""
 
     max_steps: Annotated[int, Field(ge=1)] = 32
-    tool_timeout: Annotated[float, Field(gt=0)] = 30.0
+    tool_timeout_seconds: Annotated[float, Field(gt=0)] = 30.0
     max_parallel_tools: Annotated[int, Field(ge=1)] = 4
     on_max_tokens: TokenLimitBehavior = TokenLimitBehavior.ACCEPT
     output_retries: Annotated[int, Field(ge=0)] = 2
@@ -38,7 +38,7 @@ class AgentOptions:
     """Session loop settings; provider metadata is resolved for each request."""
 
     max_steps: int
-    tool_timeout: float
+    tool_timeout_seconds: float
     tool_output_limit: ToolOutputLimit
     max_parallel_tools: int
     error_formatter: ErrorFormatter | None
@@ -56,7 +56,7 @@ class AgentOptions:
     ) -> Self:
         return cls(
             max_steps=config.max_steps,
-            tool_timeout=config.tool_timeout,
+            tool_timeout_seconds=config.tool_timeout_seconds,
             tool_output_limit=tool_output_limit,
             max_parallel_tools=config.max_parallel_tools,
             error_formatter=error_formatter,

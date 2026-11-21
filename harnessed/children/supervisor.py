@@ -53,12 +53,12 @@ class ChildSessionSupervisor:
         child = await self._start(agent, task, context, background=True)
         return _view(child)
 
-    async def status(self, child_id: str, timeout: float) -> ToolResult:
-        _validate_timeout(timeout)
+    async def status(self, child_id: str, timeout_seconds: float) -> ToolResult:
+        _validate_timeout(timeout_seconds)
         child = self._child(child_id)
         execution = self._executions.get(child_id)
         if child.status is SubagentStatus.RUNNING and execution is not None:
-            await execution.status(timeout)
+            await execution.status(timeout_seconds)
         return _view(self._child(child_id))
 
     async def send(self, child_id: str, message: str) -> ToolResult:
@@ -71,12 +71,12 @@ class ChildSessionSupervisor:
         await execution.send(UserMessage(message))
         return ToolResult(json.dumps({"child_id": child_id, "accepted": True}))
 
-    async def wait(self, child_id: str, timeout: float) -> ToolResult:
-        _validate_timeout(timeout)
+    async def wait(self, child_id: str, timeout_seconds: float) -> ToolResult:
+        _validate_timeout(timeout_seconds)
         child = self._child(child_id)
         execution = self._executions.get(child_id)
         if child.status is SubagentStatus.RUNNING and execution is not None:
-            await asyncio.wait((execution.completion,), timeout=timeout)
+            await asyncio.wait((execution.completion,), timeout=timeout_seconds)
             if execution.completion.done():
                 result = execution.completion.result()
                 if isinstance(result, Exception):
@@ -209,8 +209,8 @@ class ChildSessionSupervisor:
         return child
 
 
-def _validate_timeout(timeout: float) -> None:
-    if not math.isfinite(timeout) or not 0 <= timeout <= 3600:
+def _validate_timeout(timeout_seconds: float) -> None:
+    if not math.isfinite(timeout_seconds) or not 0 <= timeout_seconds <= 3600:
         raise ToolError("Timeout must be between 0 and 3600 seconds")
 
 

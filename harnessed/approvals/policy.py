@@ -133,7 +133,7 @@ def approval_transition(records, event: DurableEvent) -> Approval | None:
 
 
 class ApprovalsConfig(PluginConfig):
-    timeout: Annotated[float, Field(gt=0)] = 300.0
+    timeout_seconds: Annotated[float, Field(gt=0)] = 300.0
 
 
 DEFAULT_APPROVALS = ApprovalsConfig()
@@ -151,14 +151,14 @@ class Approvals:
         deny: Iterable[ToolSelector] = (),
         approver: Approver | ApprovalCallback | None = None,
         policy: Callable[[ToolCall], Decision | None] | None = None,
-        timeout: float = DEFAULT_APPROVALS.timeout,
+        timeout_seconds: float = DEFAULT_APPROVALS.timeout_seconds,
     ) -> None:
         if default is not None and not isinstance(default, Decision):
             raise TypeError("default must be a Decision")
         if default is None:
             default = Decision.ALLOW if allow is None else Decision.DENY
         self.default = default
-        self.config = ApprovalsConfig(timeout=timeout)
+        self.config = ApprovalsConfig(timeout_seconds=timeout_seconds)
         self.approver = (
             approver
             if approver is None or isinstance(approver, Approver)

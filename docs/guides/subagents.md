@@ -61,9 +61,9 @@ required approval rules still apply.
 | Tool | Behavior |
 | --- | --- |
 | `spawn(agent, task)` | Admit a task and return a JSON snapshot containing `child_id` |
-| `status(child_id, timeout=10.0)` | Ask for a fresh report and wait at most `timeout` seconds for the answer |
+| `status(child_id, timeout_seconds=10.0)` | Ask for a fresh report and wait at most `timeout_seconds` seconds for the answer |
 | `send(child_id, message)` | Acknowledge guidance for the child's next step; queued children receive it when started |
-| `wait(child_id, timeout=30.0)` | Return the child's current snapshot, waiting up to `timeout` seconds for completion |
+| `wait(child_id, timeout_seconds=30.0)` | Return the child's current snapshot, waiting up to `timeout_seconds` seconds for completion |
 | `cancel(child_id)` | Cancel the child driver and drain its plugin cleanup before returning |
 | `delegate(agent, task)` | Start a task and wait until its terminal receipt |
 
@@ -120,7 +120,7 @@ See the offline [background example](examples.md#background-subagents).
 | `max_parallel` | `3` | Simultaneous child lifetimes for this parent mount |
 | `max_calls` | `16` | Delegations admitted across the parent session, including previous mounts and stored history |
 | `max_depth` | `1` | Maximum absolute depth, with the direct child at depth 1 |
-| `timeout` | `180.0` | Seconds for a delegation, including its wait for a child slot, startup and execution; at most 3600 |
+| `timeout_seconds` | `180.0` | Seconds for a delegation, including its wait for a child slot, startup and execution; at most 3600 |
 | `max_steps` | `8` | Maximum steps in each child turn |
 | `token_budget` | `None` | Optional child-turn input plus output token budget |
 

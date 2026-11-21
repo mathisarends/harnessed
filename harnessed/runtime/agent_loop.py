@@ -22,7 +22,7 @@ class AgentLoop:
         self,
         *,
         max_steps: int = _DEFAULTS.max_steps,
-        tool_timeout: float = _DEFAULTS.tool_timeout,
+        tool_timeout_seconds: float = _DEFAULTS.tool_timeout_seconds,
         max_parallel_tools: int = _DEFAULTS.max_parallel_tools,
         on_max_tokens: TokenLimitBehavior = _DEFAULTS.on_max_tokens,
         output_retries: int = _DEFAULTS.output_retries,
@@ -31,7 +31,7 @@ class AgentLoop:
     ) -> None:
         self.config = AgentLoopConfig(
             max_steps=max_steps,
-            tool_timeout=tool_timeout,
+            tool_timeout_seconds=tool_timeout_seconds,
             max_parallel_tools=max_parallel_tools,
             on_max_tokens=on_max_tokens,
             output_retries=output_retries,

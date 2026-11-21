@@ -125,6 +125,11 @@ style:
   file_naming:
     yaml_extension: yaml
   overrides:
+    plugin-imports:
+      match: harnessed.plugins
+      imports: {style: relative, max_relative_level: 1}
+      rules:
+        imports/forbidden-import-style: error
     model-adapter-structure:
       match: harnessed.models.pydantic_ai
       rules:
@@ -217,6 +222,7 @@ rules:
   modeling/redundant-str-enum-value: error
   modeling/str-enum-value-convention: error
   modeling/prefer-str-enum-discriminator: error
+  modeling/implicit-duration-unit: error
   typing/duplicate-literal-type: error
   typing/anonymous-tuple-type: error
   # Public API surface, including APIs exposed only for tests
@@ -240,9 +246,6 @@ rules:
   complexity/excess-attribute-depth: hint
   tests/independent-case-loop: hint
   modeling/dataclass-field-mutation: hint
-  modeling/implicit-duration-unit:
-    severity: hint
-    reason: Existing asyncio-style timeout names have units defined by their API contracts.
   idioms/loop-invariant-collection: hint
   complexity/excess-comprehension-loops: {severity: hint, max: 1}
   complexity/excess-constructor-decisions: {severity: hint, max: 2}

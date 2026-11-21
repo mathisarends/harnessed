@@ -1,15 +1,16 @@
 from harnessed.events.turn import FinalStepPolicy
-from harnessed.plugins.envelopes import CallEnvelope
-from harnessed.plugins.filesystem import Filesystem, FilesystemAction
-from harnessed.plugins.observations import LatestObservationOnly
-from harnessed.plugins.rules import Rules, when
-from harnessed.plugins.shell import BackgroundShell, Shell, ShellAction
-from harnessed.plugins.skills import Skill, Skills
-from harnessed.plugins.spill import Spill
-from harnessed.plugins.subagents import SubagentAction, Subagents
-from harnessed.plugins.workspace import LocalWorkspace, WorkspaceBackends
 from harnessed.runtime.plugin import Service
 from harnessed.tools import EnvelopePosition, InvalidEnvelope
+
+from .envelopes import CallEnvelope
+from .filesystem import Filesystem, FilesystemAction
+from .observations import LatestObservationOnly
+from .rules import Rules, when
+from .shell import BackgroundShell, Shell, ShellAction
+from .skills import Skill, Skills
+from .spill import Spill
+from .subagents import SubagentAction, Subagents
+from .workspace import LocalWorkspace, WorkspaceBackends
 
 __all__ = [
     "BackgroundShell",

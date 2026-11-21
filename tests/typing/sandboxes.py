@@ -35,7 +35,7 @@ async def use_services(sandbox: Sandbox, session: Session) -> None:
     file_system = services.file_system
     assert_type(shell, ShellBackend)
     assert_type(file_system, FileSystemBackend)
-    await shell.run(["python3", "--version"], cwd=Path(), timeout=30)
+    await shell.run(["python3", "--version"], cwd=Path(), timeout_seconds=30)
     assert_type(await file_system.read(Path("file.txt")), str)
     assert_type(await file_system.read_bytes(Path("result.bin"), limit=1024), bytes)
     assert_type(await file_system.grep("TODO", pattern="**/*.py", limit=20), SearchResult)

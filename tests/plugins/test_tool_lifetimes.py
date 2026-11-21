@@ -27,7 +27,7 @@ class MemoryShell:
     def __init__(self, label):
         self.label = label
 
-    async def run(self, argv: list[str], *, cwd: Path, timeout: float) -> ProcResult:
+    async def run(self, argv: list[str], *, cwd: Path, timeout_seconds: float) -> ProcResult:
         return ProcResult(0, self.label, "")
 
 

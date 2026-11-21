@@ -13,8 +13,8 @@ class ToolExecutionBudget:
     budget: the parent may still be doing work concurrently.
     """
 
-    def __init__(self, timeout: float | None) -> None:
-        self._timer = asyncio.timeout(timeout)
+    def __init__(self, timeout_seconds: float | None) -> None:
+        self._timer = asyncio.timeout(timeout_seconds)
         self._pause_depth = 0
 
     async def __aenter__(self) -> Self:

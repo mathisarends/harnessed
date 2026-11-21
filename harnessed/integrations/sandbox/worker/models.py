@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
+PROTOCOL_VERSION = 2
+
 
 class Operation(StrEnum):
     RUN = "run"
@@ -20,7 +22,7 @@ class Operation(StrEnum):
 @dataclass(frozen=True)
 class Request:
     operation: Operation
-    version: int = 1
+    version: int = PROTOCOL_VERSION
     path: str = "."
     text: str = ""
     old: str = ""
@@ -28,7 +30,7 @@ class Request:
     offset: int = 0
     limit: int | None = None
     argv: tuple[str, ...] = ()
-    timeout: float = 30.0
+    timeout_seconds: float = 30.0
     max_output_bytes: int = 1_048_576
     max_transfer_bytes: int = 16_777_216
 

@@ -103,7 +103,7 @@ async def test_resolver_none_inherits_the_execution_default() -> None:
         scope.provide(ToolRegistry, registry)
         await scope.plugin(Work())
         result = await asyncio.wait_for(
-            registry.execute(ToolCall("wait"), default_timeout=0.01), timeout=3
+            registry.execute(ToolCall("wait"), default_timeout_seconds=0.01), timeout=3
         )
         assert result.status is ToolStatus.TIMEOUT
 

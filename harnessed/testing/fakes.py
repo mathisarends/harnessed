@@ -122,7 +122,7 @@ class InMemoryFS:
 class CommandCall:
     argv: tuple[str, ...]
     cwd: Path
-    timeout: float
+    timeout_seconds: float
 
 
 class FakeShell:
@@ -132,8 +132,8 @@ class FakeShell:
         self.responses = dict(responses if responses is not None else {})
         self.calls: list[CommandCall] = []
 
-    async def run(self, argv: list[str], *, cwd: Path, timeout: float) -> ProcResult:
-        self.calls.append(CommandCall(tuple(argv), cwd, timeout))
+    async def run(self, argv: list[str], *, cwd: Path, timeout_seconds: float) -> ProcResult:
+        self.calls.append(CommandCall(tuple(argv), cwd, timeout_seconds))
         key = " ".join(argv)
         if key not in self.responses:
             raise ToolError(f"No fake command configured: {key}")

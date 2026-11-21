@@ -57,11 +57,11 @@ package-specific settings under `style.overrides`. Rule selectors use canonical
 
 | Severity | Policy |
 | --- | --- |
-| Error | Import cycles, foreign private access, unused public surface and source conventions such as explicit enum values, YAML filenames, named inline calculations, no mutable collection fields in frozen dataclasses and at most twelve private top-level definitions per module. |
+| Error | Import cycles, foreign private access, unused public surface and source conventions such as explicit enum values, duration units, YAML filenames, named inline calculations, no mutable collection fields in frozen dataclasses and at most twelve private top-level definitions per module. |
 | Error | Test quality checks cover private access, patch targets, observable outcomes, bounded waits, awaited mocks and deterministic data. At most three patches per test. Architecture and executable example tests run without mocks. |
 | Error (package policy) | `complexity/excess-comprehension-loops` allows one loop and `complexity/excess-constructor-decisions` allows two decisions in `models.pydantic_ai`, `plugins.mcp` and `integrations.sandbox.worker`. |
 | Warning | `imports/excess-package-imports`, parameters beyond the third positional one, unused inline suppressions, logger placement and package re-export spelling. |
-| Hint | Facade gaps, re-export-only modules, inline generic parameters, attribute depth, mutation in stateful dataclasses, duration units, loop-invariant collections, independent test cases, and comprehension and constructor complexity outside the stricter packages. |
+| Hint | Facade gaps, re-export-only modules, inline generic parameters, attribute depth, mutation in stateful dataclasses, loop-invariant collections, independent test cases, and comprehension and constructor complexity outside the stricter packages. |
 
 Hooks and CI use `--fail-on warning`, so metadata warnings such as unused
 suppressions fail too. Optional defaults select a fallback only for `None`;
@@ -78,7 +78,10 @@ Ordering fixes use `safe-only`. Reflection-sensitive sections require manual
 review and behavioral verification. Production names such as `utils` and
 `helpers` are forbidden in favor of responsibilities with concrete names.
 Module loggers follow the imports. Package facades declare `__all__` with plain
-imports for re-exports. The SDK root resolves its exports lazily.
+imports for re-exports. Use single-dot imports for re-exports from the facade's
+own package and absolute imports from other packages. Smelt enforces the import
+style within `harnessed.plugins`, and the architecture suite checks public
+re-exports. The SDK root resolves its exports lazily.
 
 `tests.layout: none` retains topic groups, root-level composition tests and
 consumer typing contracts without requiring mirrored paths. Use public behavior
@@ -103,7 +106,6 @@ The catalog review leaves these rules inactive for the current project.
 | `ARC009`, `ARC010` | Harnessed is a single uv project. |
 | `ARC012` | Strict coverage already requires an architectural assignment for production source. |
 | `IMP002` | Layer boundaries and the tool package's fan-out threshold cover import coupling where the expected dependency is known. |
-| `IMP003` | Ruff bans parent-relative imports. Smelt's relative style also prefers relative imports of child packages, which cross a package boundary here. |
 | `LAY002`, `LAY003` | Docstrings describe useful module contracts. Private module names distinguish implementation modules such as the sandbox worker client. |
 | `LAY006` | Methods are grouped by lifecycle and protocol. Definition order covers the outer structure. |
 | `IDM003` | Approvers, summarizers and responders have named protocol methods. |
@@ -167,6 +169,8 @@ local edits first. This repository does not vendor a generated skill copy.
   protects the architecture and executable example suites.
 - `LAY011` places both kernel loggers after imports, and `VIS008` standardizes
   package facades on plain imports with their existing `__all__` lists.
+- `MOD010` requires named durations and explicit units. Numeric Harnessed
+  options and tool arguments use `_seconds` for values measured in seconds.
 - `LAY010` identifies the supported `harnessed.hooks` import path. `TYP008`
   identifies the kernel's `Event` base, whose explicit invariant type variable
   fixes the result type. Both stay visible as hints.

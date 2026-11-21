@@ -33,7 +33,7 @@ ENGINE = json.dumps(
 async def test_docker_configuration_and_partial_startup_cleanup(tmp_path, monkeypatch, readonly):
     calls = []
 
-    async def run(argv, *, timeout, input=b"", max_output_bytes=1_048_576):
+    async def run(argv, *, timeout_seconds, input=b"", max_output_bytes=1_048_576):
         calls.append((argv, input))
         if "info" in argv:
             return ProcessOutput(0, ENGINE, b"")
@@ -89,13 +89,13 @@ async def test_docker_configuration_and_partial_startup_cleanup(tmp_path, monkey
     await backend.aclose()
     assert sum("rm" in call for call, _ in calls) == 1
     with pytest.raises(SandboxError, match="closed"):
-        await backend.shell.run(["test"], cwd=Path(), timeout=1)
+        await backend.shell.run(["test"], cwd=Path(), timeout_seconds=1)
 
 
 async def test_failed_docker_setup_removes_named_container(tmp_path, monkeypatch):
     calls = []
 
-    async def run(argv, *, timeout, **kwargs):
+    async def run(argv, *, timeout_seconds, **kwargs):
         calls.append(argv)
         if "info" in argv:
             return ProcessOutput(0, ENGINE, b"")
@@ -119,7 +119,7 @@ async def test_failed_docker_setup_removes_named_container(tmp_path, monkeypatch
 async def test_docker_rejects_missing_limits_and_automatic_volumes(tmp_path, monkeypatch, unsafe):
     calls = []
 
-    async def run(argv, *, timeout, **kwargs):
+    async def run(argv, *, timeout_seconds, **kwargs):
         calls.append(argv)
         if "info" in argv:
             data = json.loads(ENGINE)
@@ -140,7 +140,7 @@ async def test_docker_transport_cancellation_destroys_container(tmp_path, monkey
     started = asyncio.Event()
     calls = []
 
-    async def run(argv, *, timeout, **kwargs):
+    async def run(argv, *, timeout_seconds, **kwargs):
         calls.append(argv)
         if "exec" in argv:
             started.set()
@@ -169,7 +169,7 @@ async def test_docker_typed_services_handle_connection_loss_without_replaying(
 ):
     calls = []
 
-    async def run(argv, *, timeout, input=b"", **kwargs):
+    async def run(argv, *, timeout_seconds, input=b"", **kwargs):
         calls.append(argv)
         if "info" in argv:
             return ProcessOutput(0, ENGINE, b"")
@@ -192,7 +192,7 @@ async def test_docker_typed_services_handle_connection_loss_without_replaying(
     shell = backend.shell
     file_system = backend.file_system
     with pytest.raises(SandboxError):
-        await shell.run(["possibly-mutating-command"], cwd=Path(), timeout=1)
+        await shell.run(["possibly-mutating-command"], cwd=Path(), timeout_seconds=1)
     assert sum("exec" in argv for argv in calls) == 2  # Initialization and exactly one command.
     assert sum("rm" in argv for argv in calls) == 1
     with pytest.raises(SandboxError, match="closed"):
@@ -209,7 +209,7 @@ async def test_docker_publishes_services_after_readiness_and_cannot_reopen_after
     reached_worker = asyncio.Event()
     ready = asyncio.Event()
 
-    async def run(argv, *, timeout, **kwargs):
+    async def run(argv, *, timeout_seconds, **kwargs):
         if "info" in argv:
             return ProcessOutput(0, ENGINE, b"")
         if "image" in argv:
@@ -253,10 +253,10 @@ async def test_bubblewrap_command_uses_namespaces_and_verified_resource_controls
     verified = []
 
     class Channel:
-        async def start(self, argv, *, timeout, maximum):
+        async def start(self, argv, *, timeout_seconds, maximum):
             calls.append(argv)
 
-        async def request(self, payload, *, timeout, maximum):
+        async def request(self, payload, *, timeout_seconds, maximum):
             if json.loads(payload)["operation"] != "import":
                 raise BrokenPipeError("worker exited")
             return ProcessOutput(0, b'{"value":null,"error":null,"error_type":null}', b"")
@@ -264,7 +264,7 @@ async def test_bubblewrap_command_uses_namespaces_and_verified_resource_controls
         async def aclose(self):
             calls.append(["channel closed"])
 
-    async def run(argv, *, timeout):
+    async def run(argv, *, timeout_seconds):
         calls.append(argv)
         return ProcessOutput(0, b"/user.slice/test.scope\n", b"")
 
@@ -381,7 +381,7 @@ async def test_live_docker_batched_search_and_transfer_failures(tmp_path, monkey
                 "Path('binary.bin').write_bytes(b'\\xff')\n",
             ],
             cwd=Path(),
-            timeout=10,
+            timeout_seconds=10,
         )
         assert created.returncode == 0
         original_run = docker.run_process
@@ -440,7 +440,7 @@ async def exercise_live_sandbox(sandbox, tmp_path):
                 "Path('output.bin').write_bytes(b'\\x00\\xff')",
             ],
             cwd=Path(),
-            timeout=5,
+            timeout_seconds=5,
         )
         assert result.returncode == 0 and result.stdout.strip() == "source"
         await sandbox.export(session, source="output.bin", destination=tmp_path / "export.bin")
@@ -457,6 +457,6 @@ async def exercise_live_sandbox(sandbox, tmp_path):
         result = await shell.run(
             ["python3", "-c", "import socket; socket.create_connection(('1.1.1.1', 443), .5)"],
             cwd=Path(),
-            timeout=3,
+            timeout_seconds=3,
         )
         assert result.returncode != 0

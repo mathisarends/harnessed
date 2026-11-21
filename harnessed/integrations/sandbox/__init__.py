@@ -53,7 +53,7 @@ class Sandbox(Plugin[SandboxConfig], slot="workspace"):
         env: dict[str, str] | None = None,
         limits: SandboxLimits | None = None,
         max_output_bytes: int = 1_048_576,
-        startup_timeout: float = 60.0,
+        startup_timeout_seconds: float = 60.0,
     ) -> None:
         super().__init__(
             config=SandboxConfig(
@@ -62,7 +62,7 @@ class Sandbox(Plugin[SandboxConfig], slot="workspace"):
                 env=dict(env if env is not None else {}),
                 limits=limits if limits is not None else SandboxLimits(),
                 max_output_bytes=max_output_bytes,
-                startup_timeout=startup_timeout,
+                startup_timeout_seconds=startup_timeout_seconds,
             )
         )
         self.backend_factory = backend
@@ -73,7 +73,7 @@ class Sandbox(Plugin[SandboxConfig], slot="workspace"):
         scope.effect(backend.aclose)
         startup = asyncio.create_task(backend.start(self.config))
         try:
-            async with asyncio.timeout(self.config.startup_timeout):
+            async with asyncio.timeout(self.config.startup_timeout_seconds):
                 await asyncio.shield(startup)
         except BaseException:
             startup.cancel()

@@ -13,7 +13,7 @@ invariants where readers need them.
 
 Use absolute `harnessed` imports when crossing package boundaries. Parent-relative
 imports (`from ..` and `from ...`, including deeper forms) are not allowed.
-Single-dot relative imports within the same package remain allowed.
+Use single-dot relative imports for re-exports from the same package.
 
 ```python
 from harnessed.plugins.shell import LocalShell, ProcResult, ShellBackend
@@ -149,7 +149,7 @@ Document placeholder Protocol/abstract methods and the reason for broad exceptio
 handlers. Expand nested conditional expressions into explicit branches while
 preserving evaluation order. Duplicate functions, class names and repeated
 attribute-narrowing assertions are errors. Use named durations for waits and
-include units in new internal duration constants.
+include units in numeric duration constants, fields and parameters.
 Store related envelope metadata as named records instead of parallel sequences.
 Review `modeling/dataclass-field-mutation` hints against actual ownership.
 Frozen dataclasses with shared collections must own a read-only snapshot.

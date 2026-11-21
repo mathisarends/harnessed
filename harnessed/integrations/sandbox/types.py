@@ -67,7 +67,7 @@ class SandboxConfig(PluginConfig):
     env: dict[str, str] = Field(default_factory=dict)
     limits: SandboxLimits = Field(default_factory=SandboxLimits)
     max_output_bytes: int = Field(default=1_048_576, ge=256)
-    startup_timeout: float = Field(default=60.0, gt=0, le=600)
+    startup_timeout_seconds: float = Field(default=60.0, gt=0, le=600)
 
 
 @dataclass(frozen=True, slots=True)
