@@ -8,9 +8,9 @@ Harnessed 0.x is alpha software. Read the
 [release notes and compatibility policy](releases.md) before depending on its
 public APIs or persisted session formats.
 
-Harnessed 0.23.0 adds per-plugin instruction overrides and compaction handover
-notes. The [examples](guides/examples.md) follow a three-stage learning path.
-See the [release overview](releases.md) for upgrade steps and earlier releases.
+Harnessed 0.24.0 adds typed session values, hooks on committed events and tool
+selectors. See the [release overview](releases.md) for upgrade steps and earlier
+releases.
 
 | I want to... | Read |
 | --- | --- |

@@ -5,7 +5,7 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
-## Unreleased
+## 0.24.0 (Unreleased)
 
 ### Added
 
@@ -63,6 +63,13 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 
 ### Fixed
 
+- `SessionValue` validates defaults and writes against the persisted JSON
+  representation. Invalid writes leave the previous value and event log intact,
+  and strict schemas can read values restored from a snapshot.
+- Mutable `SessionValue` defaults are isolated between sessions. An update that
+  mutates its input and then fails leaves the current value intact.
+- Hooks on `PluginValueChangedEvent` can write another session value without
+  blocking on the original write.
 - Traces no longer export external image URLs that contain a value registered
   with `ContentCapture.redacted(...)`. A text placeholder replaces the image and
   `harnessed.input_messages.image_urls_redacted` counts the replacements; the

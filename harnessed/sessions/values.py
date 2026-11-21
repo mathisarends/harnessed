@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from contextlib import ExitStack
+from json import dumps
 from typing import TYPE_CHECKING, Any, overload, override
 
 from pydantic import TypeAdapter, ValidationError
 
 from harnessed.events import PluginValueChangedEvent
 from harnessed.kernel import ServiceView
-from harnessed.models.messages import freeze
+from harnessed.models.messages import JSONValue, freeze, to_dict
 
 if TYPE_CHECKING:
     from .log import SessionLog
@@ -18,20 +20,25 @@ class PluginValues:
     """Commit plugin values to the session log; the log's history owns the current values."""
 
     def __init__(self, log: SessionLog) -> None:
-        self.log = log
-        self.lock = asyncio.Lock()
+        self._log = log
+        self._lock = asyncio.Lock()
 
-    def raw(self, key: str) -> tuple[bool, Any]:
-        values = self.log.plugin_values
+    def raw(self, key: str) -> tuple[bool, JSONValue]:
+        values = self._log.plugin_values
         return key in values, values.get(key)
 
-    async def commit(self, key: str, value: Any) -> None:
-        """Append a change unless the committed value is already equal."""
-        frozen = freeze(value)
-        present, current = self.raw(key)
-        if present and current == frozen:
-            return
-        await self.log.append(PluginValueChangedEvent(key, frozen))
+    async def change[T](self, declaration: SessionValue[T], candidate: Callable[[], T]) -> T:
+        """Serialize changes through commit, then allow observers to write values too."""
+        with ExitStack() as guard:
+            await self._lock.acquire()
+            guard.callback(self._lock.release)
+            raw = declaration.encode(candidate())
+            value = declaration.decode(raw)
+            present, current = self.raw(declaration.key)
+            if not present or current != raw:
+                event = PluginValueChangedEvent(declaration.key, raw)
+                await self._log.append(event, on_committed=guard.close)
+            return value
 
 
 def _value_adapter(schema: Any, *, nullable: bool) -> TypeAdapter[Any]:
@@ -62,16 +69,23 @@ class SessionValue[T](ServiceView[PluginValues, "BoundSessionValue[T]"]):
         if not isinstance(key, str) or not key:
             raise ValueError("SessionValue requires a non-empty key")
         self.key = key
-        self.adapter: TypeAdapter[T] = _value_adapter(schema, nullable=default is None)
-        self.default: T = default
-        self.encode(default)
+        self._adapter: TypeAdapter[T] = _value_adapter(schema, nullable=default is None)
+        self._default = self.encode(default)
+        _ = self.decode(self._default)
 
-    def encode(self, value: T) -> Any:
-        return self.adapter.dump_python(value, mode="json")
+    @property
+    def default(self) -> T:
+        """Return a fresh value from the declaration's default snapshot."""
+        return self.decode(self._default)
 
-    def decode(self, raw: Any) -> T:
+    def encode(self, value: T) -> JSONValue:
+        raw = self._adapter.dump_python(value, mode="json", round_trip=True, warnings="error")
+        return freeze(raw)
+
+    def decode(self, raw: JSONValue) -> T:
+        payload = dumps(to_dict(raw), allow_nan=False)
         try:
-            return self.adapter.validate_python(raw)
+            return self._adapter.validate_json(payload)
         except ValidationError as error:
             raise ValueError(
                 f"Stored session value {self.key!r} does not match its declared type"
@@ -102,12 +116,8 @@ class BoundSessionValue[T]:
         Cancellation after the log accepted the change still leaves it committed,
         so read the value again instead of assuming the previous one.
         """
-        async with self._store.lock:
-            await self._store.commit(self._declaration.key, self._declaration.encode(value))
+        await self._store.change(self._declaration, lambda: value)
 
     async def update(self, change: Callable[[T], T]) -> T:
         """Apply a synchronous change to the current value and commit the result atomically."""
-        async with self._store.lock:
-            value = change(self.get())
-            await self._store.commit(self._declaration.key, self._declaration.encode(value))
-            return value
+        return await self._store.change(self._declaration, lambda: change(self.get()))
