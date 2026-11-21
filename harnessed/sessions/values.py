@@ -27,6 +27,15 @@ class PluginValues:
         values = self._log.plugin_values
         return key in values, values.get(key)
 
+    async def commit(
+        self, key: str, value: JSONValue, *, on_committed: Callable[[], None] | None = None
+    ) -> None:
+        """Append an encoded change unless the committed value is already equal."""
+        event = PluginValueChangedEvent(key, value)
+        present, current = self.raw(key)
+        if not present or current != event.value:
+            await self._log.append(event, on_committed=on_committed)
+
     async def change[T](self, declaration: SessionValue[T], candidate: Callable[[], T]) -> T:
         """Serialize changes through commit, then allow observers to write values too."""
         with ExitStack() as guard:
@@ -34,10 +43,7 @@ class PluginValues:
             guard.callback(self._lock.release)
             raw = declaration.encode(candidate())
             value = declaration.decode(raw)
-            present, current = self.raw(declaration.key)
-            if not present or current != raw:
-                event = PluginValueChangedEvent(declaration.key, raw)
-                await self._log.append(event, on_committed=guard.close)
+            await self.commit(declaration.key, raw, on_committed=guard.close)
             return value
 
 
