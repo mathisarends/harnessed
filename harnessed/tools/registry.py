@@ -27,7 +27,7 @@ from harnessed.kernel import (
 from harnessed.models import ToolCall, ToolDefinition, ToolResult, ToolStatus
 
 from .arguments import ToolArguments, tool_result_content
-from .availability import ToolAvailability, ToolExplanation
+from .availability import RecipeExclusions, ToolAvailability, ToolExplanation
 from .context import ToolContext, ToolContexts
 from .enabled import (
     BoundToolEnabled,
@@ -132,15 +132,8 @@ class ToolSpec:
     def needs(self) -> tuple[type, ...]:
         return (ToolRegistry,)
 
-    def mount(self, scope: Scope, callback: Callable) -> Disposer:
-        fields = None
-        if self.parameter_fields is not None:
-            if not isinstance(callback, MethodType):
-                raise TypeError("parameter_fields requires a bound @tool method")
-            fields = self.parameter_fields(callback.__self__)
-        return scope[ToolRegistry].register(
-            callback, spec=self, owner=scope, parameter_fields=fields
-        )
+    def mount(self, scope: Scope, callback: Callable) -> Disposer | None:
+        return scope[ToolRegistry].mount_declared(self, callback, owner=scope)
 
 
 type ErrorFormatter = Callable[[ToolCall, Exception], str]
@@ -232,8 +225,38 @@ class ToolRegistry:
         self._ctx = scope
         self._tools: dict[str, list[_Tool]] = {}
         self._converters: dict[type, list[_Converter]] = {}
+        self._exclusions: dict[Scope, RecipeExclusions] = {}
         self._references: list[ToolReference] = []
         self._envelopes: list[_RegistryEnvelope] = []
+
+    def exclude(self, references: frozenset[ToolReference], *, owner: Scope) -> None:
+        """Record the recipe exclusions for one activation's lifetime."""
+
+        def install(registration: RegistrationState) -> Callable[[], None]:
+            if owner in self._exclusions:
+                raise ValueError("Tool exclusions already configured for this activation")
+            self._exclusions[owner] = RecipeExclusions(references, registration)
+
+            def remove() -> None:
+                del self._exclusions[owner]
+
+            return remove
+
+        owner.register(install)
+
+    def mount_declared(
+        self, spec: ToolSpec, callback: Callable, *, owner: Scope
+    ) -> Disposer | None:
+        """Mount a selected method with its activation-specific parameter fields."""
+        exclusions = self._exclusions.get(owner)
+        if exclusions is not None and any(ref.matches(callback) for ref in exclusions.references):
+            return None
+        fields = None
+        if spec.parameter_fields is not None:
+            if not isinstance(callback, MethodType):
+                raise TypeError("parameter_fields requires a bound @tool method")
+            fields = spec.parameter_fields(callback.__self__)
+        return self.register(callback, spec=spec, owner=owner, parameter_fields=fields)
 
     def reference(self, selected: ToolReference, *, owner: Scope | PluginScope) -> None:
         def install(_registration: RegistrationState):
@@ -586,7 +609,11 @@ class ToolRegistry:
         """Inspect the current binding, including registrations hidden from the model."""
         tool = self._visible(self._tools.get(name, []))
         if tool is None:
-            return ToolExplanation(name, ToolAvailability.NOT_REGISTERED)
+            excluded = any(entry.explains(name) for entry in self._exclusions.values())
+            availability = (
+                ToolAvailability.EXCLUDED if excluded else ToolAvailability.NOT_REGISTERED
+            )
+            return ToolExplanation(name, availability)
         definition = self._layout(tool).definition
         missing = self._missing_services(tool, scope)
         if missing:
