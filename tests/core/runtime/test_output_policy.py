@@ -164,7 +164,7 @@ async def test_paused_finalization_restores_the_declared_output_contract(tmp_pat
     async with Agent(model=CallbackModel(respond), plugins=[Phased()], store=store).session(
         id="phased"
     ) as session:
-        session.on(SessionControlChangedEvent, changed)
+        session.scope.on(SessionControlChangedEvent, changed)
         await session.submit("Count", output=Answer, max_steps=3)
         await asyncio.wait_for(entered.wait(), 5)
         pause = asyncio.create_task(session.pause())

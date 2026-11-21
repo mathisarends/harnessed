@@ -83,7 +83,7 @@ async def test_rejected_pre_step_is_a_closed_turn_without_a_model_step():
     ).session() as agent:
         agent_audit = Audit(agent)
 
-        @agent.on(PreStep)
+        @agent.scope.on(PreStep)
         async def reject(event, next_):
             return StepDecision.reject()
 

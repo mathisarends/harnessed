@@ -68,7 +68,7 @@ async def test_compaction_window_uses_captured_model(context_window: int | None)
             ),
         ),
     ).session() as session:
-        session.on(PrepareRequest, swap)
+        session.scope.on(PrepareRequest, swap)
         assert (await session.run("hello")).text == "original"
         assert windows == [context_window or original.info.context_window]
         assert replacement.requests == []
@@ -92,7 +92,7 @@ async def test_default_summary_uses_captured_model_after_a_request_hook() -> Non
     ).session() as session:
         await session.run("x" * 4000)
         await session.run("retained")
-        session.on(PrepareRequest, swap)
+        session.scope.on(PrepareRequest, swap)
         assert (await session.run("current")).text == "second"
         assert session.last(CompactionAppliedEvent).summary == "summary"
         assert len(original.requests) == 4
@@ -114,7 +114,7 @@ async def test_manual_summary_uses_captured_model_before_start_observers() -> No
         def swap(event: CompactionStartedEvent) -> None:
             session.scope.provide(Model, replacement)
 
-        session.on(CompactionStartedEvent, swap)
+        session.scope.on(CompactionStartedEvent, swap)
         applied = await session.compact()
         assert applied is not None and applied.summary == "summary"
         assert len(original.requests) == 3
@@ -145,7 +145,7 @@ async def test_context_recovery_summary_uses_captured_model() -> None:
     ).session() as session:
         await session.run("x" * 4000)
         await session.run("retained")
-        session.on(PrepareRequest, swap)
+        session.scope.on(PrepareRequest, swap)
         assert (await session.run("current")).text == "continued"
         assert session.last(CompactionAppliedEvent).summary == "summary"
         assert len(original.requests) == 4

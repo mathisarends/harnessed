@@ -812,13 +812,13 @@ async def test_library_spans_correlate_with_waterfall_hooks_and_session_cleanup(
         plugins=[Cleanup(), OpenTelemetryTracer(tracer_provider=provider, trace_hooks=trace_hooks)],
     ).session() as session:
 
-        @session.on(Wrap)
+        @session.scope.on(Wrap)
         async def wrap(event: Wrap, next_: Next[int]) -> int:
             with library_span("browserrig.readiness") as measured:
                 measured.set_attribute("browserrig.ready", True)
                 return await next_() + 1
 
-        @session.on(Wrap)
+        @session.scope.on(Wrap)
         async def inner(event: Wrap, next_: Next[int]) -> int:
             with library_span("browserrig.extract"):
                 return await next_() + 1
@@ -1687,7 +1687,7 @@ async def test_graceful_stop_is_not_recorded_as_an_exception(telemetry):
             ):
                 release.set()
 
-        session.on(SessionAppended, release_on_stop)
+        session.scope.on(SessionAppended, release_on_stop)
         await session.stop()
     spans = exporter.get_finished_spans()
     assert len(spans) == 3

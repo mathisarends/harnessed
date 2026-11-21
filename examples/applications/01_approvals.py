@@ -111,17 +111,16 @@ async def listener_and_priorities():
 
 async def response_timeout():
     stopped = asyncio.Event()
+
+    async def disconnected(_request):
+        try:
+            await asyncio.Event().wait()
+        finally:
+            stopped.set()
+
     async with Agent(
-        model=ScriptedModel([]), approvals=Approvals(timeout=0.02)
+        model=ScriptedModel([]), approvals=Approvals(timeout=0.02, approver=disconnected)
     ).session() as session:
-
-        @session.on(RequestApproval)
-        async def disconnected(_event):
-            try:
-                await asyncio.Event().wait()
-            finally:
-                stopped.set()
-
         try:
             await session.approvals.request(ToolCall("publish"), "Publish the artifact?")
         except ApprovalUnavailable as error:

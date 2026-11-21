@@ -106,7 +106,9 @@ async def test_fallback_answer_is_validated_without_policies_or_application_tool
     async with Agent(model=model).session() as session:
         session_audit = Audit(session)
         policies = []
-        session.on(ToolPolicy, lambda ev, next_: policies.append(ev.call.name) or Decision.DENY)
+        session.scope.on(
+            ToolPolicy, lambda ev, next_: policies.append(ev.call.name) or Decision.DENY
+        )
         result = await session.run("Triage", output=Triage)
         assert result.output == Triage(severity=2, owner="sdk")
         assert result.completed

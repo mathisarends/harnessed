@@ -5,6 +5,34 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## Unreleased
+
+### Breaking changes
+
+- `Session.on(...)` was removed. Applications observe with `session.stream()` or
+  `session.subscribe()` and answer approvals with `Approvals(approver=...)`;
+  plugins use `@hook(...)`. Integrations that need a raw kernel listener call
+  `session.scope.on(Event, callback)`.
+- `SessionAppended` is no longer exported by `harnessed.hooks`. Plugins hook
+  committed durable events directly: `@hook(TurnEndedEvent)` for one class,
+  `@hook(A, B)` for several, or `@hook(DurableEvent)` for every committed event.
+  Hooks run only in the session where their plugin is mounted, so guards such as
+  `if event.log is not self.session.log` are unnecessary.
+
+### Upgrade from 0.23.0
+
+- Replace `session.on(Event, callback)` with a stream or subscription in
+  application code, or with `session.scope.on(Event, callback)` where a kernel
+  listener is required.
+- Replace `@hook(SessionAppended)` handlers that match `event.event` with hooks
+  on the matched event classes, and drop the session/log guard.
+
+### Documentation
+
+- [Observe from a plugin](docs/guides/streaming.md#observe-from-a-plugin)
+  describes hooks on committed events and their per-session isolation;
+  subagent children are separate sessions.
+
 ## 0.23.0 (2026-11-20)
 
 ### Added

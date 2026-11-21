@@ -38,7 +38,7 @@ async def test_concurrent_runs_return_their_own_text_usage_and_turn_without_wait
     ).session() as session:
         queued = asyncio.Event()
 
-        @session.on(InboxAddedEvent)
+        @session.scope.on(InboxAddedEvent)
         def sent(event):
             if event.message.text == "second":
                 queued.set()

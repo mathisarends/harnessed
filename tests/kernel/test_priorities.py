@@ -97,8 +97,8 @@ async def test_priority_flows_through_all_sdk_declaration_and_imperative_hook_ap
 
     harness = Application(model=ScriptedModel([]), plugins=[Feature(), Explicit()])
     async with harness.session() as agent:
-        agent.on(Ping, lambda ev: seen.append("agent-decorator"), priority=20)
-        dispose = agent.on(Ping, lambda ev: seen.append("agent-imperative"), priority=30)
+        agent.scope.on(Ping, lambda ev: seen.append("agent-decorator"), priority=20)
+        dispose = agent.scope.on(Ping, lambda ev: seen.append("agent-imperative"), priority=30)
         await agent.scope.dispatch(Ping())
         assert seen == [
             "class",
