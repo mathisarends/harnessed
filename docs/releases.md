@@ -4,7 +4,7 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
-## 0.25.0 (unreleased)
+## 0.25.0 (2026-11-21)
 
 Applications can [review approvals with a model](guides/approvals.md#review-an-approval-with-a-model)
 and [exclude individual tools from plugin recipes](guides/tools.md#exclude-tools-from-a-plugin).
