@@ -5,7 +5,26 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
-## Unreleased
+## 0.25.0 (unreleased)
+
+### Added
+
+- `Approvals(reviewer=...)` lets an application review a pending approval before
+  handing it to its usual responder. `AutoReview` runs a dedicated model session
+  with the pending call and a bounded text transcript. A reviewer can allow or
+  deny one request, or hand it off to the configured responder. Review and
+  handoff share the approval deadline. Approval resolutions record the response
+  source and optional rationale. See [model-backed approvals](docs/guides/approvals.md#review-an-approval-with-a-model).
+- `Plugin.without_tools(...)` returns a recipe that omits selected `@tool`
+  methods, including inherited methods, before schema construction and
+  predicate evaluation. `session.tools.explain(...)` reports `EXCLUDED` when
+  an active recipe excluded that name and no active tool supplies it. See
+  [tool exclusions](docs/guides/tools.md#exclude-tools-from-a-plugin).
+
+### Changed
+
+- Contributor checks use Smelt 0.14.0 and enforce explicit duration units in
+  numeric fields, parameters and constants.
 
 ### Breaking changes
 
@@ -16,6 +35,20 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   `start`. Model-facing shell and subagent calls use `timeout_seconds`, and
   `read_command` takes `wait_seconds`. Update scripted tool calls accordingly.
 - Bundled sandbox workers use protocol version 2 for the renamed duration field.
+
+### Upgrade from 0.24.0
+
+1. Update Harnessed API calls and configuration to use the new duration keys.
+   For example, use `AgentLoop(tool_timeout_seconds=...)`,
+   `Approvals(timeout_seconds=...)` and `MCP(startup_timeout_seconds=..., call_timeout_seconds=...)`.
+2. Update custom shell backends and scripted tool calls. Use `timeout_seconds`
+   for shell execution and subagent waits, and `wait_seconds` for `read_command`.
+   Deploy both ends of any custom sandbox worker transport together with protocol 2.
+3. Update consumers that enumerate approval and tool availability outcomes for
+   reviewer sources and `ToolAvailability.EXCLUDED`. Existing conversations and
+   checkpoints use format **4**, JSON-store envelopes use version **3**, and
+   audit envelopes use version **8**. When rolling out model review, update
+   audit readers before producing reviewer events.
 
 ## 0.24.0 (2026-11-21)
 

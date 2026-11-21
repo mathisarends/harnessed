@@ -4,6 +4,17 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
 is the complete version history and upgrade reference.
 
+## 0.25.0 (unreleased)
+
+Applications can [review approvals with a model](guides/approvals.md#review-an-approval-with-a-model)
+and [exclude individual tools from plugin recipes](guides/tools.md#exclude-tools-from-a-plugin).
+
+**Upgrade.** Rename duration keywords and scripted tool arguments to their
+explicit second-based names. Custom sandbox worker transports must use protocol
+**2**. See the
+[0.24.0 upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0240)
+for the API and event-consumer changes.
+
 ## 0.24.0 (2026-11-21)
 
 Plugins can persist typed [session values](guides/plugins.md#session-values),
@@ -166,9 +177,9 @@ contract alone does not keep a turn running. Persistence versions remain state
   notes identify these changes and any required upgrade steps.
 - Patch releases within a minor line are intended for compatible fixes. Pin the
   exact package version for reproducible deployments and persisted workflows.
-- Current conversation snapshots use state format **3**. Execution checkpoints
-  and JSON-store envelopes use format **3**; standalone audit-event envelopes
-  use version **6**. Unsupported versions fail explicitly without automatic
+- Current conversation snapshots and execution checkpoints use format **4**.
+  JSON-store envelopes use format **3**, and standalone audit-event envelopes
+  use version **8**. Unsupported versions fail explicitly without automatic
   migration. The changelog records formats used by earlier releases. Former JSONL
   session archives are not conversation snapshots.
 - Back up application-owned state and older archives before upgrading.
