@@ -17,6 +17,7 @@ from harnessed.runtime.hooks import (
     StepDecision,
     StreamModel,
     ToolPolicy,
+    TurnProgress,
     TurnStopping,
 )
 
@@ -39,5 +40,6 @@ __all__ = [
     "StepDecision",
     "StreamModel",
     "ToolPolicy",
+    "TurnProgress",
     "TurnStopping",
 ]

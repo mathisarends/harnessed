@@ -46,11 +46,11 @@ async def test_final_step_reserves_one_step_and_runtime_blocks_unadvertised_call
         async def before(self, event, next_):
             progress.append(
                 (
-                    event.step,
-                    event.max_steps,
-                    event.remaining_steps,
-                    event.is_last_step,
-                    event.is_final_step,
+                    event.progress.step,
+                    event.progress.max_steps,
+                    event.progress.remaining_steps,
+                    event.progress.is_last_step,
+                    event.progress.is_final_step,
                 )
             )
             return await next_()
@@ -179,7 +179,13 @@ async def test_progress_uses_each_turns_effective_limit_without_leaking_override
     class Observe(Plugin):
         @hook(PreStep)
         async def before(self, event, next_):
-            progress.append((event.max_steps, event.remaining_steps, event.is_last_step))
+            progress.append(
+                (
+                    event.progress.max_steps,
+                    event.progress.remaining_steps,
+                    event.progress.is_last_step,
+                )
+            )
             return await next_()
 
     async with Agent(
@@ -190,3 +196,32 @@ async def test_progress_uses_each_turns_effective_limit_without_leaking_override
         await session.run("two")
         assert [turn.start.limits.max_steps for turn in session_audit.turns] == [1, 5]
     assert progress == [(1, 1, True), (5, 5, False)]
+
+
+@pytest.mark.parametrize("policy", [FinalStepPolicy.NONE, FinalStepPolicy.SUMMARIZE])
+async def test_request_hooks_see_turn_progress_and_the_last_tool_step(policy):
+    seen = []
+
+    class Progress(Plugin):
+        @hook(PrepareRequest)
+        async def prepare(self, event, next_):
+            seen.append(event.progress)
+            return await next_()
+
+        @tool
+        async def work(self) -> str:
+            return "worked"
+
+    model = ScriptedModel([call("work"), call("work"), call("work"), "done"])
+    agent = Agent(model=model, plugins=[Progress()], loop=AgentLoop(max_steps=3, final_step=policy))
+    result = await agent.run("go")
+    summarize = policy is FinalStepPolicy.SUMMARIZE
+    assert {progress.turn_id for progress in seen} == {result.turn_id}
+    assert {progress.last_tool_step for progress in seen} == {2 if summarize else 3}
+    assert [(p.step, p.remaining_steps, p.is_final_step) for p in seen] == [
+        (1, 3, False),
+        (2, 2, False),
+        (3, 1, summarize),
+    ]
+    offered = [bool(request.tools) for request in model.requests]
+    assert offered == [True, True, not summarize]

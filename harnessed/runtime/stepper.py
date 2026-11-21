@@ -54,6 +54,7 @@ from .hooks import (
     PrepareRequest,
     PreStep,
     StepDecision,
+    TurnProgress,
 )
 from .options import AgentOptions
 from .output import OutputHandler
@@ -88,21 +89,15 @@ class StepRunner:
         self.observations = observations
         self._retries = RequestRetries(log, options)
 
-    async def run(
-        self,
-        turn: str,
-        step: int,
-        settings: GenerationSettings,
-        *,
-        max_steps: int,
-        final: bool = False,
-    ) -> bool:
+    async def run(self, progress: TurnProgress, settings: GenerationSettings) -> bool:
         await self.control.checkpoint()
         await self.scope.settle()
-        if not await self._start_step(turn, step, max_steps=max_steps, final=final):
+        if not await self._start_step(progress):
             return False
+        turn, step, max_steps = progress.turn_id, progress.step, progress.max_steps
+        final = progress.is_final_step
         model = self.scope[Model]
-        request = await self._prepare_request(settings, model=model, final=final)
+        request = await self._prepare_request(settings, model=model, progress=progress)
         request_id = uuid4().hex
         record = self._retries.request(request, request_id, model.info)
         try:
@@ -120,12 +115,13 @@ class StepRunner:
         )
         return True
 
-    async def _start_step(self, turn: str, step: int, *, max_steps: int, final: bool) -> bool:
+    async def _start_step(self, progress: TurnProgress) -> bool:
         """Apply PreStep to pending input and record the accepted step input."""
+        turn, step = progress.turn_id, progress.step
         pending = self.log.inbox.for_step(step)
         incoming = tuple(item.message for item in pending)
         decision = await self.scope.dispatch(
-            PreStep(self.context, incoming, step, max_steps=max_steps, is_final_step=final),
+            PreStep(self.context, incoming, progress),
             default=lambda incoming=incoming: StepDecision(incoming),
         )
         if not decision.accepted:
@@ -167,7 +163,7 @@ class StepRunner:
             await self.log.append(event)
 
     async def _prepare_request(
-        self, settings: GenerationSettings, *, model: Model, final: bool
+        self, settings: GenerationSettings, *, model: Model, progress: TurnProgress
     ) -> ModelRequest:
         """Build the step's model request through hooks, output policy and compaction."""
         request = ModelRequest(
@@ -176,9 +172,10 @@ class StepRunner:
             settings=settings,
         )
         request = await self.scope.dispatch(
-            PrepareRequest(self.context, request),
+            PrepareRequest(self.context, request, progress),
             default=lambda request=request: request,
         )
+        final = progress.is_final_step
         if final:
             request = replace(
                 request,
