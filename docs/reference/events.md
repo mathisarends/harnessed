@@ -132,7 +132,7 @@ in a new step receives a new identity. See the
 | `ToolPolicyAppliedEvent` | `tool.policy.applied` | Yes | No | Policy decision and source for `call_id` |
 | `ToolExecutionFinishedEvent` | `tool.execution.finished` | Yes | No | Raw execution receipt for `call_id`, before result review |
 | `ApprovalRequestedEvent` | `approval.requested` | Yes | No | Durable approval question for `request_id`, including call and scope |
-| `ApprovalResolvedEvent` | `approval.resolved` | Yes | No | Durable answer, interruption or unavailability for approval `request_id` |
+| `ApprovalResolvedEvent` | `approval.resolved` | Yes | No | Durable outcome for approval `request_id`, including the answer's source and optional rationale |
 | `ApprovalRevokedEvent` | `approval.revoked` | Yes | No | Revoke a reusable grant identified by approval `request_id` |
 | `OutputValidatedEvent` | `output.validated` | Yes | No | Validated output data for `turn_id`, `schema_id` and `message_id` |
 | `OutputValidationFailedEvent` | `output.validation.failed` | Yes | No | Failed output-validation attempt and feedback for `turn_id` |

@@ -15,7 +15,14 @@ from harnessed.events import (
 )
 from harnessed.events.codec import decode_event, encode_event
 from harnessed.kernel import Inject, hook
-from harnessed.models import Decision, ModelChunk, ToolCall, ToolStatus
+from harnessed.models import (
+    ApprovalResponse,
+    ApprovalSource,
+    Decision,
+    ModelChunk,
+    ToolCall,
+    ToolStatus,
+)
 from harnessed.plugins import Service
 from harnessed.runtime.hooks import RequestApproval, ToolPolicy
 from harnessed.testing import ScriptedModel
@@ -406,3 +413,12 @@ def test_unavailable_resolution_is_not_an_answer_or_a_persistent_permission():
         ApprovalResolvedEvent("request", Decision.ALLOW, status=ApprovalStatus.UNAVAILABLE)
     with pytest.raises(TypeError):
         ApprovalResolvedEvent("request", Decision.ALLOW, reason=123)
+
+
+def test_reviewer_allow_cannot_become_a_remembered_grant():
+    with pytest.raises(ValueError, match="one request"):
+        ApprovalResponse(Decision.ALLOW, source=ApprovalSource.REVIEWER, remember=True)
+    with pytest.raises(ValueError, match="one request"):
+        ApprovalResolvedEvent(
+            "request", Decision.ALLOW, source=ApprovalSource.REVIEWER, remember=True
+        )

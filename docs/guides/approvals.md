@@ -63,6 +63,33 @@ A repeated identical response is idempotent. A contradictory response fails.
 A question without a responder yields an unavailable result.
 `run()`, `submit()` and raw subscriptions install no UI responder.
 
+## Review an approval with a model
+
+Choose the actions that need review with `ask=[...]`, for example
+`Approvals(ask=[ShellAction.EXECUTE])`. A policy denial ends before the approval
+stage. Reviewers answer the same requests as other approvers.
+
+Return `ApprovalResponse(decision, source=ApprovalSource.REVIEWER, reason=reason)`
+using the types from `harnessed.models`. Use `Decision.ALLOW` or `Decision.DENY`.
+A reviewer answer applies to one call. `ApprovalResolvedEvent` records its
+source and rationale, and a denied tool result identifies the reviewer as the
+source. Existing answer shortcuts retain user attribution. Review rationales
+are audit data and may be persisted with the event.
+
+Use `approver=` when a callback owns the whole decision. To hand uncertain
+requests to an active UI stream, install a `RequestApproval` hook and return
+`None` to let the next responder answer. A configured `approver=` takes
+precedence over these hooks, so returning `None` from that callback makes the
+approval unavailable. A failed or timed-out reviewer also leaves the call blocked.
+For actions that need review each time, UI responders should approve individual
+requests. An existing remembered grant can satisfy a request before any responder is called.
+
+The [command reviewer example](examples.md#reviewing-approvals) uses a separate
+agent with structured output and no application tools. It sends the exact
+argument vector, an application-provided working directory and the user's task.
+Supply your own review policy, model and context when adapting it. Backend
+permissions and sandbox restrictions still apply to approved calls.
+
 ## Response timeouts
 
 `Approvals(timeout=120)` sets the default approval response timeout for the whole

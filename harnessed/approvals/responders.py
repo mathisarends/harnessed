@@ -4,8 +4,7 @@ from typing import Protocol, runtime_checkable
 
 from harnessed.events import ApprovalRequestedEvent
 from harnessed.kernel import Key
-from harnessed.models import Decision
-from harnessed.models.messages import ApprovalResponse
+from harnessed.models import ApprovalResponse, Decision
 
 
 @runtime_checkable

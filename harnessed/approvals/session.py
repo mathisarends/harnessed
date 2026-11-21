@@ -12,8 +12,7 @@ from harnessed.events import (
     ApprovalStatus,
 )
 from harnessed.kernel import Scope
-from harnessed.models import Decision, ToolCall
-from harnessed.models.messages import ApprovalResponse
+from harnessed.models import ApprovalResponse, Decision, ToolCall
 from harnessed.runtime.control import SessionControl
 from harnessed.runtime.hooks import RequestApproval
 from harnessed.sessions import SessionContext
@@ -137,6 +136,22 @@ class SessionApprovals:
         replaces that default for this question, even when it is longer.
         Missing responders and expired questions raise ``ApprovalUnavailable``.
         """
+        response = await self.request_response(
+            call, reason, scope=scope, identity=identity, approver=approver, timeout=timeout
+        )
+        return response.decision
+
+    async def request_response(
+        self,
+        call: ToolCall,
+        reason: str,
+        *,
+        scope: str = "tool-policy",
+        identity: str | None = None,
+        approver: Approver | None = None,
+        timeout: float | None = None,
+    ) -> ApprovalResponse:
+        """Use the same approval lifecycle as request(), returning the full answer."""
         self.control.check_open()
         if timeout is None:
             timeout = self.scope.get(ApprovalsConfig, DEFAULT_APPROVALS).timeout
@@ -155,10 +170,14 @@ class SessionApprovals:
                 decision = await self._answer_request(request, approver, timeout=timeout)
             await self.log.append(
                 ApprovalResolvedEvent(
-                    request.request_id, decision.decision, remember=decision.remember
+                    request.request_id,
+                    decision.decision,
+                    remember=decision.remember,
+                    source=decision.source,
+                    reason=decision.reason,
                 )
             )
-            return decision.decision
+            return decision
         except BaseException as exc:
             record = self.log.approval(request.request_id)
             if record is not None and record.pending:

@@ -49,6 +49,7 @@ _OFFLINE_EXAMPLES = (
     "examples.applications.19_subagents",
     "examples.applications.20_background_subagents",
     "examples.applications.21_tracing",
+    "examples.applications.22_review_approvals",
     "examples.plugin_authoring.01_explicit_composition",
     "examples.plugin_authoring.02_tool_context",
     "examples.plugin_authoring.03_validated_forms",
