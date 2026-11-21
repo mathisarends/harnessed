@@ -11,12 +11,12 @@ from harnessed.runtime.hooks import (
     RequestApproval,
     ReviewToolResult,
     SessionAborting,
-    SessionAppended,
     SessionClosing,
     SessionOpened,
     StepDecision,
     StreamModel,
     ToolPolicy,
+    TurnProgress,
     TurnStopping,
 )
 
@@ -33,11 +33,11 @@ __all__ = [
     "RequestApproval",
     "ReviewToolResult",
     "SessionAborting",
-    "SessionAppended",
     "SessionClosing",
     "SessionOpened",
     "StepDecision",
     "StreamModel",
     "ToolPolicy",
+    "TurnProgress",
     "TurnStopping",
 ]

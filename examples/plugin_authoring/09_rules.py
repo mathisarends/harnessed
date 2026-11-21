@@ -3,10 +3,11 @@
 import asyncio
 
 from harnessed import Agent, Plugin, tool
-from harnessed.events import InboxAddedEvent, InboxMode, ToolCallFinishedEvent
+from harnessed.events import ToolCallFinishedEvent
 from harnessed.hooks import ReviewToolResult
 from harnessed.kernel import hook
 from harnessed.models import ModelChunk, ToolCall, ToolResult, ToolStatus, UserMessage, user
+from harnessed.plugins import Filesystem
 from harnessed.plugins.rules import Rules, when
 from harnessed.testing import ScriptedModel
 
@@ -70,27 +71,14 @@ async def demo(name, policy):
     agent = Agent(model=model, plugins=[commands, policy])
     print(f"\n{name}")
     async with agent.session() as session:
-        steering = []
-
-        @session.on(InboxAddedEvent)
-        def inbox_changed(event):
-            if event.mode != InboxMode.FOLLOWUP:
-                steering.append(event)
-                print(f"{event.mode}: {event.message.text}")
-
         async with session.stream("Run the tests and investigate failures.") as run_stream:
             async for event in run_stream:
                 if isinstance(event, ToolCallFinishedEvent):
                     print(f"exit_code={event.result.exit_code}: {event.result.content}")
-        assert any(
-            "three times" in message.text
-            for request in model.requests
-            for message in request.messages
-        )
-        assert any(
-            isinstance(event, InboxAddedEvent) and event.mode == InboxMode.STEER
-            for event in steering
-        )
+        prompts = [message.text for request in model.requests for message in request.messages]
+        assert any("three times" in text for text in prompts)
+        steering = next(text for text in prompts if text.startswith("Stop editing"))
+        print(f"steer: {steering}")
 
 
 async def main():
@@ -99,16 +87,20 @@ async def main():
         "declarative-rules",
         Rules(
             [
-                when(tool="run_command", command_contains="git push").steer(
+                when(tool=SimulatedCommandsTools.run_command, command_contains="git push").steer(
                     "Never push directly. Open a PR instead."
                 ),
-                when(tool="run_command", exit_code=lambda code: code != 0, repeated=3).context(
-                    "Same command failed three times. Try something different."
-                ),
-                when(tool="run_command", exit_code=lambda code: code != 0, repeated=5).steer(
-                    "Stop editing. Summarize what you tried."
-                ),
-                when(tool="read_file", result_tokens_over=20000).note(
+                when(
+                    tool=SimulatedCommandsTools.run_command,
+                    exit_code=lambda code: code != 0,
+                    repeated=3,
+                ).context("Same command failed three times. Try something different."),
+                when(
+                    tool=SimulatedCommandsTools.run_command,
+                    exit_code=lambda code: code != 0,
+                    repeated=5,
+                ).steer("Stop editing. Summarize what you tried."),
+                when(tool=Filesystem.read_file, result_tokens_over=20000).note(
                     "File is large. Use a line range next time."
                 ),
             ],

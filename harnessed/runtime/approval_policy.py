@@ -17,7 +17,7 @@ from harnessed.kernel import PluginScope
 from harnessed.models import Decision, ToolCall
 from harnessed.models.messages import ApprovalResponse
 from harnessed.tools import PreparedToolCall, ToolRegistry
-from harnessed.tools.references import ApprovalSelector, ToolReference, approval_selector
+from harnessed.tools.references import ToolReference, ToolSelector, tool_selector
 
 from .plugin import PluginConfig
 
@@ -180,9 +180,9 @@ class Approvals:
         self,
         *,
         default: Decision | None = None,
-        allow: Iterable[ApprovalSelector] | None = None,
-        ask: Iterable[ApprovalSelector] = (),
-        deny: Iterable[ApprovalSelector] = (),
+        allow: Iterable[ToolSelector] | None = None,
+        ask: Iterable[ToolSelector] = (),
+        deny: Iterable[ToolSelector] = (),
         approver: Approver | ApprovalCallback | None = None,
         policy: Callable[[ToolCall], Decision | None] | None = None,
         timeout: float = DEFAULT_APPROVALS.timeout,
@@ -210,7 +210,7 @@ class Approvals:
                     "Approval rules require a collection of action enum members or decorated tools"
                 )
             for item in items:
-                self._add(approval_selector(item), decision)
+                self._add(tool_selector(item), decision)
 
     def _add(self, selector: StrEnum | ToolReference, decision: Decision) -> None:
         for existing, configured in self.rules:
@@ -230,7 +230,11 @@ class Approvals:
                 scope[ToolRegistry].reference(selector, owner=scope)
 
     def decide(self, plan: PreparedToolCall) -> Decision:
-        decisions = {decision for selector, decision in self.rules if _matches(selector, plan)}
+        decisions = {
+            decision
+            for selector, decision in self.rules
+            if plan.tool is not None and plan.tool.matches(selector)
+        }
         if len(decisions) > 1:
             raise ValueError("Conflicting approval rules match this registration")
         if decisions:
@@ -242,9 +246,3 @@ class Approvals:
                     raise TypeError("Approval policies must return Decision or None")
                 return decision
         return self.default
-
-
-def _matches(selector: StrEnum | ToolReference, plan: PreparedToolCall) -> bool:
-    if isinstance(selector, ToolReference):
-        return plan.callback is not None and selector.matches(plan.callback)
-    return plan.tool is not None and selector is plan.tool.action

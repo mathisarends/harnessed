@@ -42,6 +42,8 @@ def to_dict(value: Any) -> Any:
 type JSONMapping = Annotated[
     Mapping[str, Any], PlainSerializer(to_dict, return_type=dict[str, Any], when_used="json")
 ]
+# Any JSON value, frozen into tuples and read-only mappings by its owner.
+type JSONValue = Annotated[Any, PlainSerializer(to_dict, when_used="json")]
 
 
 class Role(StrEnum):

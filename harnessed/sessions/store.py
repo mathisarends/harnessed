@@ -13,7 +13,7 @@ from harnessed.events import (
     InboxAddedEvent,
     InboxRemovedEvent,
     ModelRequestedEvent,
-    PluginInstructionsChangedEvent,
+    PluginValueChangedEvent,
     SessionControlChangedEvent,
     ToolCallFinishedEvent,
     ToolExecutionFinishedEvent,
@@ -122,7 +122,7 @@ class SessionPersistence:
             | ApprovalRequestedEvent
             | ApprovalResolvedEvent
             | ApprovalRevokedEvent
-            | PluginInstructionsChangedEvent
+            | PluginValueChangedEvent
             | CompactionAppliedEvent
             | CheckpointExtension,
         ):

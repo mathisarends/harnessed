@@ -39,8 +39,8 @@ from harnessed.sessions import HistoryEntry
 from harnessed.sessions.log import SessionLog
 from harnessed.tracing import Span, span
 
-from .budget import ContextBudget
 from .compaction_notes import CompactionNotes, FittedNotes, PrepareCompaction
+from .meter import ContextState, measure_context
 from .tokens import CalibratedTokenCounter, TokenCounter, count_request
 
 logger = logging.getLogger(__name__)
@@ -54,21 +54,6 @@ DEFAULT_COMPACTION_PROMPT = (
     "repeating their details. Return a complete summary within the supplied text budget. "
     "Do not call tools."
 )
-
-
-@dataclass(frozen=True)
-class ContextState:
-    input_tokens: int
-    reserve_tokens: int
-    context_window: int | None
-    turns_since_compaction: int
-
-    @property
-    def ratio(self) -> float | None:
-        """Trigger occupancy includes the output reserve; event occupancy is input only."""
-        if self.context_window is None:
-            return None
-        return (self.input_tokens + self.reserve_tokens) / self.context_window
 
 
 @dataclass(frozen=True)
@@ -329,13 +314,8 @@ class CompactionManager:
     async def _state(
         self, request: ModelRequest, model: Model, counter: TokenCounter
     ) -> ContextState:
-        budget = self.scope.get(ContextBudget, ContextBudget())
-        input_tokens = await count_request(counter, request)
-        return ContextState(
-            input_tokens,
-            budget.output_reserve(request),
-            budget.window_limit(model.info.context_window),
-            self._session_log.uncompacted_turn_count,
+        return await measure_context(
+            request, model=model, counter=counter, scope=self.scope, log=self._session_log
         )
 
     async def _apply(

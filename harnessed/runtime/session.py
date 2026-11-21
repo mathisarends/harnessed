@@ -18,9 +18,6 @@ from harnessed.events import (
 from harnessed.events.stream import StreamItem
 from harnessed.events.turn import TurnLimits
 from harnessed.kernel import (
-    Disposer,
-    HookFactory,
-    ListenerFactory,
     Scope,
 )
 from harnessed.models import (
@@ -55,6 +52,7 @@ from .hooks import (
     SessionClosing,
 )
 from .inbox import InboxItem, InboxWriter, SessionInbox
+from .meter import ContextMeter
 from .mounts import PluginMount
 from .options import AgentOptions, RunOptions
 from .output import OutputHandler
@@ -83,6 +81,7 @@ class Session:
         scope.provide(TraceSession, TraceSession(self.id))
         self._boundary_state = session.boundary_state
         self._compaction = CompactionManager(scope, session)
+        scope.provide(ContextMeter, ContextMeter(scope, session))
         self.control = SessionControl(session, self._drive, lambda: _driving.get() is self)
         self._live_approvals = LiveApprovals()
         self.approvals = SessionApprovals(scope, session, self.control, self._live_approvals)
@@ -209,32 +208,6 @@ class Session:
     ) -> PluginMount:
         """Mount a capability using async with, or await a manually owned handle."""
         return PluginMount(self.scope, self.log.registry, plugin, section_delivery=section_delivery)
-
-    @overload
-    def on[H](
-        self,
-        event: HookFactory[H],
-        fn: None = None,
-        *,
-        prepend: bool = False,
-        priority: int = 0,
-        owner: Scope | None = None,
-    ) -> H: ...
-
-    @overload
-    def on[C](
-        self,
-        event: ListenerFactory[C],
-        fn: C,
-        *,
-        prepend: bool = False,
-        priority: int = 0,
-        owner: Scope | None = None,
-    ) -> Disposer: ...
-
-    def on(self, event, fn=None, *, prepend: bool = False, priority: int = 0, owner=None):
-        owner = owner if owner is not None else Scope.current() or self.scope
-        return owner.on(event, fn, prepend=prepend, priority=priority)
 
     @property
     def assets(self) -> AssetStore:

@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 
 from harnessed import Agent, AgentLoop, Compaction, Context, Plugin
-from harnessed.context import Summary, at_ratio, every_turns
+from harnessed.context import ContextState, Summary, at_ratio, every_turns
 from harnessed.errors import ConfigError, ContextLengthExceeded, SessionStateError
 from harnessed.events import (
     CompactionAppliedEvent,
@@ -29,7 +29,6 @@ from harnessed.models import (
     ToolCall,
 )
 from harnessed.models.model import UsagePurpose
-from harnessed.runtime.compaction import ContextState
 from harnessed.runtime.control import SessionStatus
 from harnessed.runtime.hooks import PrepareRequest
 from harnessed.testing import CallbackModel, ScriptedModel, reply
@@ -68,7 +67,7 @@ async def test_compaction_window_uses_captured_model(context_window: int | None)
             ),
         ),
     ).session() as session:
-        session.on(PrepareRequest, swap)
+        session.scope.on(PrepareRequest, swap)
         assert (await session.run("hello")).text == "original"
         assert windows == [context_window or original.info.context_window]
         assert replacement.requests == []
@@ -92,7 +91,7 @@ async def test_default_summary_uses_captured_model_after_a_request_hook() -> Non
     ).session() as session:
         await session.run("x" * 4000)
         await session.run("retained")
-        session.on(PrepareRequest, swap)
+        session.scope.on(PrepareRequest, swap)
         assert (await session.run("current")).text == "second"
         assert session.last(CompactionAppliedEvent).summary == "summary"
         assert len(original.requests) == 4
@@ -114,7 +113,7 @@ async def test_manual_summary_uses_captured_model_before_start_observers() -> No
         def swap(event: CompactionStartedEvent) -> None:
             session.scope.provide(Model, replacement)
 
-        session.on(CompactionStartedEvent, swap)
+        session.scope.on(CompactionStartedEvent, swap)
         applied = await session.compact()
         assert applied is not None and applied.summary == "summary"
         assert len(original.requests) == 3
@@ -145,7 +144,7 @@ async def test_context_recovery_summary_uses_captured_model() -> None:
     ).session() as session:
         await session.run("x" * 4000)
         await session.run("retained")
-        session.on(PrepareRequest, swap)
+        session.scope.on(PrepareRequest, swap)
         assert (await session.run("current")).text == "continued"
         assert session.last(CompactionAppliedEvent).summary == "summary"
         assert len(original.requests) == 4

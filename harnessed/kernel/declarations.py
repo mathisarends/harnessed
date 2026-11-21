@@ -5,7 +5,7 @@ from collections.abc import Callable, Iterable
 from functools import wraps
 from typing import TYPE_CHECKING, Any, Protocol, Self
 
-from .dependencies import DependencyField
+from .dependencies import ServiceView
 from .di import Dependency, annotation_dependency, bind_injected, injections
 from .effects import resolve
 from .events import Event
@@ -262,7 +262,7 @@ def _class_dependencies(cls: type[PluginBase]) -> dict[str, Dependency]:
     return {
         name: member.binding
         for name, member in _class_members(cls).items()
-        if isinstance(member, DependencyField)
+        if isinstance(member, ServiceView)
     }
 
 

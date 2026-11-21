@@ -47,7 +47,7 @@ from harnessed.models import (
     UserMessage,
 )
 from harnessed.models.assets import AssetStore, MemoryAssets
-from harnessed.models.messages import SpillRef
+from harnessed.models.messages import JSONValue, SpillRef
 from harnessed.models.model import sum_usage
 from harnessed.runtime.approval_policy import Approval, ApprovalState
 from harnessed.runtime.hooks import SessionAppended
@@ -320,8 +320,9 @@ class SessionLog:
         return self._closed_count
 
     @property
-    def plugin_instructions(self) -> dict[str, str]:
-        return self._history.plugin_instructions.copy()
+    def plugin_values(self) -> dict[str, JSONValue]:
+        """Committed plugin values by key; each value is frozen JSON."""
+        return self._history.plugin_values.copy()
 
     @property
     def resources(self) -> tuple[SpillRef, ...]:
@@ -336,7 +337,7 @@ class SessionLog:
         keys = {ref.path for entry in entries for ref in entry.resources}
         return SessionState(
             history=entries,
-            plugin_instructions=self.plugin_instructions,
+            plugin_values=self.plugin_values,
             turns=tuple(HistoryTurn(turn, boundary) for boundary, turn in self._turn_boundaries),
             steps=tuple(self._history.completed_steps),
             turns_since_compaction=self._uncompacted_turns,

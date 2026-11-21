@@ -19,15 +19,15 @@ from harnessed.events import (
     ToolArgumentsDeltaEvent,
     UserMessageEvent,
 )
-from harnessed.hooks import SessionAppended
 from harnessed.models import ModelChunk, ModelRequest, ToolCallDelta, UserMessage
-from harnessed.prompts.plugin_instructions import PluginInstructions
+from harnessed.runtime.hooks import SessionAppended
 from harnessed.sessions import (
     CheckpointExtension,
     SessionChange,
     SessionCommit,
     StoredSession,
 )
+from harnessed.sessions.values import PluginValues
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._checkpoints import checkpoint
 
@@ -87,9 +87,9 @@ async def test_token_deltas_are_live_without_scheduling_or_entering_commits(monk
         live.append(event)
 
     async with Agent(model=CallbackModel(tokens), store=store).session(id="stream") as session:
-        session.on(TextDeltaEvent, observe)
-        session.on(ReasoningDeltaEvent, observe)
-        session.on(ToolArgumentsDeltaEvent, observe)
+        session.scope.on(TextDeltaEvent, observe)
+        session.scope.on(ReasoningDeltaEvent, observe)
+        session.scope.on(ToolArgumentsDeltaEvent, observe)
         handle = await session.submit("Stream")
         try:
             await asyncio.wait_for(entered.wait(), timeout=5)
@@ -134,7 +134,7 @@ async def test_commits_cover_each_live_event_once_even_after_compaction_and_reop
 
     first_input = "first input " * 500
     async with agent.session(id="archive") as session:
-        session.on(SessionAppended, observe)
+        session.scope.on(SessionAppended, observe)
         await session.run(first_input)
         await session.run("kept")
         await session.run("second input")
@@ -161,7 +161,7 @@ async def test_coalescing_retains_ordered_changes_and_empty_flush_does_not_write
     monkeypatch.setattr(persistence_store, "_CHECKPOINT_INTERVAL_SECONDS", 60.0)
     store = RecordingStore()
     async with Agent(model=ScriptedModel([]), store=store).session(id="batch") as session:
-        await session.scope[PluginInstructions].set("seed", "ready")
+        await session.scope[PluginValues].commit("seed", "ready")
         before = len(store.commits)
         await session.emit(MessageAppendedEvent(UserMessage("first")))
         await session.emit(MessageAppendedEvent(UserMessage("second")))

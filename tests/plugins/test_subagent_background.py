@@ -12,12 +12,12 @@ from harnessed.events import (
     SubagentUpdatedEvent,
     ToolCallFinishedEvent,
 )
-from harnessed.hooks import SessionAppended
 from harnessed.integrations.json import JsonSessionStore
 from harnessed.kernel import PluginScope
 from harnessed.models import ModelChunk, ToolCall, ToolMessage, ToolStatus
 from harnessed.plugins import Subagents
 from harnessed.plugins.subagents import ChildActivity, ChildReportState
+from harnessed.runtime.hooks import SessionAppended
 from harnessed.sessions import SessionState
 from harnessed.testing import CallbackModel, ScriptedModel
 
@@ -222,7 +222,7 @@ async def test_status_asks_child_coalesces_requests_and_does_not_finish_task(
         monkeypatch.setattr(store, "save_session", delayed_save)
     parent.store = store
     async with parent.session() as session:
-        session.on(SessionAppended, requested)
+        session.scope.on(SessionAppended, requested)
         await session.run("Start")
         await asyncio.wait_for(blocked.wait(), coordination_timeout)
         result = await asyncio.wait_for(session.run("Ask"), coordination_timeout)
@@ -374,7 +374,7 @@ async def test_abort_during_start_admission_records_a_terminal_child():
         ScriptedModel([[ModelChunk(tool_call=_spawn())], "unused"]),
     )
     async with parent.session() as session:
-        session.on(SubagentStartedEvent, hold_start)
+        session.scope.on(SubagentStartedEvent, hold_start)
         handle = await session.submit("Start")
         await asyncio.wait_for(admitting.wait(), 2)
         await asyncio.wait_for(session.abort(), 2)
@@ -569,17 +569,17 @@ async def test_background_timeout_or_parent_failure_drains_children(ending, noti
     )
     async with parent.session() as session:
 
-        @session.on(InboxAddedEvent)
+        @session.scope.on(InboxAddedEvent)
         def notification_admitted(event):
             if event.message.text.startswith('{"type": "subagent.finished"'):
                 notification_queued.set()
 
-        @session.on(ToolCallFinishedEvent)
+        @session.scope.on(ToolCallFinishedEvent)
         async def wait_for_early_notification(event):
             if notification_timing == "during_turn" and event.call.name == "spawn":
                 await asyncio.wait_for(notification_queued.wait(), 2)
 
-        @session.on(SubagentFinishedEvent)
+        @session.scope.on(SubagentFinishedEvent)
         async def defer_late_notification(event):
             if notification_timing == "after_turn":
                 await asyncio.wait_for(parent_finished.wait(), 2)

@@ -117,7 +117,7 @@ async def test_dynamic_parallel_break_drains_started_calls_and_prevents_further_
     async with Agent(
         model=model, plugins=[Tools()], loop=AgentLoop(max_parallel_tools=2)
     ).session() as s:
-        s.on(ToolExecutionFinishedEvent, lambda event: break_recorded.set())
+        s.scope.on(ToolExecutionFinishedEvent, lambda event: break_recorded.set())
         task = asyncio.create_task(s.run("go"))
         try:
             await asyncio.wait_for(break_recorded.wait(), 3)

@@ -40,7 +40,6 @@ class PreparedToolCall:
     call: ToolCall
     scheduling: ToolScheduling
     error: ToolResult | None = None
-    callback: Callable | None = None
     grant_key: str | None = None
     binding: object | None = None
     output_limit: OutputLimitSetting = OutputLimit.INHERIT

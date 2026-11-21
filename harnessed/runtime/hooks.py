@@ -6,6 +6,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Self
 
 from harnessed.events import ApprovalRequestedEvent, DurableEvent, UserMessageEvent
+from harnessed.events.turn import FinalStepPolicy
 from harnessed.kernel import Bail, Emit, Waterfall
 from harnessed.kernel import Next as Next
 from harnessed.models import (
@@ -20,7 +21,13 @@ from harnessed.models import (
     ToolResult,
 )
 from harnessed.models.messages import ApprovalResponse
-from harnessed.tools import OutputLimit, OutputLimitSetting, ToolEnvelope, ToolInfo
+from harnessed.tools import (
+    OutputLimit,
+    OutputLimitSetting,
+    ToolEnvelope,
+    ToolInfo,
+    ToolSelector,
+)
 
 if TYPE_CHECKING:
     from harnessed.sessions import SessionContext
@@ -39,25 +46,51 @@ class StepDecision:
 
 
 @dataclass(frozen=True)
-class PreStep(Waterfall[StepDecision]):
-    session: SessionContext
-    messages: tuple[Message, ...]
+class TurnProgress:
+    """Where the current step stands within its turn's step allowance.
+
+    ``max_steps`` is the effective limit of the turn. Under
+    ``FinalStepPolicy.SUMMARIZE`` the last step is reserved for a text summary
+    without tools, so the last step that offers tools comes one step earlier.
+    """
+
+    turn_id: str
     step: int
-    max_steps: int = field(kw_only=True)
-    is_final_step: bool = field(default=False, kw_only=True)
+    max_steps: int
+    final_step: FinalStepPolicy = FinalStepPolicy.NONE
 
     @property
     def remaining_steps(self) -> int:
-        """Remaining step allowance, including the step about to start."""
+        """Remaining step allowance, including the current step."""
         return max(0, self.max_steps - self.step + 1)
 
     @property
     def is_last_step(self) -> bool:
+        """Whether no further step follows this one."""
         return self.remaining_steps == 1
+
+    @property
+    def is_final_step(self) -> bool:
+        """Whether this is the reserved summary step, which offers no tools."""
+        return self.final_step is FinalStepPolicy.SUMMARIZE and self.step == self.max_steps
 
     @property
     def is_turn_start(self) -> bool:
         return self.step == 1
+
+    @property
+    def last_tool_step(self) -> int:
+        """The last step of this turn that offers tools."""
+        if self.final_step is FinalStepPolicy.SUMMARIZE:
+            return self.max_steps - 1
+        return self.max_steps
+
+
+@dataclass(frozen=True)
+class PreStep(Waterfall[StepDecision]):
+    session: SessionContext
+    messages: tuple[Message, ...]
+    progress: TurnProgress
 
     @property
     def latest_user_text(self) -> str:
@@ -69,28 +102,36 @@ class PreStep(Waterfall[StepDecision]):
 
 
 @dataclass(frozen=True)
-class ExecuteTool(Waterfall[ToolResult]):
+class _PlannedTool:
+    """Selector matching shared by the hooks around one planned tool call."""
+
+    tool: ToolInfo | None = field(default=None, kw_only=True)
+
+    def matches(self, selector: ToolSelector) -> bool:
+        """Whether the planned registration matches; unknown tool names never match."""
+        return self.tool is not None and self.tool.matches(selector)
+
+
+@dataclass(frozen=True)
+class ExecuteTool(_PlannedTool, Waterfall[ToolResult]):
     call: ToolCall
     session: SessionContext
-    tool: ToolInfo | None = field(default=None, kw_only=True)
     envelope: ToolEnvelope = field(default=ToolEnvelope(), kw_only=True)
 
 
 @dataclass(frozen=True)
-class ToolPolicy(Waterfall[Decision]):
+class ToolPolicy(_PlannedTool, Waterfall[Decision]):
     call: ToolCall
     session: SessionContext
-    tool: ToolInfo | None = field(default=None, kw_only=True)
     envelope: ToolEnvelope = field(default=ToolEnvelope(), kw_only=True)
 
 
 @dataclass(frozen=True)
-class ReviewToolResult(Waterfall[ToolResult]):
+class ReviewToolResult(_PlannedTool, Waterfall[ToolResult]):
     call: ToolCall
     result: ToolResult
     session: SessionContext
     output_limit: OutputLimitSetting = field(default=OutputLimit.INHERIT, kw_only=True)
-    tool: ToolInfo | None = field(default=None, kw_only=True)
     envelope: ToolEnvelope = field(default=ToolEnvelope(), kw_only=True)
 
 
@@ -104,6 +145,7 @@ class PrepareRequest(Waterfall[ModelRequest]):
 
     session: SessionContext
     request: ModelRequest
+    progress: TurnProgress
 
 
 class OutputDecision(StrEnum):

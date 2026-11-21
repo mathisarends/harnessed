@@ -125,6 +125,39 @@ steps in the active turn. Forced and manual attempts bypass backoff. A provider
 projection and a new step, within the normal step limit. This recovery never
 re-executes completed tools and remains limited to one per turn.
 
+## Measure context occupancy in a plugin
+
+A plugin that adapts to a filling context depends on `ContextMeter` from
+`harnessed.context`. `measure(request)` returns the same `ContextState` that
+compaction triggers receive: estimated input tokens, the reserved output
+tokens, the effective window and the turns since the last compaction. The
+effective window is the model window capped by `Context(max_tokens=...)`, or
+that cap alone when the model does not report a window. `ratio` is `None` only
+when both are unknown.
+
+```python
+from harnessed import Plugin
+from harnessed.context import ContextMeter
+from harnessed.hooks import PrepareRequest
+from harnessed.kernel import Next, hook, needs
+from harnessed.models import ModelRequest, UserMessage
+
+
+class SaveEarly(Plugin):
+    meter = needs(ContextMeter)
+
+    @hook(PrepareRequest)
+    async def _remind(self, event: PrepareRequest, next_: Next[ModelRequest]) -> ModelRequest:
+        request = await next_()
+        state = await self.meter.measure(request)
+        if state.ratio is not None and state.ratio >= 0.7:
+            request = request.append_message(UserMessage("Save your progress notes now."))
+        return request
+```
+
+Counting tokens can call the provider, so measure only the requests whose
+occupancy the plugin needs.
+
 ## Add a plugin handover note
 
 `PrepareCompaction` runs once before generating candidates for an eligible

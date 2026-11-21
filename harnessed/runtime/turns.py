@@ -22,7 +22,7 @@ from harnessed.sessions.turns import Step, Turn, recorded_usage
 from harnessed.tracing import Span, span
 
 from .control import SessionControl
-from .hooks import TurnStopping
+from .hooks import TurnProgress, TurnStopping
 from .options import AgentOptions
 from .stepper import StepRunner
 
@@ -94,12 +94,12 @@ class TurnRunner:
             if budget is not None and self._spent_tokens() >= budget:
                 await self.log.append(TurnEndedEvent(turn, TurnOutcome.TOKEN_BUDGET))
                 return True
-            final = step == max_steps and start.final_step is FinalStepPolicy.SUMMARIZE
+            progress = TurnProgress(turn, step, max_steps, start.final_step)
             with self._step_span(turn, step):
-                if not await self.steps.run(turn, step, settings, max_steps=max_steps, final=final):
+                if not await self.steps.run(progress, settings):
                     return True
             await self.control.checkpoint()
-            if final:
+            if progress.is_final_step:
                 await self.log.append(TurnEndedEvent(turn, TurnOutcome.MAX_STEPS))
                 return True
             if await self._continue_from(self.log.current_turn().steps[-1]):

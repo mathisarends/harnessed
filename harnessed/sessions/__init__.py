@@ -11,9 +11,11 @@ from .context import SessionContext
 from .files import TextValue
 from .state import HistoryEntry, HistoryStep, HistoryTurn, SessionState
 from .store import SessionStore, StoredSession
+from .values import BoundSessionValue, SessionValue
 
 __all__ = [
     "AssetValue",
+    "BoundSessionValue",
     "CheckpointEntry",
     "CheckpointExtension",
     "CheckpointSeed",
@@ -26,6 +28,7 @@ __all__ = [
     "SessionContext",
     "SessionState",
     "SessionStore",
+    "SessionValue",
     "StoredSession",
     "TextValue",
 ]

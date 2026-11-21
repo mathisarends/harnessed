@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass as event_dataclass
 from dataclasses import field, replace
 from enum import StrEnum
-from typing import Annotated, Literal, Self, override
+from typing import Annotated, Any, Literal, Self, override
 
 from pydantic import AfterValidator, ConfigDict, Field, StringConstraints, TypeAdapter
 from pydantic.dataclasses import dataclass
@@ -17,12 +17,14 @@ from harnessed.events.base import Identifier
 from harnessed.kernel import Next, PluginScope, PluginState, hook, needs
 from harnessed.models import ModelRequest, ToolCall, ToolResult, UserMessage, user
 from harnessed.models.messages import to_dict
-from harnessed.prompts.plugin_instructions import PluginInstructions
 from harnessed.runtime.hooks import PrepareRequest, ReviewToolResult
 from harnessed.runtime.inbox import SessionInbox
 from harnessed.runtime.plugin import Plugin
 from harnessed.runtime.tokens import TokenCounter, count_content
+from harnessed.sessions import SessionValue
 from harnessed.sessions.log import SessionLog
+from harnessed.tools import ToolInfo, ToolReference, ToolSelector
+from harnessed.tools.references import tool_selector
 
 
 class RuleEventKind(StrEnum):
@@ -58,6 +60,8 @@ def _synchronous(callback):
 
 
 type RuleText = Annotated[str, StringConstraints(min_length=1, pattern=r"\S")]
+# Selectors hold arbitrary callables; normalization rejects plain tool names.
+type RuleTool = Annotated[Any, AfterValidator(tool_selector)]
 type ExitCondition = Annotated[Callable[[int], bool], AfterValidator(_synchronous)]
 type ResultCondition = Annotated[
     Callable[[ToolCall, ToolResult], bool], AfterValidator(_synchronous)
@@ -77,7 +81,7 @@ def _condition(callback, *args) -> bool:
 class Rule:
     __hash__ = None
 
-    tools: tuple[RuleText, ...] = ()
+    tools: tuple[RuleTool, ...] = ()
 
     command_contains: str | None = None
 
@@ -119,22 +123,29 @@ class Rule:
             return False
         return self.predicate is None or _condition(self.predicate, call, result)
 
+    def selects(self, tool: ToolInfo | None) -> bool:
+        """Whether the rule applies to a call of this registration; no tools selects all."""
+        if not self.tools:
+            return True
+        return tool is not None and any(tool.matches(selector) for selector in self.tools)
+
     def _action(self, kind: RuleAction, text: str) -> Rule:
         return replace(self, actions=(*self.actions, (kind, text)))
 
 
 def when(
     *,
-    tool: str | Iterable[str] | None = None,
+    tool: ToolSelector | Iterable[ToolSelector] | None = None,
     command_contains: str | None = None,
     exit_code: int | Callable[[int], bool] | None = None,
     repeated: int = 1,
     result_tokens_over: int | None = None,
     predicate: Callable[[ToolCall, ToolResult], bool] | None = None,
 ) -> Rule:
+    """Start a rule; `tool` takes action enum members or decorated `@tool` methods."""
     if tool is None:
         tools = ()
-    elif isinstance(tool, str):
+    elif isinstance(tool, str | ToolReference) or callable(tool):
         tools = (tool,)
     else:
         tools = tuple(tool)
@@ -145,7 +156,8 @@ class Rules(Plugin):
     session = needs(SessionLog)
     counter = needs(TokenCounter)
     inbox = needs(SessionInbox)
-    context = needs(PluginInstructions)
+    # Active context facts keyed by "<plugin name>:<rule index>", shared by Rules instances.
+    context = SessionValue(dict[str, str], key="harnessed.rules.context", default={})
 
     events = (RuleTriggeredEvent,)
     _counts = PluginState[Counter[tuple[int, str]]](Counter)
@@ -169,10 +181,11 @@ class Rules(Plugin):
         rule: Rule,
         call: ToolCall,
         *,
+        tool: ToolInfo | None,
         result: ToolResult,
         matched: bool | None = None,
     ) -> tuple[tuple[int, str] | None, int]:
-        if rule.tools and call.name not in rule.tools:
+        if not rule.selects(tool):
             return None, 0
         arguments = call.command or json.dumps(to_dict(call.arguments), sort_keys=True)
         key = (index, json.dumps([call.name, arguments], ensure_ascii=False))
@@ -191,9 +204,9 @@ class Rules(Plugin):
         result = await next_()
         matches = list(result.rule_matches)
         for index, rule in enumerate(self.rules):
-            key, count = self._count(index, rule, event.call, result=event.result)
+            rule_id = f"{self.name}:{index}"
+            key, count = self._count(index, rule, event.call, tool=event.tool, result=event.result)
             if key is not None:
-                rule_id = f"{self.name}:{index}"
                 if any(name == rule_id for name, _ in matches):
                     raise ValueError(f"Duplicate rules plugin name: {self.name!r}")
                 matches.append((rule_id, count > 0))
@@ -203,11 +216,11 @@ class Rules(Plugin):
                     and count == 0
                     and any(kind is RuleAction.CONTEXT for kind, _ in rule.actions)
                 ):
-                    await self.context.remove(f"rule:{self.name}:{index}")
+                    await self._forget([rule_id])
                 continue
             await self.session.append(
                 RuleTriggeredEvent(
-                    f"{self.name}:{index}",
+                    rule_id,
                     event.call.id,
                     count,
                     tuple(kind for kind, _ in rule.actions),
@@ -217,16 +230,26 @@ class Rules(Plugin):
                 if kind is RuleAction.NOTE:
                     result = result.with_note(text)
                 elif kind is RuleAction.CONTEXT:
-                    await self.context.set(f"rule:{self.name}:{index}", text)
+                    await self._remember(rule_id, text)
                 else:
                     await self.inbox.steer(user(text))
         return replace(result, rule_matches=tuple(matches))
 
+    async def _remember(self, rule_id: str, text: str) -> None:
+        await self.context.update(lambda facts: facts | {rule_id: text})
+
+    async def _forget(self, rule_ids: Iterable[str]) -> None:
+        stale = frozenset(rule_ids)
+        if stale & self.context.get().keys():
+            await self.context.update(
+                lambda facts: {
+                    rule_id: text for rule_id, text in facts.items() if rule_id not in stale
+                }
+            )
+
     @override
     async def teardown(self, scope: PluginScope) -> None:
-        for index, rule in enumerate(self.rules):
-            if any(kind is RuleAction.CONTEXT for kind, _ in rule.actions):
-                await self.context.remove(f"rule:{self.name}:{index}")
+        await self._forget(f"{self.name}:{index}" for index in range(len(self.rules)))
 
     @hook(PrepareRequest)
     async def enrich(
@@ -235,10 +258,10 @@ class Rules(Plugin):
         next_: Next[ModelRequest],
     ) -> ModelRequest:
         request = await next_()
-        for index, rule in enumerate(self.rules):
-            name = f"rule:{self.name}:{index}"
-            if any(kind is RuleAction.CONTEXT for kind, _ in rule.actions):
-                text = self.context.values.get(name)
-                if text is not None:
-                    request = request.append_message(UserMessage(text, id=name))
+        facts = self.context.get()
+        for index in range(len(self.rules)):
+            rule_id = f"{self.name}:{index}"
+            text = facts.get(rule_id)
+            if text is not None:
+                request = request.append_message(UserMessage(text, id=f"rule:{rule_id}"))
         return request

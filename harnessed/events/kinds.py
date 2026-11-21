@@ -18,7 +18,7 @@ class EventKind(StrEnum):
     SYSTEM_MESSAGE = "system.message"
     USER_MESSAGE = "user.message"
     MESSAGE_APPENDED = "message.appended"
-    PLUGIN_INSTRUCTIONS_CHANGED = "plugin.instructions.changed"
+    PLUGIN_VALUE_CHANGED = "plugin.value.changed"
     OBSERVATION_RECORDED = "observation.recorded"
     OBSERVATIONS_INCLUDED = "observations.included"
     MODEL_REQUESTED = "model.requested"

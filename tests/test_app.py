@@ -7,16 +7,17 @@ import pytest
 from harnessed import Agent, Approvals, Plugin, SystemPrompt, tool
 from harnessed.events import (
     CompactionAppliedEvent,
-    PluginInstructionsChangedEvent,
+    PluginValueChangedEvent,
     ToolPolicyAppliedEvent,
     TurnEndedEvent,
     TurnStartedEvent,
 )
-from harnessed.kernel import PluginScope, needs
+from harnessed.kernel import PluginScope
 from harnessed.models import Decision, ModelChunk, ToolCall, ToolStatus
 from harnessed.prompts import Instructions
-from harnessed.prompts.plugin_instructions import PluginInstructions
+from harnessed.sessions import SessionValue
 from harnessed.sessions.log import SessionLog
+from harnessed.sessions.values import PluginValues
 from harnessed.testing import ScriptedModel
 
 
@@ -121,7 +122,7 @@ async def test_removed_runtime_plugins_are_collectable_while_the_session_stays_o
         await session.scope.settle()
         gc.collect()
         assert all(reference() is None for reference in references)
-        assert not session.scope[PluginInstructions].values
+        assert not session.snapshot().plugin_values
 
 
 async def test_default_policy_allows_each_unrestricted_tool():
@@ -173,13 +174,11 @@ async def test_denials_distinguish_policy_from_the_user_in_log_and_result(user_a
 
 
 async def test_feature_instruction_state_survives_compaction_without_creating_messages():
-    from harnessed.prompts.plugin_instructions import PluginInstructions
-
     session = SessionLog("context-compaction")
-    values = PluginInstructions(session)
+    values = PluginValues(session)
     await session.append(TurnStartedEvent("first"))
-    await values.set("user", "old")
-    await values.set("user", "current")
+    await values.commit("user", "old")
+    await values.commit("user", "current")
     await session.append(TurnEndedEvent("first"))
     await session.append(
         CompactionAppliedEvent(len(session), "Earlier work.", before_tokens=0, after_tokens=0)
@@ -188,7 +187,7 @@ async def test_feature_instruction_state_survives_compaction_without_creating_me
     assert "current" not in text and "old" not in text
     replay = SessionLog("context-replay", state=session.snapshot())
     assert replay.messages == session.messages
-    assert PluginInstructions(replay).values == {"user": "current"}
+    assert replay.plugin_values == {"user": "current"}
 
 
 async def test_public_session_type_and_forks_open_as_independent_conversations():
@@ -210,10 +209,10 @@ async def test_public_session_type_and_forks_open_as_independent_conversations()
 
 async def test_raw_subscription_includes_dependent_teardown_before_it_finishes():
     class Temporary(Plugin):
-        state = needs(PluginInstructions)
+        state = SessionValue(str, key="tests.temporary")
 
         async def teardown(self, scope: PluginScope) -> None:
-            await self.state.remove("temporary")
+            await self.state.set(None)
 
     app = Agent(model=ScriptedModel(["done"]), plugins=[Temporary()])
     seen = []
@@ -225,9 +224,9 @@ async def test_raw_subscription_includes_dependent_teardown_before_it_finishes()
 
         observing = asyncio.create_task(observe())
         await asyncio.sleep(0)
-        await session.scope[PluginInstructions].set("temporary", "present")
+        await session.scope[PluginValues].commit("tests.temporary", "present")
         await session.run("Go")
         assert not observing.done()
     await asyncio.wait_for(observing, 2)
-    changes = [event for event in seen if isinstance(event, PluginInstructionsChangedEvent)]
+    changes = [event for event in seen if isinstance(event, PluginValueChangedEvent)]
     assert [event.value for event in changes] == ["present", None]

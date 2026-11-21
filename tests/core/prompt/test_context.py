@@ -144,8 +144,8 @@ async def test_push_context_from_pre_step_is_in_the_current_request():
     class Recall(Plugin):
         @hook(PreStep)
         async def recall(self, event, next_):
-            seen.append((event.is_turn_start, event.latest_user_text))
-            if event.is_turn_start:
+            seen.append((event.progress.is_turn_start, event.latest_user_text))
+            if event.progress.is_turn_start:
                 await event.session.append_message(UserMessage("Relevant memory: prefers Python"))
             return await next_()
 

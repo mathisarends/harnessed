@@ -272,7 +272,7 @@ async def test_explicit_and_live_registration():
     async with harness.session() as agent:
         handle = await agent.mount(Live())
         seen = []
-        agent.on(ToolCallFinishedEvent, lambda event: seen.append(event.result.content))
+        agent.scope.on(ToolCallFinishedEvent, lambda event: seen.append(event.result.content))
         await agent.run("echo")
         assert seen == ["hello\n\nok"]
         assert {d.name for d in model.requests[0].tools} == {"echo", "alias", "live"}
@@ -287,7 +287,7 @@ async def test_pre_step_rejection_consumes_input_permanently():
         agent_audit = Audit(agent)
         reject = True
 
-        @agent.on(PreStep)
+        @agent.scope.on(PreStep)
         async def gate(event, next_):
             return StepDecision.reject() if reject else await next_()
 
@@ -407,7 +407,7 @@ async def test_observer_failure_closes_model_iterator_before_run_returns():
         model=ResourceModel(), approvals=Approvals(default=Decision.ALLOW)
     ).session() as agent:
 
-        @agent.on(TextDeltaEvent)
+        @agent.scope.on(TextDeltaEvent)
         def broken(event):
             raise ValueError("observer failure")
 

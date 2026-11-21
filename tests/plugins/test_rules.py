@@ -5,18 +5,26 @@ from harnessed import Approvals, Context, Decision, Plugin, tool
 from harnessed.errors import SessionFormatError
 from harnessed.events import (
     InboxAddedEvent,
-    PluginInstructionsChangedEvent,
+    PluginValueChangedEvent,
     ToolCallFinishedEvent,
 )
 from harnessed.events.codec import decode_event, encode_event
 from harnessed.kernel import PluginScope, PluginStatus
 from harnessed.models import ModelChunk, Role, ToolCall, ToolResult, ToolStatus
 from harnessed.plugins.rules import RuleAction, Rules, RuleTriggeredEvent, when
-from harnessed.plugins.shell import ProcResult
-from harnessed.prompts.plugin_instructions import PluginInstructions
+from harnessed.plugins.shell import ProcResult, ShellAction
 from harnessed.sessions.log import SessionLog
+from harnessed.sessions.values import PluginValues
 from harnessed.testing import ScriptedModel
 from tests._audit import Audit, AuditProjection
+
+RULES_CONTEXT = "harnessed.rules.context"
+
+
+class Commands(Plugin):
+    @tool
+    async def bash(self, command: str) -> str:
+        return command
 
 
 def scripted_commands(commands):
@@ -27,7 +35,7 @@ def scripted_commands(commands):
 
 
 async def test_rules_events_require_the_plugin_catalog_for_replay():
-    rules = Rules([when(tool="publish").note("Record publication")])
+    rules = Rules([when(tool=Commands.bash).note("Record publication")])
     event = RuleTriggeredEvent("rules:0", "call", 1, (RuleAction.NOTE,))
     async with Application(model=ScriptedModel([]), plugins=[rules]).session() as session:
         audit = Audit(session)
@@ -52,10 +60,12 @@ async def test_rule_note_context_steer_order_and_structured_exit_code():
 
     rules = Rules(
         [
-            when(tool="bash", command_contains="git push")
+            when(tool=ToolsPlugin.bash, command_contains="git push")
             .note("Open a PR.")
             .steer("Never push directly."),
-            when(tool="bash", exit_code=lambda code: code != 0).context("Consider the failure."),
+            when(tool=ToolsPlugin.bash, exit_code=lambda code: code != 0).context(
+                "Consider the failure."
+            ),
         ]
     )
     model = ScriptedModel(scripted_commands(["git push origin main"]))
@@ -70,7 +80,7 @@ async def test_rule_note_context_steer_order_and_structured_exit_code():
         assert [e.mode for e in inbox] == ["followup", "steer"]
         assert inbox[-1].message.role == Role.USER
         assert any("Consider the failure." in m.text for m in model.requests[-1].messages)
-        assert agent.scope[PluginInstructions].values["rule:rules:1"] == "Consider the failure."
+        assert agent.snapshot().plugin_values[RULES_CONTEXT]["rules:1"] == "Consider the failure."
         triggered = [e for e in agent_audit.events if isinstance(e, RuleTriggeredEvent)]
         assert triggered[0].actions == ("note", "steer")
         assert AuditProjection(agent_audit.events).messages == agent.log.messages
@@ -98,7 +108,11 @@ async def test_repeated_failures_are_grouped_by_command_reset_on_success_and_fir
     ]
     model = ScriptedModel(scripted_commands(commands))
     rules = Rules(
-        [when(tool="bash", exit_code=lambda c: c != 0, repeated=3).context("Third failure")]
+        [
+            when(tool=ToolsPlugin.bash, exit_code=lambda c: c != 0, repeated=3).context(
+                "Third failure"
+            )
+        ]
     )
     async with Application(
         model=model, approvals=Approvals(default=Decision.ALLOW), plugins=[tools, rules]
@@ -108,7 +122,9 @@ async def test_repeated_failures_are_grouped_by_command_reset_on_success_and_fir
         triggers = [e for e in agent_audit.events if isinstance(e, RuleTriggeredEvent)]
         assert len(triggers) == 1 and triggers[0].occurrence == 3
         messages = [
-            e.value for e in agent_audit.events if isinstance(e, PluginInstructionsChangedEvent)
+            e.value.get("rules:0")
+            for e in agent_audit.events
+            if isinstance(e, PluginValueChangedEvent)
         ]
         assert messages.count("Third failure") == 1
 
@@ -125,7 +141,7 @@ async def test_repeat_counters_start_fresh_in_each_live_session(tmp_path):
     model = ScriptedModel(
         [*scripted_commands(["pytest", "pytest"]), *scripted_commands(["pytest"])]
     )
-    rules = Rules([when(tool="bash", exit_code=1, repeated=3).context("Third")])
+    rules = Rules([when(tool=ToolsPlugin.bash, exit_code=1, repeated=3).context("Third")])
     harness = Application(
         model=model, approvals=Approvals(default=Decision.ALLOW), plugins=[tools, rules]
     )
@@ -149,7 +165,7 @@ async def test_rules_have_independent_state_in_different_sessions():
     tools = ToolsPlugin(name="commands")
 
     model = ScriptedModel([*scripted_commands(["same"]), *scripted_commands(["same"])])
-    rules = Rules([when(tool="bash", repeated=2).note("twice")])
+    rules = Rules([when(tool=ToolsPlugin.bash, repeated=2).note("twice")])
     harness = Application(
         model=model, approvals=Approvals(default=Decision.ALLOW), plugins=[tools, rules]
     )
@@ -172,9 +188,11 @@ async def test_repeat_counters_do_not_restore_from_previous_session_audits(tmp_p
     rules = Rules(
         [
             when(
-                tool="bash", repeated=2, predicate=lambda call, result: result.content == "original"
+                tool=ToolsPlugin.bash,
+                repeated=2,
+                predicate=lambda call, result: result.content == "original",
             ).context("twice"),
-            when(tool="bash").note("changed after matching"),
+            when(tool=ToolsPlugin.bash).note("changed after matching"),
         ]
     )
     model = ScriptedModel([*scripted_commands(["same"]), *scripted_commands(["same"])])
@@ -202,9 +220,9 @@ async def test_size_predicate_and_missing_exit_code_and_tool_filters():
 
     rules = Rules(
         [
-            when(tool="read_file", result_tokens_over=20).note("Use a line range."),
-            when(tool="read_file", exit_code=lambda c: c != 0).steer("must not happen"),
-            when(tool="bash").context("wrong tool"),
+            when(tool=ToolsPlugin.read_file, result_tokens_over=20).note("Use a line range."),
+            when(tool=ToolsPlugin.read_file, exit_code=lambda c: c != 0).steer("must not happen"),
+            when(tool=Commands.bash).context("wrong tool"),
         ]
     )
     model = ScriptedModel([[ModelChunk(tool_call=ToolCall("read_file"))], "done"])
@@ -274,9 +292,11 @@ async def test_canonical_match_metadata_survives_output_limits_and_context_reset
     rules = Rules(
         [
             when(
-                tool="large", repeated=2, predicate=lambda call, result: result.content == original
+                tool=Large.large,
+                repeated=2,
+                predicate=lambda call, result: result.content == original,
             ).context("Use a smaller range."),
-            when(tool="large").note("Enriched after matching."),
+            when(tool=Large.large).note("Enriched after matching."),
         ]
     )
     responses = [
@@ -297,14 +317,14 @@ async def test_canonical_match_metadata_survives_output_limits_and_context_reset
         assert len(first.tool_calls[0][1].content) == 256
         assert dict(first.tool_calls[0][1].rule_matches)["rules:0"] is True
         await session.run("Second")
-        assert session.scope[PluginInstructions].values["rule:rules:0"] == "Use a smaller range."
+        assert session.snapshot().plugin_values[RULES_CONTEXT]["rules:0"] == "Use a smaller range."
         source[0] = "fixed"
         await session.run("Success")
-        assert "rule:rules:0" not in session.scope[PluginInstructions].values
+        assert "rules:0" not in session.snapshot().plugin_values[RULES_CONTEXT]
 
 
 def test_rules_are_immutable_and_require_actions():
-    condition = when(tool="bash")
+    condition = when(tool=Commands.bash)
     with pytest.raises(ValueError, match="action"):
         Rules([condition])
     assert condition.actions == ()
@@ -312,9 +332,7 @@ def test_rules_are_immutable_and_require_actions():
     assert condition.steer("b").actions == (("steer", "b"),)
 
 
-@pytest.mark.parametrize(
-    "options", [{"tool": ""}, {"tool": ["valid", " "]}, {"repeated": "2"}, {"exit_code": True}]
-)
+@pytest.mark.parametrize("options", [{"repeated": "2"}, {"repeated": 0}, {"exit_code": True}])
 def test_rule_option_constraints_reject_ambiguous_values(options):
     from pydantic import ValidationError
 
@@ -348,7 +366,6 @@ def test_rule_conditions_are_sync_and_must_return_booleans():
 async def test_rule_and_observation_policies_mount_with_narrow_services_without_a_driver():
     from harnessed.kernel import Scope
     from harnessed.plugins import LatestObservationOnly
-    from harnessed.prompts.plugin_instructions import PluginInstructions
     from harnessed.runtime.control import SessionControl
     from harnessed.runtime.inbox import InboxWriter, SessionInbox
     from harnessed.runtime.tokens import ApproximateTokenCounter, TokenCounter
@@ -360,11 +377,20 @@ async def test_rule_and_observation_policies_mount_with_narrow_services_without_
         log = SessionLog("policy", scope=scope)
         control = SessionControl(log, unused_driver, lambda: False)
         scope.provide(SessionLog, log)
-        scope.provide(PluginInstructions, PluginInstructions(log))
+        scope.provide(PluginValues, PluginValues(log))
         scope.provide(SessionInbox, SessionInbox(log, control, InboxWriter(log, control)))
         scope.provide(TokenCounter, ApproximateTokenCounter())
         handles = await scope.install(
-            [Rules([when(tool="test").context("fact")]), LatestObservationOnly()], settle=True
+            [Rules([when(tool=Commands.bash).context("fact")]), LatestObservationOnly()],
+            settle=True,
         )
         assert len(handles) == 2
         assert all(handle.status == PluginStatus.ACTIVE for handle in handles)
+
+
+def test_rules_select_tools_by_method_or_action_never_by_name():
+    with pytest.raises(TypeError, match="action enum"):
+        when(tool="bash")
+    with pytest.raises(TypeError, match="action enum"):
+        when(tool=[Commands.bash, "bash"])
+    assert when(tool=ShellAction.EXECUTE).tools == (ShellAction.EXECUTE,)

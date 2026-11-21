@@ -24,9 +24,9 @@ from harnessed.kernel import Key, Next, PluginScope, hook, needs
 from harnessed.models import AssistantMessage, ModelRequest, ToolMessage, ToolStatus, UserMessage
 from harnessed.models.messages import freeze, to_dict
 from harnessed.prompts import Instructions, SystemPrompt
-from harnessed.prompts.plugin_instructions import PluginInstructions
 from harnessed.runtime.hooks import PrepareRequest, SessionAppended
 from harnessed.runtime.plugin import Plugin
+from harnessed.sessions import SessionValue
 from harnessed.sessions.log import SessionLog
 from harnessed.tools import ToolError, tool
 
@@ -301,7 +301,8 @@ class Skills(Plugin, slot="skills"):
     """Discover explicit sources once per session, then load instructions and files on demand."""
 
     _log = needs(SessionLog)
-    _context = needs(PluginInstructions)
+    # Loaded skill instructions by name, retained across compaction and restoration.
+    _retained = SessionValue(dict[str, str], key="harnessed.skills.loaded", default={})
 
     def __init__(self, *sources: str | Path | Skill | _DirectorySkill) -> None:
         super().__init__()
@@ -338,11 +339,7 @@ class Skills(Plugin, slot="skills"):
         scope.provide(SkillCatalog, catalog)
         self._entries = {entry.info.name: entry for entry in catalog.entries}
         self._calls: set[str] = set()
-        self._loaded = {
-            key.removeprefix("skill:"): value
-            for key, value in self._context.values.items()
-            if key.startswith("skill:")
-        }
+        self._loaded = self._retained.get()
         for message in self._log.messages:
             if isinstance(message, AssistantMessage):
                 self._calls.update(
@@ -404,8 +401,7 @@ class Skills(Plugin, slot="skills"):
         self._loaded[loaded.name] = loaded.instructions
 
     async def _retain(self) -> None:
-        for name, instructions in self._loaded.items():
-            await self._context.set(f"skill:{name}", instructions)
+        await self._retained.set(dict(self._loaded))
 
     @hook(SessionAppended)
     async def recorded(self, event: SessionAppended) -> None:

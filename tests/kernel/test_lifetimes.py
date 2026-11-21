@@ -5,13 +5,11 @@ from dataclasses import dataclass
 import pytest
 from pydantic import PydanticSchemaGenerationError
 
-from harnessed import Agent as Application
-from harnessed import Approvals, Decision, Plugin, Session, tool
+from harnessed import Plugin, tool
 from harnessed.kernel import Emit, PluginStatus, Scope, ScopeClosed, hook
 from harnessed.models import ToolCall
 from harnessed.prompts import SystemPromptStore
 from harnessed.runtime.services import RuntimeServices
-from harnessed.testing import ScriptedModel
 from harnessed.tools import ToolRegistry
 from tests._kernel_recipe import kernel_recipe
 
@@ -269,38 +267,6 @@ async def test_teardown_errors_remove_all_effects_and_allow_fresh_activation():
         assert await scope[SystemPromptStore].render() == "fixed"
         await scope.dispatch(Ping())
         assert seen == ["fixed"]
-
-
-async def test_agent_registration_facade_uses_the_active_plugin_owner():
-    seen = []
-    sessions: list[Session] = []
-
-    class Feature(Plugin):
-        async def setup(self, scope):
-            # Plugins cannot inject the application Session; the application holds it.
-            agent = sessions[0]
-            agent.on(Ping, lambda event: seen.append("explicit"))
-
-            @agent.on(Ping)
-            def listener(event):
-                seen.append("decorated")
-
-        @tool
-        async def read(self) -> str:
-            return "plugin tool"
-
-    async with Application(
-        model=ScriptedModel([]), approvals=Approvals(default=Decision.ALLOW)
-    ).session() as agent:
-        sessions.append(agent)
-        handle = await agent.scope.plugin(Feature())
-        assert [definition.name for definition in agent.scope[ToolRegistry].definitions] == ["read"]
-        await agent.scope.dispatch(Ping())
-        assert seen == ["explicit", "decorated"]
-        await handle.aclose()
-        assert agent.scope[ToolRegistry].definitions == ()
-        await agent.scope.dispatch(Ping())
-        assert seen == ["explicit", "decorated"]
 
 
 async def test_registration_installation_rejects_closed_owners_and_tracks_early_disposal():

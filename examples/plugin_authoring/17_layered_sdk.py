@@ -5,6 +5,7 @@ from typing import override
 
 from harnessed import Agent, Plugin
 from harnessed.kernel import Key, PluginScope, Scope, needs
+from harnessed.plugins import Filesystem
 from harnessed.plugins.rules import Rules, when
 from harnessed.testing import ScriptedModel
 
@@ -34,7 +35,9 @@ async def main():
         print("After service removal:", handle.status)
     agent = Agent(
         model=ScriptedModel(["The layered SDK is ready."]),
-        plugins=[Rules([when(tool="read_file", result_tokens_over=1000).note("Read a range.")])],
+        plugins=[
+            Rules([when(tool=Filesystem.read_file, result_tokens_over=1000).note("Read a range.")])
+        ],
     )
     async with agent.session() as session:
         print((await session.run("Hello")).text)

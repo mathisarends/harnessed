@@ -31,10 +31,12 @@ async def compare(name, trigger):
     )
     async with app.session() as session:
         await session.run("GOAL: keep the public API stable. " + "detail " * 240)
-        applied = []
-        session.on(CompactionAppliedEvent, applied.append)
+        applied: list[CompactionAppliedEvent] = []
         for index in range(1, 6):
-            await session.run(f"task {index}: " + "detail " * 240)
+            async with session.stream(f"task {index}: " + "detail " * 240) as run:
+                applied.extend(
+                    [event async for event in run if isinstance(event, CompactionAppliedEvent)]
+                )
         print(f"{name}: {len(applied)} compactions")
         for event in applied:
             print(

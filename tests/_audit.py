@@ -25,7 +25,7 @@ class Audit:
 
     def __init__(self, session: Session) -> None:
         self._events: list[DurableEvent] = list(session.events)
-        session.on(SessionAppended, self._record)
+        session.scope.on(SessionAppended, self._record)
 
     def _record(self, event: SessionAppended) -> None:
         self._events.append(event.event)

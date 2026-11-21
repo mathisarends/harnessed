@@ -92,8 +92,8 @@ Instance access returns the typed value; assignment replaces that mount's value.
 Accessing state on a recipe or after disposal raises `RuntimeError`. Inherited
 fields work normally, and subclasses can override their factories. State stays
 available throughout `teardown` and owned cleanup, then its references are released.
-It is per-mount memory: import conversation facts through explicit SessionState
-in `setup`, as the built-in `Rules` plugin does.
+It is per-mount memory: use a [session value](#session-values) for facts that
+belong to the conversation.
 
 Custom constructors must call `super().__init__()` to validate plugin configuration.
 The default `create_instance() -> Self` replays the original constructor with its
@@ -118,6 +118,48 @@ after successful setup. State factories should create plain values, not resource
 requiring cleanup. Tools, listeners and services already register their own
 reversible effects. `PluginState` is also available from `harnessed.kernel` for
 standalone kernel plugins.
+
+## Session values
+
+Declare conversation facts that must outlive a mount with
+`SessionValue(schema, key=..., default=...)`. Typical values are task lists,
+handover notes and working memory. A session value survives compaction, plugin
+restarts, snapshots and session stores. Each write appends a
+`plugin.value.changed` event, so the session log stays the single source of truth.
+
+```python
+from pydantic import BaseModel
+
+from harnessed import Plugin, tool
+from harnessed.sessions import SessionValue
+
+
+class Todo(BaseModel):
+    title: str
+    done: bool = False
+
+
+class Todos(Plugin):
+    items = SessionValue(list[Todo], key="acme.todos", default=[])
+
+    @tool
+    async def add_todo(self, title: str) -> int:
+        items = await self.items.update(lambda items: [*items, Todo(title=title)])
+        return len(items)
+```
+
+`get()` returns the committed value, or the default before the first write.
+Without `default=`, the value type includes `None`. `await set(value)` commits
+a new value; writing an equal value appends nothing. `await update(change)`
+applies a synchronous function to the current value and commits the result
+atomically. Values must be JSON-serializable through the declared schema.
+Reading a stored value that no longer matches the schema raises `ValueError`.
+
+The key is the stored identity. Every instance of the plugin class shares it,
+so give it a namespace you own and keep it stable: renaming the key or changing
+the schema incompatibly orphans the values in stored sessions. Child sessions
+start without values. Use `PluginState` instead for data that should reset with
+each mount.
 
 Async-generator function plugins run setup before `yield` and teardown after it.
 They compose services and hooks. Public tools use `Plugin` methods, as shown in

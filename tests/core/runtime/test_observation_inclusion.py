@@ -22,7 +22,7 @@ from tests._audit import Audit
 class Observe(Plugin):
     @hook(PreStep)
     async def observe(self, event: PreStep, next_: Next[StepDecision]) -> StepDecision:
-        step = event.step
+        step = event.progress.step
         event.session.observe(
             UserMessage(
                 (

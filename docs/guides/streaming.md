@@ -28,6 +28,7 @@ not require exhaustive handling. If the turn can ask for approval, also
 | Queue and receive a `RunHandle[T]` without live observation | `run = await session.submit(...)` |
 | Cancel one queued or active run | `await run.cancel()` |
 | Observe the session's audit events across turns | `session.subscribe()` |
+| React inside the runtime to committed events | A plugin `@hook(TurnEndedEvent)`, or `@hook(DurableEvent)` for every event |
 
 Run `uv run python -m examples.getting_started.03_basic_stream` for the minimal offline consumer.
 The sections below add individual capabilities; the
@@ -293,3 +294,34 @@ format. See [event schemas and extension catalogs](events.md).
 Run `uv run python -m examples.applications.02_ui_stream` for the detailed offline example with
 previews, approval, progress and a typed report; `examples.plugin_authoring.12_custom_events` adds
 application events.
+
+## Observe from a plugin
+
+Applications observe through `session.stream()` and `session.subscribe()`.
+Plugins hook durable event classes directly. Each event is dispatched once,
+after the log committed it, so a hook sees exactly the persisted records:
+
+```python
+from harnessed import Plugin
+from harnessed.events import CompactionAppliedEvent, DurableEvent, TurnEndedEvent
+from harnessed.kernel import hook
+
+
+class Recorder(Plugin):
+    @hook(CompactionAppliedEvent, TurnEndedEvent)
+    async def changed(self, event: CompactionAppliedEvent | TurnEndedEvent) -> None: ...
+
+    @hook(DurableEvent)
+    def every_event(self, event: DurableEvent) -> None: ...
+```
+
+Dispatch matches subclasses, so `DurableEvent` receives every committed event,
+including application events. Historical events restored from a snapshot or
+store are not dispatched again.
+
+Hooks run only in the session where their plugin is mounted; there is no need to
+compare the session or log inside a hook. Each subagent child opens a fresh,
+isolated session from its own agent, so a parent plugin does not see child
+events: mount the plugin on the child agent too, or follow the parent's
+`Subagent*Event` records. Integrations that need a raw kernel listener use
+`session.scope.on(Event, callback)`; there is no separate `session.on`.

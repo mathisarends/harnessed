@@ -5,6 +5,147 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## Unreleased
+
+### Added
+
+- Declare typed conversation values on a plugin with
+  `SessionValue(schema, key=..., default=...)` from `harnessed.sessions`. Values
+  survive compaction, plugin restarts, snapshots and session stores. Read them
+  with `get()` and change them with `await set(value)` or `await update(change)`;
+  `update()` serializes concurrent read-modify-write changes. See
+  [session values](docs/guides/plugins.md#session-values).
+- `ServiceView` in `harnessed.kernel` is the base for class attributes that
+  present an injected service as a view. `DependencyField` is now a `ServiceView`
+  that returns the service unchanged.
+- Plugins observe the opening of a session with `@hook(SessionOpened)` from
+  `harnessed.hooks`. The hook runs once per opening, after state restoration and
+  plugin validation and before queued work starts, and carries the
+  `SessionContext` and a shared `time.monotonic()` reading. See
+  [observe the opening of a session](docs/guides/plugins.md#observe-the-opening-of-a-session).
+- `session.model_request_count` counts local `ModelRequestedEvent` records across
+  turns, including failed and cancelled requests. Provider transport retries
+  share one request.
+- Plugins measure how full the model context is with `ContextMeter` from
+  `harnessed.context`. Declare `meter = needs(ContextMeter)` and call
+  `await self.meter.measure(request)` to get the `ContextState` that compaction
+  triggers receive: estimated input tokens, the output reserve, turns since the
+  last compaction, and the effective window, which is the model window capped by
+  `Context(max_tokens=...)` or that cap alone when the model reports none.
+  See [measure context occupancy](docs/guides/compaction.md#measure-context-occupancy-in-a-plugin).
+- `PreStep` and `PrepareRequest` carry `progress`, a frozen `TurnProgress` from
+  `harnessed.hooks` with the turn ID, current step, effective `max_steps` and
+  final-step policy. It derives `remaining_steps`, `is_last_step`,
+  `is_final_step`, `is_turn_start` and `last_tool_step`, the last step that still
+  offers tools. Plugins no longer rebuild step progress from the session log.
+  See [step progress](docs/guides/sessions.md#step-progress-and-a-reserved-summary).
+- One `ToolSelector` names tools everywhere: an action enum member or a
+  decorated `@tool` method, never a plain string, so renaming a tool with
+  `@tool(name=...)` cannot silently break a rule. Approvals, hooks and
+  `session.tools` accept it:
+  - `event.matches(selector)` on `ToolPolicy`, `ExecuteTool` and
+    `ReviewToolResult` compares the registration captured for the call.
+  - `ToolInfo.matches(selector)` applies the same rule, including in
+    `CallEnvelope(select=...)` callbacks.
+  - `session.tools.resolve(selector)` returns the model-visible `ToolInfo`, or
+    `None` when the tool is missing, disabled or lacks services.
+  - `tool_name(method)` returns the model-facing name for static text such as
+    plugin instructions.
+
+  `ToolSelector`, `ToolReference` and `tool_name` are exported by
+  `harnessed.tools`. See
+  [select tools without repeating names](docs/guides/tools.md#select-tools-without-repeating-names).
+
+### Changed
+
+- `harnessed.tracing` is the canonical tracing module; the internal
+  `harnessed.runtime.tracing` module was removed. Public imports are unchanged.
+
+### Fixed
+
+- Traces no longer export external image URLs that contain a value registered
+  with `ContentCapture.redacted(...)`. A text placeholder replaces the image and
+  `harnessed.input_messages.image_urls_redacted` counts the replacements; the
+  model still receives the original URL.
+
+### Breaking changes
+
+- `PluginInstructionsChangedEvent` (`plugin.instructions.changed`) is replaced
+  by `PluginValueChangedEvent` (`plugin.value.changed`) with the fields `key`
+  and `value`. The value is any JSON value, not only a string.
+- `SessionState.plugin_instructions` is replaced by `SessionState.plugin_values`,
+  which maps each key to a frozen JSON value. Removing a value is no longer a
+  separate operation; a plugin writes its declared default instead.
+- The internal `harnessed.prompts.plugin_instructions` module is removed.
+  `Rules` stores its active context facts under `harnessed.rules.context`, and
+  `Skills` stores loaded skill instructions under `harnessed.skills.loaded`.
+- Conversation snapshots move to format **4** and standalone audit envelopes to
+  version **8**.
+- `ContextState` moved from the internal `harnessed.runtime.compaction` module
+  to `harnessed.runtime.meter`; import it from `harnessed.context`.
+- `PreStep.step`, `max_steps`, `is_final_step`, `remaining_steps`,
+  `is_last_step` and `is_turn_start` moved to `PreStep.progress`.
+- `PrepareRequest` requires a `progress` argument.
+- `ToolSelector` no longer includes `str` and replaces `ApprovalSelector`.
+- `PreparedToolCall.callback` was removed; use `plan.tool.matches(selector)`.
+- `when(tool=...)` in `Rules` takes tool selectors instead of names. A plain
+  string raises `TypeError`, and rules match the registered tool rather than
+  its wire name.
+- `Session.on(...)` was removed. Applications observe with `session.stream()` or
+  `session.subscribe()` and answer approvals with `Approvals(approver=...)`;
+  plugins use `@hook(...)`. Integrations that need a raw kernel listener call
+  `session.scope.on(Event, callback)`.
+- `SessionAppended` is no longer exported by `harnessed.hooks`. Plugins hook
+  committed durable events directly: `@hook(TurnEndedEvent)` for one class,
+  `@hook(A, B)` for several, or `@hook(DurableEvent)` for every committed event.
+  Hooks run only in the session where their plugin is mounted, so guards such as
+  `if event.log is not self.session.log` are unnecessary.
+
+### Upgrade from 0.23.0
+
+- Replace `PluginInstructionsChangedEvent` with `PluginValueChangedEvent` and
+  read `event.key` and `event.value` instead of `event.name` and `event.value`.
+- Replace `state.plugin_instructions` with `state.plugin_values`.
+- Plugins that persisted conversation facts through the internal
+  `PluginInstructions` service declare a `SessionValue` instead.
+- Replace imports of `harnessed.runtime.tracing` with `harnessed.tracing`.
+- Replace plugin code that combines `harnessed.runtime.budget.ContextBudget`,
+  `harnessed.runtime.tokens.count_request` or `harnessed.runtime.compaction` to
+  measure context occupancy with `needs(ContextMeter)`.
+- In `PreStep` hooks, replace `event.step`, `event.max_steps`,
+  `event.remaining_steps`, `event.is_last_step`, `event.is_final_step` and
+  `event.is_turn_start` with the same names on `event.progress`.
+- Code that dispatches `PrepareRequest` itself passes a `TurnProgress`.
+- Replace `ApprovalSelector` annotations with `ToolSelector`.
+- Replace hook checks such as `event.call.name == "run_command"` with
+  `event.matches(Shell.run_command)` or an action member such as
+  `event.matches(ShellAction.EXECUTE)`.
+- Replace `when(tool="bash")` with `when(tool=Shell.run_command)` or an action member;
+  pass a list for several tools.
+- `harnessed.testing.call()` still accepts a plain name to script what a model
+  sends on the wire, including unknown tools.
+- Replace `session.on(Event, callback)` with a stream or subscription in
+  application code, or with `session.scope.on(Event, callback)` where a kernel
+  listener is required.
+- Replace `@hook(SessionAppended)` handlers that match `event.event` with hooks
+  on the matched event classes, and drop the session/log guard.
+
+Persisted state: execution checkpoints stay at format **4** and JSON store envelopes at
+version **3**, but both contain conversation state, so entries written by
+`0.23.0` raise `SessionFormatError`. There is no automatic migration. To keep
+a conversation, finish its open turn with `0.23.0` and export
+`session.snapshot().to_json()`. In the exported JSON, set `version` to `4`
+and replace the `plugin_instructions` object with `"plugin_values": {}`.
+Active rule context and skills loaded before the last compaction are not
+carried over. Import the result with `SessionState.from_json(payload)` into a
+fresh store. Switch producers and consumers of audit envelopes together.
+
+### Documentation
+
+- [Observe from a plugin](docs/guides/streaming.md#observe-from-a-plugin)
+  describes hooks on committed events and their per-session isolation;
+  subagent children are separate sessions.
+
 ## 0.23.0 (2026-11-20)
 
 ### Added

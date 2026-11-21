@@ -329,7 +329,7 @@ is active. Queued work is never imported by a conversation snapshot.
 ## Snapshot contents and compaction
 
 Snapshots contain the active summary, retained messages and the small amount of
-metadata needed for feature-owned instructions, observation provenance and future compaction.
+metadata needed for plugin session values, observation provenance and future compaction.
 Full typed assistant messages preserve provider replay data and tool-call/result
 pairs. The final assistant reply is included; exporting only the last model
 request would omit that reply.
@@ -349,7 +349,7 @@ provided for each new turn. Python validators and pending output contracts are
 not imported. Approval grants and plugin counters belong to the live session;
 new sessions evaluate their current approval policy again.
 
-`SessionState.to_json()` and `SessionState.from_json()` use state format **1**.
+`SessionState.to_json()` and `SessionState.from_json()` use state format **4**.
 Unknown versions, unknown fields, incomplete tool pairs and corrupt stored
 resources fail explicitly. Old JSONL event logs are not conversation snapshots
 and are not automatically migrated. The standalone audit-event codec has its own
@@ -450,8 +450,28 @@ background shell commands or Python execution stacks.
 
 ## Step progress and a reserved summary
 
-`PreStep` exposes `max_steps`, `remaining_steps`, `is_last_step` and `is_final_step`.
-The remaining count includes the step about to start.
+`PreStep` and `PrepareRequest` carry a `TurnProgress` from `harnessed.hooks` as
+`event.progress`. It holds the `turn_id`, the current `step`, the effective
+`max_steps` and the turn's `final_step` policy. `remaining_steps` includes the
+current step, `is_last_step` marks the last step, `is_final_step` marks the
+reserved summary step without tools, and `last_tool_step` is the last step that
+still offers tools.
+
+```python
+from harnessed import Plugin
+from harnessed.hooks import PrepareRequest
+from harnessed.kernel import Next, hook
+from harnessed.models import ModelRequest, UserMessage
+
+
+class WrapUp(Plugin):
+    @hook(PrepareRequest)
+    async def _remind(self, event: PrepareRequest, next_: Next[ModelRequest]) -> ModelRequest:
+        request = await next_()
+        if event.progress.step == event.progress.last_tool_step:
+            request = request.append_message(UserMessage("This is your last step with tools."))
+        return request
+```
 
 Use `run(..., max_steps=8, token_budget=50_000)` to bound a turn. Token budgets
 count input and output across that turn's model calls. `AgentLoop` can reserve a

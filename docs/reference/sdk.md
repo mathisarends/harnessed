@@ -140,6 +140,9 @@ and `session.tools.values()` to iterate definitions. Iterating the mapping
 itself yields names. Missing, disabled or inactive tools raise `KeyError` on
 lookup. Existing views reflect activation, removal and replacement, using the
 same visibility rules as model requests. Register tools through plugins.
+`session.tools.resolve(selector)` returns the visible `ToolInfo` for an action
+enum member or decorated `@tool` method, or `None`. `ToolSelector`,
+`ToolReference` and `tool_name(method)` are exported by `harnessed.tools`.
 
 Plugin authors import `SessionContext` from `harnessed.sessions`,
 `SystemPromptStore` from `harnessed.prompts` and `ToolRegistry` from
@@ -538,6 +541,7 @@ unhashable. See [values and record versions](../concepts/values.md).
 | ToolResult(..., break_chain=True) | Request the same boundary dynamically; already-started parallel calls finish |
 | Plugin[MyConfig] / config=MyConfig(...) | One frozen module-level model supplies runtime validation and the type of self.config |
 | PluginState(factory) | Typed state freshly created before each mount's setup; available through cleanup |
+| SessionValue(schema, key=..., default=...) | Typed conversation value persisted under a stable key; `get()`, `await set(value)`, `await update(change)`. From `harnessed.sessions` |
 | name = needs(T) | Stable typed service binding and lifetime requirement; no duplicate needs entry |
 | name = observes(T) | Nonblocking service-or-None binding; provider changes restart the activation |
 | class Capability(Plugin, provides=True) | Publish the mount under the declaring class; provides=Key selects another key |
@@ -571,6 +575,9 @@ Declare stable service bindings with `needs` and `observes` from `harnessed.kern
 `needs=(...)` for lifetime requirements without an attribute. Optional fields are
 reported as `observes`. Class-level `Inject` fields were removed. Callable `Inject`
 parameters bind values without adding lifetime dependencies.
+Both fields are `ServiceView` descriptors. Subclass `ServiceView[S, V]` and
+override `present(service)` to expose a required service as a typed view, as
+`SessionValue` does; the binding remains a lifetime requirement of the plugin.
 Higher-level `Plugin.setup()` and `teardown()` require service fields instead of
 `Inject` parameters; standalone kernel lifecycle injection remains available.
 `session.tools.explain(name)` returns a frozen `ToolExplanation` distinguishing
@@ -587,6 +594,8 @@ See [parameter objects](../guides/tools.md#pydantic-parameter-objects),
 
 `ToolPolicy`, `ExecuteTool` and `ReviewToolResult` expose the captured
 `ToolInfo | None` as `event.tool`; `event.tool.metadata.get(T)` returns `T | None`.
+`event.matches(selector)` and `ToolInfo.matches(selector)` compare the captured
+registration with an action enum member or decorated `@tool` method.
 `ToolChain`, `ToolInfo` and `ToolMetadata` are exported by `harnessed.tools`.
 The same hooks expose per-call `event.envelope: ToolEnvelope`. `@tool(envelope=(M,))`
 merges Pydantic model fields into a tool's schema, validates them and removes them
@@ -601,9 +610,11 @@ from `harnessed` reads `M | None` from a call's raw arguments without raising.
 See [tool call envelopes](../guides/tools.md#tool-call-envelopes) and
 [envelopes for every tool](../guides/tools.md#envelopes-for-every-tool).
 Skipped calls have `ToolStatus.SKIPPED` and retain their model-history pairing.
-`PreStep.max_steps` is the effective turn limit; `remaining_steps` includes the
-current step, `is_last_step` indicates one remaining step, and `is_final_step`
-identifies an action-free reserved summary.
+`PreStep.progress` and `PrepareRequest.progress` are a frozen `TurnProgress`
+(`turn_id`, `step`, `max_steps`, `final_step`). `max_steps` is the effective turn
+limit; `remaining_steps` includes the current step, `is_last_step` indicates one
+remaining step, `is_final_step` identifies an action-free reserved summary, and
+`last_tool_step` is the last step that offers tools.
 
 `PreStep` runs in the harness before the model call. Its `StepDecision` accepts
 or filters queued input messages; `StepDecision.reject()` ends the turn without
@@ -674,8 +685,8 @@ reaching into those implementations.
 
 `SessionState` is exported from `harnessed.sessions`. `state=None` starts a conversation
 without history. `SessionState.from_json(str_or_bytes)` validates format version
-3 and resource integrity; `state.to_json()` returns a string without I/O. State
-contains retained history and provenance, feature-owned instruction state, compaction metadata,
+4 and resource integrity; `state.to_json()` returns a string without I/O. State
+contains retained history and provenance, plugin session values, compaction metadata,
 parent/child references and terminal child receipts, and
 referenced image/text resources. It contains no runtime handles, queued turns,
 Python validators, approval grants or historical request/event archive.
@@ -688,6 +699,11 @@ Reuse the same immutable state for independent continuations. See
 
 
 ## Compaction policy and services
+
+`ContextMeter` from `harnessed.context` is a session service. Plugins declare
+`needs(ContextMeter)` and call `await meter.measure(request)` to get the
+`ContextState` (input tokens, reserved output, effective window, turns since
+compaction, `ratio`) that compaction triggers receive.
 
 `Context(compaction=Compaction(...))` enables summarization. `Compaction` accepts these keyword arguments:
 

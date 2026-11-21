@@ -56,7 +56,7 @@ class Tools(Plugin):
 def inspect_hooks(policy: ToolPolicy, review: ReviewToolResult, step: PreStep) -> None:
     assert_type(policy.tool, ToolInfo | None)
     assert_type(review.tool, ToolInfo | None)
-    assert_type(step.max_steps, int)
-    assert_type(step.remaining_steps, int)
-    assert_type(step.is_last_step, bool)
-    assert_type(step.is_final_step, bool)
+    assert_type(step.progress.max_steps, int)
+    assert_type(step.progress.remaining_steps, int)
+    assert_type(step.progress.is_last_step, bool)
+    assert_type(step.progress.is_final_step, bool)

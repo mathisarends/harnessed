@@ -14,7 +14,7 @@ from harnessed.events import (
     ModelRequestedEvent,
     ObservationPolicyAppliedEvent,
     ObservationRecordedEvent,
-    PluginInstructionsChangedEvent,
+    PluginValueChangedEvent,
     SpillExpiredEvent,
     StepEndedEvent,
     StepOutcome,
@@ -26,7 +26,7 @@ from harnessed.events import (
     UserMessageEvent,
 )
 from harnessed.models import Message, ModelRequest, SystemMessage, ToolMessage
-from harnessed.models.messages import SpillRef
+from harnessed.models.messages import JSONValue, SpillRef
 
 from .state import HistoryEntry, HistoryStep, SessionState
 
@@ -38,8 +38,8 @@ class WorkingHistory:
         self._items: dict[int, HistoryEntry] = (
             {entry.position: entry for entry in state.history} if state is not None else {}
         )
-        self.plugin_instructions: dict[str, str] = (
-            dict(state.plugin_instructions) if state is not None else {}
+        self.plugin_values: dict[str, JSONValue] = (
+            dict(state.plugin_values) if state is not None else {}
         )
         self._snapshot: tuple[Message, ...] | None = None
         self._turn: str | None = None
@@ -134,11 +134,8 @@ class WorkingHistory:
             self._put(seq, event.message, lifetime=event.lifetime, is_input=True)
 
     def _apply_context(self, event: DurableEvent, seq: int) -> None:
-        if isinstance(event, PluginInstructionsChangedEvent):
-            if event.value is None:
-                self.plugin_instructions.pop(event.name, None)
-            else:
-                self.plugin_instructions[event.name] = event.value
+        if isinstance(event, PluginValueChangedEvent):
+            self.plugin_values[event.key] = event.value
         elif isinstance(event, ObservationRecordedEvent):
             if event.message.content:
                 self._put(
