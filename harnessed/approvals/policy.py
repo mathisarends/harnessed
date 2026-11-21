@@ -18,7 +18,7 @@ from harnessed.runtime.plugin import PluginConfig
 from harnessed.tools import PreparedToolCall, ToolRegistry
 from harnessed.tools.references import ToolReference, ToolSelector, tool_selector
 
-from .responders import ApprovalCallback, Approver, CallbackApprover
+from .responders import ApprovalCallback, ApprovalReviewer, Approver, CallbackApprover
 
 _APPROVAL_TIMEOUT = TypeAdapter(
     Annotated[float, Field(gt=0)],
@@ -149,6 +149,7 @@ class Approvals:
         ask: Iterable[ToolSelector] = (),
         deny: Iterable[ToolSelector] = (),
         approver: Approver | ApprovalCallback | None = None,
+        reviewer: ApprovalReviewer | None = None,
         policy: Callable[[ToolCall], Decision | None] | None = None,
         timeout: float = DEFAULT_APPROVALS.timeout,
     ) -> None:
@@ -158,6 +159,9 @@ class Approvals:
             default = Decision.ALLOW if allow is None else Decision.DENY
         self.default = default
         self.config = ApprovalsConfig(timeout=timeout)
+        if reviewer is not None and not isinstance(reviewer, ApprovalReviewer):
+            raise TypeError("reviewer must implement ApprovalReviewer")
+        self.reviewer = reviewer
         self.approver = (
             approver
             if approver is None or isinstance(approver, Approver)
@@ -190,6 +194,8 @@ class Approvals:
         scope.provide(Approvals, self)
         if self.approver is not None:
             scope.provide(Approver, self.approver)
+        if self.reviewer is not None:
+            scope.provide(ApprovalReviewer, self.reviewer)
         for selector, _ in self.rules:
             if isinstance(selector, ToolReference):
                 scope[ToolRegistry].reference(selector, owner=scope)

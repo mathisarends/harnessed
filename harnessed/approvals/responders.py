@@ -1,11 +1,31 @@
+from __future__ import annotations
+
 import inspect
 from collections.abc import Awaitable, Callable
-from typing import Protocol, runtime_checkable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from harnessed.events import ApprovalRequestedEvent
 from harnessed.kernel import Key
-from harnessed.models import Decision
-from harnessed.models.messages import ApprovalResponse
+from harnessed.models import ApprovalResponse, Decision
+
+if TYPE_CHECKING:
+    from harnessed.sessions import HistoryEntry
+
+
+@dataclass(frozen=True, slots=True)
+class ApprovalReviewRequest:
+    """The pending approval and a snapshot of the session's retained history."""
+
+    approval: ApprovalRequestedEvent
+    history: tuple[HistoryEntry, ...]
+
+
+@runtime_checkable
+class ApprovalReviewer(Protocol):
+    async def review(self, request: ApprovalReviewRequest) -> ApprovalResponse | None:
+        """Answer this request once, or return None to defer to another responder."""
+        ...
 
 
 @runtime_checkable

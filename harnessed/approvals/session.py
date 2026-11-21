@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import replace
 from uuid import uuid4
 
 from harnessed.errors import ApprovalUnavailable
@@ -12,8 +13,7 @@ from harnessed.events import (
     ApprovalStatus,
 )
 from harnessed.kernel import Scope
-from harnessed.models import Decision, ToolCall
-from harnessed.models.messages import ApprovalResponse
+from harnessed.models import ApprovalResponse, ApprovalSource, Decision, ToolCall
 from harnessed.runtime.control import SessionControl
 from harnessed.runtime.hooks import RequestApproval
 from harnessed.sessions import SessionContext
@@ -22,7 +22,7 @@ from harnessed.tools import suspend_tool_execution
 from harnessed.tracing import span
 
 from .policy import DEFAULT_APPROVALS, Approval, ApprovalsConfig, validate_approval_timeout
-from .responders import PARENT_APPROVER, Approver
+from .responders import PARENT_APPROVER, ApprovalReviewer, ApprovalReviewRequest, Approver
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +137,22 @@ class SessionApprovals:
         replaces that default for this question, even when it is longer.
         Missing responders and expired questions raise ``ApprovalUnavailable``.
         """
+        response = await self.request_response(
+            call, reason, scope=scope, identity=identity, approver=approver, timeout=timeout
+        )
+        return response.decision
+
+    async def request_response(
+        self,
+        call: ToolCall,
+        reason: str,
+        *,
+        scope: str = "tool-policy",
+        identity: str | None = None,
+        approver: Approver | None = None,
+        timeout: float | None = None,
+    ) -> ApprovalResponse:
+        """Use the same approval lifecycle as request(), returning the full answer."""
         self.control.check_open()
         if timeout is None:
             timeout = self.scope.get(ApprovalsConfig, DEFAULT_APPROVALS).timeout
@@ -155,10 +171,14 @@ class SessionApprovals:
                 decision = await self._answer_request(request, approver, timeout=timeout)
             await self.log.append(
                 ApprovalResolvedEvent(
-                    request.request_id, decision.decision, remember=decision.remember
+                    request.request_id,
+                    decision.decision,
+                    remember=decision.remember,
+                    source=decision.source,
+                    reason=decision.reason,
                 )
             )
-            return decision.decision
+            return decision
         except BaseException as exc:
             record = self.log.approval(request.request_id)
             if record is not None and record.pending:
@@ -238,18 +258,7 @@ class SessionApprovals:
         try:
             with suspend_tool_execution():
                 async with asyncio.timeout(timeout):
-                    if PARENT_APPROVER in self.scope:
-                        selected = self.scope[PARENT_APPROVER]
-                    elif approver is not None:
-                        selected = approver
-                    else:
-                        selected = self.scope.get(Approver)
-                    if selected is not None:
-                        decision = await selected.ask(request)
-                    else:
-                        decision = await self.scope.dispatch(
-                            RequestApproval(request, self.scope[SessionContext])
-                        )
+                    decision = await self._respond(request, approver)
             if decision is None:
                 raise ApprovalUnavailable("No approval responder answered the request")
             if isinstance(decision, Decision):
@@ -266,3 +275,21 @@ class SessionApprovals:
         except Exception as exc:
             logger.exception("Approval responder failed for %s", request.call.name)
             raise ApprovalUnavailable(f"Approval responder failed: {type(exc).__name__}") from exc
+
+    async def _respond(
+        self, request: ApprovalRequestedEvent, approver: Approver | None
+    ) -> ApprovalResponse | Decision | None:
+        if PARENT_APPROVER in self.scope:
+            return await self.scope[PARENT_APPROVER].ask(request)
+        reviewer = self.scope.get(ApprovalReviewer)
+        if reviewer is not None:
+            review = ApprovalReviewRequest(request, self.log.history_entries())
+            answer = await reviewer.review(review)
+            if answer is not None:
+                if not isinstance(answer, ApprovalResponse):
+                    raise TypeError("Reviewers must return an ApprovalResponse or None")
+                return replace(answer, source=ApprovalSource.REVIEWER)
+        selected = approver if approver is not None else self.scope.get(Approver)
+        if selected is not None:
+            return await selected.ask(request)
+        return await self.scope.dispatch(RequestApproval(request, self.scope[SessionContext]))

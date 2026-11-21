@@ -65,6 +65,7 @@ tool-call results. See [the response-contract guide](structured-output.md).
 | 19 | [Subagents](#subagents) | Delegating to an isolated child |
 | 20 | [Background subagents](#background-subagents) | A child running while the coordinator continues |
 | 21 | [Tracing](#tracing) | OpenTelemetry spans for a tool loop |
+| 22 | [Reviewing approvals](#reviewing-approvals) | Review shell calls with a separate model and pass uncertain decisions to a UI responder |
 
 ### UI streaming
 
@@ -112,6 +113,14 @@ Add `--otlp` to use `otlp_provider()` with batched HTTP export instead. Configur
 destination first; the model remains scripted and requires no provider credentials.
 The helper wraps all sessions and shuts down its provider on exit. The default
 console mode remains offline.
+
+### Reviewing approvals
+
+`uv run python -m examples.applications.22_review_approvals` demonstrates an
+allow, a denial and a handoff to a simulated human. Both models are scripted by
+default and the shell backend records the commands it would execute.
+Pass `--review-model provider:model` to use a configured model for review.
+The proposed calls and command execution remain simulated in both modes.
 
 ## Plugin authors
 
