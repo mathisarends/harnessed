@@ -20,78 +20,60 @@ project:
 architecture:
   layers:
     kernel:
-      path: kernel
+      modules: [harnessed.kernel]
       may_depend_on: []
       third_party: {default: deny}
-      modules:
-        - harnessed.kernel
     tracing:
-      path: tracing
+      modules: [harnessed.tracing]
       may_depend_on: [kernel]
       third_party: {default: deny}
-      modules:
-        - harnessed.tracing
     contracts:
-      path: models
+      modules: [harnessed.errors, harnessed.models]
       may_depend_on: [kernel]
       third_party: {default: deny, allow: [pydantic]}
-      modules:
-        - harnessed.errors
-        - harnessed.models
     events:
-      path: events
+      modules: [harnessed.events]
       may_depend_on: [kernel, contracts]
       third_party: {default: deny, allow: [pydantic]}
-      modules:
-        - harnessed.events
     engine:
-      path: runtime
-      may_depend_on: [kernel, tracing, contracts, events]
-      third_party: {default: deny, allow: [pydantic]}
       modules:
+        - harnessed.approvals
+        - harnessed.children
+        - harnessed.context
+        - harnessed.output
+        - harnessed.prompts
+        - harnessed.runtime
+        - harnessed.sessions
+        - harnessed.tools
+        # Streaming and persistence belong to the engine.
         - harnessed.events.codec
         - harnessed.events.completion
         - harnessed.events.live
         - harnessed.events.registry
         - harnessed.events.stream
-        - harnessed.context
-        - harnessed.approvals
-        - harnessed.children
-        - harnessed.output
-        - harnessed.runtime
-        - harnessed.prompts
-        - harnessed.sessions
-        - harnessed.tools
+      may_depend_on: [kernel, tracing, contracts, events]
+      third_party: {default: deny, allow: [pydantic]}
     plugins:
-      path: plugins
+      modules: [harnessed.plugins]
       may_depend_on: [kernel, tracing, contracts, events, engine, model_adapters]
       third_party: {default: deny, allow: [pydantic, pydantic_ai, yaml, fastmcp, mcp, jsonschema, referencing, httpx2, anyio]}
-      modules:
-        - harnessed.plugins
     model_adapters:
-      path: models.pydantic_ai
+      modules: [harnessed.models.pydantic_ai]
       may_depend_on: [kernel, contracts]
       third_party: {default: deny, allow: [pydantic, pydantic_ai]}
-      modules:
-        - harnessed.models.pydantic_ai
     integrations:
-      path: integrations
+      modules: [harnessed.integrations]
       may_depend_on: [kernel, tracing, contracts, events, engine, plugins]
       third_party: {default: deny, allow: [pydantic, opentelemetry]}
-      modules:
-        - harnessed.integrations
     sdk:
-      path: sdk
+      # The root package is the SDK facade. More specific prefixes take precedence.
+      modules: [harnessed]
       may_depend_on: [kernel, tracing, contracts, events, engine, plugins, model_adapters]
       third_party: {default: deny, allow: [pydantic, pydantic_ai]}
-      modules:
-        - harnessed
     testing:
-      path: testing
+      modules: [harnessed.testing]
       may_depend_on: [kernel, tracing, contracts, events, engine, plugins, model_adapters, sdk]
       third_party: {default: deny, allow: [pydantic, pydantic_ai, pytest]}
-      modules:
-        - harnessed.testing
   import_graph:
     type_checking: include
     transitive: true

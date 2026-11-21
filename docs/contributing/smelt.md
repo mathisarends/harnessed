@@ -23,9 +23,10 @@ their optional imports. Production never imports testing.
 Import analysis includes `TYPE_CHECKING` edges and transitive paths. Higher
 layers use the public `harnessed.kernel` API, including DI binding plans and
 plugin-spec normalization. Kernel implementations retain sibling imports.
-`architecture.layers.<layer>.modules` assigns package prefixes and individual
-modules to their owning layers. The directory check honors those assignments,
-including engine packages that live alongside `harnessed.runtime`.
+`architecture.layers.<layer>.modules` is the source of layer assignments. The
+most specific prefix wins, so `harnessed.events` owns the event vocabulary and
+the explicit stream and persistence modules belong to `engine`. Relative layer
+paths are for layouts with the same layer directories repeated inside features.
 
 The `harnessed.events` initializer exposes the event vocabulary. Event streams
 and registration use explicit modules because the terminal event carries the
