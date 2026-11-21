@@ -67,7 +67,7 @@ _KINDS = {
     "harnessed.tool": ("TOOL", "tool"),
 }
 # Attributes a model span can still receive after its request: usage, the
-# response message, the stop reason and outcome or truncation markers.
+# response message, the stop reason and markers for outcome, truncation or redaction.
 _LATE_MODEL_ATTRIBUTES = 32
 
 
@@ -227,6 +227,15 @@ class ContentCapture:
             end = max(end, start + len(found[1]))
         parts.append(value[end:])
         return "".join(parts)
+
+    def _redact_image_urls(self, images: dict[str, TraceImage]) -> None:
+        pattern = self._pattern
+        if pattern is None:
+            return
+        for image_id, image in images.items():
+            url = image.url
+            if url is not None and not url.startswith("data:") and pattern.search(url):
+                images[image_id] = TraceImage(None, image.size_bytes, redacted=True)
 
 
 class OpenTelemetryConfig(PluginConfig):
@@ -611,6 +620,9 @@ class _Span:
         captured = self._capture(kind, value, field=direction)
         if captured is None:
             return
+        if self._capture_policy is not None:
+            # Keep the URL redaction policy internal to this module.
+            self._capture_policy._redact_image_urls(images)  # noqa: SLF001
         builder = MessageAttributes(
             text_limit=self.config.max_content_length,
             image_limit=self.config.max_image_bytes,
@@ -632,6 +644,9 @@ class _Span:
             self._set(f"harnessed.{direction}.truncated", True)
         if builder.omitted:
             self._set(f"harnessed.{direction}_messages.omitted", builder.omitted)
+        urls_redacted = builder.image_urls_redacted
+        if urls_redacted:
+            self._set(f"harnessed.{direction}_messages.image_urls_redacted", urls_redacted)
 
     def _tools(self, request: ModelRequest) -> None:
         captured = self._capture(TraceContentKind.MODEL_TOOLS, request.tools, field="request.tools")

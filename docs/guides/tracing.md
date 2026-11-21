@@ -384,16 +384,22 @@ Correlation attributes such as `openinference.span.kind`, `session.id`,
 `harnessed.step` and `harnessed.request_id` are set again just before a span
 ends, so they survive even if the provider's real limit is below the budget.
 
-Images are never truncated or exported as text. The tracer receives the model
-transport request, so images stored in the session's asset store are resolved.
-Each distinct image is identified by the SHA-256 of its bytes, which equals its
-`AssetRef.sha256`, and exported as its data URL on the first model span of the
+The tracer exports each image whole or substitutes a text placeholder. It receives
+the model transport request, so images stored in the session's asset store are
+resolved. The tracer identifies inline images by the SHA-256 of their bytes, which
+equals `AssetRef.sha256`, and exports each data URL on the first model span of the
 session that includes it. Later occurrences become a text part such as
 `[image <sha256>, first sent in span <span-id>]`, so exported image data grows
 with the number of distinct images rather than the number of steps. An image
 larger than `max_image_bytes` (5 MiB of decoded data by default) is replaced by a
 placeholder that names its size. Images on turn and tool spans appear only as
 `{"type": "image", "image": "<sha256>"}`.
+
+If an external image URL contains a literal value registered with
+`ContentCapture.redacted(...)`, the trace shows
+`[image omitted because its URL contains a registered secret]` in its place.
+`harnessed.input_messages.image_urls_redacted` counts these placeholders on the
+model span. The model still receives the original URL.
 
 ### Application filtering
 
@@ -450,8 +456,9 @@ and is distinct from returning `None` to omit a field.
 Portable messages have a `role`, a `content` string or part list, and optional
 `tool_calls` (`id`, `name`, `arguments`) and `tool_call_id`. Text parts are
 `{"type": "text", "text": ...}`. Images are `{"type": "image", "image": "<sha256>"}`
-stand-ins: filters and redaction never see image data. Remove a stand-in to drop
-that image; the tracer attaches data only to stand-ins left after filtering.
+stand-ins. Filters receive only the stand-in for each image. Remove a stand-in
+to drop that image. The tracer checks external URLs for registered secrets
+separately before attaching image data.
 Model message values must keep this shape. Otherwise the field is omitted and
 `harnessed.<field>.serialization_error` is set.
 

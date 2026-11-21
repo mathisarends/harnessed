@@ -44,6 +44,7 @@ from harnessed.models import (
     AssetRef,
     AssistantMessage,
     GenerationSettings,
+    ImagePart,
     ImageReference,
     ModelChunk,
     ModelRequest,
@@ -669,6 +670,31 @@ async def test_inline_and_oversized_images_are_whole_or_placeholders(telemetry):
         ("image", inline(small).url),
         ("placeholder", f"[image {digest}, 13 bytes exceeds the 8-byte trace image limit]"),
     ]
+
+
+async def test_registered_secret_in_remote_image_url_omits_image_from_trace(telemetry):
+    provider, exporter = telemetry
+    token = "test-signature"
+    signed = ImagePart(f"https://example.invalid/private.png?signature={token}")
+    public = ImagePart("https://example.invalid/public.png")
+    embedded = inline(b"image pixels")
+    model = ScriptedModel(["seen"])
+    tracer = OpenTelemetryTracer(
+        tracer_provider=provider, capture_content=ContentCapture.redacted(token)
+    )
+    await Agent(model=model, plugins=[tracer]).run(UserMessage((signed, public, embedded)))
+
+    assert model.requests[0].messages[-1].content == (signed, public, embedded)
+    spans = exporter.get_finished_spans()
+    assert token not in str([span.attributes for span in spans])
+    span = next(span for span in spans if span.name == "harnessed.model")
+    placeholder = "[image omitted because its URL contains a registered secret]"
+    assert image_parts(span) == [
+        ("placeholder", placeholder),
+        ("image", public.url),
+        ("image", embedded.url),
+    ]
+    assert span.attributes["harnessed.input_messages.image_urls_redacted"] == 1
 
 
 async def test_unresolved_references_in_library_spans_are_placeholders(telemetry):
