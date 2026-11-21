@@ -20,7 +20,13 @@ from harnessed.models import (
     ToolResult,
 )
 from harnessed.models.messages import ApprovalResponse
-from harnessed.tools import OutputLimit, OutputLimitSetting, ToolEnvelope, ToolInfo
+from harnessed.tools import (
+    OutputLimit,
+    OutputLimitSetting,
+    ToolEnvelope,
+    ToolInfo,
+    ToolSelector,
+)
 
 if TYPE_CHECKING:
     from harnessed.sessions import SessionContext
@@ -69,28 +75,36 @@ class PreStep(Waterfall[StepDecision]):
 
 
 @dataclass(frozen=True)
-class ExecuteTool(Waterfall[ToolResult]):
+class _PlannedTool:
+    """Selector matching shared by the hooks around one planned tool call."""
+
+    tool: ToolInfo | None = field(default=None, kw_only=True)
+
+    def matches(self, selector: ToolSelector) -> bool:
+        """Whether the planned registration matches; unknown tool names never match."""
+        return self.tool is not None and self.tool.matches(selector)
+
+
+@dataclass(frozen=True)
+class ExecuteTool(_PlannedTool, Waterfall[ToolResult]):
     call: ToolCall
     session: SessionContext
-    tool: ToolInfo | None = field(default=None, kw_only=True)
     envelope: ToolEnvelope = field(default=ToolEnvelope(), kw_only=True)
 
 
 @dataclass(frozen=True)
-class ToolPolicy(Waterfall[Decision]):
+class ToolPolicy(_PlannedTool, Waterfall[Decision]):
     call: ToolCall
     session: SessionContext
-    tool: ToolInfo | None = field(default=None, kw_only=True)
     envelope: ToolEnvelope = field(default=ToolEnvelope(), kw_only=True)
 
 
 @dataclass(frozen=True)
-class ReviewToolResult(Waterfall[ToolResult]):
+class ReviewToolResult(_PlannedTool, Waterfall[ToolResult]):
     call: ToolCall
     result: ToolResult
     session: SessionContext
     output_limit: OutputLimitSetting = field(default=OutputLimit.INHERIT, kw_only=True)
-    tool: ToolInfo | None = field(default=None, kw_only=True)
     envelope: ToolEnvelope = field(default=ToolEnvelope(), kw_only=True)
 
 

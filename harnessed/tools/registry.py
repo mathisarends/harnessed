@@ -53,7 +53,7 @@ from .info import (
 )
 from .parameters import DisabledToolParameterError
 from .policy import OutputLimit, OutputLimitSetting, validate_output_limit
-from .references import ToolReference
+from .references import ToolReference, ToolSelector, tool_selector
 from .scheduling import (
     PreparedToolCall,
     ResourceSpec,
@@ -306,7 +306,11 @@ class ToolRegistry:
                 for tool in entries:
                     if isinstance(tool, _PythonTool):
                         _ = _layout_for(
-                            tool.definition, tool.spec, tool.declared, envelopes=envelopes
+                            tool.definition,
+                            tool.spec,
+                            tool.declared,
+                            callback=tool.callback,
+                            envelopes=envelopes,
                         )
             self._envelopes.append(entry)
             return lambda: self._envelopes.remove(entry)
@@ -322,7 +326,12 @@ class ToolRegistry:
         if tool.cached is not None and tool.cached.envelopes == envelopes:
             return tool.cached.layout
         layout = _layout_for(
-            tool.definition, tool.spec, tool.declared, envelopes=envelopes, skip_conflicts=True
+            tool.definition,
+            tool.spec,
+            tool.declared,
+            callback=tool.callback,
+            envelopes=envelopes,
+            skip_conflicts=True,
         )
         tool.cached = _CachedLayout(envelopes, layout)
         return layout
@@ -484,7 +493,13 @@ class ToolRegistry:
                 definition, spec.envelope, reserved_names=effective.disabled
             )
             # Python tool conflicts with registry-wide envelopes fail the mount.
-            _ = _layout_for(definition, spec, declared, envelopes=self._active_envelopes())
+            _ = _layout_for(
+                definition,
+                spec,
+                declared,
+                callback=callback,
+                envelopes=self._active_envelopes(),
+            )
             check_enabled = bind_enabled(spec.enabled, callback, registration)
             entry = _PythonTool(
                 definition,
@@ -581,6 +596,18 @@ class ToolRegistry:
         )
         return ToolExplanation(name, availability, definition)
 
+    def resolve(self, selector: ToolSelector, *, scope: Scope | PluginScope) -> ToolInfo | None:
+        """Describe the registration visible to the model that a selector names, if any."""
+        selected = tool_selector(selector)
+        for entries in self._tools.values():
+            tool = self._visible(entries)
+            if tool is None or not self._available(tool, scope) or not tool.enabled(scope):
+                continue
+            info = _tool_info(tool.spec, self._layout(tool), callback=tool.callback)
+            if info.matches(selected):
+                return info
+        return None
+
     @property
     def definitions(self) -> tuple[ToolDefinition, ...]:
         return self.visible_definitions(self._ctx)
@@ -659,8 +686,7 @@ class ToolRegistry:
             ToolScheduling(tool.spec.parallel, tuple(keys)),
             binding=_Binding(tool, layout),
             output_limit=tool.spec.output_limit,
-            tool=_tool_info(tool.spec, layout),
-            callback=tool.callback,
+            tool=_tool_info(tool.spec, layout, callback=tool.callback),
             grant_key=tool.approval_identity,
             envelope=envelope,
         )
@@ -780,7 +806,7 @@ def _needs_context(tool: _Tool) -> bool:
     )
 
 
-def _tool_info(spec: ToolSpec, layout: EnvelopeLayout) -> ToolInfo:
+def _tool_info(spec: ToolSpec, layout: EnvelopeLayout, *, callback: Callable) -> ToolInfo:
     return ToolInfo(
         layout.definition,
         ToolMetadata(spec.metadata),
@@ -790,6 +816,7 @@ def _tool_info(spec: ToolSpec, layout: EnvelopeLayout) -> ToolInfo:
         spec.presentation,
         action=spec.action,
         envelope=tuple(binding.model for binding in layout.bindings),
+        callback=callback,
     )
 
 
@@ -798,11 +825,12 @@ def _layout_for(
     spec: ToolSpec,
     declared: EnvelopeLayout,
     *,
+    callback: Callable,
     envelopes: Iterable[_RegistryEnvelope],
     skip_conflicts: bool = False,
 ) -> EnvelopeLayout:
     """Merge the registry-wide envelopes whose selector accepts the declared tool."""
-    info = _tool_info(spec, declared)
+    info = _tool_info(spec, declared, callback=callback)
     shared = tuple(
         EnvelopePart(entry.model, entry.on_invalid, entry.position)
         for entry in envelopes

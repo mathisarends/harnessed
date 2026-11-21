@@ -2,6 +2,7 @@ import asyncio
 from collections import deque
 from collections.abc import AsyncIterator, Callable, Iterable
 from contextlib import asynccontextmanager
+from typing import Any
 
 from harnessed.errors import HarnessedError
 from harnessed.models import (
@@ -15,7 +16,7 @@ from harnessed.models import (
     StopReason,
     ToolCall,
 )
-from harnessed.tools.references import ToolSelector, call_arguments, tool_reference
+from harnessed.tools.references import ToolReference, call_arguments, tool_reference
 
 
 class ScriptExhausted(HarnessedError, RuntimeError):
@@ -170,8 +171,12 @@ def reply(text: str, *, reasoning: str = "", usage: ModelUsage | None = None) ->
     )
 
 
-def call(name: ToolSelector, /, **arguments) -> ModelResponse:
-    """Script one model tool call; keyword arguments are its model-supplied form."""
+def call(name: str | Callable[..., Any] | ToolReference, /, **arguments) -> ModelResponse:
+    """Script one model tool call; keyword arguments are its model-supplied form.
+
+    A ``@tool`` method validates the arguments against its parameters. A plain
+    name scripts the wire call as a model would send it, including unknown names.
+    """
     if not isinstance(name, str):
         reference = tool_reference(name)
         arguments = call_arguments(reference, arguments)

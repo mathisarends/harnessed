@@ -140,6 +140,9 @@ and `session.tools.values()` to iterate definitions. Iterating the mapping
 itself yields names. Missing, disabled or inactive tools raise `KeyError` on
 lookup. Existing views reflect activation, removal and replacement, using the
 same visibility rules as model requests. Register tools through plugins.
+`session.tools.resolve(selector)` returns the visible `ToolInfo` for an action
+enum member or decorated `@tool` method, or `None`. `ToolSelector`,
+`ToolReference` and `tool_name(method)` are exported by `harnessed.tools`.
 
 Plugin authors import `SessionContext` from `harnessed.sessions`,
 `SystemPromptStore` from `harnessed.prompts` and `ToolRegistry` from
@@ -587,6 +590,8 @@ See [parameter objects](../guides/tools.md#pydantic-parameter-objects),
 
 `ToolPolicy`, `ExecuteTool` and `ReviewToolResult` expose the captured
 `ToolInfo | None` as `event.tool`; `event.tool.metadata.get(T)` returns `T | None`.
+`event.matches(selector)` and `ToolInfo.matches(selector)` compare the captured
+registration with an action enum member or decorated `@tool` method.
 `ToolChain`, `ToolInfo` and `ToolMetadata` are exported by `harnessed.tools`.
 The same hooks expose per-call `event.envelope: ToolEnvelope`. `@tool(envelope=(M,))`
 merges Pydantic model fields into a tool's schema, validates them and removes them

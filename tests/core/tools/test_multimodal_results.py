@@ -33,7 +33,7 @@ async def test_multimodal_tool_loop_retains_images_and_metadata_through_replay(t
         def screenshot(self) -> ToolResult:
             return ToolResult((TextPart(TEXT), IMAGE), exit_code=0)
 
-    plugins = [Screenshot(), Rules([when(tool="screenshot").note("Keep the image.")])]
+    plugins = [Screenshot(), Rules([when(tool=Screenshot.screenshot).note("Keep the image.")])]
     context = Context(max_tool_output_chars=256) if policy == "limit" else None
     if policy == "spill":
         plugins.append(Spill(threshold_tokens=32, preview_tokens=4))

@@ -21,6 +21,7 @@ from .info import (
 )
 from .parameters import ToolParameter
 from .policy import OutputLimit, OutputLimitSetting
+from .references import ToolReference, ToolSelector, tool_name
 from .registry import ErrorFormatter, ToolError, ToolRegistry, ToolSpec, format_tool_error
 from .scheduling import PreparedToolCall, ToolScheduler, ToolScheduling
 from .view import SessionTools
@@ -48,9 +49,11 @@ __all__ = [
     "ToolMetadata",
     "ToolParameter",
     "ToolPresentation",
+    "ToolReference",
     "ToolRegistry",
     "ToolScheduler",
     "ToolScheduling",
+    "ToolSelector",
     "ToolSpec",
     "activation_tool",
     "envelope_models",
@@ -59,4 +62,5 @@ __all__ = [
     "format_tool_error",
     "suspend_tool_execution",
     "tool",
+    "tool_name",
 ]

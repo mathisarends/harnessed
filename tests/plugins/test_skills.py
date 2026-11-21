@@ -404,7 +404,7 @@ async def test_reloading_after_compaction_updates_the_retained_body_even_with_re
         model=model,
         plugins=[
             skills,
-            Rules([when(tool="load_skill").note("Follow the complete instructions.")]),
+            Rules([when(tool=Skills.load_skill).note("Follow the complete instructions.")]),
         ],
         context=Context(
             compaction=Compaction(

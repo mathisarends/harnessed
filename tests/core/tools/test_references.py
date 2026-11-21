@@ -1,11 +1,17 @@
+from enum import StrEnum
+
 import pytest
 from pydantic import ValidationError
 
 from harnessed import Agent, Approvals, Decision, Plugin, tool
 from harnessed.events import ApprovalRequestedEvent
+from harnessed.hooks import ReviewToolResult
+from harnessed.kernel import Next, hook
+from harnessed.models import ToolResult
 from harnessed.plugins import Filesystem
 from harnessed.runtime.approval_policy import CallbackApprover
 from harnessed.testing import ScriptedModel, call
+from harnessed.tools import tool_name
 
 
 class Echo(Plugin):
@@ -94,3 +100,58 @@ def test_string_sentinel_and_arbitrary_functions_are_rejected():
         Approvals(allow="all")
     with pytest.raises(TypeError, match="@tool"):
         Approvals(ask=[lambda: None])
+
+
+class Publish(StrEnum):
+    POST = "publish.post"
+
+
+class Notes(Plugin):
+    @tool(action=Publish.POST)
+    async def post_note(self, text: str) -> str:
+        return text
+
+
+class Matches(Plugin):
+    def __init__(self, seen: list[tuple[str, bool, bool, bool]]) -> None:
+        super().__init__()
+        self.seen = seen
+
+    @hook(ReviewToolResult)
+    async def review(self, event: ReviewToolResult, next_: Next[ToolResult]) -> ToolResult:
+        self.seen.append(
+            (
+                event.call.name,
+                event.matches(Echo.echo),
+                event.matches(Publish.POST),
+                event.matches(Notes.post_note),
+            )
+        )
+        return await next_()
+
+
+async def test_tool_hooks_match_registrations_by_method_and_action_not_by_name():
+    seen: list[tuple[str, bool, bool, bool]] = []
+    model = ScriptedModel(
+        [call(Echo.echo, text="a"), call(Notes.post_note, text="b"), call("missing"), "done"]
+    )
+    agent = Agent(model=model, plugins=[Echo(), Notes(), Matches(seen)])
+    await agent.run("Use the tools")
+    assert seen == [
+        ("echo_text", True, False, False),
+        ("post_note", False, True, True),
+        ("missing", False, False, False),
+    ]
+
+
+async def test_session_tools_resolve_selectors_to_visible_registrations():
+    assert tool_name(Echo.echo) == "echo_text"
+    async with Agent(model=ScriptedModel([]), plugins=[Echo()]).session() as session:
+        info = session.tools.resolve(Echo.echo)
+        assert info is not None
+        assert info.definition.name == "echo_text"
+        assert info.readonly
+        assert session.tools.resolve(Notes.post_note) is None
+        assert session.tools.resolve(Publish.POST) is None
+        with pytest.raises(TypeError, match="action enum"):
+            session.tools.resolve("echo_text")

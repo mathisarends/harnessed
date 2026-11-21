@@ -4,6 +4,8 @@ from harnessed.kernel import Scope
 from harnessed.models import ToolDefinition
 
 from .availability import ToolExplanation
+from .info import ToolInfo
+from .references import ToolSelector
 from .registry import ToolRegistry
 
 
@@ -42,3 +44,12 @@ class SessionTools(Mapping[str, ToolDefinition]):
         propagate as they do when constructing a model request.
         """
         return self._registry.explain(name, scope=self._ctx)
+
+    def resolve(self, selector: ToolSelector) -> ToolInfo | None:
+        """Describe the visible tool a selector names, or None when the model cannot call it.
+
+        Use the returned definition's name in prompts instead of repeating tool
+        names as strings. An action member resolves to the first visible tool
+        that declares it.
+        """
+        return self._registry.resolve(selector, scope=self._ctx)

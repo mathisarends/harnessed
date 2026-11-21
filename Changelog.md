@@ -5,6 +5,47 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## Unreleased
+
+### Added
+
+- One `ToolSelector` names tools everywhere: an action enum member or a
+  decorated `@tool` method, never a plain string, so renaming a tool with
+  `@tool(name=...)` cannot silently break a rule. Approvals, hooks and
+  `session.tools` accept it:
+  - `event.matches(selector)` on `ToolPolicy`, `ExecuteTool` and
+    `ReviewToolResult` compares the registration captured for the call.
+  - `ToolInfo.matches(selector)` applies the same rule, including in
+    `CallEnvelope(select=...)` callbacks.
+  - `session.tools.resolve(selector)` returns the model-visible `ToolInfo`, or
+    `None` when the tool is missing, disabled or lacks services.
+  - `tool_name(method)` returns the model-facing name for static text such as
+    plugin instructions.
+
+  `ToolSelector`, `ToolReference` and `tool_name` are exported by
+  `harnessed.tools`. See
+  [select tools without repeating names](docs/guides/tools.md#select-tools-without-repeating-names).
+
+### Breaking changes
+
+- `ToolSelector` no longer includes `str` and replaces `ApprovalSelector`.
+- `PreparedToolCall.callback` was removed; use `plan.tool.matches(selector)`.
+- `when(tool=...)` in `Rules` takes tool selectors instead of names. A plain
+  string raises `TypeError`, and rules match the registered tool rather than
+  its wire name.
+
+### Upgrade from 0.23.0
+
+- Replace `ApprovalSelector` annotations with `ToolSelector`.
+- Replace hook checks such as `event.call.name == "run_command"` with
+  `event.matches(Shell.run_command)` or an action member such as
+  `event.matches(ShellAction.EXECUTE)`.
+- Replace `when(tool="bash")` with `when(tool=Shell.bash)` or an action member;
+  pass a list for several tools.
+- `harnessed.testing.call()` still accepts a plain name to script what a model
+  sends on the wire, including unknown tools.
+- Persisted formats are unchanged.
+
 ## 0.23.0 (2026-11-20)
 
 ### Added
