@@ -246,12 +246,14 @@ async def test_forwarded_approvals_obey_both_child_and_parent_response_deadlines
 
     child = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=ToolCall("write"))], "done"]),
-        approvals=Approvals(ask=[Write.write], timeout=child_timeout),
+        approvals=Approvals(ask=[Write.write], timeout_seconds=child_timeout),
         plugins=[Write()],
     )
     parent = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=delegate())], "done"]),
-        approvals=Approvals(default=Decision.ALLOW, approver=respond, timeout=parent_timeout),
+        approvals=Approvals(
+            default=Decision.ALLOW, approver=respond, timeout_seconds=parent_timeout
+        ),
         plugins=[Subagents({"review": child})],
     )
     async with parent.session() as session:
@@ -302,7 +304,7 @@ async def test_cleanup_cancels_child_driver_and_drains_effects(mode):
             scope.effect(cleaned.set)
 
     child = Agent(model=CallbackModel(blocked), plugins=[Resource()])
-    parent = coordinator(child, timeout=1.0 if mode == "timeout" else 5.0)
+    parent = coordinator(child, timeout_seconds=1.0 if mode == "timeout" else 5.0)
     async with parent.session() as session:
         handle = await session.submit("Delegate")
         await asyncio.wait_for(started.wait(), 2)
@@ -492,7 +494,7 @@ async def test_delegate_overrides_ordinary_tool_timeout():
 
     parent = Agent(
         model=ScriptedModel([[ModelChunk(tool_call=delegate())], "Parent answer"]),
-        loop=AgentLoop(tool_timeout=0.001),
+        loop=AgentLoop(tool_timeout_seconds=0.001),
         approvals=Approvals(default=Decision.ALLOW),
         plugins=[Subagents({"review": Agent(model=CallbackModel(respond))})],
     )
@@ -502,7 +504,12 @@ async def test_delegate_overrides_ordinary_tool_timeout():
 
 
 async def test_configuration_and_link_validation():
-    for values in ({"max_parallel": 0}, {"max_calls": 0}, {"max_depth": 0}, {"timeout": 0.0}):
+    for values in (
+        {"max_parallel": 0},
+        {"max_calls": 0},
+        {"max_depth": 0},
+        {"timeout_seconds": 0.0},
+    ):
         with pytest.raises(ValueError):
             Subagents({"review": Agent()}, **values)
     with pytest.raises(ValueError):

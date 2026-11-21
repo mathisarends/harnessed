@@ -25,16 +25,17 @@ class Inbox:
     def __init__(self, events: Iterable[DurableEvent]) -> None:
         pending: dict[str, InboxAddedEvent] = {}
         for event in events:
-            if isinstance(event, InboxAddedEvent):
-                if event.message.id in pending:
-                    raise ValueError(f"Duplicate pending message id: {event.message.id}")
-                pending[event.message.id] = event
-            elif isinstance(event, InboxRemovedEvent):
-                if event.message_id not in pending:
-                    raise ValueError(f"Removing unknown inbox message: {event.message_id}")
-                del pending[event.message_id]
-            elif isinstance(event, UserMessageEvent | MessageAppendedEvent):
-                pending.pop(event.message.id, None)
+            match event:
+                case InboxAddedEvent():
+                    if event.message.id in pending:
+                        raise ValueError(f"Duplicate pending message id: {event.message.id}")
+                    pending[event.message.id] = event
+                case InboxRemovedEvent():
+                    if event.message_id not in pending:
+                        raise ValueError(f"Removing unknown inbox message: {event.message_id}")
+                    del pending[event.message_id]
+                case UserMessageEvent() | MessageAppendedEvent():
+                    pending.pop(event.message.id, None)
         object.__setattr__(self, "pending", tuple(pending.values()))
 
     @property
@@ -98,16 +99,17 @@ class InboxProjection:
             raise ValueError(f"Removing unknown inbox message: {event.message_id}")
 
     def apply(self, event: DurableEvent) -> None:
-        if isinstance(event, InboxAddedEvent):
-            self._pending[event.message.id] = event
-            if event.target == InboxTarget.NEXT_STEP:
-                self._step_pending.add(event.message.id)
-            self._snapshot = None
-        elif isinstance(event, InboxRemovedEvent):
-            del self._pending[event.message_id]
-            self._step_pending.discard(event.message_id)
-            self._snapshot = None
-        elif isinstance(event, UserMessageEvent | MessageAppendedEvent):
-            if self._pending.pop(event.message.id, None) is not None:
-                self._step_pending.discard(event.message.id)
+        match event:
+            case InboxAddedEvent():
+                self._pending[event.message.id] = event
+                if event.target == InboxTarget.NEXT_STEP:
+                    self._step_pending.add(event.message.id)
                 self._snapshot = None
+            case InboxRemovedEvent():
+                del self._pending[event.message_id]
+                self._step_pending.discard(event.message_id)
+                self._snapshot = None
+            case UserMessageEvent() | MessageAppendedEvent():
+                if self._pending.pop(event.message.id, None) is not None:
+                    self._step_pending.discard(event.message.id)
+                    self._snapshot = None

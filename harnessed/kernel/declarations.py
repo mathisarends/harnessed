@@ -16,7 +16,7 @@ from .state import PluginState
 if TYPE_CHECKING:
     from .scope import Scope
 
-type HookEntry = (  # smelt: ignore[SMT347] -- Callers pass plain hook tuples.
+type HookEntry = (  # smelt: ignore[TYP007] -- Callers pass plain hook tuples.
     tuple[type[Event], Callable] | tuple[type[Event], Callable, int]
 )
 
@@ -100,7 +100,7 @@ class Bundle:
         return PluginSpec(self.name, mount, tuple(dict.fromkeys(needs)), (), {})
 
 
-class PluginBase:  # smelt: ignore[SMT323] -- Stable kernel facade name; the SDK Plugin extends it.
+class PluginBase:  # smelt: ignore[MOD002] -- Stable kernel facade name; the SDK Plugin extends it.
     """Reusable recipe reconstructed from explicit constructor inputs per activation.
 
     Constructors must only describe configuration and capabilities. Inputs retain

@@ -98,41 +98,42 @@ class ApprovalState:
 
 
 def approval_transition(records, event: DurableEvent) -> Approval | None:
-    if isinstance(event, ApprovalRequestedEvent):
-        if event.request_id in records:
-            raise ValueError("Duplicate approval request_id")
-        if event.grant_id is not None:
-            grant = records.get(event.grant_id)
-            if (
-                grant is None
-                or not grant.is_grant
-                or grant.request.scope != event.scope
-                or grant.request.identity != event.identity
-                or (event.identity is None and grant.request.call.name != event.call.name)
-            ):
-                raise ValueError(
-                    "Cached approval must reference an active grant for its tool and scope"
-                )
-        return Approval(event)
-    elif isinstance(event, ApprovalResolvedEvent):
-        record = records.get(event.request_id)
-        if record is None or not record.pending:
-            raise ValueError("Approval resolution requires a pending request")
-        if record.request.grant_id is not None and event.status == ApprovalStatus.ANSWERED:
-            grant = records[record.request.grant_id]
-            if not grant.is_grant or not event.remember:
-                raise ValueError("Cached approval grant is no longer active")
-        return replace(record, resolution=event)
-    elif isinstance(event, ApprovalRevokedEvent):
-        record = records.get(event.request_id)
-        if record is None or not record.is_grant:
-            raise ValueError("Approval revocation requires an active remembered grant")
-        return replace(record, revoked=True)
+    match event:
+        case ApprovalRequestedEvent():
+            if event.request_id in records:
+                raise ValueError("Duplicate approval request_id")
+            if event.grant_id is not None:
+                grant = records.get(event.grant_id)
+                if (
+                    grant is None
+                    or not grant.is_grant
+                    or grant.request.scope != event.scope
+                    or grant.request.identity != event.identity
+                    or (event.identity is None and grant.request.call.name != event.call.name)
+                ):
+                    raise ValueError(
+                        "Cached approval must reference an active grant for its tool and scope"
+                    )
+            return Approval(event)
+        case ApprovalResolvedEvent():
+            record = records.get(event.request_id)
+            if record is None or not record.pending:
+                raise ValueError("Approval resolution requires a pending request")
+            if record.request.grant_id is not None and event.status == ApprovalStatus.ANSWERED:
+                grant = records[record.request.grant_id]
+                if not grant.is_grant or not event.remember:
+                    raise ValueError("Cached approval grant is no longer active")
+            return replace(record, resolution=event)
+        case ApprovalRevokedEvent():
+            record = records.get(event.request_id)
+            if record is None or not record.is_grant:
+                raise ValueError("Approval revocation requires an active remembered grant")
+            return replace(record, revoked=True)
     return None
 
 
 class ApprovalsConfig(PluginConfig):
-    timeout: Annotated[float, Field(gt=0)] = 300.0
+    timeout_seconds: Annotated[float, Field(gt=0)] = 300.0
 
 
 DEFAULT_APPROVALS = ApprovalsConfig()
@@ -151,14 +152,14 @@ class Approvals:
         approver: Approver | ApprovalCallback | None = None,
         reviewer: ApprovalReviewer | None = None,
         policy: Callable[[ToolCall], Decision | None] | None = None,
-        timeout: float = DEFAULT_APPROVALS.timeout,
+        timeout_seconds: float = DEFAULT_APPROVALS.timeout_seconds,
     ) -> None:
         if default is not None and not isinstance(default, Decision):
             raise TypeError("default must be a Decision")
         if default is None:
             default = Decision.ALLOW if allow is None else Decision.DENY
         self.default = default
-        self.config = ApprovalsConfig(timeout=timeout)
+        self.config = ApprovalsConfig(timeout_seconds=timeout_seconds)
         if reviewer is not None and not isinstance(reviewer, ApprovalReviewer):
             raise TypeError("reviewer must implement ApprovalReviewer")
         self.reviewer = reviewer

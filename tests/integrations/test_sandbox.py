@@ -43,7 +43,7 @@ class MemoryServices:
             raise SandboxError("closed")
         return workspace_path(path.as_posix()).relative_to("/workspace").as_posix()
 
-    async def run(self, argv, *, cwd, timeout):
+    async def run(self, argv, *, cwd, timeout_seconds):
         key = self.key(cwd)
         self.backend.calls.append({"argv": argv, "path": key})
         if argv == ["timeout"]:
@@ -152,7 +152,7 @@ async def test_same_workspace_backend_and_explicit_binary_export(tmp_path):
         assert await files.read(Path("example.txt"), offset=1, limit=3) == "ell"
         assert (await files.stat(Path("example.txt"))).size == 5
         await files.write(Path("new.txt"), "changed")
-        result = await shell.run(["test"], cwd=Path("nested"), timeout=3)
+        result = await shell.run(["test"], cwd=Path("nested"), timeout_seconds=3)
         assert result.returncode == 7 and result.stderr == "diagnostic"
         assert backend.calls[-1]["path"] == "nested"
         backend.files["result.bin"] = b"\x00\xff\x10"
@@ -248,7 +248,7 @@ async def test_startup_timeout_preserves_timeout_error_and_drains_start(tmp_path
     sandbox = Sandbox(
         backend=lambda: backend,
         workspace=Workspace.copy_from(tmp_path),
-        startup_timeout=0.02,
+        startup_timeout_seconds=0.02,
     )
     with pytest.raises(TimeoutError):
         async with app(sandbox).session():
@@ -265,16 +265,16 @@ async def test_interrupted_commands_close_sandbox(tmp_path, end):
         shell = session.scope[ShellBackend]
         if end == "timeout":
             with pytest.raises(TimeoutError):
-                await shell.run(["timeout"], cwd=Path(), timeout=1)
+                await shell.run(["timeout"], cwd=Path(), timeout_seconds=1)
         else:
-            pending = asyncio.create_task(shell.run(["wait"], cwd=Path(), timeout=10))
+            pending = asyncio.create_task(shell.run(["wait"], cwd=Path(), timeout_seconds=10))
             await backend.block.wait()
             pending.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await asyncio.wait_for(pending, timeout=5)
         assert backend.closed
         with pytest.raises(SandboxError, match="closed"):
-            await shell.run(["test"], cwd=Path(), timeout=1)
+            await shell.run(["test"], cwd=Path(), timeout_seconds=1)
 
 
 @pytest.mark.parametrize(
@@ -335,7 +335,7 @@ def test_config_and_environment_are_explicit(tmp_path, monkeypatch):
         environment({"BAD=KEY": "value"})
     with pytest.raises(ValidationError):
         SandboxConfig(workspace=Workspace.copy_from(tmp_path), limits=SandboxLimits(cpus=0))
-    assert Request(Operation.READ).version == 1
+    assert Request(Operation.READ).version == 2
 
 
 @pytest.mark.parametrize(
@@ -369,12 +369,14 @@ def test_recursive_globs_match_whole_relative_paths(tmp_path, monkeypatch, path,
 async def test_host_launcher_bounds_output_and_deadline():
     with pytest.raises(SandboxError, match="capture limit"):
         await run_process(
-            [sys.executable, "-c", "print('x' * 10000)"], timeout=3, max_output_bytes=256
+            [sys.executable, "-c", "print('x' * 10000)"], timeout_seconds=3, max_output_bytes=256
         )
     with pytest.raises(TimeoutError):
-        await run_process([sys.executable, "-c", "import time; time.sleep(10)"], timeout=0.1)
+        await run_process(
+            [sys.executable, "-c", "import time; time.sleep(10)"], timeout_seconds=0.1
+        )
     with pytest.raises(SandboxError, match="unavailable"):
-        await run_process(["harnessed-missing-sandbox-executable"], timeout=1)
+        await run_process(["harnessed-missing-sandbox-executable"], timeout_seconds=1)
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Worker uses Linux openat and process groups")

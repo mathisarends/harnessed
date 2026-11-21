@@ -32,9 +32,11 @@ class DemoShell:
     def __init__(self) -> None:
         self.commands: list[list[str]] = []
 
-    async def run(self, argv: list[str], *, cwd: Path, timeout: float) -> ProcResult:
+    async def run(self, argv: list[str], *, cwd: Path, timeout_seconds: float) -> ProcResult:
         self.commands.append(list(argv))
-        return ProcResult(0, f"Simulated in {cwd.as_posix()} with a {timeout:g}s budget", "")
+        return ProcResult(
+            0, f"Simulated in {cwd.as_posix()} with a {timeout_seconds:g}s budget", ""
+        )
 
 
 async def main(model_name: str | None) -> None:
@@ -64,7 +66,7 @@ async def main(model_name: str | None) -> None:
                 instructions=_POLICY,
                 context=command_context,
             ),
-            timeout=_APPROVAL_TIMEOUT_SECONDS,
+            timeout_seconds=_APPROVAL_TIMEOUT_SECONDS,
         ),
         plugins=[WorkspaceBackends(shell=demo), Shell(cwd=_WORKSPACE)],
     )

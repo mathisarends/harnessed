@@ -22,7 +22,7 @@ class WorkerTransport(Protocol):
         ...
 
     async def exchange(
-        self, payload: bytes, *, timeout: float, max_output_bytes: int
+        self, payload: bytes, *, timeout_seconds: float, max_output_bytes: int
     ) -> ProcessOutput:
         """Exchange one payload within a timeout in seconds and a byte capture limit."""
         ...
@@ -51,7 +51,7 @@ class WorkerClient:
     async def initialize(self, seed: bytes | None) -> None:
         if seed is None:
             request = self._file_request(
-                Operation.STAT, Path(), timeout=self.config.startup_timeout
+                Operation.STAT, Path(), timeout_seconds=self.config.startup_timeout_seconds
             )
             info = await self.request(request, TypeAdapter(FileStat))
             if not info.is_dir:
@@ -61,7 +61,7 @@ class WorkerClient:
             operation=Operation.IMPORT,
             text=base64.b64encode(seed).decode("ascii"),
             max_transfer_bytes=self.config.limits.max_transfer_bytes,
-            timeout=self.config.startup_timeout,
+            timeout_seconds=self.config.startup_timeout_seconds,
         )
         await self.request(request, TypeAdapter(type(None)))
 
@@ -73,7 +73,7 @@ class WorkerClient:
         )
         try:
             output = await self.transport.exchange(
-                payload, timeout=request.timeout, max_output_bytes=limit
+                payload, timeout_seconds=request.timeout_seconds, max_output_bytes=limit
             )
             if output.returncode:
                 detail = output.stderr.decode("utf-8", errors="replace")[:2000]
@@ -111,14 +111,14 @@ class WorkerClient:
         }
         return TypeAdapter(Request).validate_python(data)
 
-    async def run(self, argv: Sequence[str], *, cwd: Path, timeout: float) -> ProcResult:
-        if not argv or not 0 < timeout <= 600:
+    async def run(self, argv: Sequence[str], *, cwd: Path, timeout_seconds: float) -> ProcResult:
+        if not argv or not 0 < timeout_seconds <= 600:
             raise ValueError("Commands require argv and a timeout in (0, 600]")
         request = Request(
             operation=Operation.RUN,
             argv=tuple(argv),
             path=cwd.as_posix(),
-            timeout=timeout,
+            timeout_seconds=timeout_seconds,
             max_output_bytes=self.config.max_output_bytes,
         )
         result = await self.request(request, TypeAdapter(_CommandResult))

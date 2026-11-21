@@ -47,12 +47,12 @@ async def test_slow_subscription_disconnects_without_affecting_other_consumers_o
         with pytest.raises(StreamOverflow):
             await anext(slow)
         assert len(session.events) == 4
-        assert len(session._observers) == 1  # smelt: ignore[SMT420] -- Ownership invariant.
+        assert len(session._observers) == 1  # smelt: ignore[TST002] -- Ownership invariant.
         assert [message.text for message in session.messages] == ["0", "1", "2", "3"]
     finally:
         await slow.aclose()
         await fast.aclose()
-    assert not session._observers  # smelt: ignore[SMT420] -- Ownership invariant.
+    assert not session._observers  # smelt: ignore[TST002] -- Ownership invariant.
 
 
 async def test_user_message_atomically_claims_its_inbox_identity():

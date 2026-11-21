@@ -24,7 +24,7 @@ def test_approval_selectors_are_typed(rule):
         {"max_tokens": 0},
         {"context_window": -1},
         {"max_parallel_tools": 0},
-        {"tool_timeout": float("inf")},
+        {"tool_timeout_seconds": float("inf")},
         {"on_max_tokens": "guess"},
     ],
 )
@@ -42,7 +42,7 @@ def test_context_budget_options_are_strict(options):
 @pytest.mark.parametrize("timeout", [0, -1, True, "1", float("nan"), float("inf")])
 def test_tool_timeouts_reject_invalid_values_at_both_configuration_boundaries(timeout):
     with pytest.raises(ValidationError):
-        AgentLoopConfig(tool_timeout=timeout)
+        AgentLoopConfig(tool_timeout_seconds=timeout)
     registry = ToolRegistry(Scope())
     with pytest.raises(ValidationError):
         registry.register(lambda: None, timeout_seconds=timeout)

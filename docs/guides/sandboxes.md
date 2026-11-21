@@ -35,7 +35,7 @@ async with agent.session() as session:
     shell = services.shell
     file_system = services.file_system
 
-    result = await shell.run(["python3", "--version"], cwd=Path("."), timeout=30)
+    result = await shell.run(["python3", "--version"], cwd=Path("."), timeout_seconds=30)
     report = await file_system.read(Path("reports/result.md"))
     matches = await file_system.grep("TODO", pattern="**/*.py", limit=20)
     await sandbox.export(
@@ -126,7 +126,7 @@ limits = SandboxLimits(
 ```
 
 Pass `workspace`, `limits`, `env={...}`, `max_output_bytes=1_048_576`,
-`startup_timeout=60.0` and `network=NetworkAccess.NONE` to either integration.
+`startup_timeout_seconds=60.0` and `network=NetworkAccess.NONE` to either integration.
 The listed resource values are the defaults. `env` explicitly adds workload
 variables to a minimal `PATH` and `HOME`; host environment variables are not
 copied into the workload. Docker image environment settings still apply.
@@ -189,7 +189,7 @@ no additional daemon probe before every call and no automatic replay of a
 possibly executed command. Closed or failed built-in runtimes reject previously
 obtained service handles.
 
-`startup_timeout` expiry raises `TimeoutError` after the start task is cancelled
+`startup_timeout_seconds` expiry raises `TimeoutError` after the start task is cancelled
 and drained; caller cancellation remains `CancelledError`. A shell request's
 timeout includes queueing, launcher startup and execution. The Bubblewrap channel
 uses one deadline across its lock wait and I/O; the time spent waiting is not
@@ -270,7 +270,7 @@ that only needs a Python fallback can delegate to
 `harnessed.plugins.filesystem.search_files(self, query, pattern=pattern, limit=limit)`.
 The fallback preserves search notes and skips `UnicodeError`; other read errors,
 including a preview that exceeds a backend's byte cap, propagate explicitly.
-`Shell(cwd=".", timeout=30, max_timeout=600)` only configures tool arguments
+`Shell(cwd=".", timeout_seconds=30, max_timeout_seconds=600)` only configures tool arguments
 and schema limits. Configure workload `env` and `max_output_bytes` on the sandbox
 or supplied shell backend. For local execution, configure these options on `LocalWorkspace`.
 

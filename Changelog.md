@@ -5,6 +5,18 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## Unreleased
+
+### Breaking changes
+
+- Duration options use explicit second units. Rename `timeout`, `max_timeout`,
+  `startup_timeout`, `call_timeout`, `tool_timeout` and `default_timeout` to
+  their `_seconds` forms in Harnessed calls and configuration. Keep the same
+  numeric values. Custom shell backends take `timeout_seconds` in `run` and
+  `start`. Model-facing shell and subagent calls use `timeout_seconds`, and
+  `read_command` takes `wait_seconds`. Update scripted tool calls accordingly.
+- Bundled sandbox workers use protocol version 2 for the renamed duration field.
+
 ## 0.24.0 (2026-11-21)
 
 ### Added

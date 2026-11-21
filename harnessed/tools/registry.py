@@ -699,7 +699,7 @@ class ToolRegistry:
         call_context: ToolContext | None = None,
         _expected: object = _UNSPECIFIED,
         error_formatter: ErrorFormatter | None = None,
-        default_timeout: float | None = None,
+        default_timeout_seconds: float | None = None,
     ) -> ToolResult:
         """Run one call; a tool's own timeout wins over the caller's default.
 
@@ -724,7 +724,7 @@ class ToolRegistry:
                 scope=scope,
                 call_context=call_context,
                 layout=planned,
-                default_timeout=default_timeout,
+                default_timeout_seconds=default_timeout_seconds,
             )
         except asyncio.CancelledError:
             if call_context is not None:
@@ -768,12 +768,14 @@ class ToolRegistry:
         scope: Scope | PluginScope,
         call_context: ToolContext | None,
         layout: EnvelopeLayout | None,
-        default_timeout: float | None,
+        default_timeout_seconds: float | None,
     ) -> ToolResult:
         """Invoke the tool within its activation and timeout budget."""
         with tool.registration.activate():
             async with ToolExecutionBudget(
-                tool.timeout_seconds if tool.timeout_seconds is not None else default_timeout
+                tool.timeout_seconds
+                if tool.timeout_seconds is not None
+                else default_timeout_seconds
             ):
                 if layout is None:
                     layout = self._layout(tool)

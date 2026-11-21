@@ -255,7 +255,7 @@ async def test_recipe_isolated_between_concurrent_sessions():
 
 async def test_call_timeout_and_abort_propagate_cancellation():
     transport = MemoryTransport(delay=30)
-    result, _ = await run_tool(transport, call_timeout=0.02)
+    result, _ = await run_tool(transport, call_timeout_seconds=0.02)
     assert result.tool_calls[0][1].status is ToolStatus.TIMEOUT
     assert len(transport.calls) == 1
     assert transport.cancelled.is_set()
@@ -294,7 +294,7 @@ async def test_startup_timeout_drains_connection_task():
     with pytest.raises(TimeoutError):
         await Agent(
             model=ScriptedModel(["unused"]),
-            plugins=[MCP("slow", transport=SlowTransport(), startup_timeout=0.02)],
+            plugins=[MCP("slow", transport=SlowTransport(), startup_timeout_seconds=0.02)],
         ).run("x")
     assert closed.is_set()
 
@@ -374,7 +374,9 @@ if __name__ == "__main__":
         model=ScriptedModel([[ModelChunk(tool_call=call)], "done"]),
         approvals=Approvals(default=Decision.ALLOW),
         plugins=[
-            MCP.stdio("local", command=sys.executable, args=[str(server)], startup_timeout=15)
+            MCP.stdio(
+                "local", command=sys.executable, args=[str(server)], startup_timeout_seconds=15
+            )
         ],
     )
     result = await agent.run("echo")
@@ -411,7 +413,7 @@ if __name__ == "__main__":
                 args=[str(server), argument],
                 cwd=tmp_path,
                 env={"HARNESS_MCP_TEST_MODE": "explicit"},
-                startup_timeout=15,
+                startup_timeout_seconds=15,
             )
         )
         result = await session.scope[ToolRegistry].execute(ToolCall("local__inspect", {}))
@@ -445,7 +447,10 @@ if __name__ == "__main__":
     async with Agent(model=ScriptedModel(["unused"])).session() as session:
         await session.mount(
             MCP.stdio(
-                "local", command=sys.executable, args=[str(server), failure], startup_timeout=15
+                "local",
+                command=sys.executable,
+                args=[str(server), failure],
+                startup_timeout_seconds=15,
             )
         )
         registry = session.scope[ToolRegistry]
@@ -655,8 +660,8 @@ async def test_enabled_predicate_is_rechecked_after_approval():
     [
         {"include_tools": "search"},
         {"readonly_tools": "search"},
-        {"startup_timeout": 0},
-        {"call_timeout": float("inf")},
+        {"startup_timeout_seconds": 0},
+        {"call_timeout_seconds": float("inf")},
     ],
 )
 def test_invalid_configuration_does_not_open_a_connection(options):
@@ -743,7 +748,10 @@ async def test_malformed_stdio_startup_fails_before_startup_timeout(tmp_path: Pa
                 model=model,
                 plugins=[
                     MCP.stdio(
-                        "broken", command=sys.executable, args=[str(server)], startup_timeout=15
+                        "broken",
+                        command=sys.executable,
+                        args=[str(server)],
+                        startup_timeout_seconds=15,
                     )
                 ],
             ).run("x")

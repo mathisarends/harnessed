@@ -1,3 +1,3 @@
-from .adapter import PydanticAIModel as PydanticAIModel
+from .adapter import PydanticAIModel
 
 __all__ = ["PydanticAIModel"]

@@ -267,22 +267,27 @@ def _start_chunks(event: PartStartEvent, previews: dict[int, _ToolPreview]) -> I
     # A start replaces whatever part previously used this index.
     previews.pop(event.index, None)
     part = event.part
-    if isinstance(part, native.TextPart):
-        yield ModelChunk(text=part.content)
-    elif isinstance(part, native.ThinkingPart):
-        yield ModelChunk(reasoning=part.content)
-    elif isinstance(part, native.ToolCallPart):
-        preview = _ToolPreview(part.tool_name, part.tool_call_id)
-        previews[event.index] = preview
-        yield ModelChunk(tool_call_start=ToolCallStart(event.index, preview.name, preview.call_id))
-        if part.args is not None:
-            if isinstance(part.args, dict):
-                preview.arguments = dict(part.args)
+    match part:
+        case native.TextPart():
+            yield ModelChunk(text=part.content)
+        case native.ThinkingPart():
+            yield ModelChunk(reasoning=part.content)
+        case native.ToolCallPart():
+            preview = _ToolPreview(part.tool_name, part.tool_call_id)
+            previews[event.index] = preview
+            yield ModelChunk(
+                tool_call_start=ToolCallStart(event.index, preview.name, preview.call_id)
+            )
+            args = part.args
+            if args is None:
+                return
+            if isinstance(args, str):
+                arguments = args
+                mode = ToolArgumentsMode.APPEND
+            else:
+                preview.arguments = dict(args)
                 arguments = json.dumps(preview.arguments, ensure_ascii=False)
                 mode = ToolArgumentsMode.REPLACE
-            else:
-                arguments = part.args
-                mode = ToolArgumentsMode.APPEND
             yield ModelChunk(
                 tool_call_delta=ToolCallDelta(
                     event.index, arguments, preview.name, preview.call_id, mode
@@ -294,30 +299,31 @@ def _delta_chunks(event: PartDeltaEvent, previews: dict[int, _ToolPreview]) -> I
     from pydantic_ai import messages as native
 
     delta = event.delta
-    if isinstance(delta, native.TextPartDelta):
-        yield ModelChunk(text=delta.content_delta)
-    elif isinstance(delta, native.ThinkingPartDelta) and delta.content_delta:
-        yield ModelChunk(reasoning=delta.content_delta)
-    elif isinstance(delta, native.ToolCallPartDelta):
-        # Provider-executed native calls share this delta type but are
-        # not previewed; the final response decides whether they are valid.
-        preview = previews.get(event.index)
-        if preview is None:
-            return
-        preview.name += delta.tool_name_delta or ""
-        if delta.tool_call_id is not None:
-            preview.call_id = delta.tool_call_id
-        if isinstance(delta.args_delta, dict):
-            # Each patch re-sends the full snapshot: payload grows with the
-            # number of patches. Fine while providers send few of them.
-            preview.arguments = {**(preview.arguments or {}), **delta.args_delta}
-            arguments = json.dumps(preview.arguments, ensure_ascii=False)
-            mode = ToolArgumentsMode.REPLACE
-        else:
-            arguments = delta.args_delta or ""
-            mode = ToolArgumentsMode.APPEND
-        yield ModelChunk(
-            tool_call_delta=ToolCallDelta(
-                event.index, arguments, preview.name, preview.call_id, mode
+    match delta:
+        case native.TextPartDelta():
+            yield ModelChunk(text=delta.content_delta)
+        case native.ThinkingPartDelta() if delta.content_delta:
+            yield ModelChunk(reasoning=delta.content_delta)
+        case native.ToolCallPartDelta():
+            # Provider-executed native calls share this delta type but are
+            # not previewed; the final response decides whether they are valid.
+            preview = previews.get(event.index)
+            if preview is None:
+                return
+            preview.name += delta.tool_name_delta or ""
+            if delta.tool_call_id is not None:
+                preview.call_id = delta.tool_call_id
+            if isinstance(delta.args_delta, dict):
+                # Each patch re-sends the full snapshot: payload grows with the
+                # number of patches. Fine while providers send few of them.
+                preview.arguments = {**(preview.arguments or {}), **delta.args_delta}
+                arguments = json.dumps(preview.arguments, ensure_ascii=False)
+                mode = ToolArgumentsMode.REPLACE
+            else:
+                arguments = delta.args_delta or ""
+                mode = ToolArgumentsMode.APPEND
+            yield ModelChunk(
+                tool_call_delta=ToolCallDelta(
+                    event.index, arguments, preview.name, preview.call_id, mode
+                )
             )
-        )

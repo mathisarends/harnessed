@@ -6,21 +6,13 @@ from uuid import uuid4
 from pydantic import BaseModel, Field, ValidationError
 
 from harnessed.integrations.sandbox import (
-    NetworkAccess as NetworkAccess,
-)
-from harnessed.integrations.sandbox import (
+    NetworkAccess,
     Sandbox,
     SandboxConfig,
+    SandboxError,
+    SandboxLimits,
+    Workspace,
     WorkspaceMode,
-)
-from harnessed.integrations.sandbox import (
-    SandboxError as SandboxError,
-)
-from harnessed.integrations.sandbox import (
-    SandboxLimits as SandboxLimits,
-)
-from harnessed.integrations.sandbox import (
-    Workspace as Workspace,
 )
 from harnessed.integrations.sandbox._runtime import RuntimeState, WorkerRuntime
 from harnessed.integrations.sandbox.bundle import worker_source
@@ -65,8 +57,8 @@ class DockerBackend(WorkerRuntime):
         self._removed = False
         self._script: str | None = None
 
-    async def command(self, argv: list[str], *, timeout: float = 30.0) -> ProcessOutput:
-        return await run_process([self.executable, *argv], timeout=timeout)
+    async def command(self, argv: list[str], *, timeout_seconds: float = 30.0) -> ProcessOutput:
+        return await run_process([self.executable, *argv], timeout_seconds=timeout_seconds)
 
     async def start(self, config: SandboxConfig) -> None:
         client = self._begin_start(config)
@@ -75,7 +67,7 @@ class DockerBackend(WorkerRuntime):
         limits = config.limits
         root = await run_sync(partial(source_root, config.workspace))
         info = await self.command(
-            ["info", "--format", "{{json .}}"], timeout=config.startup_timeout
+            ["info", "--format", "{{json .}}"], timeout_seconds=config.startup_timeout_seconds
         )
         self.check(info, "inspect engine")
         try:
@@ -86,7 +78,7 @@ class DockerBackend(WorkerRuntime):
             ) from error
         image = await self.command(
             ["image", "inspect", "--format", "{{json .Config.Volumes}}", self.image],
-            timeout=config.startup_timeout,
+            timeout_seconds=config.startup_timeout_seconds,
         )
         self.check(image, "inspect pre-pulled image")
         if json.loads(image.stdout):
@@ -161,9 +153,11 @@ class DockerBackend(WorkerRuntime):
             ]
         )
         self._attempted = True
-        created = await self.command(argv, timeout=config.startup_timeout)
+        created = await self.command(argv, timeout_seconds=config.startup_timeout_seconds)
         self.check(created, "create")
-        started = await self.command(["start", self.name], timeout=config.startup_timeout)
+        started = await self.command(
+            ["start", self.name], timeout_seconds=config.startup_timeout_seconds
+        )
         self.check(started, "start")
         await client.initialize(seed)
         self._mark_ready()
@@ -184,7 +178,7 @@ class DockerBackend(WorkerRuntime):
         self._removed = True
 
     async def exchange(
-        self, payload: bytes, *, timeout: float, max_output_bytes: int
+        self, payload: bytes, *, timeout_seconds: float, max_output_bytes: int
     ) -> ProcessOutput:
         if self._state not in (RuntimeState.STARTING, RuntimeState.READY):
             raise SandboxError(f"Docker sandbox is not available: {self._state}")
@@ -193,7 +187,7 @@ class DockerBackend(WorkerRuntime):
             output = await run_process(
                 [self.executable, "exec", "-i", self.name, self.python, "-I", "-c", self._script],
                 input=payload,
-                timeout=timeout,
+                timeout_seconds=timeout_seconds,
                 max_output_bytes=max_output_bytes,
             )
             self.check(output, "execute worker request")
@@ -218,7 +212,7 @@ class DockerSandbox(Sandbox):
         env: dict[str, str] | None = None,
         limits: SandboxLimits | None = None,
         max_output_bytes: int = 1_048_576,
-        startup_timeout: float = 60.0,
+        startup_timeout_seconds: float = 60.0,
         executable: str = "docker",
         runtime: str | None = None,
         python: str = "python3",
@@ -232,7 +226,7 @@ class DockerSandbox(Sandbox):
             env=env,
             limits=limits,
             max_output_bytes=max_output_bytes,
-            startup_timeout=startup_timeout,
+            startup_timeout_seconds=startup_timeout_seconds,
         )
 
 

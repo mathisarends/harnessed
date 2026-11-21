@@ -55,7 +55,7 @@ class Agent:
         plugin_validation: PluginValidation = PluginValidation.ERROR,
         store: SessionStore | None = None,
     ) -> None:
-        self.plugin_validation = (  # smelt: ignore[SMT335] -- Public Agent setting.
+        self.plugin_validation = (  # smelt: ignore[VIS004] -- Public Agent setting.
             PluginValidation(plugin_validation)
         )
         self.store = store

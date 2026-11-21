@@ -114,7 +114,7 @@ still apply to approved calls.
 
 ## Response timeouts
 
-`Approvals(timeout=120)` sets the default approval response timeout for the whole
+`Approvals(timeout_seconds=120)` sets the default approval response timeout for the whole
 session, in seconds. It applies to tool-policy questions, questions inside a tool, direct SDK requests and forwarded subagent questions.
 Callbacks, services, hooks and stream responders use the same timeout. The
 default is 300 seconds; values must be finite and positive.
@@ -123,13 +123,13 @@ There are two configuration levels:
 
 ```python
 # Application default for every approval question.
-Approvals(approver=approve, timeout=120)
+Approvals(approver=approve, timeout_seconds=120)
 
 # Inside a running tool: inherit the application default.
 await context.approve("Deploy to production?")
 
 # Give this one question a different response timeout.
-await context.approve("Deploy to production?", timeout=30)
+await context.approve("Deploy to production?", timeout_seconds=30)
 ```
 
 `context` is the framework-supplied `Inject[ToolContext]` parameter of a tool method;
@@ -137,10 +137,10 @@ await context.approve("Deploy to production?", timeout=30)
 See the [complete tool example](tools.md#ask-for-approval-inside-a-tool).
 
 The lower-level equivalent is
-`await session.approvals.request(call, reason, timeout=30)`, where `call` is a
-`ToolCall`. Omitting `timeout`, or passing `None`, inherits the configured default.
+`await session.approvals.request(call, reason, timeout_seconds=30)`, where `call` is a
+`ToolCall`. Omitting `timeout_seconds`, or passing `None`, inherits the configured default.
 An explicit value replaces it for this question and may be shorter or longer.
-For example, `timeout=300` allows five minutes even when the default is 120
+For example, `timeout_seconds=300` allows five minutes even when the default is 120
 seconds. The application default is not a maximum. Overrides do not change later
 questions. Invalid overrides are rejected before recording a question, even when
 a reusable grant exists.
@@ -159,6 +159,6 @@ interrupt the wait. Forwarding a child's approval does not extend the child's
 existing response deadline; the parent's response timeout can end it earlier.
 
 Configure approval response timeouts on `Approvals`, and tool execution timeouts
-on `AgentLoop(tool_timeout=...)` or `@tool(timeout_seconds=...)`.
+on `AgentLoop(tool_timeout_seconds=...)` or `@tool(timeout_seconds=...)`.
 The [API decision and rationale](../contributing/approval-timeouts.md) explain
 these responsibilities.

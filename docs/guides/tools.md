@@ -348,8 +348,8 @@ uses the session's approval flow. If the tool owns its confirmation in this way,
 allow the outer tool call with `Approvals(allow=[WorkspaceTools.cleanup])` to avoid
 also asking before the tool starts.
 
-`Approvals(timeout=...)` sets the response timeout for these questions too.
-`context.approve(reason, timeout=30)` replaces it for one question; omission or
+`Approvals(timeout_seconds=...)` sets the response timeout for these questions too.
+`context.approve(reason, timeout_seconds=30)` replaces it for one question; omission or
 `None` inherits it. The finite positive override may be shorter or longer than
 the default. Approval waits do not consume the asking task's tool execution
 budget. [Approval response timeouts](approvals.md#response-timeouts) describe
@@ -375,7 +375,7 @@ even if another append holds the log lock. Event observers run after that checkp
 and remain cancellable.
 
 `@tool(timeout_seconds=120)` gives a tool an execution deadline in seconds. A finite,
-positive value overrides `AgentLoop(tool_timeout=...)`; omission or `None` inherits
+positive value overrides `AgentLoop(tool_timeout_seconds=...)`; omission or `None` inherits
 that default. `timeout_seconds` replaces the former `timeout` keyword on `@tool`,
 `ToolRegistry.tool()`, `ToolRegistry.register()` and `ToolSpec`.
 
@@ -411,10 +411,10 @@ stop a running thread. Long synchronous operations must poll `call.cancelled`
 or pass `call.signal` to an operation that cooperates. Abort waits for the worker
 to finish before releasing its resources or closing the session.
 
-Shell commands use their requested timeout or `Shell(timeout=...)` default, up to
-`max_timeout` (at most 600 seconds). The shell tool explicitly overrides the generic
-`AgentLoop(tool_timeout=...)` deadline so longer commands can complete.
-Its argument schema and runtime validation both advertise the configured `max_timeout`.
+Shell commands use their requested timeout or `Shell(timeout_seconds=...)` default, up to
+`max_timeout_seconds` (at most 600 seconds). The shell tool explicitly overrides the generic
+`AgentLoop(tool_timeout_seconds=...)` deadline so longer commands can complete.
+Its argument schema and runtime validation both advertise the configured `max_timeout_seconds`.
 
 Background execution is a separate opt-in capability. Add `BackgroundShell(...)`
 alongside a shell backend to expose start, live inspection, stdin and termination
@@ -424,7 +424,7 @@ tools with session-inbox completion notifications. See the
 For configuration-dependent constraints, `@tool(parameter_fields=fields)` accepts
 an unbound method `fields(self) -> Mapping[str, FieldInfo]`. It runs once per mount
 after `setup` and adds Pydantic `Field` metadata to the named model parameters.
-For example, return `{"timeout": Field(le=self.config.max_timeout)}`. Annotations
+For example, return `{"timeout_seconds": Field(le=self.config.max_timeout_seconds)}`. Annotations
 still supply the types and defaults; injected or unknown parameter names are rejected.
 
 Tools run sequentially unless `parallel=True`. Declare shared resource keys for

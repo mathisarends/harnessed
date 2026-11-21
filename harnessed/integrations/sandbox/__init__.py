@@ -13,14 +13,16 @@ from harnessed.plugins.shell import ShellBackend
 from harnessed.runtime.plugin import Plugin
 
 from .process import finish
-from .types import NetworkAccess as NetworkAccess
-from .types import SandboxBackend as SandboxBackend
-from .types import SandboxConfig as SandboxConfig
-from .types import SandboxError as SandboxError
-from .types import SandboxLimits as SandboxLimits
-from .types import Workspace as Workspace
-from .types import WorkspaceMode as WorkspaceMode
-from .types import workspace_path
+from .types import (
+    NetworkAccess,
+    SandboxBackend,
+    SandboxConfig,
+    SandboxError,
+    SandboxLimits,
+    Workspace,
+    WorkspaceMode,
+    workspace_path,
+)
 from .workspace import export_file
 
 if TYPE_CHECKING:
@@ -51,7 +53,7 @@ class Sandbox(Plugin[SandboxConfig], slot="workspace"):
         env: dict[str, str] | None = None,
         limits: SandboxLimits | None = None,
         max_output_bytes: int = 1_048_576,
-        startup_timeout: float = 60.0,
+        startup_timeout_seconds: float = 60.0,
     ) -> None:
         super().__init__(
             config=SandboxConfig(
@@ -60,7 +62,7 @@ class Sandbox(Plugin[SandboxConfig], slot="workspace"):
                 env=dict(env if env is not None else {}),
                 limits=limits if limits is not None else SandboxLimits(),
                 max_output_bytes=max_output_bytes,
-                startup_timeout=startup_timeout,
+                startup_timeout_seconds=startup_timeout_seconds,
             )
         )
         self.backend_factory = backend
@@ -71,7 +73,7 @@ class Sandbox(Plugin[SandboxConfig], slot="workspace"):
         scope.effect(backend.aclose)
         startup = asyncio.create_task(backend.start(self.config))
         try:
-            async with asyncio.timeout(self.config.startup_timeout):
+            async with asyncio.timeout(self.config.startup_timeout_seconds):
                 await asyncio.shield(startup)
         except BaseException:
             startup.cancel()

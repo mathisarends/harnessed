@@ -91,7 +91,7 @@ async def test_spawn_returns_before_child_and_completion_wakes_idle_coordinator(
 
 
 @pytest.mark.parametrize(
-    "timeout,save_delay",
+    "timeout_seconds,save_delay",
     [
         pytest.param(0.0, 0.0, id="poll"),
         pytest.param(5.0, 0.0, id="wait"),
@@ -99,7 +99,7 @@ async def test_spawn_returns_before_child_and_completion_wakes_idle_coordinator(
     ],
 )
 async def test_status_asks_child_coalesces_requests_and_does_not_finish_task(
-    timeout, save_delay, tmp_path, monkeypatch
+    timeout_seconds, save_delay, tmp_path, monkeypatch
 ):
     # The status timeout bounds the reply wait, not the surrounding durable writes.
     # Keep a separate local coordination deadline with room for slow Windows fsyncs.
@@ -178,17 +178,17 @@ async def test_status_asks_child_coalesces_requests_and_does_not_finish_task(
                     "status",
                     {
                         "child_id": child_id,
-                        "timeout": timeout,
+                        "timeout_seconds": timeout_seconds,
                     },
                 )
             )
-            if timeout == 0:
+            if timeout_seconds == 0:
                 yield ModelChunk(
                     tool_call=ToolCall(
                         "status",
                         {
                             "child_id": child_id,
-                            "timeout": 0,
+                            "timeout_seconds": 0,
                         },
                     )
                 )
@@ -204,7 +204,7 @@ async def test_status_asks_child_coalesces_requests_and_does_not_finish_task(
             report = event.event.runtime.report
             if report is not None and report.state is ChildReportState.PENDING:
                 status_requested.set()
-                if timeout:
+                if timeout_seconds:
                     release.set()
 
     parent = _parent(
@@ -232,7 +232,7 @@ async def test_status_asks_child_coalesces_requests_and_does_not_finish_task(
             if call.name == "status"
         ]
         assert status_requested.is_set()
-        if timeout == 0:
+        if timeout_seconds == 0:
             assert len(reports) == 2
             assert {report["state"] for report in reports} == {"pending"}
             assert len({report["request_id"] for report in reports}) == 1
@@ -334,7 +334,9 @@ async def test_wait_timeout_keeps_child_running_and_spawn_limits_include_queued_
             results = [message for message in request.messages if isinstance(message, ToolMessage)]
             child_ids.extend(json.loads(message.text)["child_id"] for message in results[:2])
             assert results[2].status is ToolStatus.ERROR
-            yield ModelChunk(tool_call=ToolCall("wait", {"child_id": child_ids[0], "timeout": 0}))
+            yield ModelChunk(
+                tool_call=ToolCall("wait", {"child_id": child_ids[0], "timeout_seconds": 0})
+            )
         else:
             assert json.loads(request.messages[-1].text)["status"] == "running"
             yield ModelChunk(text="Continue independently")
@@ -406,7 +408,9 @@ async def test_status_while_awaiting_child_approval_returns_facts_then_terminal_
         if last.text == "Start":
             yield ModelChunk(tool_call=_spawn())
         elif last.text == "Ask":
-            yield ModelChunk(tool_call=ToolCall("status", {"child_id": child_id, "timeout": 0}))
+            yield ModelChunk(
+                tool_call=ToolCall("status", {"child_id": child_id, "timeout_seconds": 0})
+            )
         else:
             if isinstance(last, ToolMessage) and child_id is None:
                 child_id = json.loads(last.text)["child_id"]
@@ -475,7 +479,9 @@ async def test_queued_child_accepts_guidance_and_status_without_starting_an_extr
             yield ModelChunk(
                 tool_call=ToolCall("send", {"child_id": ids[1], "message": "Guidance"})
             )
-            yield ModelChunk(tool_call=ToolCall("status", {"child_id": ids[1], "timeout": 0}))
+            yield ModelChunk(
+                tool_call=ToolCall("status", {"child_id": ids[1], "timeout_seconds": 0})
+            )
         else:
             if request.messages[-1].text.startswith('{"type": "subagent.finished"'):
                 message = json.loads(request.messages[-1].text)
@@ -565,7 +571,7 @@ async def test_background_timeout_or_parent_failure_drains_children(ending, noti
             plugins=[SlowStartup()] if ending == "startup_timeout" else (),
         ),
         CallbackModel(parent_response),
-        timeout=5 if ending == "parent_error" else 0.1,
+        timeout_seconds=5 if ending == "parent_error" else 0.1,
     )
     async with parent.session() as session:
 

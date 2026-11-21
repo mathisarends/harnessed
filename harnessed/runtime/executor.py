@@ -132,7 +132,7 @@ class ToolExecutor:
                     call_context=execution,
                     _expected=plan.binding,
                     error_formatter=self.options.error_formatter,
-                    default_timeout=self.options.tool_timeout,
+                    default_timeout_seconds=self.options.tool_timeout_seconds,
                 ),
             )
             if not isinstance(returned, ToolResult):

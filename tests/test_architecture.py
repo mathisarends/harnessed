@@ -199,6 +199,8 @@ def test_public_exports_resolve_to_their_canonical_classes_and_functions(module)
                 )
                 for alias in node.names:
                     if (name := alias.asname or alias.name) in facade.__all__:
+                        if module == facade.__package__ and canonical.startswith(f"{module}."):
+                            assert node.level == 1, (module, name)
                         declarations[name] = (canonical, alias.name)
             elif isinstance(node, ast.TypeAlias) and node.name.id in facade.__all__:
                 type_aliases.add(node.name.id)

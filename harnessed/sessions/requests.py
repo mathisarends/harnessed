@@ -49,21 +49,22 @@ class RequestProjection:
         return call_id in self._open_executions
 
     def apply(self, event: DurableEvent) -> None:
-        if isinstance(event, ToolExecutionStartedEvent):
-            self._open_executions.add(event.call_id)
-        elif isinstance(event, ToolExecutionFinishedEvent):
-            self._open_executions.discard(event.call_id)
-        elif isinstance(event, ModelRequestedEvent):
-            self.model_request_count += 1
-            self._requests.append(event.request)
-            self._by_id[event.request_id] = event.request
-            self._snapshot = None
-        elif isinstance(event, AssistantMessageEvent | ModelRequestFailedEvent):
-            self._finished.add(event.request_id)
-        elif isinstance(event, ModelUsageRecordedEvent):
-            self._usage = (
-                event.usage if self._usage is None else sum_usage((self._usage, event.usage))
-            )
+        match event:
+            case ToolExecutionStartedEvent():
+                self._open_executions.add(event.call_id)
+            case ToolExecutionFinishedEvent():
+                self._open_executions.discard(event.call_id)
+            case ModelRequestedEvent():
+                self.model_request_count += 1
+                self._requests.append(event.request)
+                self._by_id[event.request_id] = event.request
+                self._snapshot = None
+            case AssistantMessageEvent() | ModelRequestFailedEvent():
+                self._finished.add(event.request_id)
+            case ModelUsageRecordedEvent():
+                self._usage = (
+                    event.usage if self._usage is None else sum_usage((self._usage, event.usage))
+                )
 
     def release_turn(self) -> None:
         self._requests.clear()

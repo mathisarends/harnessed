@@ -25,7 +25,7 @@ async def test_local_shell_captures_outputs_and_exit_status(tmp_path):
             "import sys; print('out'); print('err', file=sys.stderr); sys.exit(3)",
         ],
         cwd=tmp_path,
-        timeout=10,
+        timeout_seconds=10,
     )
     assert result.returncode == 3
     assert result.stdout.strip() == "out"
@@ -37,5 +37,5 @@ async def test_local_shell_timeout(tmp_path):
         await LocalShell().run(
             [sys.executable, "-c", "import time; time.sleep(30)"],
             cwd=tmp_path,
-            timeout=0.1,
+            timeout_seconds=0.1,
         )

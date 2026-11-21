@@ -453,7 +453,7 @@ async def test_expired_ui_approval_cannot_be_answered_and_still_finishes_the_tur
     async with (
         Agent(
             model=model,
-            approvals=Approvals(default=Decision.ASK, timeout=0.02),
+            approvals=Approvals(default=Decision.ASK, timeout_seconds=0.02),
             plugins=[Work(effects)],
         ).session() as session,
         session.stream("Publish") as stream,

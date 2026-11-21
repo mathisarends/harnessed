@@ -506,7 +506,7 @@ custom = [WorkspaceBackends(filesystem=storage), Filesystem()]
 `Shell(cwd="nested")` runs commands in a subdirectory. Local commands run as the
 host user. Use a [sandbox](sandboxes.md) for isolation. Configure local process
 environment and output capture on `LocalWorkspace(env=..., max_output_bytes=...)`.
-`Shell(timeout=..., max_timeout=...)` controls the tool's timeout schema.
+`Shell(timeout_seconds=..., max_timeout_seconds=...)` controls the tool's timeout schema.
 
 `WorkspaceBackends` accepts an existing `filesystem=`, `shell=`, or both. The
 caller owns those objects and their lifetime. A provider by itself publishes
@@ -568,7 +568,7 @@ class FailureNudge(Plugin[FailureNudgeConfig]):
 ```
 
 Built-in features retain their typed constructors, such as
-`Compaction(keep_last_steps=4)` and `Shell(timeout=30)`, and use this pattern internally.
+`Compaction(keep_last_steps=4)` and `Shell(timeout_seconds=30)`, and use this pattern internally.
 Callers of a custom constructor follow that class's explicit signature.
 Allocate mutable per-mount state with `PluginState` or in setup; constructors
 describe reusable recipes and acquire no resources.

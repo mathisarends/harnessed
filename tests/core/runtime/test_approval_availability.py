@@ -171,7 +171,7 @@ async def test_unresponsive_approval_uses_the_session_timeout_and_cancels_the_re
     plugins = [Service(Approver, CallbackApprover(wait))] if transport == "callback" else []
     harness = Application(
         model=ScriptedModel([]),
-        approvals=Approvals(default=Decision.ALLOW, timeout=0.02),
+        approvals=Approvals(default=Decision.ALLOW, timeout_seconds=0.02),
         plugins=[*plugins],
     )
     async with harness.session() as agent:
@@ -280,12 +280,12 @@ async def test_approval_wait_occurs_after_policy_hooks():
     assert measured == [2]
 
 
-@pytest.mark.parametrize("timeout", [0, -1, True, float("nan"), float("inf"), "5"])
-def test_approval_timeout_must_be_finite_and_positive(timeout):
+@pytest.mark.parametrize("timeout_seconds", [0, -1, True, float("nan"), float("inf"), "5"])
+def test_approval_timeout_must_be_finite_and_positive(timeout_seconds):
     with pytest.raises(ValueError, match="timeout"):
-        Approvals(timeout=timeout)
+        Approvals(timeout_seconds=timeout_seconds)
     with pytest.raises(ValueError, match="timeout"):
-        ApprovalsConfig(timeout=timeout)
+        ApprovalsConfig(timeout_seconds=timeout_seconds)
 
 
 def test_agent_loop_has_no_second_approval_timeout():
@@ -293,11 +293,13 @@ def test_agent_loop_has_no_second_approval_timeout():
         AgentLoop(approval_timeout=1)
 
 
-@pytest.mark.parametrize("timeout", [0, -1, True, float("nan"), float("inf"), "5"])
-async def test_invalid_request_timeout_does_not_record_a_question(timeout):
+@pytest.mark.parametrize("timeout_seconds", [0, -1, True, float("nan"), float("inf"), "5"])
+async def test_invalid_request_timeout_does_not_record_a_question(timeout_seconds):
     async with Application(model=ScriptedModel([])).session() as session:
         with pytest.raises(ValueError, match="approval_timeout"):
-            await session.approvals.request(ToolCall("work"), "permission", timeout=timeout)
+            await session.approvals.request(
+                ToolCall("work"), "permission", timeout_seconds=timeout_seconds
+            )
         assert session.approvals.records == ()
 
 
@@ -309,16 +311,20 @@ async def test_request_timeout_replaces_the_default_in_either_direction(default,
 
     async with Application(
         model=ScriptedModel([]),
-        approvals=Approvals(default=Decision.ASK, approver=respond, timeout=default),
+        approvals=Approvals(default=Decision.ASK, approver=respond, timeout_seconds=default),
     ).session() as session:
         if override > default:
             assert (
-                await session.approvals.request(ToolCall("work"), "permission", timeout=override)
+                await session.approvals.request(
+                    ToolCall("work"), "permission", timeout_seconds=override
+                )
                 is Decision.ALLOW
             )
         else:
             with pytest.raises(ApprovalUnavailable, match=r"timed out after 0.01 seconds"):
-                await session.approvals.request(ToolCall("work"), "permission", timeout=override)
+                await session.approvals.request(
+                    ToolCall("work"), "permission", timeout_seconds=override
+                )
         assert not session.approvals.pending
 
 
@@ -329,14 +335,14 @@ async def test_none_inherits_the_default_and_an_override_does_not_change_the_nex
 
     async with Application(
         model=ScriptedModel([]),
-        approvals=Approvals(default=Decision.ASK, approver=respond, timeout=0.01),
+        approvals=Approvals(default=Decision.ASK, approver=respond, timeout_seconds=0.01),
     ).session() as session:
         assert (
-            await session.approvals.request(ToolCall("work"), "permission", timeout=1)
+            await session.approvals.request(ToolCall("work"), "permission", timeout_seconds=1)
             is Decision.ALLOW
         )
         with pytest.raises(ApprovalUnavailable, match=r"timed out after 0.01 seconds"):
-            await session.approvals.request(ToolCall("work"), "permission", timeout=None)
+            await session.approvals.request(ToolCall("work"), "permission", timeout_seconds=None)
         assert not session.approvals.pending
 
 
@@ -351,13 +357,15 @@ async def test_replacing_approval_configuration_changes_only_new_questions():
 
     async with Application(
         model=ScriptedModel([]),
-        approvals=Approvals(default=Decision.ASK, approver=respond, timeout=0.03),
+        approvals=Approvals(default=Decision.ASK, approver=respond, timeout_seconds=0.03),
     ).session() as session:
         async with asyncio.timeout(2):
             waiting = asyncio.create_task(session.approvals.request(ToolCall("work"), "permission"))
             await asked.wait()
             with pytest.raises(TypeError, match="Plugin instance"):
-                await session.mount(Approvals(default=Decision.ASK, approver=respond, timeout=1))
+                await session.mount(
+                    Approvals(default=Decision.ASK, approver=respond, timeout_seconds=1)
+                )
             with pytest.raises(ApprovalUnavailable, match=r"timed out after 0.03 seconds"):
                 await waiting
             answer.set()
@@ -388,7 +396,7 @@ async def test_all_approval_sources_use_the_configured_response_timeout(source):
         default=Decision.ASK if source == "policy" else Decision.ALLOW,
         ask=[Work.work] if source == "rule" else (),
         approver=respond,
-        timeout=0.02,
+        timeout_seconds=0.02,
     )
     async with Application(
         model=ScriptedModel([[ModelChunk(tool_call=ToolCall("work"))], "done"]),

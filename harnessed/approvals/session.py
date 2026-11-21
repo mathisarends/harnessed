@@ -129,16 +129,21 @@ class SessionApprovals:
         scope: str = "tool-policy",
         identity: str | None = None,
         approver: Approver | None = None,
-        timeout: float | None = None,
+        timeout_seconds: float | None = None,
     ) -> Decision:
         """Ask for approval using a response timeout in seconds.
 
-        ``None`` inherits ``Approvals(timeout=...)``. A finite positive override
+        ``None`` inherits ``Approvals(timeout_seconds=...)``. A finite positive override
         replaces that default for this question, even when it is longer.
         Missing responders and expired questions raise ``ApprovalUnavailable``.
         """
         response = await self.request_response(
-            call, reason, scope=scope, identity=identity, approver=approver, timeout=timeout
+            call,
+            reason,
+            scope=scope,
+            identity=identity,
+            approver=approver,
+            timeout_seconds=timeout_seconds,
         )
         return response.decision
 
@@ -150,13 +155,13 @@ class SessionApprovals:
         scope: str = "tool-policy",
         identity: str | None = None,
         approver: Approver | None = None,
-        timeout: float | None = None,
+        timeout_seconds: float | None = None,
     ) -> ApprovalResponse:
         """Use the same approval lifecycle as request(), returning the full answer."""
         self.control.check_open()
-        if timeout is None:
-            timeout = self.scope.get(ApprovalsConfig, DEFAULT_APPROVALS).timeout
-        validate_approval_timeout(timeout)
+        if timeout_seconds is None:
+            timeout_seconds = self.scope.get(ApprovalsConfig, DEFAULT_APPROVALS).timeout_seconds
+        validate_approval_timeout(timeout_seconds)
         grant = self.log.approval_grant(
             identity if identity is not None else call.name, scope=scope
         )
@@ -168,7 +173,9 @@ class SessionApprovals:
             if grant is not None:
                 decision = ApprovalResponse(Decision.ALLOW, remember=True)
             else:
-                decision = await self._answer_request(request, approver, timeout=timeout)
+                decision = await self._answer_request(
+                    request, approver, timeout_seconds=timeout_seconds
+                )
             await self.log.append(
                 ApprovalResolvedEvent(
                     request.request_id,
@@ -235,7 +242,7 @@ class SessionApprovals:
         request: ApprovalRequestedEvent,
         approver: Approver | None,
         *,
-        timeout: float,
+        timeout_seconds: float,
     ) -> ApprovalResponse:
         with span(
             "harnessed.approval_wait",
@@ -244,7 +251,7 @@ class SessionApprovals:
             tool=request.call.name,
             call_id=request.call.id,
         ) as current:
-            decision = await self._wait(request, approver, timeout=timeout)
+            decision = await self._wait(request, approver, timeout_seconds=timeout_seconds)
             current.set_attribute("decision", decision.decision)
             return decision
 
@@ -253,11 +260,11 @@ class SessionApprovals:
         request: ApprovalRequestedEvent,
         approver: Approver | None,
         *,
-        timeout: float,
+        timeout_seconds: float,
     ) -> ApprovalResponse:
         try:
             with suspend_tool_execution():
-                async with asyncio.timeout(timeout):
+                async with asyncio.timeout(timeout_seconds):
                     decision = await self._respond(request, approver)
             if decision is None:
                 raise ApprovalUnavailable("No approval responder answered the request")
@@ -270,7 +277,7 @@ class SessionApprovals:
             raise
         except TimeoutError as exc:
             raise ApprovalUnavailable(
-                f"Approval response timed out after {timeout:g} seconds"
+                f"Approval response timed out after {timeout_seconds:g} seconds"
             ) from exc
         except Exception as exc:
             logger.exception("Approval responder failed for %s", request.call.name)

@@ -54,8 +54,8 @@ class MCPConfig(PluginConfig):
     server_name: Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$", max_length=32)]
     include_tools: tuple[str, ...] | None = None
     readonly_tools: tuple[str, ...] = ()
-    startup_timeout: Annotated[float, Field(gt=0)] = 10.0
-    call_timeout: Annotated[float, Field(gt=0)] = 60.0
+    startup_timeout_seconds: Annotated[float, Field(gt=0)] = 10.0
+    call_timeout_seconds: Annotated[float, Field(gt=0)] = 60.0
     parallel: bool = False
 
 
@@ -79,8 +79,8 @@ class MCP(Plugin[MCPConfig]):
         include_tools: Iterable[str] | None = None,
         readonly_tools: Iterable[str] = (),
         actions: Mapping[str, StrEnum] | None = None,
-        startup_timeout: float = 10.0,
-        call_timeout: float = 60.0,
+        startup_timeout_seconds: float = 10.0,
+        call_timeout_seconds: float = 60.0,
         parallel: bool = False,
         enabled: ToolEnabled = True,
     ) -> None:
@@ -90,8 +90,8 @@ class MCP(Plugin[MCPConfig]):
                 name,
                 include_tools=include_tools,
                 readonly_tools=readonly_tools,
-                startup_timeout=startup_timeout,
-                call_timeout=call_timeout,
+                startup_timeout_seconds=startup_timeout_seconds,
+                call_timeout_seconds=call_timeout_seconds,
                 parallel=parallel,
             ),
         )
@@ -112,8 +112,8 @@ class MCP(Plugin[MCPConfig]):
         include_tools: Iterable[str] | None = None,
         readonly_tools: Iterable[str] = (),
         actions: Mapping[str, StrEnum] | None = None,
-        startup_timeout: float = 10.0,
-        call_timeout: float = 60.0,
+        startup_timeout_seconds: float = 10.0,
+        call_timeout_seconds: float = 60.0,
         parallel: bool = False,
         enabled: ToolEnabled = True,
     ) -> Self:
@@ -132,8 +132,8 @@ class MCP(Plugin[MCPConfig]):
             transport=transport,
             include_tools=include_tools,
             readonly_tools=readonly_tools,
-            startup_timeout=startup_timeout,
-            call_timeout=call_timeout,
+            startup_timeout_seconds=startup_timeout_seconds,
+            call_timeout_seconds=call_timeout_seconds,
             parallel=parallel,
             enabled=enabled,
         )
@@ -149,8 +149,8 @@ class MCP(Plugin[MCPConfig]):
         include_tools: Iterable[str] | None = None,
         readonly_tools: Iterable[str] = (),
         actions: Mapping[str, StrEnum] | None = None,
-        startup_timeout: float = 10.0,
-        call_timeout: float = 60.0,
+        startup_timeout_seconds: float = 10.0,
+        call_timeout_seconds: float = 60.0,
         parallel: bool = False,
         enabled: ToolEnabled = True,
     ) -> Self:
@@ -164,8 +164,8 @@ class MCP(Plugin[MCPConfig]):
             transport=HTTP(url, dict(headers if headers is not None else {}), auth),
             include_tools=include_tools,
             readonly_tools=readonly_tools,
-            startup_timeout=startup_timeout,
-            call_timeout=call_timeout,
+            startup_timeout_seconds=startup_timeout_seconds,
+            call_timeout_seconds=call_timeout_seconds,
             parallel=parallel,
             enabled=enabled,
         )
@@ -178,7 +178,7 @@ class MCP(Plugin[MCPConfig]):
             return connection.aclose
 
         scope.register(install)
-        async with asyncio.timeout(self.config.startup_timeout):
+        async with asyncio.timeout(self.config.startup_timeout_seconds):
             client = await connection.start()
             catalog: dict[str, Tool] = {}
             cursor: str | None = None
@@ -219,7 +219,7 @@ class MCP(Plugin[MCPConfig]):
                 remote.invoke,
                 owner=scope,
                 spec=ToolSpec(
-                    timeout_seconds=self.config.call_timeout,
+                    timeout_seconds=self.config.call_timeout_seconds,
                     parallel=self.config.parallel,
                     readonly=name in self.config.readonly_tools,
                     action=self.actions.get(name),
@@ -234,8 +234,8 @@ def _configuration(
     *,
     include_tools: Iterable[str] | None,
     readonly_tools: Iterable[str],
-    startup_timeout: float,
-    call_timeout: float,
+    startup_timeout_seconds: float,
+    call_timeout_seconds: float,
     parallel: bool,
 ) -> MCPConfig:
     if isinstance(include_tools, str) or isinstance(readonly_tools, str):
@@ -244,8 +244,8 @@ def _configuration(
         server_name=name,
         include_tools=None if include_tools is None else tuple(include_tools),
         readonly_tools=tuple(readonly_tools),
-        startup_timeout=startup_timeout,
-        call_timeout=call_timeout,
+        startup_timeout_seconds=startup_timeout_seconds,
+        call_timeout_seconds=call_timeout_seconds,
         parallel=parallel,
     )
 

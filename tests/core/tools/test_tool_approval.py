@@ -80,11 +80,11 @@ async def test_approval_waits_do_not_consume_tool_execution_time(transport):
 
     async with Agent(
         model=ScriptedModel([[ModelChunk(tool_call=ToolCall("work"))], "done"]),
-        loop=AgentLoop(tool_timeout=0.04),
+        loop=AgentLoop(tool_timeout_seconds=0.04),
         approvals=Approvals(
             default=Decision.ALLOW,
             approver=respond if transport == "callback" else None,
-            timeout=1,
+            timeout_seconds=1,
         ),
         plugins=[Work()],
     ).session() as session:
@@ -125,7 +125,7 @@ async def test_approval_resumes_the_remaining_execution_budget_without_resetting
         return Decision.ALLOW
 
     with monkeypatch.context() as patch:
-        patch.setattr(  # smelt: ignore[SMT426] -- Forward offsets retain real-time progress.
+        patch.setattr(  # smelt: ignore[TST008] -- Forward offsets retain real-time progress.
             loop, "time", clock.time
         )
         async with Agent(
@@ -205,7 +205,7 @@ async def test_a_parallel_approval_wait_does_not_suspend_other_tools():
                 "done",
             ]
         ),
-        loop=AgentLoop(tool_timeout=0.04),
+        loop=AgentLoop(tool_timeout_seconds=0.04),
         approvals=Approvals(default=Decision.ALLOW, approver=respond),
         plugins=[Work()],
     ).session() as session:

@@ -19,14 +19,14 @@ if os.name == "nt":
 
 
 class _Options(PluginConfig):
-    max_timeout: Annotated[float, Field(gt=0, le=600)] = 600.0
+    max_timeout_seconds: Annotated[float, Field(gt=0, le=600)] = 600.0
     max_output_bytes: Annotated[int, Field(ge=256)] = 1_048_576
     env: dict[str, str] | None = None
 
 
 class _Command(PluginConfig):
     argv: Annotated[list[str], Field(min_length=1)]
-    timeout: Annotated[float, Field(gt=0, le=600)]
+    timeout_seconds: Annotated[float, Field(gt=0, le=600)]
 
 
 class LocalShell:
@@ -41,19 +41,21 @@ class LocalShell:
         self,
         *,
         root: str | Path = ".",
-        max_timeout: float = 600.0,
+        max_timeout_seconds: float = 600.0,
         max_output_bytes: int = 1_048_576,
         env: Mapping[str, str] | None = None,
     ) -> None:
         self.root = Path(root).absolute()
         self.options = _Options(
-            max_timeout=max_timeout,
+            max_timeout_seconds=max_timeout_seconds,
             max_output_bytes=max_output_bytes,
             env=dict(env) if env is not None else None,
         )
 
-    async def run(self, argv: list[str], *, cwd: Path, timeout: float) -> ProcResult:
-        process = await self._start(argv, cwd=cwd, timeout=timeout, interactive=False)
+    async def run(self, argv: list[str], *, cwd: Path, timeout_seconds: float) -> ProcResult:
+        process = await self._start(
+            argv, cwd=cwd, timeout_seconds=timeout_seconds, interactive=False
+        )
         try:
             result = await process.wait()
         except asyncio.CancelledError:
@@ -64,16 +66,18 @@ class LocalShell:
         assert result.returncode is not None
         return ProcResult(result.returncode, result.stdout, result.stderr)
 
-    async def start(self, argv: list[str], *, cwd: Path, timeout: float) -> ShellProcess:
+    async def start(self, argv: list[str], *, cwd: Path, timeout_seconds: float) -> ShellProcess:
         """Start an owned command with live capture and piped UTF-8 stdin."""
-        return await self._start(argv, cwd=cwd, timeout=timeout, interactive=True)
+        return await self._start(argv, cwd=cwd, timeout_seconds=timeout_seconds, interactive=True)
 
     async def _start(
-        self, argv: list[str], *, cwd: Path, timeout: float, interactive: bool
+        self, argv: list[str], *, cwd: Path, timeout_seconds: float, interactive: bool
     ) -> _LocalProcess:
-        command = _Command(argv=argv, timeout=timeout)
-        if command.timeout > self.options.max_timeout:
-            raise ValueError(f"timeout must not exceed {self.options.max_timeout:g} seconds")
+        command = _Command(argv=argv, timeout_seconds=timeout_seconds)
+        if command.timeout_seconds > self.options.max_timeout_seconds:
+            raise ValueError(
+                f"timeout must not exceed {self.options.max_timeout_seconds:g} seconds"
+            )
         process = _LocalProcess(self, command, self.root / cwd, interactive=interactive)
         try:
             await process.started.wait()
@@ -117,7 +121,7 @@ class LocalShell:
             )
         )
         try:
-            async with asyncio.timeout(command.timeout):
+            async with asyncio.timeout(command.timeout_seconds):
                 process, _ = await asyncio.shield(spawning)
                 if job is not None:
                     job.attach_and_resume(process.get_pid())

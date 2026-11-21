@@ -102,19 +102,23 @@ def _transcript_entries(request: ApprovalReviewRequest) -> Iterator[_TranscriptE
     pending_id = request.approval.call.id
     for entry in request.history:
         message = entry.message
-        if isinstance(message, UserMessage) and entry.is_input and message.text:
-            yield _TranscriptEntry(_Speaker.USER, message.text)
-        elif isinstance(message, AssistantMessage):
-            if message.text:
-                yield _TranscriptEntry(_Speaker.ASSISTANT, message.text)
-            for call in message.tool_calls:
-                if call.id != pending_id:
-                    arguments = json.dumps(to_dict(call.arguments), ensure_ascii=False)
-                    yield _TranscriptEntry(_Speaker.TOOL, f"{call.name} [{call.id}] {arguments}")
-        elif isinstance(message, ToolMessage):
-            yield _TranscriptEntry(
-                _Speaker.TOOL, f"result [{message.tool_call_id}] ({message.status}) {message.text}"
-            )
+        match message:
+            case UserMessage() if entry.is_input and message.text:
+                yield _TranscriptEntry(_Speaker.USER, message.text)
+            case AssistantMessage():
+                if message.text:
+                    yield _TranscriptEntry(_Speaker.ASSISTANT, message.text)
+                for call in message.tool_calls:
+                    if call.id != pending_id:
+                        arguments = json.dumps(to_dict(call.arguments), ensure_ascii=False)
+                        yield _TranscriptEntry(
+                            _Speaker.TOOL, f"{call.name} [{call.id}] {arguments}"
+                        )
+            case ToolMessage():
+                yield _TranscriptEntry(
+                    _Speaker.TOOL,
+                    f"result [{message.tool_call_id}] ({message.status}) {message.text}",
+                )
 
 
 def _render_transcript(request: ApprovalReviewRequest) -> str:

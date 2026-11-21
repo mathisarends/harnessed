@@ -17,17 +17,17 @@ from harnessed.runtime.hooks import SessionClosing
 from harnessed.runtime.inbox import SessionInbox
 from harnessed.runtime.plugin import Plugin, PluginConfig
 from harnessed.tools import ToolError, ToolRegistry, tool
-from harnessed.tools.workspace import BackgroundShellBackend as BackgroundShellBackend
-from harnessed.tools.workspace import LocalShell as LocalShell
-from harnessed.tools.workspace import ProcessSnapshot as ProcessSnapshot
-from harnessed.tools.workspace import ProcessState as ProcessState
-from harnessed.tools.workspace import ProcResult as ProcResult
-from harnessed.tools.workspace import ShellBackend as ShellBackend
-from harnessed.tools.workspace import ShellProcess as ShellProcess
+from harnessed.tools.workspace import (
+    BackgroundShellBackend,
+    LocalShell,
+    ProcessSnapshot,
+    ProcessState,
+    ProcResult,
+    ShellBackend,
+    ShellProcess,
+)
 
-from .background import BackgroundCommands, command_result
-from .background import CommandInfo as CommandInfo
-from .background import CommandResult as CommandResult
+from .background import BackgroundCommands, CommandInfo, CommandResult, command_result
 
 
 class ShellAction(StrEnum):
@@ -57,13 +57,13 @@ _SHELL_INSTRUCTIONS = Instructions(
 
 class ShellConfig(PluginConfig):
     cwd: Path = Path()
-    timeout: Annotated[float, Field(gt=0, le=600)] = 30.0
-    max_timeout: Annotated[float, Field(gt=0, le=600)] = 600.0
+    timeout_seconds: Annotated[float, Field(gt=0, le=600)] = 30.0
+    max_timeout_seconds: Annotated[float, Field(gt=0, le=600)] = 600.0
 
     @model_validator(mode="after")
     def validate_timeout(self) -> Self:
-        if self.timeout > self.max_timeout:
-            raise ValueError("timeout must not exceed max_timeout")
+        if self.timeout_seconds > self.max_timeout_seconds:
+            raise ValueError("timeout_seconds must not exceed max_timeout_seconds")
         return self
 
 
@@ -76,11 +76,15 @@ class Shell(Plugin[ShellConfig], slot="shell"):
         self,
         cwd: str | Path = ".",
         *,
-        timeout: float = 30.0,
-        max_timeout: float = 600.0,
+        timeout_seconds: float = 30.0,
+        max_timeout_seconds: float = 600.0,
     ) -> None:
         super().__init__(
-            config=ShellConfig(cwd=Path(cwd), timeout=timeout, max_timeout=max_timeout)
+            config=ShellConfig(
+                cwd=Path(cwd),
+                timeout_seconds=timeout_seconds,
+                max_timeout_seconds=max_timeout_seconds,
+            )
         )
 
     def instructions(self) -> SystemPrompt:
@@ -91,23 +95,25 @@ class Shell(Plugin[ShellConfig], slot="shell"):
         scope[ToolRegistry].result_converter(ProcResult, proc_result, owner=scope)
 
     def _command_fields(self) -> Mapping[str, FieldInfo]:
-        return {"timeout": Field(le=self.config.max_timeout)}
+        return {"timeout_seconds": Field(le=self.config.max_timeout_seconds)}
 
     @tool(action=ShellAction.EXECUTE, timeout_seconds=600, parameter_fields=_command_fields)
     async def run_command(
         self,
         argv: Annotated[list[str], Field(min_length=1)],
-        timeout: Annotated[float, Field(gt=0, le=600)] | None = None,
+        timeout_seconds: Annotated[float, Field(gt=0, le=600)] | None = None,
     ) -> ProcResult:
         """Run argv without shell expansion. Output and execution time are bounded."""
-        limit = timeout if timeout is not None else self.config.timeout
-        if limit > self.config.max_timeout:
-            raise ToolError(f"timeout must not exceed {self.config.max_timeout:g} seconds")
-        return await self.backend.run(argv, cwd=self.cwd, timeout=limit)
+        limit = timeout_seconds if timeout_seconds is not None else self.config.timeout_seconds
+        if limit > self.config.max_timeout_seconds:
+            raise ToolError(
+                f"timeout_seconds must not exceed {self.config.max_timeout_seconds:g} seconds"
+            )
+        return await self.backend.run(argv, cwd=self.cwd, timeout_seconds=limit)
 
 
 class BackgroundShellConfig(ShellConfig):
-    timeout: Annotated[float, Field(gt=0, le=600)] = 600.0
+    timeout_seconds: Annotated[float, Field(gt=0, le=600)] = 600.0
     max_background_commands: Annotated[int, Field(ge=1)] = 32
 
 
@@ -131,15 +137,15 @@ class BackgroundShell(Plugin[BackgroundShellConfig]):
         self,
         cwd: str | Path = ".",
         *,
-        timeout: float = 600.0,
-        max_timeout: float = 600.0,
+        timeout_seconds: float = 600.0,
+        max_timeout_seconds: float = 600.0,
         max_background_commands: int = 32,
     ) -> None:
         super().__init__(
             config=BackgroundShellConfig(
                 cwd=Path(cwd),
-                timeout=timeout,
-                max_timeout=max_timeout,
+                timeout_seconds=timeout_seconds,
+                max_timeout_seconds=max_timeout_seconds,
                 max_background_commands=max_background_commands,
             )
         )
@@ -158,13 +164,13 @@ class BackgroundShell(Plugin[BackgroundShellConfig]):
         await self._commands.close()
 
     def _command_fields(self) -> Mapping[str, FieldInfo]:
-        return {"timeout": Field(le=self.config.max_timeout)}
+        return {"timeout_seconds": Field(le=self.config.max_timeout_seconds)}
 
     @tool(action=ShellAction.START, timeout_seconds=600, parameter_fields=_command_fields)
     async def start_command(
         self,
         argv: Annotated[list[str], Field(min_length=1)],
-        timeout: Annotated[float, Field(gt=0, le=600)] | None = None,
+        timeout_seconds: Annotated[float, Field(gt=0, le=600)] | None = None,
     ) -> CommandResult:
         """Start argv without shell expansion and return a command_id without waiting for exit.
 
@@ -172,19 +178,21 @@ class BackgroundShell(Plugin[BackgroundShellConfig]):
         for stdin and terminate_command to stop a dead end. The timeout bounds the
         command's entire lifetime, independently of this tool call.
         """
-        limit = timeout if timeout is not None else self.config.timeout
-        if limit > self.config.max_timeout:
-            raise ToolError(f"timeout must not exceed {self.config.max_timeout:g} seconds")
+        limit = timeout_seconds if timeout_seconds is not None else self.config.timeout_seconds
+        if limit > self.config.max_timeout_seconds:
+            raise ToolError(
+                f"timeout_seconds must not exceed {self.config.max_timeout_seconds:g} seconds"
+            )
         shell = self.backend
         if not isinstance(shell, BackgroundShellBackend):
             raise ToolError("This ShellBackend does not support background commands")
         return await self._commands.start(
-            shell, argv, cwd=self.cwd, timeout=limit, inbox=self.inbox
+            shell, argv, cwd=self.cwd, timeout_seconds=limit, inbox=self.inbox
         )
 
     @tool(action=ShellAction.READ_OUTPUT, readonly=True, parallel=True, timeout_seconds=35)
     async def read_command(
-        self, command_id: str, wait: Annotated[float, Field(ge=0, le=30)] = 0.0
+        self, command_id: str, wait_seconds: Annotated[float, Field(ge=0, le=30)] = 0.0
     ) -> CommandResult:
         """Read bounded stdout/stderr and state, optionally waiting up to 30 seconds for exit.
 
@@ -192,9 +200,9 @@ class BackgroundShell(Plugin[BackgroundShellConfig]):
         or an expired wait leaves the background command running.
         """
         command = self._commands.get(command_id)
-        if wait:
+        if wait_seconds:
             try:
-                async with asyncio.timeout(wait):
+                async with asyncio.timeout(wait_seconds):
                     await command.process.wait()
             except TimeoutError:
                 pass

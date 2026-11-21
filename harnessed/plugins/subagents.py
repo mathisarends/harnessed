@@ -41,7 +41,7 @@ class SubagentsConfig(PluginConfig):
     max_parallel: Annotated[int, Field(ge=1)] = 3
     max_calls: Annotated[int, Field(ge=1)] = 16
     max_depth: Annotated[int, Field(ge=1)] = 1
-    timeout: Annotated[float, Field(gt=0, le=3600)] = 180.0
+    timeout_seconds: Annotated[float, Field(gt=0, le=3600)] = 180.0
     max_steps: Annotated[int, Field(ge=1)] = 8
     token_budget: Annotated[int, Field(ge=1)] | None = None
 
@@ -62,7 +62,7 @@ class Subagents(Plugin[SubagentsConfig]):
         max_parallel: int = _DEFAULTS.max_parallel,
         max_calls: int = _DEFAULTS.max_calls,
         max_depth: int = _DEFAULTS.max_depth,
-        timeout: float = _DEFAULTS.timeout,
+        timeout_seconds: float = _DEFAULTS.timeout_seconds,
         max_steps: int = _DEFAULTS.max_steps,
         token_budget: int | None = _DEFAULTS.token_budget,
     ) -> None:
@@ -71,7 +71,7 @@ class Subagents(Plugin[SubagentsConfig]):
                 max_parallel=max_parallel,
                 max_calls=max_calls,
                 max_depth=max_depth,
-                timeout=timeout,
+                timeout_seconds=timeout_seconds,
                 max_steps=max_steps,
                 token_budget=token_budget,
             )
@@ -85,8 +85,9 @@ class Subagents(Plugin[SubagentsConfig]):
     def instructions(self) -> SystemPrompt:
         return SystemPrompt(
             "Use spawn(agent, task) to start a specialist and continue working. "
-            "Use status(child_id, timeout) to ask it for a fresh report, send(child_id, message) "
-            "to steer it, wait(child_id, timeout) for its result, and cancel(child_id) to stop it. "
+            "Use status(child_id, timeout_seconds) to ask it for a fresh report, "
+            "send(child_id, message) to steer it, wait(child_id, timeout_seconds) for its result, "
+            "and cancel(child_id) to stop it. "
             "Use delegate(agent, task) when you want to wait until completion immediately. "
             "Spawned tasks send completion notifications to your inbox. "
             "Each child has its own instructions and tools and receives only the supplied task. "
@@ -98,7 +99,7 @@ class Subagents(Plugin[SubagentsConfig]):
             self.config.max_parallel,
             self.config.max_calls,
             self.config.max_depth,
-            self.config.timeout,
+            self.config.timeout_seconds,
             self.config.max_steps,
             self.config.token_budget,
         )
@@ -120,9 +121,9 @@ class Subagents(Plugin[SubagentsConfig]):
         return await self._supervisor.spawn(agent, task, context)
 
     @tool(action=SubagentAction.STATUS, timeout_seconds=3600.0, parallel=True, readonly=True)
-    async def status(self, child_id: str, timeout: float = 10.0) -> ToolResult:
+    async def status(self, child_id: str, timeout_seconds: float = 10.0) -> ToolResult:
         """Ask the child for a fresh report; timeout returns pending without cancelling it."""
-        return await self._supervisor.status(child_id, timeout)
+        return await self._supervisor.status(child_id, timeout_seconds)
 
     @tool(action=SubagentAction.SEND, parallel=True)
     async def send(
@@ -132,9 +133,9 @@ class Subagents(Plugin[SubagentsConfig]):
         return await self._supervisor.send(child_id, message)
 
     @tool(action=SubagentAction.WAIT, timeout_seconds=3600.0, parallel=True, readonly=True)
-    async def wait(self, child_id: str, timeout: float = 30.0) -> ToolResult:
+    async def wait(self, child_id: str, timeout_seconds: float = 30.0) -> ToolResult:
         """Wait for a child receipt; timeout returns current state and leaves the child running."""
-        return await self._supervisor.wait(child_id, timeout)
+        return await self._supervisor.wait(child_id, timeout_seconds)
 
     @tool(action=SubagentAction.CANCEL, timeout_seconds=3600.0, parallel=True)
     async def cancel(self, child_id: str) -> ToolResult:

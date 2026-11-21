@@ -22,7 +22,7 @@ class ChildLimits:
     max_parallel: int
     max_calls: int
     max_depth: int
-    timeout: float
+    timeout_seconds: float
     max_steps: int
     token_budget: int | None
 

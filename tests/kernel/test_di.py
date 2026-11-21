@@ -81,7 +81,7 @@ def test_bundle_configured_hooks_and_function_injections_do_not_add_needs():
 
 
 async def test_listener_resolves_current_service_without_repeating_reflection(monkeypatch):
-    import harnessed.kernel.di as di  # smelt: ignore[SMT107] -- Probe cached reflection.
+    import harnessed.kernel.di as di  # smelt: ignore[ARC007] -- Probe cached reflection.
 
     class Changed(Emit):
         pass

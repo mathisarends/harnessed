@@ -112,21 +112,24 @@ class SessionImages:
         )
 
     async def retain_event(self, event: DurableEvent) -> DurableEvent:
-        if isinstance(
-            event,
-            InboxAddedEvent | UserMessageEvent | MessageAppendedEvent | ObservationRecordedEvent,
-        ):
-            message = await self.retain_message(event.message)
-            if message is not event.message:
-                return replace(event, message=message)
-        elif isinstance(event, ToolExecutionFinishedEvent | ToolCallFinishedEvent):
-            content = await self._retain_content(event.result.content)
-            if content is not event.result.content:
-                return replace(event, result=replace(event.result, content=content))
-        elif isinstance(event, ModelRequestedEvent):
-            request = await self.retain_request(event.request)
-            if request is not event.request:
-                return replace(event, request=request)
+        match event:
+            case (
+                InboxAddedEvent()
+                | UserMessageEvent()
+                | MessageAppendedEvent()
+                | ObservationRecordedEvent()
+            ):
+                message = await self.retain_message(event.message)
+                if message is not event.message:
+                    return replace(event, message=message)
+            case ToolExecutionFinishedEvent() | ToolCallFinishedEvent():
+                content = await self._retain_content(event.result.content)
+                if content is not event.result.content:
+                    return replace(event, result=replace(event.result, content=content))
+            case ModelRequestedEvent():
+                request = await self.retain_request(event.request)
+                if request is not event.request:
+                    return replace(event, request=request)
         return event
 
     async def resolve(self, request: ModelRequest) -> ModelRequest:
