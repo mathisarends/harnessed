@@ -1,8 +1,8 @@
 # Smelt policy and adoption feedback
 
-Harnessed pins `smelt-cli` 0.13.0 in the development group. The executable
+Harnessed pins `smelt-cli` 0.14.0 in the development group. The executable
 policy in `smelt.yaml` complements Ruff, ty, runtime tests and the architecture
-suite. [Smelt 0.13.0 release](https://github.com/mathisarends/smelt/releases/tag/v0.13.0)
+suite. [Smelt 0.14.0 release](https://github.com/mathisarends/smelt/releases/tag/v0.14.0)
 
 ## Architecture policy
 
@@ -23,11 +23,9 @@ their optional imports. Production never imports testing.
 Import analysis includes `TYPE_CHECKING` edges and transitive paths. Higher
 layers use the public `harnessed.kernel` API, including DI binding plans and
 plugin-spec normalization. Kernel implementations retain sibling imports.
-`harnessed.prompts`, `harnessed.sessions` and `harnessed.tools` are explicitly
-mapped to the engine layer along with `harnessed.runtime`. Smelt's directory
-check recognizes only the primary layer path. The three package initializers
-have a narrow directory-check exception and remain covered by layer and cycle
-rules.
+`architecture.layers.<layer>.modules` assigns package prefixes and individual
+modules to their owning layers. The directory check honors those assignments,
+including engine packages that live alongside `harnessed.runtime`.
 
 The `harnessed.events` initializer exposes the event vocabulary. Event streams
 and registration use explicit modules because the terminal event carries the
@@ -51,17 +49,18 @@ aggregation stays disabled because it does not prove a concrete module cycle.
 ## Source and test conventions
 
 The config declares package APIs under `architecture.packages` and dependency
-analysis under `architecture.import_graph`. Shared source conventions live
-under `style`, with package-specific limits and exceptions under
-`style.overrides`. Rule selectors use canonical `family/finding` names.
+analysis under `architecture.import_graph`. Rule entries declare activation,
+severity and numeric limits. Shared conventions live under `style`, with
+package-specific settings under `style.overrides`. Rule selectors use canonical
+`family/finding` names.
 
 | Severity | Policy |
 | --- | --- |
 | Error | Import cycles, foreign private access, unused public surface and source conventions such as explicit enum values, YAML filenames, named inline calculations, no mutable collection fields in frozen dataclasses and at most twelve private top-level definitions per module. |
-| Error | Test quality checks cover private access, patch targets, observable outcomes, bounded waits, awaited mocks and deterministic data. At most three patches per test. |
+| Error | Test quality checks cover private access, patch targets, observable outcomes, bounded waits, awaited mocks and deterministic data. At most three patches per test. Architecture and executable example tests run without mocks. |
 | Error (package policy) | `complexity/excess-comprehension-loops` allows one loop and `complexity/excess-constructor-decisions` allows two decisions in `models.pydantic_ai`, `plugins.mcp` and `integrations.sandbox.worker`. |
-| Warning | `imports/excess-package-imports`, parameters beyond the third positional one, and unused inline suppressions. |
-| Hint | Attribute depth, mutation in stateful dataclasses, duration units, loop-invariant collections, independent test cases, and comprehension and constructor complexity outside the stricter packages. |
+| Warning | `imports/excess-package-imports`, parameters beyond the third positional one, unused inline suppressions, logger placement and package re-export spelling. |
+| Hint | Facade gaps, re-export-only modules, inline generic parameters, attribute depth, mutation in stateful dataclasses, duration units, loop-invariant collections, independent test cases, and comprehension and constructor complexity outside the stricter packages. |
 
 Hooks and CI use `--fail-on warning`, so metadata warnings such as unused
 suppressions fail too. Optional defaults select a fallback only for `None`;
@@ -70,13 +69,15 @@ necessary for deferred names under the supported Python 3.12 minimum.
 
 Public definitions precede implementation helpers. Module dunder assignments
 follow those definitions. Only package initializers declare `__all__`; the
-single-module public facades (`errors`, `hooks`, `tracing`, the optional integrations,
-`plugins.compaction` and `plugins.subagents`)
+single-module public facades (`errors`, `hooks`, `tracing`, the optional integrations
+and `plugins.subagents`)
 have a reasoned config exception because their module path is the documented
 import, and optional extras cannot be re-exported eagerly from a package. Class initializers and dunders precede public/private methods.
 Ordering fixes use `safe-only`. Reflection-sensitive sections require manual
 review and behavioral verification. Production names such as `utils` and
 `helpers` are forbidden in favor of responsibilities with concrete names.
+Module loggers follow the imports. Package facades declare `__all__` with plain
+imports for re-exports. The SDK root resolves its exports lazily.
 
 `tests.layout: none` retains topic groups, root-level composition tests and
 consumer typing contracts without requiring mirrored paths. Use public behavior
@@ -93,21 +94,21 @@ reason because callers pass plain `(event, callback[, priority])` literals.
 a wire value. YAML files use `.yaml`; `.github/workflows/release.yml` keeps its
 name because PyPI trusted publishing is registered for it.
 
-The configuration deliberately leaves these optional policies unselected.
+The catalog review leaves these rules inactive for the current project.
 
-- Blanket private-module or module-docstring bans would conflict with intentional
-  worker internals and useful module documentation.
-- Relative-import enforcement can prefer one-dot imports of *child packages*;
-  that does not express this repository's sibling-only preference. Ruff enforces
-  the ban on parent-relative imports; cross-package imports remain absolute.
-- Import-count and export-gap thresholds apply to the tool package. Import
-  frequency alone does not justify extending the root SDK.
-- `layout/callee-before-caller` would reorder methods away from their lifecycle
-  and protocol grouping. `layout/definition-order` already fixes the outer order.
-- `idioms/prefer-callable-instance` reports protocol implementations such as approvers,
-  summarizers and responders whose named method is the contract.
-- `frameworks/prefer-secret-type` and `frameworks/redundant-dishka-provider`
-  target frameworks outside this repository.
+| Rules | Project policy |
+| --- | --- |
+| `ARC002`, `ARC006` | The layer map and architecture tests cover plugin independence and internal imports from the SDK. The project has no feature-layer map or standalone composition root. |
+| `ARC009`, `ARC010` | Harnessed is a single uv project. |
+| `ARC012` | Strict coverage already requires an architectural assignment for production source. |
+| `IMP002` | Layer boundaries and the tool package's fan-out threshold cover import coupling where the expected dependency is known. |
+| `IMP003` | Ruff bans parent-relative imports. Smelt's relative style also prefers relative imports of child packages, which cross a package boundary here. |
+| `LAY002`, `LAY003` | Docstrings describe useful module contracts. Private module names distinguish implementation modules such as the sandbox worker client. |
+| `LAY006` | Methods are grouped by lifecycle and protocol. Definition order covers the outer structure. |
+| `IDM003` | Approvers, summarizers and responders have named protocol methods. |
+| `MOD006`, `MOD007`, `MOD008` | Dataclass options follow ownership and runtime requirements. Plugin configs, provider data, and kernel and SDK exceptions have distinct contracts. |
+| `FWK001`, `FWK002` | The project has no Pydantic Settings models or Dishka providers. |
+| `TST001` | Tests are grouped by behavior, with separate consumer typing contracts. |
 
 ## Reviewed exceptions
 
@@ -123,16 +124,15 @@ implementation details as supported APIs. The remote-image regression exercises
 attachments through `Agent.run` and checks the model request instead of calling the private image conversion method. New
 exceptions need equally specific evidence.
 
-Use stable codes for inline suppressions, on the reported statement or its
-multiline header, for example:
+Use a rule name or family code on the reported statement or its multiline
+header. Include the reason after `--`.
 
 ```python
-async with log._lock:  # smelt: ignore[SMT420] -- Force admission contention.
+async with log._lock:  # smelt: ignore[TST002] -- Force admission contention.
     ...
 ```
 
-The config and CLI use readable rule names. Inline suppression syntax uses SMT
-codes; a preceding standalone comment does not suppress the following statement.
+A preceding standalone comment does not suppress the following statement.
 
 ## Working loop
 
@@ -155,6 +155,27 @@ uv run smelt config schema > .smelt.schema.json
 If a bundled Smelt agent skill is installed locally, refresh it with
 `uv run smelt skill install --force`, preserving its custom destination and any
 local edits first. This repository does not vendor a generated skill copy.
+
+## Review after the 0.14.0 upgrade
+
+- Configuration format 2 makes rule activation explicit and moves numeric
+  limits into `rules`. Layer assignments now live on each layer. This removes
+  the directory-check exception for the engine's separately named packages.
+- The match policy activates the existing type-dispatch rule. Converted chains
+  keep branch order, guards and independent checks. `tests/forbidden-mock`
+  protects the architecture and executable example suites.
+- `LAY011` places both kernel loggers after imports, and `VIS008` standardizes
+  package facades on plain imports with their existing `__all__` lists.
+- `LAY010` identifies the supported `harnessed.hooks` import path. `TYP008`
+  identifies the kernel's `Event` base, whose explicit invariant type variable
+  fixes the result type. Both stay visible as hints.
+- `MET005` flags partial facades on full checks. The events facade owns the
+  event vocabulary and leaves stream and persistence imports explicit. Runtime
+  and session consumers import implementation modules directly to preserve the
+  package import graph. Review new candidates against the owning package's API.
+  The public attribute rules keep the class boundary for the existing contracts.
+
+[Upstream migration guide](https://github.com/mathisarends/smelt/blob/v0.14.0/docs/upgrading.md#013-to-014)
 
 ## Review after the 0.13.0 upgrade
 

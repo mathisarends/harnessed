@@ -13,14 +13,16 @@ from harnessed.plugins.shell import ShellBackend
 from harnessed.runtime.plugin import Plugin
 
 from .process import finish
-from .types import NetworkAccess as NetworkAccess
-from .types import SandboxBackend as SandboxBackend
-from .types import SandboxConfig as SandboxConfig
-from .types import SandboxError as SandboxError
-from .types import SandboxLimits as SandboxLimits
-from .types import Workspace as Workspace
-from .types import WorkspaceMode as WorkspaceMode
-from .types import workspace_path
+from .types import (
+    NetworkAccess,
+    SandboxBackend,
+    SandboxConfig,
+    SandboxError,
+    SandboxLimits,
+    Workspace,
+    WorkspaceMode,
+    workspace_path,
+)
 from .workspace import export_file
 
 if TYPE_CHECKING:

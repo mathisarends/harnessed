@@ -98,36 +98,37 @@ class ApprovalState:
 
 
 def approval_transition(records, event: DurableEvent) -> Approval | None:
-    if isinstance(event, ApprovalRequestedEvent):
-        if event.request_id in records:
-            raise ValueError("Duplicate approval request_id")
-        if event.grant_id is not None:
-            grant = records.get(event.grant_id)
-            if (
-                grant is None
-                or not grant.is_grant
-                or grant.request.scope != event.scope
-                or grant.request.identity != event.identity
-                or (event.identity is None and grant.request.call.name != event.call.name)
-            ):
-                raise ValueError(
-                    "Cached approval must reference an active grant for its tool and scope"
-                )
-        return Approval(event)
-    elif isinstance(event, ApprovalResolvedEvent):
-        record = records.get(event.request_id)
-        if record is None or not record.pending:
-            raise ValueError("Approval resolution requires a pending request")
-        if record.request.grant_id is not None and event.status == ApprovalStatus.ANSWERED:
-            grant = records[record.request.grant_id]
-            if not grant.is_grant or not event.remember:
-                raise ValueError("Cached approval grant is no longer active")
-        return replace(record, resolution=event)
-    elif isinstance(event, ApprovalRevokedEvent):
-        record = records.get(event.request_id)
-        if record is None or not record.is_grant:
-            raise ValueError("Approval revocation requires an active remembered grant")
-        return replace(record, revoked=True)
+    match event:
+        case ApprovalRequestedEvent():
+            if event.request_id in records:
+                raise ValueError("Duplicate approval request_id")
+            if event.grant_id is not None:
+                grant = records.get(event.grant_id)
+                if (
+                    grant is None
+                    or not grant.is_grant
+                    or grant.request.scope != event.scope
+                    or grant.request.identity != event.identity
+                    or (event.identity is None and grant.request.call.name != event.call.name)
+                ):
+                    raise ValueError(
+                        "Cached approval must reference an active grant for its tool and scope"
+                    )
+            return Approval(event)
+        case ApprovalResolvedEvent():
+            record = records.get(event.request_id)
+            if record is None or not record.pending:
+                raise ValueError("Approval resolution requires a pending request")
+            if record.request.grant_id is not None and event.status == ApprovalStatus.ANSWERED:
+                grant = records[record.request.grant_id]
+                if not grant.is_grant or not event.remember:
+                    raise ValueError("Cached approval grant is no longer active")
+            return replace(record, resolution=event)
+        case ApprovalRevokedEvent():
+            record = records.get(event.request_id)
+            if record is None or not record.is_grant:
+                raise ValueError("Approval revocation requires an active remembered grant")
+            return replace(record, revoked=True)
     return None
 
 

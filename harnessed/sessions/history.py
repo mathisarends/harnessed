@@ -89,78 +89,85 @@ class WorkingHistory:
         )
 
     def _apply_boundary(self, event: DurableEvent, seq: int) -> None:
-        if isinstance(event, TurnStartedEvent):
-            self._turn = event.turn_id
-        elif isinstance(event, StepStartedEvent):
-            self._step_start = seq
-        elif isinstance(event, StepEndedEvent):
-            if event.reason is StepOutcome.COMPLETED:
-                self.completed_steps.append(HistoryStep(event.turn_id, self._step_start, seq + 1))
-        elif isinstance(event, TurnEndedEvent):
-            self._items = {
-                pos: item
-                for pos, item in self._items.items()
-                if item.lifetime != MessageLifetime.TURN
-            }
-            self._turn = None
-        elif isinstance(event, CompactionAppliedEvent):
-            self._items = {item.position: item for item in self._compacted(event, seq)}
-            self.completed_steps = [
-                step for step in self.completed_steps if step.boundary > event.through
-            ]
+        match event:
+            case TurnStartedEvent():
+                self._turn = event.turn_id
+            case StepStartedEvent():
+                self._step_start = seq
+            case StepEndedEvent():
+                if event.reason is StepOutcome.COMPLETED:
+                    self.completed_steps.append(
+                        HistoryStep(event.turn_id, self._step_start, seq + 1)
+                    )
+            case TurnEndedEvent():
+                self._items = {
+                    pos: item
+                    for pos, item in self._items.items()
+                    if item.lifetime != MessageLifetime.TURN
+                }
+                self._turn = None
+            case CompactionAppliedEvent():
+                self._items = {item.position: item for item in self._compacted(event, seq)}
+                self.completed_steps = [
+                    step for step in self.completed_steps if step.boundary > event.through
+                ]
 
     def _apply_message(self, event: DurableEvent, seq: int) -> None:
-        if isinstance(event, SystemMessageEvent):
-            self._items = {
-                pos: item for pos, item in self._items.items() if item.message.id != "system"
-            }
-            if event.content:
-                self._put(seq, SystemMessage(event.content, id="system"))
-        elif isinstance(event, UserMessageEvent | AssistantMessageEvent):
-            self._put(seq, event.message, is_input=isinstance(event, UserMessageEvent))
-        elif isinstance(event, ToolCallFinishedEvent):
-            self._put(
-                seq,
-                ToolMessage(
-                    event.result.content,
-                    tool_call_id=event.call_id,
-                    id=event.call_id,
-                    status=event.result.status,
-                    exit_code=event.result.exit_code,
-                ),
-                resources=(event.result.spill,) if event.result.spill is not None else (),
-            )
-        elif isinstance(event, MessageAppendedEvent):
-            self._put(seq, event.message, lifetime=event.lifetime, is_input=True)
-
-    def _apply_context(self, event: DurableEvent, seq: int) -> None:
-        if isinstance(event, PluginValueChangedEvent):
-            self.plugin_values[event.key] = event.value
-        elif isinstance(event, ObservationRecordedEvent):
-            if event.message.content:
+        match event:
+            case SystemMessageEvent():
+                self._items = {
+                    pos: item for pos, item in self._items.items() if item.message.id != "system"
+                }
+                if event.content:
+                    self._put(seq, SystemMessage(event.content, id="system"))
+            case UserMessageEvent() | AssistantMessageEvent():
+                self._put(seq, event.message, is_input=isinstance(event, UserMessageEvent))
+            case ToolCallFinishedEvent():
                 self._put(
                     seq,
-                    event.message,
-                    observation=IncludedObservation(
-                        event.source,
-                        event.refs,
-                        turn_id=event.turn_id,
-                        step=event.step,
-                        message_id=event.message.id,
+                    ToolMessage(
+                        event.result.content,
+                        tool_call_id=event.call_id,
+                        id=event.call_id,
+                        status=event.result.status,
+                        exit_code=event.result.exit_code,
                     ),
+                    resources=(event.result.spill,) if event.result.spill is not None else (),
                 )
-            self._limit_observations()
-        elif isinstance(event, ObservationPolicyAppliedEvent):
-            self.max_observations = event.max_observations
-            self._limit_observations()
-        elif isinstance(event, SpillExpiredEvent):
-            self._items = {
-                pos: replace(
-                    item,
-                    resources=tuple(ref for ref in item.resources if ref.path != event.ref.path),
-                )
-                for pos, item in self._items.items()
-            }
+            case MessageAppendedEvent():
+                self._put(seq, event.message, lifetime=event.lifetime, is_input=True)
+
+    def _apply_context(self, event: DurableEvent, seq: int) -> None:
+        match event:
+            case PluginValueChangedEvent():
+                self.plugin_values[event.key] = event.value
+            case ObservationRecordedEvent():
+                if event.message.content:
+                    self._put(
+                        seq,
+                        event.message,
+                        observation=IncludedObservation(
+                            event.source,
+                            event.refs,
+                            turn_id=event.turn_id,
+                            step=event.step,
+                            message_id=event.message.id,
+                        ),
+                    )
+                self._limit_observations()
+            case ObservationPolicyAppliedEvent():
+                self.max_observations = event.max_observations
+                self._limit_observations()
+            case SpillExpiredEvent():
+                self._items = {
+                    pos: replace(
+                        item,
+                        resources=tuple(
+                            ref for ref in item.resources if ref.path != event.ref.path
+                        ),
+                    )
+                    for pos, item in self._items.items()
+                }
 
     def _compacted(self, applied: CompactionAppliedEvent, seq: int) -> tuple[HistoryEntry, ...]:
         preserved = (*applied.preserve_turns, *applied.retained_turns)

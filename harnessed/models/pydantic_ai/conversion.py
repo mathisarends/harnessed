@@ -129,17 +129,18 @@ def model_response(response: NativeResponse, info: ModelInfo) -> ModelResponse:
 
     text, thinking, calls = [], [], []
     for part in response.parts:
-        if isinstance(part, native.TextPart):
-            text.append(part.content)
-        elif isinstance(part, native.ThinkingPart):
-            thinking.append(part.content)
-        elif isinstance(part, native.ToolCallPart):
-            calls.append(_tool_call(part))
-        elif isinstance(part, native.NativeToolCallPart | native.NativeToolReturnPart):
-            # The provider already executed these; provider_state keeps them for replay.
-            continue
-        else:
-            raise ProviderError(f"Unsupported response part: {type(part).__name__}")
+        match part:
+            case native.TextPart():
+                text.append(part.content)
+            case native.ThinkingPart():
+                thinking.append(part.content)
+            case native.ToolCallPart():
+                calls.append(_tool_call(part))
+            case native.NativeToolCallPart() | native.NativeToolReturnPart():
+                # The provider already executed these; provider_state keeps them for replay.
+                continue
+            case _:
+                raise ProviderError(f"Unsupported response part: {type(part).__name__}")
     raw = native.ModelMessagesTypeAdapter.dump_python([response], mode="json")[0]
     if info.provider is None:
         raise ProviderError("PydanticAI responses require a provider identity")
@@ -185,25 +186,23 @@ def provider_error(error: Exception) -> ProviderError | None:
     if not isinstance(error, native.ModelAPIError):
         return None
     kind = ProviderError
-    if isinstance(error, native.ModelContextWindowExceededError):
-        kind = ContextLengthExceeded
-    elif isinstance(error, native.ModelAuthenticationError):
-        kind = AuthError
-    elif isinstance(error, native.ModelRateLimitError):
-        kind = RateLimited
-    elif isinstance(error, native.ModelRequestRejectedError):
-        kind = InvalidRequest
-    elif isinstance(
-        error,
-        (
-            native.ModelConnectionError,
-            native.ModelTimeoutError,
-            native.ModelUnavailableError,
-            native.ModelServerError,
-            native.ModelOverloadedError,
-        ),
-    ):
-        kind = ProviderUnavailable
+    match error:
+        case native.ModelContextWindowExceededError():
+            kind = ContextLengthExceeded
+        case native.ModelAuthenticationError():
+            kind = AuthError
+        case native.ModelRateLimitError():
+            kind = RateLimited
+        case native.ModelRequestRejectedError():
+            kind = InvalidRequest
+        case (
+            native.ModelConnectionError()
+            | native.ModelTimeoutError()
+            | native.ModelUnavailableError()
+            | native.ModelServerError()
+            | native.ModelOverloadedError()
+        ):
+            kind = ProviderUnavailable
     if kind is ProviderError and isinstance(error, native.ModelHTTPError):
         status = error.status_code
         if status in (401, 403):

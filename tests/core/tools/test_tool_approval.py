@@ -126,7 +126,7 @@ async def test_approval_resumes_the_remaining_execution_budget_without_resetting
         return Decision.ALLOW
 
     with monkeypatch.context() as patch:
-        patch.setattr(  # smelt: ignore[SMT426] -- Forward offsets retain real-time progress.
+        patch.setattr(  # smelt: ignore[TST008] -- Forward offsets retain real-time progress.
             loop, "time", clock.time
         )
         async with Agent(

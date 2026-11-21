@@ -54,7 +54,7 @@ dev = [
     "pytest>=8,<10",
     "pytest-asyncio>=1,<2",
     "ruff>=0.17.3,<1",
-    "smelt-cli==0.13.0",
+    "smelt-cli==0.14.0",
     "twine>=6.2,<8",
     "ty>=0.0.93,<0.1",
 ]
@@ -87,7 +87,7 @@ select = [
     "ARG", "FBT", "SLF001",
 ]
 # Shell's public timeout parameter is implemented with asyncio.timeout internally.
-# Smelt SMT350 owns broad-except reasons, so BLE001 is not selected.
+# Smelt IDM006 requires reasons for broad exception handlers.
 # Architecture tests require plain sorted `__all__`; RUF022 uses isort-style order.
 # FBT001/FBT002 guard our signatures; FBT003 would only flag external positional APIs
 # such as OpenTelemetry attributes and Win32 calls.
@@ -101,10 +101,10 @@ max-complexity = 12
 "harnessed/models/pydantic_ai/**/*.py" = ["PLC0415"]
 "harnessed/plugins/skills.py" = ["PLC0415"]
 # Classes of the standalone kernel cooperate through private state by design;
-# Smelt checks known receivers at the kernel package boundary (SMT339).
+# Smelt checks known receivers at the kernel package boundary (VIS005).
 "harnessed/kernel/**/*.py" = ["SLF001"]
 # Tests import optional integrations and patch import failures in their own scope.
-# Fakes implement protocols with unused parameters; Smelt SMT420 owns private access.
+# Fakes implement protocols with unused parameters. Smelt TST002 checks private access.
 # Tests include intentionally ambiguous Unicode inputs.
 "tests/**/*.py" = ["PLC0415", "ARG", "FBT", "SLF001", "C90", "PLR09", "RUF001"]
 

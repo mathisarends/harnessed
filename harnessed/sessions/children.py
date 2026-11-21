@@ -45,58 +45,59 @@ class ChildProjection:
         self.parent = parent
 
     def validate(self, event: DurableEvent) -> None:
-        if isinstance(event, SubagentLinkedEvent):
-            if self.parent is not None or not 1 <= event.depth <= event.depth_limit:
-                raise ValueError("A child requires one valid parent link")
-        elif isinstance(event, SubagentStartedEvent):
-            if event.child_session_id in self.children or event.call_id in self.calls:
-                raise ValueError("A delegation requires distinct child and call IDs")
-        elif isinstance(
-            event,
-            SubagentFinishedEvent
-            | SubagentApprovalRequestedEvent
-            | SubagentUpdatedEvent
-            | SubagentMessageSentEvent,
-        ):
-            child = self.children.get(event.child_session_id)
-            if child is None or child.status is not SubagentStatus.RUNNING:
-                raise ValueError("A child receipt or approval requires a running child")
+        match event:
+            case SubagentLinkedEvent():
+                if self.parent is not None or not 1 <= event.depth <= event.depth_limit:
+                    raise ValueError("A child requires one valid parent link")
+            case SubagentStartedEvent():
+                if event.child_session_id in self.children or event.call_id in self.calls:
+                    raise ValueError("A delegation requires distinct child and call IDs")
+            case (
+                SubagentFinishedEvent()
+                | SubagentApprovalRequestedEvent()
+                | SubagentUpdatedEvent()
+                | SubagentMessageSentEvent()
+            ):
+                child = self.children.get(event.child_session_id)
+                if child is None or child.status is not SubagentStatus.RUNNING:
+                    raise ValueError("A child receipt or approval requires a running child")
 
     def apply(self, event: DurableEvent) -> None:
-        if isinstance(event, SubagentStartedEvent):
-            self.calls.add(event.call_id)
-            self.children[event.child_session_id] = ChildSession(
-                event.child_session_id,
-                event.agent,
-                event.task,
-                event.turn_id,
-                event.call_id,
-                event.depth,
-                background=event.background,
-            )
-        elif isinstance(event, SubagentFinishedEvent):
-            child = self.children.get(event.child_session_id)
-            if child is not None:
-                report = child.runtime.report
-                if report is not None and report.state is ChildReportState.PENDING:
-                    report = replace(report, state=ChildReportState.UNAVAILABLE)
-                self.children[child.id] = replace(
-                    child,
-                    status=event.status,
-                    text=event.text,
-                    usage=event.usage,
-                    runtime=replace(
-                        child.runtime,
-                        activity=ChildActivity.FINISHED,
-                        active_tools=(),
-                        report=report,
-                    ),
+        match event:
+            case SubagentStartedEvent():
+                self.calls.add(event.call_id)
+                self.children[event.child_session_id] = ChildSession(
+                    event.child_session_id,
+                    event.agent,
+                    event.task,
+                    event.turn_id,
+                    event.call_id,
+                    event.depth,
+                    background=event.background,
                 )
-        elif isinstance(event, SubagentUpdatedEvent):
-            child = self.children[event.child_session_id]
-            self.children[child.id] = replace(child, runtime=event.runtime)
-        elif isinstance(event, SubagentLinkedEvent):
-            self.parent = event
+            case SubagentFinishedEvent():
+                child = self.children.get(event.child_session_id)
+                if child is not None:
+                    report = child.runtime.report
+                    if report is not None and report.state is ChildReportState.PENDING:
+                        report = replace(report, state=ChildReportState.UNAVAILABLE)
+                    self.children[child.id] = replace(
+                        child,
+                        status=event.status,
+                        text=event.text,
+                        usage=event.usage,
+                        runtime=replace(
+                            child.runtime,
+                            activity=ChildActivity.FINISHED,
+                            active_tools=(),
+                            report=report,
+                        ),
+                    )
+            case SubagentUpdatedEvent():
+                child = self.children[event.child_session_id]
+                self.children[child.id] = replace(child, runtime=event.runtime)
+            case SubagentLinkedEvent():
+                self.parent = event
 
     def snapshot(self) -> tuple[ChildSession, ...]:
         return tuple(self.children.values())

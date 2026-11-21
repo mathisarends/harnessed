@@ -14,11 +14,10 @@ from .events import PluginActivated, PluginFailed
 from .keys import MissingService, ServiceKey
 from .spec import PluginDependencyIssue, PluginSpec
 
-logger = logging.getLogger(__name__)
-
-
 if TYPE_CHECKING:
     from .scope import Scope
+
+logger = logging.getLogger(__name__)
 
 
 class PluginStatus(StrEnum):

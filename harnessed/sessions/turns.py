@@ -104,16 +104,19 @@ class TurnProjection:
     def validate(self, event: DurableEvent) -> None:
         if isinstance(event, OutputValidatedEvent | OutputValidationFailedEvent):
             self._validate_output_verdict(event)
-        if isinstance(event, StepStartedEvent | StepEndedEvent):
-            self._validate_step(event)
-        elif isinstance(event, TurnStartedEvent):
-            if self._turn is not None:
-                raise ValueError("A turn cannot start inside an open turn")
-        elif isinstance(event, TurnEndedEvent):
-            if self._turn is None or event.turn_id != self._turn or self._step is not None:
-                raise ValueError("TurnEndedEvent must close the current turn after its last step")
-        elif isinstance(event, ModelRequestedEvent) and self._step is not None and self._requests:
-            raise ValueError("A completed step must contain exactly one model request")
+        match event:
+            case StepStartedEvent() | StepEndedEvent():
+                self._validate_step(event)
+            case TurnStartedEvent():
+                if self._turn is not None:
+                    raise ValueError("A turn cannot start inside an open turn")
+            case TurnEndedEvent():
+                if self._turn is None or event.turn_id != self._turn or self._step is not None:
+                    raise ValueError(
+                        "TurnEndedEvent must close the current turn after its last step"
+                    )
+            case ModelRequestedEvent() if self._step is not None and self._requests:
+                raise ValueError("A completed step must contain exactly one model request")
 
     def _validate_step(self, event: StepStartedEvent | StepEndedEvent) -> None:
         if isinstance(event, StepStartedEvent):

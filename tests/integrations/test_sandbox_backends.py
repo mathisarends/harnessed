@@ -312,7 +312,7 @@ def test_bubblewrap_cgroup_limits_must_actually_be_effective(tmp_path):
         "cpu.max": "100000 100000",
     }.items():
         (group / name).write_text(value)
-    bubblewrap._verify_limits(  # smelt: ignore[SMT420] -- Cgroup enforcement.
+    bubblewrap._verify_limits(  # smelt: ignore[TST002] -- Cgroup enforcement.
         "/user.slice/test.scope",
         SandboxLimits(),
         cgroup_root=tmp_path,
@@ -321,12 +321,12 @@ def test_bubblewrap_cgroup_limits_must_actually_be_effective(tmp_path):
         original = (group / name).read_text()
         (group / name).write_text("max 100000" if name == "cpu.max" else "max")
         with pytest.raises(SandboxError, match="enforced"):
-            bubblewrap._verify_limits(  # smelt: ignore[SMT420] -- Cgroup enforcement.
+            bubblewrap._verify_limits(  # smelt: ignore[TST002] -- Cgroup enforcement.
                 "/user.slice/test.scope", SandboxLimits(), cgroup_root=tmp_path
             )
         (group / name).write_text(original)
     with pytest.raises(SandboxError, match="control group"):
-        bubblewrap._verify_limits(  # smelt: ignore[SMT420] -- Cgroup enforcement.
+        bubblewrap._verify_limits(  # smelt: ignore[TST002] -- Cgroup enforcement.
             "/",
             SandboxLimits(),
             cgroup_root=tmp_path,

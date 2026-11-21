@@ -21,13 +21,13 @@ from .hooks import (
     WaterfallHook,
 )
 
-_Result = TypeVar("_Result")
-
-logger = logging.getLogger(__name__)
-
 if TYPE_CHECKING:
     from .plugin import PluginHandle
     from .scope import Scope
+
+logger = logging.getLogger(__name__)
+
+_Result = TypeVar("_Result")
 
 
 class Event(Generic[_Result]):  # noqa: UP046 -- Invariance keeps the result contract fixed.

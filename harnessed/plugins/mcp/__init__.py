@@ -1,5 +1,4 @@
-from .plugin import MCP as MCP
-from .plugin import MCPConfig as MCPConfig
-from .transport import MCPTransport as MCPTransport
+from .plugin import MCP, MCPConfig
+from .transport import MCPTransport
 
 __all__ = ["MCP", "MCPConfig", "MCPTransport"]

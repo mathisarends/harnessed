@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from harnessed.integrations.sandbox import SandboxConfig, SandboxLimits, Workspace, worker
-from harnessed.integrations.sandbox._client import (  # smelt: ignore[SMT420] -- Transport tests.
+from harnessed.integrations.sandbox._client import (  # smelt: ignore[TST002] -- Transport tests.
     WorkerClient,
 )
 from harnessed.integrations.sandbox.process import WorkerProcess
@@ -263,7 +263,7 @@ async def test_shell_client_uses_requested_deadline_without_extra_transport_grac
 
 async def test_worker_request_timeout_includes_waiting_for_serialized_channel():
     channel = WorkerProcess()
-    async with channel._lock:  # smelt: ignore[SMT420] -- Ownership invariant.
+    async with channel._lock:  # smelt: ignore[TST002] -- Ownership invariant.
         pending = asyncio.create_task(channel.request(b"unused", timeout=0.02, maximum=1024))
         try:
             done, _ = await asyncio.wait([pending], timeout=0.5)

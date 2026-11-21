@@ -89,8 +89,8 @@ are supported; do not introduce a second decorator-based plugin class system.
 The filesystem backend protocol is `FileSystemBackend`, its local implementation
 is `LocalFileSystem`, and the application plugin remains `Filesystem`.
 
-Use `logger = logging.getLogger(__name__)` in modules that log. Write independent
-attribute assignments on separate lines. Only package initializers and the
+Place `logger = logging.getLogger(__name__)` immediately after the imports.
+Write independent attribute assignments on separate lines. Only package initializers and the
 single-module public facades listed in `smelt.yaml` declare `__all__`, at the
 bottom. Single-dot sibling imports remain preferred within a package;
 cross-package imports stay absolute.
@@ -121,7 +121,7 @@ Use `Scope.register()` for owned registrations and `RegistrationState.active`
 for visibility; do not inspect private Scope state from higher layers. Public
 event classes use full names ending in `Event`. The domain vocabulary is
 exported by `harnessed.events` and stream completion by `harnessed.events.stream`. Feature/model facades
-use explicit re-exports; only the SDK root stays lazy to preserve kernel isolation,
+use plain imports and explicit `__all__`; only the SDK root stays lazy to preserve kernel isolation,
 with its type stub checked against the runtime export table.
 
 Output restoration matches a registered validator identity and its schema, never
@@ -130,11 +130,12 @@ workflows and bump the key when Python validation behavior changes.
 
 ## Architecture and convention checks
 
-`smelt.yaml` is the executable policy and `uv.lock` pins Smelt CLI 0.13.0.
-Package APIs live under `architecture.packages`. Shared source conventions
-live under `style` and package exceptions under `style.overrides`. Use canonical
-`family/finding` rule names in configuration and stable SMT codes in inline
-suppressions.
+`smelt.yaml` is the executable policy and `uv.lock` pins Smelt CLI 0.14.0.
+Layer assignments live in `architecture.layers.<layer>.modules`, and package APIs
+live under `architecture.packages`. Activate rules and set their limits in `rules`.
+Shared conventions live under `style` and package exceptions under `style.overrides`.
+Use canonical `family/finding` rule names in configuration. Inline suppressions
+accept those names or their family codes.
 Before editing, run `uv run smelt context <module-or-path>` to inspect its role.
 After editing, run `uv run smelt check --changed --base origin/main --format json`.
 Before finishing, run `uv run smelt check --show-hints --fail-on warning`,
@@ -167,7 +168,7 @@ validation and optional-import boundaries.
 Fix errors in code; do not introduce a debt baseline. Review warnings in context,
 especially public APIs that static usage analysis cannot see. Preserve the lazy
 root SDK and the standalone standard-library kernel. A necessary exception must
-name its specific invariant beside the code (`# smelt: ignore[SMT420] -- reason`)
+name its specific invariant beside the code (`# smelt: ignore[TST002] -- reason`)
 or in a narrowly scoped, reasoned config entry. Do not expose helpers just to
 satisfy tests. Keep independent test oracles in test support, and use local
 deadlines for async coordination. `tests.layout: none` permits the existing topic

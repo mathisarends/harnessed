@@ -17,17 +17,17 @@ from harnessed.runtime.hooks import SessionClosing
 from harnessed.runtime.inbox import SessionInbox
 from harnessed.runtime.plugin import Plugin, PluginConfig
 from harnessed.tools import ToolError, ToolRegistry, tool
-from harnessed.tools.workspace import BackgroundShellBackend as BackgroundShellBackend
-from harnessed.tools.workspace import LocalShell as LocalShell
-from harnessed.tools.workspace import ProcessSnapshot as ProcessSnapshot
-from harnessed.tools.workspace import ProcessState as ProcessState
-from harnessed.tools.workspace import ProcResult as ProcResult
-from harnessed.tools.workspace import ShellBackend as ShellBackend
-from harnessed.tools.workspace import ShellProcess as ShellProcess
+from harnessed.tools.workspace import (
+    BackgroundShellBackend,
+    LocalShell,
+    ProcessSnapshot,
+    ProcessState,
+    ProcResult,
+    ShellBackend,
+    ShellProcess,
+)
 
-from .background import BackgroundCommands, command_result
-from .background import CommandInfo as CommandInfo
-from .background import CommandResult as CommandResult
+from .background import BackgroundCommands, CommandInfo, CommandResult, command_result
 
 
 class ShellAction(StrEnum):
