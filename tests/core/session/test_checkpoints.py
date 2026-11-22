@@ -17,9 +17,9 @@ from harnessed.events import (
 )
 from harnessed.events.registry import EventRegistry
 from harnessed.kernel import Inject
-from harnessed.models import UserMessage
+from harnessed.models import ImageReference, ModelChunk, UserMessage
 from harnessed.sessions import CheckpointExtension, SessionCheckpoint, SessionState
-from harnessed.testing import ScriptedModel, call
+from harnessed.testing import CallbackModel, ScriptedModel, call
 from tests._checkpoints import checkpoint
 from tests._commits import CommitRecorder
 
@@ -158,3 +158,39 @@ async def test_custom_event_restoration_uses_the_agent_catalog_not_the_document(
         await asyncio.wait_for(restored.wait_until_idle(), timeout=5)
         assert restored.messages[-1].text == "finished"
     assert len(model.requests) == 2
+
+
+async def _image_checkpoints() -> tuple[SessionCheckpoint, SessionCheckpoint]:
+    """A terminal checkpoint with a retained image and one whose open turn adds one."""
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def respond(request):
+        if len(request.messages) > 2:
+            started.set()
+            await release.wait()
+        yield ModelChunk(text="seen")
+
+    async with Agent(model=CallbackModel(respond)).session() as session:
+        kept = await session.assets.put(b"\x00\xffkept", media_type="image/png")
+        await session.run(UserMessage((ImageReference(kept),)))
+        terminal = session.checkpoint()
+        added = await session.assets.put(b"\x00\xffadded", media_type="image/png")
+        await session.submit(UserMessage((ImageReference(added),)))
+        await asyncio.wait_for(started.wait(), timeout=5)
+        running = session.checkpoint()
+        release.set()
+    return terminal, running
+
+
+@pytest.mark.parametrize("encoding", ["dict", "json"])
+async def test_decoding_a_checkpoint_with_tampered_image_bytes_fails(encoding):
+    terminal, running = await _image_checkpoints()
+    assert running.assets and terminal.state.assets
+    for document, assets in ((terminal.to_dict(), "state"), (running.to_dict(), "suffix")):
+        target = document["state"]["assets"] if assets == "state" else document["assets"]
+        target[0]["data"] = "Y29ycnVwdA=="
+        with pytest.raises(SessionFormatError):
+            if encoding == "dict":
+                SessionCheckpoint.from_dict(document)
+            else:
+                SessionCheckpoint.from_json(json.dumps(document))

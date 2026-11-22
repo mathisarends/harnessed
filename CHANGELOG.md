@@ -19,6 +19,12 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   before `SessionOpened`. Plugins that need `SessionLog` or `SessionContext`
   now observe the repair records, such as the aborted `TurnEndedEvent`.
   ([#158](https://github.com/mathisarends/harnessed/issues/158))
+- Building session snapshots no longer re-hashes every retained image. A
+  stored `AssetValue` is verified once, when it is created or decoded, and
+  snapshots reuse it; `SessionState` keeps its structural checks. With 40
+  retained 2 MB images, a plain turn's overhead drops from about 970 ms to
+  450 ms. Decoding a tampered document still fails.
+  ([#161](https://github.com/mathisarends/harnessed/issues/161))
 
 ## 0.26.0 (2026-11-22)
 
