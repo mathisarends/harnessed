@@ -95,6 +95,7 @@ class SessionLog:
         registry: EventRegistry | None = None,
         assets: MemoryAssets | None = None,
         on_commit: CommitHandler | None = None,
+        commit_timeout_seconds: float | None = None,
     ) -> None:
         if registry is None:
             registry = (
@@ -140,7 +141,11 @@ class SessionLog:
         self._preserved_turns = state.preserved_turns if state else ()
         self._uncompacted_turns = state.turns_since_compaction if state else 0
         self._closed_count = len(self._turn_boundaries)
-        self._commits = CommitDelivery(on_commit) if on_commit is not None else None
+        self._commits = (
+            CommitDelivery(on_commit, timeout_seconds=commit_timeout_seconds)
+            if on_commit is not None
+            else None
+        )
         self._restoring = False
         self._turn_state: SessionState | None = None
         self._turn_seed: tuple[CheckpointSeed, ...] = ()
@@ -159,10 +164,16 @@ class SessionLog:
         """The application handler receiving this log's commits, if any."""
         return self._commits.handler if self._commits is not None else None
 
+    @property
+    def commit_timeout_seconds(self) -> float | None:
+        """The deadline for each commit delivery, if any."""
+        return self._commits.timeout_seconds if self._commits is not None else None
+
     async def flush(self) -> None:
         """Deliver pending changes, draining a delivery even if the waiter is cancelled."""
         if self._commits is None:
             return
+        self._commits.check_reentry()
         task = asyncio.create_task(self._deliver())
         cancelled = False
         while not task.done():
@@ -508,6 +519,8 @@ class SessionLog:
         a stale target raises RunUnavailable without recording the event.
         """
         self.registry.validate(event)
+        if self._commits is not None:
+            self._commits.check_reentry()
         cancelled = False
         terminal = self._commits is not None or isinstance(
             event,

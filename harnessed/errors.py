@@ -59,6 +59,10 @@ class RunUnavailable(SessionStateError):
     """A targeted run has already advanced beyond the requested operation."""
 
 
+class CommitTimeout(HarnessedError, TimeoutError):
+    """An ``on_commit`` handler exceeded the session's commit deadline."""
+
+
 class SessionFormatError(HarnessedError, ValueError):
     """A session state, checkpoint or record does not match the current format."""
 
@@ -141,6 +145,7 @@ class ProviderUnavailable(ProviderError):
 __all__ = [
     "ApprovalUnavailable",
     "AuthError",
+    "CommitTimeout",
     "ConfigError",
     "ContextBudgetExceeded",
     "ContextLengthExceeded",

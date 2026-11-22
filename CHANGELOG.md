@@ -7,6 +7,14 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 
 ## Unreleased
 
+### Added
+
+- `agent.session(commit_timeout_seconds=...)` bounds each `on_commit` delivery.
+  An expired delivery cancels the handler and fails the commit with the new
+  `CommitTimeout` error, so `abort()` and closing no longer wait for a hung
+  handler. Subagent sessions share the parent's deadline. Without a deadline,
+  delivery is unchanged. ([#159](https://github.com/mathisarends/harnessed/issues/159))
+
 ### Fixed
 
 - A turn that fails with an exception now discards the queued runs whose
@@ -29,6 +37,10 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   the `max_parallel_tools` slots. Calls of the same group that need no approval
   run meanwhile, and every approval question of the group is pending at once.
   ([#163](https://github.com/mathisarends/harnessed/issues/163))
+- An `on_commit` handler that writes to or flushes its own session now fails
+  the commit with `SessionStateError` instead of deadlocking the session.
+  Read-only access, such as `session.checkpoint()`, stays allowed.
+  ([#159](https://github.com/mathisarends/harnessed/issues/159))
 
 ## 0.26.0 (2026-11-22)
 
