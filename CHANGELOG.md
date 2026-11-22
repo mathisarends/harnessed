@@ -5,10 +5,14 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
-## Unreleased
+## 0.26.0 (unreleased)
 
 ### Added
 
+- `Plugin.with_tool(...)` overrides a declared tool's description and
+  model-facing parameter descriptions, defaults and numeric bounds for one
+  recipe. Use `Param` from `harnessed.tools` to configure each parameter. See
+  [customize a declared tool](docs/guides/tools.md#customize-a-declared-tool).
 - `agent.session(on_commit=...)` delivers each `SessionCommit` to an
   application-owned async handler at durability barriers. Commits carry
   `session_id`, so one handler serves a parent and its subagent sessions.
@@ -47,9 +51,9 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   tuples instead of lists, for example `StepOutcome.COMPLETED` rather than `"completed"`
   and `ToolResult((TextPart("x"),))` rather than `ToolResult([...])`. JSON
   decoding still accepts the persisted enum values and arrays.
-- Invalid values raise `pydantic.ValidationError` (a `ValueError`) instead of
-  `TypeError`. Some error messages changed. Catch `ValueError` or
-  `ValidationError`.
+- Invalid constructor arguments caught by Pydantic raise
+  `pydantic.ValidationError` (a `ValueError`). Update handlers that previously
+  caught `TypeError` for those arguments.
 - `encode_event` and `decode_event` are removed. Use `builtin_codec().encode(event)`
   and `builtin_codec().decode(record)` from `harnessed.events.codec` for built-in
   events, or `EventRegistry.encode`/`decode` for catalogs with application
@@ -61,10 +65,10 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   `harnessed.models.messages` to `harnessed.models.values`.
 - `ModelCacheMetricsEvent.hit_rate` is a property derived from
   `usage.cache_hit_rate` and is no longer a constructor argument or persisted field.
-- Audit envelopes use version **9** and execution checkpoints use format **5**,
-  because recorded cache metrics no longer contain `hit_rate` and checkpoints
-  now carry their session ID. Conversation snapshots (`SessionState`) keep
-  format **4**.
+- Audit envelopes use version **9**. Execution checkpoints use format **5** and
+  carry their session ID. Conversation snapshots (`SessionState`) keep format
+  **4**. The version **3** JSON-store wrapper belonged to the removed
+  `JsonSessionStore`.
 - `harnessed.plugins.subagents` no longer re-exports child-session types. Import
   `ChildSessionFactory`, `ChildSessionRequest` and `ChildStatusReporter` from
   `harnessed.children`; `ChildActivity`, `ChildReport`, `ChildReportState` and
@@ -75,22 +79,34 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 
 ### Upgrade from 0.25.0
 
-1. Replace `Agent(store=store)` with
-   `agent.session(id=conversation_id, on_commit=handler)`. A handler is an async
-   callable that saves `commit.checkpoint` under `commit.session_id` (and
-   optionally maps `commit.changes`) in one transaction.
-2. Replace `agent.session(id=conversation_id)` reopening with
-   `agent.session(state=checkpoint, on_commit=handler)`, where `checkpoint`
-   comes from your repository and carries its session ID. Revision checks are
-   now the repository's concern; serialize execution per conversation as before.
-3. Replace string enum values and lists in direct constructor calls with enum
-   members and tuples. Update handlers that expected `TypeError` from invalid
-   values to catch `ValueError`.
-4. Replace `encode_event`/`decode_event` with `builtin_codec()` or your session's
-   `EventRegistry`, and update imports of the JSON helpers and child-session types.
-5. Existing audit envelopes (version 8), JSON-store files and execution
-   checkpoints (format 4) are not migrated. Export conversations as
-   `SessionState` snapshots with 0.25.0 and reopen them with `state=`.
+1. **Export while running 0.25.0.** Stop admitting new work, resume paused
+   sessions and let queued work finish. Back up the old store, then open each
+   idle conversation with
+   the old `Agent(store=...)` and `agent.session(id=conversation_id)`. Save
+   `session.snapshot().to_json()` alongside its conversation ID. A snapshot
+   preserves conversation state. For active or paused turn recovery, use the
+   original checkpoint and 0.25.0 until the session is idle.
+2. **Switch to application-owned storage.** Pass an async `on_commit` handler
+   to `agent.session()`. In one transaction, save `commit.checkpoint` under
+   `commit.session_id` and apply any application changes from `commit.changes`.
+   The same handler receives child commits under their own IDs. Implement
+   revision checks in your repository if needed and serialize execution per
+   conversation. See [receive commits](docs/guides/sessions.md#receive-commits).
+3. **Import the snapshots.** Read each export with `SessionState.from_json()`
+   and pass `id=conversation_id, state=snapshot, on_commit=handler` to
+   `agent.session()`. Opening a snapshot does not replay old changes. To seed
+   your repository immediately, save `session.checkpoint()` before closing.
+   For subsequent opens, load the saved checkpoint with
+   `SessionCheckpoint.from_json()` or `from_dict()` and pass
+   `state=checkpoint, on_commit=handler`. The checkpoint supplies the ID.
+4. **Update constructors and imports.** Pass enum members and tuples to
+   typed constructors. Catch `pydantic.ValidationError` or `ValueError` for
+   invalid Pydantic values. Update JSON helper and child-session imports as listed
+   above.
+5. **Update audit readers and writers.** Use `builtin_codec()` or the session's
+   `EventRegistry` to read and write version **9** records. Read archived version
+   **8** records with 0.25.0. The new runtime has no loader for the old JSON-store
+   wrapper or format **4** execution checkpoints.
 
 ## 0.25.0 (2026-11-21)
 

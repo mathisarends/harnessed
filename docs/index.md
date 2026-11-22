@@ -8,7 +8,8 @@ Harnessed 0.x is alpha software. Read the
 [release notes and compatibility policy](releases.md) before depending on its
 public APIs or persisted session formats.
 
-Harnessed 0.25.0 adds model-backed approval review and per-recipe tool exclusions.
+Harnessed 0.26.0 gives applications ownership of session persistence and lets
+plugin recipes customize individual tools.
 See the [release overview](releases.md) for upgrade steps and earlier releases.
 
 | I want to... | Read |
