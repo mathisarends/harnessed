@@ -14,6 +14,13 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   `CommitTimeout` error, so `abort()` and closing no longer wait for a hung
   handler. Subagent sessions share the parent's deadline. Without a deadline,
   delivery is unchanged. ([#159](https://github.com/mathisarends/harnessed/issues/159))
+- `async with session.approvals.responder():` keeps approval questions of turns
+  without an owning `session.stream()` pending, for example turns started by
+  `steer()` or a background subagent's notification. They are announced as
+  `ApprovalNeededEvent` on `session.subscribe(transient=True)` and answered with
+  `session.approvals.allow()` / `deny()`. A closing stream hands its pending
+  questions over to an open responder. Without one, behaviour is unchanged.
+  ([#162](https://github.com/mathisarends/harnessed/issues/162))
 
 ### Fixed
 
@@ -41,6 +48,9 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   the commit with `SessionStateError` instead of deadlocking the session.
   Read-only access, such as `session.checkpoint()`, stays allowed.
   ([#159](https://github.com/mathisarends/harnessed/issues/159))
+- Answering an approval that no live responder held now raises
+  `ApprovalUnavailable` saying so, instead of "This approval is no longer
+  pending". ([#162](https://github.com/mathisarends/harnessed/issues/162))
 
 ## 0.26.0 (2026-11-22)
 

@@ -61,7 +61,29 @@ An active [UI stream](streaming.md) emits `ApprovalNeededEvent`. Use
 `await session.approvals.allow(request_id)` or `await session.approvals.deny(request_id)`.
 A repeated identical response is idempotent. A contradictory response fails.
 A question without a responder yields an unavailable result.
-`run()`, `submit()` and raw subscriptions install no UI responder.
+`run()`, `submit()` and raw subscriptions install no UI responder. Answering
+such a question raises `ApprovalUnavailable` saying that no live responder held it.
+
+Some turns have no stream that could answer them: a turn started by
+`session.steer()` while idle, or by a background subagent's notification. Keep a
+session-scoped responder open for them:
+
+```python
+async with session.approvals.responder():
+    async for event in session.subscribe(transient=True):
+        if isinstance(event, ApprovalNeededEvent):
+            await session.approvals.allow(event.request_id)
+```
+
+While the context is open, approval questions that no open stream owns stay
+pending until they are answered or their response timeout expires. Each is
+announced as `ApprovalNeededEvent` on `session.subscribe(transient=True)` and
+listed in `session.approvals.pending`, so a reconnecting client can find it. A
+stream keeps answering its own turn. When that stream closes, its pending
+questions are handed over to an open session responder instead of becoming
+unavailable. Closing the last responder makes its held questions unavailable.
+Precedence is unchanged: a parent session, then `reviewer=`, then `approver=`,
+then live responders. Without a responder, headless runs never wait.
 
 ## Review an approval with a model
 

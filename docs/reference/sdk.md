@@ -422,6 +422,7 @@ after completion it raises `SessionStateError` instead of starting a new turn.
 | `approvals.request_response(call, reason)` | Ask for approval and return the answer with its source and optional rationale |
 | `approvals.allow(id, remember=False)` / `approvals.deny(id)` | Answer a pending approval. Set `remember=True` to grant future calls for the same action and scope |
 | `approvals.revoke(id)` | Revoke a remembered grant. Use `pending`, `grants` and `grant_for()` to inspect approvals |
+| `async with approvals.responder():` | Keep questions of turns without an owning stream pending and announce them as `ApprovalNeededEvent` on `subscribe(transient=True)`; a closing stream hands its questions over |
 | id / prompt | Session ID / effective system prompt |
 | tools | Read-only `SessionTools` mapping of currently visible tool names to definitions; `.names` returns a frozenset |
 | plugin_context | The restricted `SessionContext` view that plugins and hooks receive |

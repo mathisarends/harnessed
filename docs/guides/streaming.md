@@ -224,6 +224,14 @@ resolution. A configured approver or earlier answering hook takes precedence.
 Late answers fail with `ApprovalUnavailable`; identical acknowledged answers
 are harmless, and an already submitted decision cannot be changed.
 
+A stream answers only the turn it submitted. Turns started by `steer()` or by a
+background subagent's notification need a session-scoped responder:
+`async with session.approvals.responder():` keeps their questions pending and
+announces them on `session.subscribe(transient=True)`. With such a responder
+open, a stream that closes, for example when an SSE client disconnects, hands
+its pending questions over instead of making them unavailable. See
+[approvals](approvals.md#respond-to-a-request).
+
 Leave the `async with` context when disconnecting. Exiting removes its responder
 and resolves pending questions as unavailable. It does not abort the conversation;
 use `run.cancel()` to abort that run. Cancelling a response waiter does not withdraw
