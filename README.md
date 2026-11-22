@@ -250,7 +250,7 @@ the standard library.
 
 Harnessed 0.x is alpha software. Read the
 [compatibility policy](https://github.com/mathisarends/harnessed/blob/main/docs/releases.md)
-and [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
+and [changelog](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md)
 before upgrading. For contributions and release checks, see
 [development](https://github.com/mathisarends/harnessed/blob/main/docs/contributing/development.md).
 

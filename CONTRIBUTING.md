@@ -27,5 +27,5 @@ and [plugins](docs/guides/plugins.md) for the public contract.
 
 Keep documentation and examples in English. Put user explanations in topic guides,
 API summaries in the reference and future proposals in the roadmap. Record release
-changes and migrations in [Changelog.md](Changelog.md); keep the
+changes and migrations in [CHANGELOG.md](CHANGELOG.md); keep the
 [release overview](docs/releases.md) brief.
