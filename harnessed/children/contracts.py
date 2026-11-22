@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from harnessed.approvals.responders import Approver
 from harnessed.events import SubagentLinkedEvent
+from harnessed.sessions import CommitHandler
 
 if TYPE_CHECKING:
     from harnessed.runtime.session import Session
@@ -29,12 +30,17 @@ class ChildLimits:
 
 @dataclass(frozen=True)
 class ChildSessionRequest:
-    """Application boundary for opening an isolated, parent-owned session."""
+    """Application boundary for opening an isolated, parent-owned session.
+
+    ``on_commit`` is the parent's commit handler, so one application handler
+    receives the commits of a whole delegation tree.
+    """
 
     session_id: str
     link: SubagentLinkedEvent
     approver: Approver
     reporter: ChildStatusReporter | None = None
+    on_commit: CommitHandler | None = None
 
 
 @runtime_checkable

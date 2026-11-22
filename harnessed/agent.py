@@ -29,7 +29,7 @@ from harnessed.runtime.options import RunOptions
 from harnessed.runtime.plugin import Plugin, Service, plugin_events
 from harnessed.runtime.services import RuntimeServices
 from harnessed.runtime.session import Session
-from harnessed.sessions import SessionState, SessionStore
+from harnessed.sessions import CommitHandler, SessionCheckpoint, SessionState
 from harnessed.sessions.result import RunResult
 
 
@@ -53,12 +53,10 @@ class Agent:
         plugins: Iterable[Plugin] = (),
         loop: AgentLoop | None = None,
         plugin_validation: PluginValidation = PluginValidation.ERROR,
-        store: SessionStore | None = None,
     ) -> None:
         self.plugin_validation = (  # smelt: ignore[VIS004] -- Public Agent setting.
             PluginValidation(plugin_validation)
         )
-        self.store = store
         if loop is None:
             loop = AgentLoop()
         if not isinstance(loop, AgentLoop):
@@ -89,28 +87,39 @@ class Agent:
     async def session(
         self,
         *,
-        state: SessionState | None = None,
+        state: SessionState | SessionCheckpoint | None = None,
         id: str | None = None,
+        on_commit: CommitHandler | None = None,
         restore_outputs: Iterable[type[Any] | OutputContract[Any]] = (),
     ) -> AsyncGenerator[Session]:
-        """Open a live conversation, optionally initialized from an immutable state."""
+        """Open a live conversation, optionally continuing an application-owned value.
+
+        ``state`` accepts a terminal ``SessionState`` or a ``SessionCheckpoint``,
+        which may contain an open turn; interrupted activity is repaired on open.
+        ``on_commit`` receives every ``SessionCommit`` of this session and of the
+        child sessions it delegates to, at durability barriers. Harnessed does
+        not store conversations itself.
+        """
         async with self._open_session(
-            state=state, id=id, restore_outputs=restore_outputs
+            state=state, id=id, on_commit=on_commit, restore_outputs=restore_outputs
         ) as session:
             yield session
 
     @asynccontextmanager
     async def child_session(self, request: ChildSessionRequest) -> AsyncGenerator[Session]:
         """Open a fresh isolated session for a parent-owned delegation."""
-        async with self._open_session(id=request.session_id, child=request) as session:
+        async with self._open_session(
+            id=request.session_id, on_commit=request.on_commit, child=request
+        ) as session:
             yield session
 
     @asynccontextmanager
     async def _open_session(
         self,
         *,
-        state: SessionState | None = None,
+        state: SessionState | SessionCheckpoint | None = None,
         id: str | None = None,
+        on_commit: CommitHandler | None = None,
         restore_outputs: Iterable[type[Any] | OutputContract[Any]] = (),
         child: ChildSessionRequest | None = None,
     ) -> AsyncGenerator[Session]:
@@ -140,7 +149,7 @@ class Agent:
                 state,
                 loop=self.loop,
                 plugin_validation=self.plugin_validation,
-                store=self.store,
+                on_commit=on_commit,
                 id=id,
             )
 

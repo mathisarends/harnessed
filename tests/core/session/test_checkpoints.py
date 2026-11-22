@@ -16,12 +16,12 @@ from harnessed.events import (
     UserMessageEvent,
 )
 from harnessed.events.registry import EventRegistry
-from harnessed.integrations.json import JsonSessionStore
 from harnessed.kernel import Inject
 from harnessed.models import UserMessage
-from harnessed.sessions import CheckpointExtension, SessionCheckpoint, SessionState, StoredSession
+from harnessed.sessions import CheckpointExtension, SessionCheckpoint, SessionState
 from harnessed.testing import ScriptedModel, call
 from tests._checkpoints import checkpoint
+from tests._commits import CommitRecorder
 
 
 @dataclass(frozen=True)
@@ -72,18 +72,22 @@ def test_checkpoint_extensions_are_immutable_and_roundtrip_without_a_registry():
 
 
 @pytest.mark.parametrize(
-    "change", ["old-version", "bool-version", "extra", "offset", "seed", "end"]
+    "change", ["old-version", "bool-version", "extra", "offset", "seed", "end", "id", "blank-id"]
 )
 def test_checkpoint_rejects_invalid_documents(change):
     data = json.loads(checkpoint().to_json())
     if change == "old-version":
-        data["version"] = 3
+        data["version"] = 4
     elif change == "bool-version":
         data["version"] = True
     elif change == "extra":
         data["unknown"] = "ignored?"
     elif change == "offset":
         data["offset"] = -1
+    elif change == "id":
+        del data["session_id"]
+    elif change == "blank-id":
+        data["session_id"] = " "
     elif change == "seed":
         data["seed"] = [{"type": "turn.started", "turn_id": "turn"}]
     else:
@@ -98,18 +102,20 @@ def test_checkpoint_rejects_invalid_documents(change):
 def test_checkpoint_construction_and_type_adapter_validate_without_json():
     with pytest.raises(ValidationError):
         SessionCheckpoint(
-            state=SessionState(), offset=-1, control=SessionControlChangedEvent(ControlState.ACTIVE)
+            session_id="session",
+            state=SessionState(),
+            offset=-1,
+            control=SessionControlChangedEvent(ControlState.ACTIVE),
         )
     with pytest.raises(SessionFormatError):
         SessionCheckpoint.from_json("{}")
     value = checkpoint("typed")
     assert TypeAdapter(SessionCheckpoint).validate_python(value) is value
     assert value.state.plugin_values == {"marker": "typed"}
-    with pytest.raises(ValidationError, match="SessionCheckpoint"):
-        StoredSession("{}", 1)
+    assert SessionCheckpoint.from_dict(value.to_dict()) == value
 
 
-async def test_custom_event_restoration_uses_the_agent_catalog_not_the_store(tmp_path):
+async def test_custom_event_restoration_uses_the_agent_catalog_not_the_document():
     entered, release = asyncio.Event(), asyncio.Event()
 
     class Indexer(Plugin):
@@ -122,10 +128,10 @@ async def test_custom_event_restoration_uses_the_agent_catalog_not_the_store(tmp
             await release.wait()
             return "indexed"
 
-    store = JsonSessionStore(root=tmp_path)
+    store = CommitRecorder(documents=True)
     model = ScriptedModel([call(Indexer.index), "finished"])
-    agent = Agent(model=model, plugins=[Indexer()], store=store)
-    async with agent.session(id="custom") as session:
+    agent = Agent(model=model, plugins=[Indexer()])
+    async with agent.session(id="custom", on_commit=store) as session:
         await session.submit("Index")
         await asyncio.wait_for(entered.wait(), timeout=5)
         pausing = asyncio.create_task(session.pause())
@@ -133,21 +139,18 @@ async def test_custom_event_restoration_uses_the_agent_catalog_not_the_store(tmp
         release.set()
         await asyncio.wait_for(pausing, timeout=5)
 
-    stored = await JsonSessionStore(root=tmp_path).load_session("custom")
-    assert stored is not None
-    extension = next(
-        event for event in stored.checkpoint.events if isinstance(event, CheckpointExtension)
-    )
+    stored = store.latest("custom")
+    extension = next(event for event in stored.events if isinstance(event, CheckpointExtension))
     assert extension.tag == "project.indexed" and extension.data == {"files": 42}
     with pytest.raises(SessionFormatError, match="Invalid checkpoint execution"):
-        async with Agent(model=model, store=store).session(id="custom"):
+        async with Agent(model=model).session(state=stored):
             pytest.fail("An unregistered extension must not run")
     with pytest.raises(SessionFormatError):
         replace(extension, data={"files": "invalid"}).to_event(
             registry=EventRegistry([IndexedEvent])
         )
 
-    async with agent.session(id="custom") as restored:
+    async with agent.session(state=stored) as restored:
         assert (
             next(event for event in restored.events if isinstance(event, IndexedEvent)).files == 42
         )

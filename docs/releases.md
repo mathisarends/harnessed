@@ -1,7 +1,7 @@
 # Releases and compatibility
 
 Harnessed 0.x is alpha software. This page summarizes the latest release and the
-compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/Changelog.md)
+compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md)
 is the complete version history and upgrade reference.
 
 ## 0.25.0 (2026-11-21)
@@ -12,7 +12,7 @@ and [exclude individual tools from plugin recipes](guides/tools.md#exclude-tools
 **Upgrade.** Rename duration keywords and scripted tool arguments to their
 explicit second-based names. Custom sandbox worker transports must use protocol
 **2**. See the
-[0.24.0 upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0240)
+[0.24.0 upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-0240)
 for the API and event-consumer changes.
 
 ## 0.24.0 (2026-11-21)
@@ -26,7 +26,7 @@ context occupancy with `ContextMeter`.
 **Upgrade.** Export conversations with `0.23.0` and convert their snapshots
 before importing them into a fresh store. Conversation snapshots use format
 **4** and audit envelopes use version **8**. Review the
-[0.23.0 upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0230)
+[0.23.0 upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-0230)
 for the storage conversion and changes to hooks, tool selectors and imports.
 
 ## 0.23.0 (2026-11-20)
@@ -40,7 +40,7 @@ and [plugin handover notes](guides/compaction.md#add-a-plugin-handover-note).
 checkpoint readers before writers to handle the new `accepted_note_keys` field.
 Use the new module paths in the [examples learning path](guides/examples.md).
 See the
-[0.22.0 upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0220).
+[0.22.0 upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-0220).
 
 ## 0.22.0 (2026-11-20)
 
@@ -52,7 +52,7 @@ rules. Tools run by default unless the application configures restrictions.
 conversations as snapshots with `0.21.0` and import them into a fresh store with
 `0.22.0`. Execution checkpoints now use format **4** and standalone audit
 envelopes use version **7**. See the
-[0.21.0 upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0210)
+[0.21.0 upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-0210)
 for the migration steps.
 
 ## 0.21.0 (2026-11-19)
@@ -65,7 +65,7 @@ cost when available. See the [tracing guide](guides/tracing.md).
 **Upgrade.** Update the package version and opt in to session-owned export
 where needed. Existing stored sessions need no migration. Upgrade standalone
 audit readers before writers during a staged rollout. See the
-[0.20.0 upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0200)
+[0.20.0 upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-0200)
 for installation, tracing setup and historical usage records.
 
 ## 0.20.0 (2026-11-19)
@@ -78,7 +78,7 @@ inheritance, image limits and content capture.
 
 **Upgrade.** Update imports from `harnessed.services` and moved event and model
 types. Update any consumers or filters of model-span content using the
-[0.19.0 upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0190).
+[0.19.0 upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-0190).
 Existing conversation state, checkpoints, JSON stores and audit envelopes can
 be read directly.
 
@@ -117,7 +117,7 @@ Runtime components have been split and the repository now uses Smelt 0.8.0.
 for injected services. Update automation for `tests.yaml` and `mkdocs.yaml`.
 Public SDK import paths remain stable; some implementation attributes are now
 private. The
-[changelog upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0160)
+[changelog upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-0160)
 covers direct hook calls and internal imports. No storage migration is required
 from 0.16.0: state/checkpoints/JSON stores remain **3**, audit envelopes **6**.
 
@@ -133,7 +133,7 @@ Lifecycle events expose captured sizes and occupancy metrics.
 summarizers use `CompactionRequest -> Summary`. State is now format **3** and
 audit envelopes version **6**; older values are rejected without migration.
 Checkpoints/JSON stores remain format **3**, containing the new state format.
-See the [changelog migration table](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0151)
+See the [changelog migration table](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-0151)
 and the [compaction guide](guides/compaction.md) for the full contracts.
 
 ## 0.15.1 (2026-11-10)
@@ -201,19 +201,19 @@ application. Published artifacts and dates are listed in
 
 | Release | Main change | Upgrade checklist |
 | --- | --- | --- |
-| 0.14.0 | Plugin activation scope, tool deadlines, MCP and tracing | [From 0.13.0](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0130) |
-| 0.13.0 | Service contracts, messages, streams and persistence | [From 0.12.0](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0120) |
-| 0.12.0 | Additive input and parent-owned subagents | [From 0.11.0](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0110) |
-| 0.11.0 | Opt-in persistence and atomic commits | [From 0.10.0](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-0100) |
-| 0.10.0 | Plugin instruction blocks | [From 0.9.0](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-090) |
-| 0.9.0 | Plugin recipes and composition | [From 0.8.0](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-080) |
-| 0.8.0 | Explicit conversation state | [From 0.7.0](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-070) |
-| 0.7.0 | Model settings, image assets and background shell | [From 0.6.0](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-060) |
-| 0.6.0 | Sandbox backends and MCP cleanup | [From 0.5.0](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-050) |
-| 0.5.0 | Tool metadata, action chains and step summaries | [From 0.4.0](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-040) |
-| 0.4.0 | Prompt composition, MCP and conditional tools | [From 0.3.0](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-030) |
-| 0.3.0 | Tracing and explicit plugin requirements | [From 0.2.0](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-020) |
-| 0.2.0 | Event API and storage contracts | [From 0.1.0](https://github.com/mathisarends/harnessed/blob/main/Changelog.md#upgrade-from-010) |
+| 0.14.0 | Plugin activation scope, tool deadlines, MCP and tracing | [From 0.13.0](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-0130) |
+| 0.13.0 | Service contracts, messages, streams and persistence | [From 0.12.0](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-0120) |
+| 0.12.0 | Additive input and parent-owned subagents | [From 0.11.0](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-0110) |
+| 0.11.0 | Opt-in persistence and atomic commits | [From 0.10.0](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-0100) |
+| 0.10.0 | Plugin instruction blocks | [From 0.9.0](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-090) |
+| 0.9.0 | Plugin recipes and composition | [From 0.8.0](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-080) |
+| 0.8.0 | Explicit conversation state | [From 0.7.0](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-070) |
+| 0.7.0 | Model settings, image assets and background shell | [From 0.6.0](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-060) |
+| 0.6.0 | Sandbox backends and MCP cleanup | [From 0.5.0](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-050) |
+| 0.5.0 | Tool metadata, action chains and step summaries | [From 0.4.0](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-040) |
+| 0.4.0 | Prompt composition, MCP and conditional tools | [From 0.3.0](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-030) |
+| 0.3.0 | Tracing and explicit plugin requirements | [From 0.2.0](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-020) |
+| 0.2.0 | Event API and storage contracts | [From 0.1.0](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-010) |
 
 The [initial release](https://github.com/mathisarends/harnessed/releases/tag/v0.1.0)
 introduced the agent SDK, reversible plugins and optional model integrations.

@@ -16,12 +16,12 @@ from harnessed.events import (
     TurnStartedEvent,
 )
 from harnessed.hooks import Next, OutputDecision, PrepareOutput, TurnStopping
-from harnessed.integrations.json import JsonSessionStore
 from harnessed.kernel import PluginScope, hook
 from harnessed.models import ModelChunk, ModelInfo, ModelUsage, StopReason, ToolStatus
 from harnessed.plugins import FinalStepPolicy
 from harnessed.prompts import SectionDelivery
 from harnessed.testing import CallbackModel, ScriptedModel, call, reply
+from tests._commits import CommitRecorder
 
 
 class Answer(BaseModel):
@@ -148,7 +148,7 @@ async def test_step_limits_remain_incomplete_without_validated_output(summary: b
         assert model.requests[-1].tools == ()
 
 
-async def test_paused_finalization_restores_the_declared_output_contract(tmp_path) -> None:
+async def test_paused_finalization_restores_the_declared_output_contract() -> None:
     entered, release, pausing = asyncio.Event(), asyncio.Event(), asyncio.Event()
 
     async def respond(_request):
@@ -160,9 +160,9 @@ async def test_paused_finalization_restores_the_declared_output_contract(tmp_pat
         if event.state is ControlState.PAUSING:
             pausing.set()
 
-    store = JsonSessionStore(root=tmp_path / "sessions")
-    async with Agent(model=CallbackModel(respond), plugins=[Phased()], store=store).session(
-        id="phased"
+    store = CommitRecorder(documents=True)
+    async with Agent(model=CallbackModel(respond), plugins=[Phased()]).session(
+        id="phased", on_commit=store
     ) as session:
         session.scope.on(SessionControlChangedEvent, changed)
         await session.submit("Count", output=Answer, max_steps=3)
@@ -176,8 +176,8 @@ async def test_paused_finalization_restores_the_declared_output_contract(tmp_pat
         assert session.last(ToolCallFinishedEvent).call.name == "done"
 
     model = ScriptedModel([answer(False, 4)])
-    async with Agent(model=model, plugins=[Phased()], store=store).session(
-        id="phased", restore_outputs=[Answer]
+    async with Agent(model=model, plugins=[Phased()]).session(
+        state=store.latest("phased"), restore_outputs=[Answer]
     ) as session:
         await session.resume()
         await asyncio.wait_for(session.wait_until_idle(), 5)

@@ -6,11 +6,9 @@ from typing import Literal
 import pytest
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
-import harnessed.sessions.store as persistence_store
 from harnessed import Agent, Compaction, Context, Plugin
 from harnessed.context import every_turns
 from harnessed.context.compaction import CompactionRequest, Summary
-from harnessed.errors import SessionWriteConflict
 from harnessed.events import (
     CompactionAppliedEvent,
     DurableEvent,
@@ -22,36 +20,11 @@ from harnessed.events import (
 )
 from harnessed.models import ModelChunk, ModelRequest, ToolCallDelta, UserMessage
 from harnessed.runtime.hooks import SessionAppended
-from harnessed.sessions import (
-    CheckpointExtension,
-    SessionChange,
-    SessionCommit,
-    StoredSession,
-)
+from harnessed.sessions import CheckpointExtension, SessionChange, SessionCommit
 from harnessed.sessions.values import PluginValues
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._checkpoints import checkpoint
-
-
-class RecordingStore:
-    def __init__(self) -> None:
-        self.commits: list[SessionCommit] = []
-        self.rows: dict[str, StoredSession] = {}
-
-    async def load_session(self, conversation_id: str) -> StoredSession | None:
-        return self.rows.get(conversation_id)
-
-    async def save_session(
-        self, conversation_id: str, commit: SessionCommit, *, expected_revision: int | None
-    ) -> int:
-        stored = self.rows.get(conversation_id)
-        revision = stored.revision if stored is not None else None
-        if revision != expected_revision:
-            raise SessionWriteConflict(conversation_id)
-        next_revision = 1 if revision is None else revision + 1
-        self.rows[conversation_id] = StoredSession(commit.checkpoint, next_revision)
-        self.commits.append(commit)
-        return next_revision
+from tests._commits import CommitRecorder
 
 
 class Brief:
@@ -65,9 +38,8 @@ class IndexedEvent(DurableEvent):
     type: Literal["project.indexed"] = field(default="project.indexed", kw_only=True)
 
 
-async def test_token_deltas_are_live_without_scheduling_or_entering_commits(monkeypatch):
-    monkeypatch.setattr(persistence_store, "_CHECKPOINT_INTERVAL_SECONDS", 0.01)
-    store = RecordingStore()
+async def test_token_deltas_are_live_without_entering_commits():
+    store = CommitRecorder()
     entered, start = asyncio.Event(), asyncio.Event()
     ready, release = asyncio.Event(), asyncio.Event()
     before_tokens: list[int] = []
@@ -87,7 +59,7 @@ async def test_token_deltas_are_live_without_scheduling_or_entering_commits(monk
     def observe(event: TextDeltaEvent | ReasoningDeltaEvent | ToolArgumentsDeltaEvent) -> None:
         live.append(event)
 
-    async with Agent(model=CallbackModel(tokens), store=store).session(id="stream") as session:
+    async with Agent(model=CallbackModel(tokens)).session(id="stream", on_commit=store) as session:
         session.scope.on(TextDeltaEvent, observe)
         session.scope.on(ReasoningDeltaEvent, observe)
         session.scope.on(ToolArgumentsDeltaEvent, observe)
@@ -99,7 +71,7 @@ async def test_token_deltas_are_live_without_scheduling_or_entering_commits(monk
             start.set()
             await asyncio.wait_for(ready.wait(), timeout=5)
             assert len(live) == 3000
-            # Cross several batching intervals while only the live draft changes.
+            # Give a stray delivery time to happen while only the live draft changes.
             await asyncio.sleep(0.05)
             assert len(store.commits) == before_tokens[0]
             assert not any(
@@ -109,21 +81,20 @@ async def test_token_deltas_are_live_without_scheduling_or_entering_commits(monk
                 for commit in store.commits
                 for change in commit.changes
             )
-            assert "x" * 1000 not in store.rows["stream"].checkpoint.to_json()
+            assert "x" * 1000 not in store.latest("stream").to_json()
         finally:
             release.set()
         result = await asyncio.wait_for(handle.result(), timeout=5)
         assert result.text == "x" * 1000
-        assert store.rows["stream"].checkpoint.state.history[-1].message.text == result.text
+        assert store.latest("stream").state.history[-1].message.text == result.text
         assert len(store.commits) < 10
 
 
 async def test_commits_cover_each_live_event_once_even_after_compaction_and_reopening():
-    store = RecordingStore()
+    store = CommitRecorder()
     model = ScriptedModel(["first reply", "kept", "second reply", "third reply"])
     agent = Agent(
         model=model,
-        store=store,
         context=Context(
             compaction=Compaction(trigger=every_turns(1), keep_last_steps=1, summarizer=Brief())
         ),
@@ -134,7 +105,7 @@ async def test_commits_cover_each_live_event_once_even_after_compaction_and_reop
         observed.append((event.seq, event.event))
 
     first_input = "first input " * 500
-    async with agent.session(id="archive") as session:
+    async with agent.session(id="archive", on_commit=store) as session:
         session.scope.on(SessionAppended, observe)
         await session.run(first_input)
         await session.run("kept")
@@ -146,7 +117,9 @@ async def test_commits_cover_each_live_event_once_even_after_compaction_and_reop
 
     before = len(store.commits)
     boundary = store.commits[-1].next_sequence
-    async with agent.session(id="archive") as restored:
+    async with agent.session(
+        id="archive", state=store.latest("archive"), on_commit=store
+    ) as restored:
         assert len(store.commits) == before
         await restored.run("third input")
         new = [change for commit in store.commits[before:] for change in commit.changes]
@@ -158,10 +131,9 @@ async def test_commits_cover_each_live_event_once_even_after_compaction_and_reop
         )
 
 
-async def test_coalescing_retains_ordered_changes_and_empty_flush_does_not_write(monkeypatch):
-    monkeypatch.setattr(persistence_store, "_CHECKPOINT_INTERVAL_SECONDS", 60.0)
-    store = RecordingStore()
-    async with Agent(model=ScriptedModel([]), store=store).session(id="batch") as session:
+async def test_pending_changes_keep_their_order_and_empty_flush_does_not_deliver():
+    store = CommitRecorder()
+    async with Agent(model=ScriptedModel([])).session(on_commit=store) as session:
         await session.scope[PluginValues].commit("seed", "ready")
         before = len(store.commits)
         await session.emit(MessageAppendedEvent(UserMessage("first")))
@@ -184,10 +156,10 @@ async def test_idle_custom_events_are_available_as_changes_without_a_store_catal
     class Indexer(Plugin):
         events = (IndexedEvent,)
 
-    store = RecordingStore()
-    async with Agent(
-        model=ScriptedModel([]), store=store, plugins=[Indexer()]
-    ).session() as session:
+    store = CommitRecorder()
+    async with Agent(model=ScriptedModel([]), plugins=[Indexer()]).session(
+        on_commit=store
+    ) as session:
         await session.emit(IndexedEvent(42))
         commit = store.commits[-1]
         assert not commit.checkpoint.events

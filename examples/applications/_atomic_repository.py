@@ -17,16 +17,6 @@ class MessageRow:
     text: str
 
 
-@dataclass(frozen=True)
-class ConversationRow:
-    body: bytes
-    version: int
-
-
-class ConversationConflictError(RuntimeError):
-    pass
-
-
 class ConversationRepository:
     """Application-owned SQLite example, independent of the SDK and its models.
 
@@ -41,8 +31,7 @@ class ConversationRepository:
             """
             CREATE TABLE conversations (
                 key TEXT PRIMARY KEY,
-                body BLOB NOT NULL,
-                version INTEGER NOT NULL
+                body BLOB NOT NULL
             );
             CREATE TABLE messages (
                 conversation TEXT NOT NULL,
@@ -54,7 +43,7 @@ class ConversationRepository:
             """
         )
 
-    async def fetch(self, key: str) -> ConversationRow | None:
+    async def fetch(self, key: str) -> bytes | None:
         return await asyncio.to_thread(self._fetch, key)
 
     async def messages(self, key: str) -> tuple[MessageRow, ...]:
@@ -66,16 +55,15 @@ class ConversationRepository:
         *,
         body: bytes,
         messages: tuple[MessageRow, ...],
-        expected_version: int | None,
-    ) -> int:
-        return await asyncio.to_thread(self._commit, key, body, messages, expected_version)
+    ) -> None:
+        await asyncio.to_thread(self._commit, key, body, messages)
 
-    def _fetch(self, key: str) -> ConversationRow | None:
+    def _fetch(self, key: str) -> bytes | None:
         with self._lock:
             row = self._connection.execute(
-                "SELECT body, version FROM conversations WHERE key = ?", (key,)
+                "SELECT body FROM conversations WHERE key = ?", (key,)
             ).fetchone()
-            return None if row is None else ConversationRow(bytes(row[0]), int(row[1]))
+            return None if row is None else bytes(row[0])
 
     def _messages(self, key: str) -> tuple[MessageRow, ...]:
         with self._lock:
@@ -90,8 +78,7 @@ class ConversationRepository:
         key: str,
         body: bytes,
         messages: tuple[MessageRow, ...],
-        expected_version: int | None,
-    ) -> int:
+    ) -> None:
         with self._lock, self._connection:
             for message in messages:
                 self._connection.execute(
@@ -100,20 +87,9 @@ class ConversationRepository:
                     SET speaker = excluded.speaker, text = excluded.text""",
                     (key, message.key, message.speaker, message.text),
                 )
-            if expected_version is None:
-                cursor = self._connection.execute(
-                    "INSERT INTO conversations VALUES (?, ?, 1) ON CONFLICT (key) DO NOTHING",
-                    (key, body),
-                )
-                version = 1
-            else:
-                cursor = self._connection.execute(
-                    """UPDATE conversations SET body = ?, version = version + 1
-                    WHERE key = ? AND version = ?""",
-                    (body, key, expected_version),
-                )
-                version = expected_version + 1
-            if cursor.rowcount != 1:
-                raise ConversationConflictError(key)
+            self._connection.execute(
+                """INSERT INTO conversations VALUES (?, ?)
+                ON CONFLICT (key) DO UPDATE SET body = excluded.body""",
+                (key, body),
+            )
         # Exiting the connection context commits both tables; exceptions roll both back.
-        return version

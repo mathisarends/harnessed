@@ -1,31 +1,31 @@
-"""Run with: uv run python -m examples.applications.18_atomic_session_store"""
+"""Run with: uv run python -m examples.applications.18_atomic_commits"""
 
 import asyncio
 import sqlite3
 from contextlib import closing
 
+from examples.applications._atomic_commits import ConversationCommits
 from examples.applications._atomic_repository import ConversationRepository, Speaker
-from examples.applications._atomic_session_store import ConversationSessionStore
 from harnessed import Agent
 from harnessed.models import UserMessage
-from harnessed.sessions import SessionStore
 from harnessed.testing import ScriptedModel
 
 
 async def main() -> None:
     with closing(sqlite3.connect(":memory:", check_same_thread=False)) as connection:
         repository = ConversationRepository(connection)
-        store: SessionStore = ConversationSessionStore(repository)
+        commits = ConversationCommits(repository)
         model = ScriptedModel(["Remembered.", "Continued."])
-        agent = Agent(model=model, store=store)
-        async with agent.session(id="support:4711") as session:
+        agent = Agent(model=model)
+        async with agent.session(id="support:4711", on_commit=commits) as session:
             await session.run(UserMessage("Remember Ada.", id="customer-message"))
             messages = await repository.messages(session.id)
             assert [message.speaker for message in messages] == [Speaker.CUSTOMER, Speaker.AGENT]
             assert messages[0].key == "customer-message"
             assert messages[1].text == "Remembered."
 
-        async with agent.session(id="support:4711") as session:
+        state = await commits.load("support:4711")
+        async with agent.session(state=state, on_commit=commits) as session:
             await session.run("Continue.")
         assert len(await repository.messages("support:4711")) == 4
         print("Messages and recovery checkpoints committed together.")

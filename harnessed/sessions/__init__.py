@@ -7,11 +7,10 @@ from .checkpoint import (
     SessionCheckpoint,
 )
 from .children import ChildSession
-from .commit import SessionChange, SessionCommit
+from .commit import CommitHandler, SessionChange, SessionCommit
 from .context import SessionContext
 from .files import TextValue
 from .state import HistoryEntry, HistoryStep, HistoryTurn, SessionState
-from .store import SessionStore, StoredSession
 from .values import BoundSessionValue, SessionValue
 
 __all__ = [
@@ -21,6 +20,7 @@ __all__ = [
     "CheckpointExtension",
     "CheckpointSeed",
     "ChildSession",
+    "CommitHandler",
     "HistoryEntry",
     "HistoryStep",
     "HistoryTurn",
@@ -29,8 +29,6 @@ __all__ = [
     "SessionCommit",
     "SessionContext",
     "SessionState",
-    "SessionStore",
     "SessionValue",
-    "StoredSession",
     "TextValue",
 ]

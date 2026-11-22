@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
 from dataclasses import field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Annotated, Literal, Self
@@ -21,7 +23,7 @@ from harnessed.events import (
 from harnessed.events.codec import CURRENT_VERSION, validate_event
 from harnessed.events.unions import SESSION_EVENT_TYPES
 from harnessed.models.assets import AssetValue
-from harnessed.models.values import VALUE_CONFIG, JSONMapping, to_dict
+from harnessed.models.values import VALUE_CONFIG, JSONMapping, JSONValue, to_dict
 
 from .files import TextValue
 from .state import SessionState
@@ -88,14 +90,17 @@ type CheckpointSeed = Annotated[
 class SessionCheckpoint:
     """An immutable conversation boundary and its current bounded execution suffix.
 
-    This is an SDK exchange value, not an application's database schema. Stores
-    may map every field into their own records, but must reconstruct the complete
-    checkpoint. Serialization performs no I/O and requires no plugin catalog.
-    Application event schemas are checked by the owning session before replay.
+    This is an SDK exchange value, not an application's database schema.
+    Applications may map every field into their own records, but must reconstruct
+    the complete checkpoint. It carries its ``session_id``, so reopening it with
+    ``Agent.session(state=...)`` continues under the same ID. Serialization
+    performs no I/O and requires no plugin catalog. Application event schemas are
+    checked by the owning session before replay.
     """
 
     __hash__ = None
 
+    session_id: Annotated[str, Field(min_length=1)]
     state: SessionState
     offset: Annotated[int, Field(ge=0)]
     control: SessionControlChangedEvent
@@ -106,6 +111,8 @@ class SessionCheckpoint:
     version: Literal[5] = 5
 
     def __post_init__(self) -> None:
+        if not self.session_id.strip():
+            raise ValueError("Checkpoint session IDs must not be blank")
         if self.events and (
             not isinstance(self.events[0], TurnStartedEvent)
             or any(
@@ -120,6 +127,19 @@ class SessionCheckpoint:
     def to_json(self) -> str:
         """Serialize the canonical versioned document in memory, without I/O."""
         return _CHECKPOINT.dump_json(self).decode("utf-8")
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        """Return the canonical JSON document as Python values, e.g. for a JSONB column."""
+        return json.loads(self.to_json())
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, JSONValue]) -> Self:
+        """Validate a document returned by ``to_dict`` or decoded from ``to_json``."""
+        try:
+            encoded = json.dumps(payload, allow_nan=False)
+        except (TypeError, ValueError) as error:
+            raise SessionFormatError("Invalid session checkpoint") from error
+        return cls.from_json(encoded)
 
     @classmethod
     def from_json(cls, payload: str | bytes) -> Self:

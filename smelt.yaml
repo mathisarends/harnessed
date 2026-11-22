@@ -162,7 +162,6 @@ ignore:
       - harnessed/hooks.py
       - harnessed/tracing.py
       - harnessed/integrations/bubblewrap.py
-      - harnessed/integrations/json.py
       - harnessed/integrations/opentelemetry.py
     reason: These single-module paths are documented facades; the integrations load optional extras and cannot be re-exported eagerly from a package.
   - rule: layout/file-name-convention

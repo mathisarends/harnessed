@@ -203,13 +203,12 @@ snapshots with IDs, originating turn/call IDs, status, answer, recorded usage an
 projection; `SubagentMessageSentEvent` records acknowledged guidance.
 Snapshots are also available from `SessionLog.children` after replay.
 
-Configure `Agent(store=...)` on each specialist if its state should survive the
-session. For example, parent and child agents can share one
-`JsonSessionStore(root=...)`; each uses its own ID and compare-and-set revision.
-The default remains ephemeral. Applications own execution coordination and audit
-retention through their stores; revision checks do not replace worker ownership.
-Parent references do not override a specialist's retention policy, and deleting
-a parent does not cascade-delete its children.
+Child sessions deliver their commits through the parent session's `on_commit`
+handler; `commit.session_id` identifies the child. Without a parent handler they
+remain ephemeral. Reopen a child with
+`specialist.session(state=checkpoint)`; the checkpoint carries the child's ID. Applications own execution
+coordination, retention and deletion; deleting a parent does not cascade-delete
+its children.
 
 Child IDs derive from the parent session ID and delegation call ID. A repeated
 call with the same specialist and task and a recorded terminal receipt returns
@@ -223,9 +222,9 @@ copied snapshot also marks these references interrupted; copying never clones li
 A running delegation within a parent turn is represented in the checkpoint's
 current-turn suffix. The parent
 flushes its start record before opening the child and its receipt before returning
-the tool result. Stores receive those changes with their checkpoint in a
+the tool result. The handler receives those changes with their checkpoint in a
 `SessionCommit`. Recovery does not promise an atomic commit across parent and
-child stores. Continuing or copying parent state retains historical child
+child sessions. Continuing or copying parent state retains historical child
 references and receipts; it does not clone children.
 
 ## Custom session factories

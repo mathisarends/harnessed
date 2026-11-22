@@ -14,13 +14,13 @@ from harnessed.events import (
     SubagentUpdatedEvent,
     ToolCallFinishedEvent,
 )
-from harnessed.integrations.json import JsonSessionStore
 from harnessed.kernel import PluginScope
 from harnessed.models import ModelChunk, ToolCall, ToolMessage, ToolStatus
 from harnessed.plugins import Subagents
 from harnessed.runtime.hooks import SessionAppended
-from harnessed.sessions import SessionState
+from harnessed.sessions import SessionCommit, SessionState
 from harnessed.testing import CallbackModel, ScriptedModel
+from tests._commits import CommitRecorder
 
 
 def _spawn(task="Review the code", *, id=None):
@@ -43,7 +43,7 @@ def _parent(child, model, **limits):
     )
 
 
-async def test_spawn_returns_before_child_and_completion_wakes_idle_coordinator(tmp_path):
+async def test_spawn_returns_before_child_and_completion_wakes_idle_coordinator():
     started, release, notified = asyncio.Event(), asyncio.Event(), asyncio.Event()
 
     async def child_response(request):
@@ -67,10 +67,9 @@ async def test_spawn_returns_before_child_and_completion_wakes_idle_coordinator(
             notified.set()
             yield ModelChunk(text="Handled result")
 
-    store = JsonSessionStore(root=tmp_path)
+    store = CommitRecorder(documents=True)
     parent = _parent(Agent(model=CallbackModel(child_response)), CallbackModel(parent_response))
-    parent.store = store
-    async with parent.session(id="parent") as session:
+    async with parent.session(id="parent", on_commit=store) as session:
         first = await asyncio.wait_for(session.run("Start"), 2)
         await asyncio.wait_for(started.wait(), 2)
         assert first.text == "Coordinator worked independently"
@@ -78,14 +77,15 @@ async def test_spawn_returns_before_child_and_completion_wakes_idle_coordinator(
         state = SessionState.from_json(session.snapshot().to_json())
         assert state.children == session.children
         await session.flush()
-        stored = await store.load_session("parent")
-        assert stored.checkpoint.state.children[0].status is SubagentStatus.RUNNING
+        stored = store.latest("parent")
+        assert stored.state.children[0].status is SubagentStatus.RUNNING
         release.set()
         await asyncio.wait_for(notified.wait(), 2)
         await asyncio.wait_for(session.wait_until_idle(), 2)
         assert session.children[0].status is SubagentStatus.COMPLETED
         assert session.children[0].runtime.steps_completed == 1
-    async with Agent(model=ScriptedModel([]), store=store).session(id="parent") as restored:
+    restored_agent = Agent(model=ScriptedModel([]))
+    async with restored_agent.session(id="parent", state=store.latest("parent")) as restored:
         assert restored.children[0].text == "Child result"
     async with Agent(model=ScriptedModel([])).session(state=state) as copied:
         assert copied.children[0].status is SubagentStatus.INTERRUPTED
@@ -100,7 +100,7 @@ async def test_spawn_returns_before_child_and_completion_wakes_idle_coordinator(
     ],
 )
 async def test_status_asks_child_coalesces_requests_and_does_not_finish_task(
-    timeout_seconds, save_delay, tmp_path, monkeypatch
+    timeout_seconds, save_delay
 ):
     # The status timeout bounds the reply wait, not the surrounding durable writes.
     # Keep a separate local coordination deadline with room for slow Windows fsyncs.
@@ -212,17 +212,13 @@ async def test_status_asks_child_coalesces_requests_and_does_not_finish_task(
         Agent(model=CallbackModel(child_response), plugins=[Work()]),
         CallbackModel(parent_response),
     )
-    store = JsonSessionStore(root=tmp_path)
-    if save_delay:
-        save = store.save_session
+    store = CommitRecorder()
 
-        async def delayed_save(conversation_id, commit, *, expected_revision):
-            await asyncio.sleep(save_delay)
-            return await save(conversation_id, commit, expected_revision=expected_revision)
+    async def delayed_save(commit: SessionCommit) -> None:
+        await asyncio.sleep(save_delay)
+        await store(commit)
 
-        monkeypatch.setattr(store, "save_session", delayed_save)
-    parent.store = store
-    async with parent.session() as session:
+    async with parent.session(on_commit=delayed_save) as session:
         session.scope.on(SessionAppended, requested)
         await session.run("Start")
         await asyncio.wait_for(blocked.wait(), coordination_timeout)
@@ -248,10 +244,8 @@ async def test_status_asks_child_coalesces_requests_and_does_not_finish_task(
         assert session.children[0].status is SubagentStatus.RUNNING
         assert session.children[0].runtime.report.text == "Login checked; inspecting refresh races."
         await session.flush()
-        stored = await parent.store.load_session(session.id)
-        assert (
-            stored.checkpoint.state.children[0].runtime.report == session.children[0].runtime.report
-        )
+        stored = store.latest(session.id)
+        assert stored.state.children[0].runtime.report == session.children[0].runtime.report
         continue_work.set()
         # Observe completion without starting another parent turn ourselves.
         async with asyncio.timeout(coordination_timeout):

@@ -60,11 +60,7 @@ class RunUnavailable(SessionStateError):
 
 
 class SessionFormatError(HarnessedError, ValueError):
-    """A stored session record does not match the current log format."""
-
-
-class SessionWriteConflict(HarnessedError, RuntimeError):
-    """The stored conversation changed since this runtime loaded its revision."""
+    """A session state, checkpoint or record does not match the current format."""
 
 
 class OutputTokenLimit(HarnessedError, RuntimeError):
@@ -164,7 +160,6 @@ __all__ = [
     "SessionClosed",
     "SessionFormatError",
     "SessionStateError",
-    "SessionWriteConflict",
     "StreamOverflow",
     "ToolNameConflict",
 ]

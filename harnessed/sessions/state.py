@@ -1,4 +1,6 @@
 import hashlib
+import json
+from collections.abc import Mapping
 from dataclasses import field
 from typing import Annotated, Literal, Self
 
@@ -10,7 +12,7 @@ from harnessed.events import IncludedObservation, MessageLifetime, SubagentLinke
 from harnessed.models import AssistantMessage, ImageReference, Message, ToolMessage
 from harnessed.models.assets import AssetRef, AssetValue
 from harnessed.models.messages import SpillRef
-from harnessed.models.values import VALUE_CONFIG, JSONMapping
+from harnessed.models.values import VALUE_CONFIG, JSONMapping, JSONValue
 
 from .children import ChildSession
 from .files import TextValue
@@ -109,6 +111,19 @@ class SessionState:
     def to_json(self) -> str:
         """Serialize in memory; this method performs no filesystem or network I/O."""
         return _STATE.dump_json(self).decode("utf-8")
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        """Return the canonical JSON document as Python values, e.g. for a JSONB column."""
+        return json.loads(self.to_json())
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, JSONValue]) -> Self:
+        """Validate a document returned by ``to_dict`` or decoded from ``to_json``."""
+        try:
+            encoded = json.dumps(payload, allow_nan=False)
+        except (TypeError, ValueError) as error:
+            raise SessionFormatError("Invalid conversation state") from error
+        return cls.from_json(encoded)
 
     @classmethod
     def from_json(cls, payload: str | bytes) -> Self:

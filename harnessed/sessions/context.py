@@ -97,7 +97,7 @@ class SessionContext:
 
         Each call appends to conversation history, including repeated messages.
         It follows ordinary history retention and may be summarized by compaction.
-        A configured session store commits the contribution before this returns.
+        A configured ``on_commit`` handler receives the contribution before this returns.
         A message ID still queued in the inbox raises ValueError without changing
         history or the queued run; use a fresh UserMessage for additive input.
         """
