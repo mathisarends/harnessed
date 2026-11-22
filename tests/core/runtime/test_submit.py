@@ -4,13 +4,22 @@ import pytest
 from pydantic import BaseModel, field_validator
 
 from harnessed import Agent, Plugin, tool
-from harnessed.events import ControlState, InboxAddedEvent, SessionControlChangedEvent
+from harnessed.events import (
+    ControlState,
+    InboxAddedEvent,
+    InboxRemovalReason,
+    InboxRemovedEvent,
+    SessionControlChangedEvent,
+    TurnEndedEvent,
+)
 from harnessed.hooks import PreStep, StepDecision
+from harnessed.kernel import hook
 from harnessed.models import ModelChunk, StopReason, UserMessage
 from harnessed.runtime.control import SessionStatus
 from harnessed.runtime.handles import RunHandle, RunStream
 from harnessed.testing import CallbackModel, ScriptedModel, call
 from tests._audit import Audit
+from tests._commits import CommitRecorder
 
 
 async def test_submitted_handle_has_no_live_iteration_or_observation_to_close() -> None:
@@ -285,6 +294,78 @@ async def test_driver_errors_are_delivered_through_the_run_handle():
         with pytest.raises(RuntimeError, match="ran out"):
             await handle.result()
         assert handle.done()
+
+
+def _fail_first_call(calls: list[int]) -> CallbackModel:
+    async def respond(request):
+        calls.append(len(calls) + 1)
+        if len(calls) == 1:
+            await asyncio.sleep(0.05)
+            raise RuntimeError("provider down")
+        yield ModelChunk(text=f"answer {len(calls)}")
+
+    return CallbackModel(respond)
+
+
+async def _settle(handle: RunHandle) -> str:
+    try:
+        return (await handle.result()).text
+    except RuntimeError as error:
+        return f"raised: {error}"
+
+
+async def test_driver_failure_discards_queued_runs_its_handles_report_as_failed():
+    calls: list[int] = []
+    async with Agent(model=_fail_first_call(calls)).session() as session:
+        first = await session.submit("first")
+        second = await session.submit("second")
+        assert await _settle(first) == "raised: provider down"
+        assert await _settle(second) == "raised: provider down"
+        assert session.inbox.pending == ()
+        discarded = [event for event in session.events if isinstance(event, InboxRemovedEvent)]
+        assert [(event.message_id, event.reason) for event in discarded] == [
+            (second.id, InboxRemovalReason.DISCARDED)
+        ]
+        third = await session.submit("third")
+        assert (await third.result()).text == "answer 2"
+        assert calls == [1, 2]
+        assert [message.text for message in session.messages if message.role == "user"] == [
+            "first",
+            "third",
+        ]
+
+
+async def test_failing_turn_end_observer_leaves_no_queued_input_behind():
+    class Boom(Plugin):
+        @hook(TurnEndedEvent)
+        async def boom(self, event: TurnEndedEvent) -> None:
+            raise RuntimeError("observer bug")
+
+    model = ScriptedModel(["one", "two"])
+    async with Agent(model=model, plugins=[Boom()]).session() as session:
+        await session.pause()
+        first = await session.submit("first")
+        second = await session.submit("second")
+        await session.resume()
+        assert await _settle(first) == "one"
+        assert await _settle(second) == "raised: observer bug"
+        assert session.inbox.pending == ()
+        assert len(model.requests) == 1
+
+
+async def test_discarded_queued_runs_reach_on_commit_and_stay_discarded_after_reopening():
+    store = CommitRecorder(documents=True)
+    agent = Agent(model=_fail_first_call([]))
+    async with agent.session(id="failing", on_commit=store) as session:
+        await session.submit("first")
+        second = await session.submit("second")
+        assert await _settle(second) == "raised: provider down"
+    assert any(
+        isinstance(change.event, InboxRemovedEvent) and change.event.message_id == second.id
+        for change in store.changes("failing")
+    )
+    async with Agent(model=ScriptedModel([])).session(state=store.latest("failing")) as reopened:
+        assert reopened.inbox.pending == ()
 
 
 async def test_rejecting_queued_runs_completes_every_handle_without_another_wakeup():

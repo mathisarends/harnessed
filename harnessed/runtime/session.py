@@ -500,9 +500,8 @@ class Session:
                 self.control.error = exc
         except Exception as exc:
             # Retain arbitrary model and plugin failures for session consumers.
-            self.control.error = exc
             try:
-                await self.control.finish_termination()
+                await self.control.finish_failure(exc)
             except Exception as repair_error:
                 # Keep both failures when termination repair also fails after a driver error.
                 if repair_error is not exc:

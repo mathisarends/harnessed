@@ -203,12 +203,21 @@ class SessionControl:
         await self._terminate(immediate=True, keep_inbox=True, turn_id=turn_id)
         self.wake()
 
-    async def finish_termination(self) -> None:
+    async def finish_termination(self, *, discard_inbox: bool = False) -> None:
         self._finishing = True
         if self.log.control.state not in (ControlState.STOPPING, ControlState.STOPPED):
             await self._abort_owned_work()
-        await self.log.repair_interrupted(children=False)
+        await self.log.repair_interrupted(children=False, discard_inbox=discard_inbox)
         self.notify()
+
+    async def finish_failure(self, error: Exception) -> None:
+        """Repair after a driver failure and discard the queued runs it settles as failed.
+
+        A failed commit keeps its queue: the log rejects appends until the
+        application reopens the session from its last stored checkpoint.
+        """
+        self.error = error
+        await self.finish_termination(discard_inbox=not self.log.persistence_failed)
 
     async def finish_driver(self) -> None:
         self._finishing = True

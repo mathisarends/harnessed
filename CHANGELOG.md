@@ -5,6 +5,16 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## Unreleased
+
+### Fixed
+
+- A turn that fails with an exception now discards the queued runs whose
+  handles it reports as failed. Each is recorded as
+  `InboxRemovedEvent(reason=DISCARDED)` and reaches `on_commit`, so neither the
+  live session nor a reopened checkpoint executes them later. A failed commit
+  keeps its queue. ([#157](https://github.com/mathisarends/harnessed/issues/157))
+
 ## 0.26.0 (2026-11-22)
 
 ### Added
