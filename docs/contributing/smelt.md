@@ -171,7 +171,9 @@ checks share syntax tree walks, `check`, `check --staged` and `check --changed`
 share cached facts, and `check --changed` reads its base revision from Git
 objects. Policy, configuration format and report schema are unchanged, so
 `smelt.yaml` needs no edits. The first check on the new version repopulates
-`.smelt_cache/`.
+`.smelt_cache/`. The bundled agent skill is committed under
+`.agents/skills/smelt` and refreshed with `uv run smelt skill install --force`
+after each Smelt upgrade so its reference matches the pinned version.
 [Upstream upgrade guide](https://github.com/mathisarends/smelt/blob/v0.16.1/docs/upgrading.md)
 
 ## Review after the 0.16.0 upgrade
