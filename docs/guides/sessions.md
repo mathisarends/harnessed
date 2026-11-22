@@ -143,7 +143,8 @@ to one in the state, or to one in an earlier request of the same turn, is stored
 as its ID. A message that a `PrepareRequest` hook or compaction changed is stored
 in full, so `from_parts()` rebuilds exactly the request the model received.
 `checkpoint.events` always holds the complete `ModelRequestedEvent`.
-`SessionExecution` uses the checkpoint's format version. See
+`SessionExecution` format 6 includes a SHA-256 digest of the conversation state.
+It detects stale state even when two snapshots have the same history position. See
 [the runnable split-commit example](https://github.com/mathisarends/harnessed/blob/main/examples/applications/23_split_commits.py).
 
 ### When a commit fails

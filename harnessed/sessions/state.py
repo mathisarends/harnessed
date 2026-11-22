@@ -2,6 +2,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import field
+from functools import cached_property
 from typing import Annotated, Literal, Self
 
 from pydantic import ConfigDict, Field, TypeAdapter, ValidationError
@@ -110,7 +111,7 @@ class SessionState:
 
     @property
     def next_sequence(self) -> int:
-        """The first log position after this conversation; it binds execution parts."""
+        """The first log position after this conversation's retained history."""
         return max(
             0,
             self.compacted_through,
@@ -118,6 +119,12 @@ class SessionState:
             *(turn.boundary for turn in self.turns),
             *(step.boundary for step in self.steps),
         )
+
+    @cached_property
+    def content_sha256(self) -> str:
+        """Identify the immutable state across JSON stores that may reorder object keys."""
+        canonical = json.dumps(self.to_dict(), sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(canonical.encode("ascii")).hexdigest()
 
     def to_json(self) -> str:
         """Serialize in memory; this method performs no filesystem or network I/O."""

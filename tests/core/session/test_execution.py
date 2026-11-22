@@ -5,7 +5,12 @@ import pytest
 
 from harnessed import Agent, Compaction, Context, Plugin, tool
 from harnessed.errors import SessionFormatError
-from harnessed.events import CompactionAppliedEvent, ModelRequestedEvent, TurnEndedEvent
+from harnessed.events import (
+    CompactionAppliedEvent,
+    ModelRequestedEvent,
+    PluginValueChangedEvent,
+    TurnEndedEvent,
+)
 from harnessed.hooks import PrepareRequest
 from harnessed.kernel import hook
 from harnessed.models import ImageReference, UserMessage
@@ -135,6 +140,21 @@ async def test_an_execution_from_another_state_is_rejected():
     document["offset"] = 0
     with pytest.raises(SessionFormatError):
         SessionExecution.from_dict(document)
+
+
+async def test_idle_value_changes_bind_execution_to_state_at_the_same_position():
+    async with Agent(model=ScriptedModel([])).session() as session:
+        await session.log.append(PluginValueChangedEvent("flag", "first"))
+        stale = session.checkpoint().state
+        await session.log.append(PluginValueChangedEvent("flag", {"a": 1, "b": 2}))
+        current = session.checkpoint()
+    execution = SessionExecution.from_json(current.execution.to_json())
+    assert stale.next_sequence == current.state.next_sequence
+    with pytest.raises(SessionFormatError, match="different conversation state"):
+        SessionCheckpoint.from_parts(stale, execution)
+    document = current.state.to_dict()
+    document["plugin_values"] = {"flag": {"b": 2, "a": 1}}
+    assert SessionCheckpoint.from_parts(SessionState.from_dict(document), execution) == current
 
 
 async def test_in_turn_execution_size_does_not_grow_with_retained_images():
