@@ -4,6 +4,16 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md)
 is the complete version history and upgrade reference.
 
+## 0.27.1 (2026-11-22)
+
+Approval callers receive persistence errors, plugins observing services start
+once when the declared provider needs session services, and idle control and
+inbox commits reuse their conversation snapshots.
+
+**Upgrade.** Update to `0.27.1` and continue reading existing snapshots,
+checkpoints, split execution documents, and audit envelopes directly.
+See the [0.27.1 changelog](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#0271-2026-11-22).
+
 ## 0.27.0 (2026-11-22)
 
 Applications can [store conversation state and execution separately](guides/sessions.md#store-state-and-execution-apart),

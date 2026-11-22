@@ -5,6 +5,25 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## 0.27.1 (2026-11-22)
+
+### Fixed
+
+- `session.approvals.allow()` and `deny()` propagate persistence failures when
+  committing an approval decision. ([#182](https://github.com/mathisarends/harnessed/pull/182))
+- Plugins observing a declared service start once when its provider depends on
+  session services such as `SessionLog` or `SessionContext`.
+  ([#183](https://github.com/mathisarends/harnessed/pull/183))
+- Idle commits that only change session controls or the inbox reuse their
+  conversation snapshot, reducing checkpoint overhead for split persistence.
+  ([#184](https://github.com/mathisarends/harnessed/pull/184))
+
+### Upgrade from 0.27.0
+
+Update the package to `0.27.1`. Existing conversation snapshots, full
+checkpoints, split execution documents, and standalone audit envelopes can be
+read directly.
+
 ## 0.27.0 (2026-11-22)
 
 ### Added
