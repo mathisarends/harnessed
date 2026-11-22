@@ -371,6 +371,14 @@ does not cancel the queued or executing run. Repeated waits return the same
 result and validated output. Closing the session fails unfinished live handles
 with `SessionClosed`.
 
+When a turn fails with an exception, such as a model provider error or a raising
+plugin observer, its handle raises that error. The failure also discards every
+queued run: each is recorded as `InboxRemovedEvent(reason=DISCARDED)`, its handle
+raises the same error, and none of them executes later. Submit them again once
+the cause is fixed. A failed commit is the exception: the session rejects further
+appends and keeps its queue in the last stored checkpoint, see
+[when a commit fails](#when-a-commit-fails).
+
 `await handle.cancel()` explicitly targets this run. A queued run is discarded;
 an active turn is aborted and its cleanup is drained. Other queued runs remain
 and continue automatically after an active cancellation. Repeated cancellation
@@ -402,7 +410,8 @@ await session.wait_until_idle()
 session. `stop()` completes the current step and ends the turn;
 `abort()` cancels activity, drains cleanup and closes outstanding calls. Both
 return the live session to idle. Queued runs are discarded unless
-`keep_inbox=True`; retained inputs start separate turns. `wait_until_idle()` also
+`keep_inbox=True`; retained inputs start separate turns. A failing turn discards
+queued runs the same way. `wait_until_idle()` also
 waits through a pause. Driver hooks cannot wait for their own control boundary.
 
 Concurrent `aclose()` calls share cleanup. Cancelling a close waiter does not

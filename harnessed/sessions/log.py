@@ -629,10 +629,15 @@ class SessionLog:
         else:
             raise TypeError("emit requires a durable or transient event")
 
-    async def repair_interrupted(self, *, children: bool = True) -> None:
-        """Close unfinished activity and answer tool calls after cancellation or resume."""
+    async def repair_interrupted(
+        self, *, children: bool = True, discard_inbox: bool = False
+    ) -> None:
+        """Close unfinished activity and answer tool calls after cancellation or resume.
+
+        discard_inbox also discards every queued input, as after a driver failure.
+        """
         async with self._repair_lock:
-            await self._repair_interrupted(children=children)
+            await self._repair_interrupted(children=children, discard_inbox=discard_inbox)
 
     def _check_preconditions(
         self,
@@ -729,7 +734,7 @@ class SessionLog:
         if not self._restoring:
             self._retain_resources()
 
-    async def _repair_interrupted(self, *, children: bool) -> None:
+    async def _repair_interrupted(self, *, children: bool, discard_inbox: bool) -> None:
         control = self.control
         for child in self.children:
             if children and child.status is SubagentStatus.RUNNING:
@@ -756,7 +761,7 @@ class SessionLog:
             await self.append(record)
         if control.state == ControlState.PAUSING:
             await self.append(SessionControlChangedEvent(ControlState.PAUSED))
-        if control.stopped and not control.keep_inbox:
+        if discard_inbox or (control.stopped and not control.keep_inbox):
             for item in self.inbox.pending:
                 await self.append(InboxRemovedEvent(item.message.id, InboxRemovalReason.DISCARDED))
         if control.stopped:
