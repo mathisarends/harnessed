@@ -4,7 +4,7 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md)
 is the complete version history and upgrade reference.
 
-## 0.27.0 (unreleased)
+## 0.27.0 (2026-11-22)
 
 Applications can [store conversation state and execution separately](guides/sessions.md#store-state-and-execution-apart),
 [read typed plugin activations](guides/sessions.md#read-results-and-usage), and
