@@ -1,11 +1,13 @@
-from dataclasses import dataclass, field
+from dataclasses import field
 from enum import StrEnum
 from time import time
 from typing import Annotated, Literal, Self
 
 from pydantic import Field
+from pydantic.dataclasses import dataclass
 
 from harnessed.models import GenerationSettings, OutputSchema, UserMessage
+from harnessed.models.values import VALUE_CONFIG
 
 from .base import DurableEvent, Identifier
 from .kinds import EventKind
@@ -36,7 +38,7 @@ _INBOX_ROUTES: dict[InboxMode, InboxTarget] = {
 }
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class InboxAddedEvent(DurableEvent):
     __hash__ = None
 
@@ -50,20 +52,12 @@ class InboxAddedEvent(DurableEvent):
     limits: TurnLimits = field(default_factory=TurnLimits, kw_only=True)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "mode", InboxMode(self.mode))
-        object.__setattr__(self, "target", InboxTarget(self.target))
-        if self.mode not in _INBOX_ROUTES:
-            raise ValueError(f"Unknown inbox mode: {self.mode!r}")
         if self.target != _INBOX_ROUTES[self.mode]:
             raise ValueError(f"Inbox routing does not match {self.mode!r}")
-        if self.message.role != "user":
-            raise ValueError(f"{self.mode} requires a user message")
         if self.output_schema is not None and self.mode != InboxMode.FOLLOWUP:
             raise ValueError("Only a new turn can declare an output contract")
         if self.limits != TurnLimits() and self.mode != InboxMode.FOLLOWUP:
             raise ValueError("Only a new turn can declare limits")
-        if not isinstance(self.settings, GenerationSettings):
-            raise TypeError("Inbox settings must be GenerationSettings")
 
     @classmethod
     def create(
@@ -88,7 +82,7 @@ class InboxAddedEvent(DurableEvent):
         )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class InboxRemovedEvent(DurableEvent):
     __hash__ = None
 

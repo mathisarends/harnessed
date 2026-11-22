@@ -5,6 +5,8 @@ import pytest
 
 from harnessed import Agent, Approvals, Decision, Plugin, tool
 from harnessed.events import (
+    ChildActivity,
+    ChildReportState,
     InboxAddedEvent,
     SubagentFinishedEvent,
     SubagentStartedEvent,
@@ -15,7 +17,6 @@ from harnessed.events import (
 from harnessed.kernel import PluginScope
 from harnessed.models import ModelChunk, ToolCall, ToolMessage, ToolStatus
 from harnessed.plugins import Subagents
-from harnessed.plugins.subagents import ChildActivity, ChildReportState
 from harnessed.runtime.hooks import SessionAppended
 from harnessed.sessions import SessionCommit, SessionState
 from harnessed.testing import CallbackModel, ScriptedModel

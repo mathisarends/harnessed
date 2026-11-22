@@ -1,9 +1,17 @@
-from dataclasses import dataclass, field
+from dataclasses import field
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal
 
-from .base import DurableEvent, TransientEvent
+from pydantic import AfterValidator, Field, NonNegativeInt, PositiveInt
+from pydantic.dataclasses import dataclass
+
+from harnessed.models.values import VALUE_CONFIG, unique
+
+from .base import DurableEvent, Identifier, TransientEvent
 from .kinds import EventKind
+
+type _UniqueIdentifiers = Annotated[tuple[Identifier, ...], AfterValidator(unique)]
+type _NoteKey = Annotated[str, Field(pattern=r"\S")]
 
 
 class CompactionOutcome(StrEnum):
@@ -13,7 +21,7 @@ class CompactionOutcome(StrEnum):
     CANCELLED = "cancelled"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class CompactionAppliedEvent(DurableEvent):
     """Replace a history prefix at a closed turn or completed step boundary.
 
@@ -32,50 +40,19 @@ class CompactionAppliedEvent(DurableEvent):
     )
     through: int
     summary: str
-    preserve_turns: tuple[str, ...] = ()
+    preserve_turns: _UniqueIdentifiers = ()
     policy: str = ""
-    before_tokens: int = field(kw_only=True)
-    after_tokens: int = field(kw_only=True)
-    context_window: int | None = None
-    reserve_tokens: int = 0
-    target_tokens: int | None = None
-    id: str | None = None
-    preserve_inputs: tuple[int, ...] = ()
-    retained_turns: tuple[str, ...] = ()
-    accepted_note_keys: tuple[str, ...] = field(default=(), kw_only=True)
-
-    def __post_init__(self) -> None:
-        if self.id is not None and (not isinstance(self.id, str) or not self.id):
-            raise ValueError("Compaction ids must be non-empty strings or None")
-        turns = tuple(self.preserve_turns)
-        if any(not isinstance(turn, str) or not turn for turn in turns) or len(set(turns)) != len(
-            turns
-        ):
-            raise ValueError("Preserved turn ids must be unique non-empty strings")
-        object.__setattr__(self, "preserve_turns", turns)
-        inputs = tuple(self.preserve_inputs)
-        if any(type(offset) is not int or offset < 0 for offset in inputs) or len(
-            set(inputs)
-        ) != len(inputs):
-            raise ValueError("Preserved input offsets must be unique non-negative integers")
-        object.__setattr__(self, "preserve_inputs", inputs)
-        retained = tuple(self.retained_turns)
-        if any(not isinstance(turn, str) or not turn for turn in retained) or len(
-            set(retained)
-        ) != len(retained):
-            raise ValueError("Retained turn ids must be unique non-empty strings")
-        object.__setattr__(self, "retained_turns", retained)
-        note_keys = tuple(self.accepted_note_keys)
-        if any(not isinstance(key, str) or not key.strip() for key in note_keys) or len(
-            set(note_keys)
-        ) != len(note_keys):
-            raise ValueError("Accepted note keys must be unique non-empty strings")
-        object.__setattr__(self, "accepted_note_keys", note_keys)
-        _validate_metrics(
-            self.before_tokens, self.context_window, self.reserve_tokens, target=self.target_tokens
-        )
-        if type(self.after_tokens) is not int or self.after_tokens < 0:
-            raise ValueError("Compaction token counts must be non-negative integers")
+    before_tokens: NonNegativeInt = field(kw_only=True)
+    after_tokens: NonNegativeInt = field(kw_only=True)
+    context_window: PositiveInt | None = None
+    reserve_tokens: NonNegativeInt = 0
+    target_tokens: NonNegativeInt | None = None
+    id: Identifier | None = None
+    preserve_inputs: Annotated[tuple[NonNegativeInt, ...], AfterValidator(unique)] = ()
+    retained_turns: _UniqueIdentifiers = ()
+    accepted_note_keys: Annotated[tuple[_NoteKey, ...], AfterValidator(unique)] = field(
+        default=(), kw_only=True
+    )
 
     @property
     def before_ratio(self) -> float | None:
@@ -98,7 +75,7 @@ class CompactionAppliedEvent(DurableEvent):
         return self.after_tokens <= self.target_tokens
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, config=VALUE_CONFIG)
 class CompactionStartedEvent(TransientEvent):
     """Start a summarization attempt, paired with CompactionFinishedEvent."""
 
@@ -106,22 +83,17 @@ class CompactionStartedEvent(TransientEvent):
         default=EventKind.COMPACTION_STARTED, kw_only=True
     )
     compaction_id: str
-    before_tokens: int = field(kw_only=True)
-    context_window: int | None = None
-    reserve_tokens: int = 0
-    target_tokens: int | None = None
-
-    def __post_init__(self) -> None:
-        _validate_metrics(
-            self.before_tokens, self.context_window, self.reserve_tokens, target=self.target_tokens
-        )
+    before_tokens: NonNegativeInt = field(kw_only=True)
+    context_window: PositiveInt | None = None
+    reserve_tokens: NonNegativeInt = 0
+    target_tokens: NonNegativeInt | None = None
 
     @property
     def before_ratio(self) -> float | None:
         return self.before_tokens / self.context_window if self.context_window is not None else None
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, config=VALUE_CONFIG)
 class CompactionFinishedEvent(TransientEvent):
     """Close a compaction attempt, including discarded or failed summaries.
 
@@ -133,21 +105,11 @@ class CompactionFinishedEvent(TransientEvent):
     )
     compaction_id: str
     outcome: CompactionOutcome
-    before_tokens: int = field(kw_only=True)
-    context_window: int | None = None
-    reserve_tokens: int = 0
-    target_tokens: int | None = None
-    after_tokens: int | None = None
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "outcome", CompactionOutcome(self.outcome))
-        _validate_metrics(
-            self.before_tokens, self.context_window, self.reserve_tokens, target=self.target_tokens
-        )
-        if self.after_tokens is not None and (
-            type(self.after_tokens) is not int or self.after_tokens < 0
-        ):
-            raise ValueError("Compaction token counts must be non-negative integers")
+    before_tokens: NonNegativeInt = field(kw_only=True)
+    context_window: PositiveInt | None = None
+    reserve_tokens: NonNegativeInt = 0
+    target_tokens: NonNegativeInt | None = None
+    after_tokens: NonNegativeInt | None = None
 
     @property
     def before_ratio(self) -> float | None:
@@ -168,12 +130,3 @@ class CompactionFinishedEvent(TransientEvent):
         if self.after_tokens is None or self.target_tokens is None:
             return None
         return self.after_tokens <= self.target_tokens
-
-
-def _validate_metrics(before: int, window: int | None, reserve: int, *, target: int | None) -> None:
-    if any(type(value) is not int or value < 0 for value in (before, reserve)):
-        raise ValueError("Compaction token counts must be non-negative integers")
-    if window is not None and (type(window) is not int or window < 1):
-        raise ValueError("Compaction windows must be positive integers")
-    if target is not None and (type(target) is not int or target < 0):
-        raise ValueError("Resolved compaction targets must be non-negative integers")

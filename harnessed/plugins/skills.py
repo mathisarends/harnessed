@@ -22,7 +22,7 @@ from harnessed.errors import ConfigError
 from harnessed.events import ToolCallFinishedEvent, ToolCallRequestedEvent
 from harnessed.kernel import Key, Next, PluginScope, hook, needs
 from harnessed.models import AssistantMessage, ModelRequest, ToolMessage, ToolStatus, UserMessage
-from harnessed.models.messages import freeze, to_dict
+from harnessed.models.values import freeze, to_dict
 from harnessed.prompts import Instructions, SystemPrompt
 from harnessed.runtime.hooks import PrepareRequest, SessionAppended
 from harnessed.runtime.plugin import Plugin

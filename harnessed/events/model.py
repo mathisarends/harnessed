@@ -1,8 +1,9 @@
-from dataclasses import dataclass, field
+from dataclasses import field
 from enum import StrEnum
 from typing import Annotated, Literal
 
 from pydantic import Field
+from pydantic.dataclasses import dataclass
 
 from harnessed.models import (
     ModelAttemptFinished,
@@ -14,6 +15,7 @@ from harnessed.models import (
     RetryKind,
 )
 from harnessed.models.model import UsagePurpose
+from harnessed.models.values import VALUE_CONFIG
 
 from .base import DurableEvent, Identifier, TransientEvent
 from .kinds import EventKind
@@ -25,7 +27,7 @@ class ModelRequestOutcome(StrEnum):
     CONTEXT_EXCEEDED = "context_exceeded"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ModelRequestedEvent(DurableEvent):
     """Commit one Harnessed model invocation's final request snapshot.
 
@@ -47,12 +49,8 @@ class ModelRequestedEvent(DurableEvent):
     attempt: Annotated[int, Field(ge=1)] = field(default=1, kw_only=True)
     max_retries: Annotated[int, Field(ge=0)] | None = field(default=None, kw_only=True)
 
-    def __post_init__(self) -> None:
-        if self.retry_kind is not None:
-            object.__setattr__(self, "retry_kind", RetryKind(self.retry_kind))
 
-
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ModelRequestFailedEvent(DurableEvent):
     """Close a request without an assistant message; not a turn completion."""
 
@@ -65,11 +63,8 @@ class ModelRequestFailedEvent(DurableEvent):
     outcome: ModelRequestOutcome
     reason: str = ""
 
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "outcome", ModelRequestOutcome(self.outcome))
 
-
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ModelUsageRecordedEvent(DurableEvent):
     __hash__ = None
 
@@ -80,11 +75,8 @@ class ModelUsageRecordedEvent(DurableEvent):
     purpose: UsagePurpose = UsagePurpose.RESPONSE
     request_id: Identifier | None = field(default=None, kw_only=True)
 
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "purpose", UsagePurpose(self.purpose))
 
-
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ModelCacheMetricsEvent(DurableEvent):
     __hash__ = None
 
@@ -92,13 +84,13 @@ class ModelCacheMetricsEvent(DurableEvent):
         default=EventKind.MODEL_CACHE_METRICS, kw_only=True
     )
     usage: ModelUsage
-    hit_rate: float | None = None
 
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "hit_rate", self.usage.cache_hit_rate)
+    @property
+    def hit_rate(self) -> float | None:
+        return self.usage.cache_hit_rate
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, config=VALUE_CONFIG)
 class ModelAttemptStartedEvent(ModelAttemptStarted, TransientEvent):
     """Start an observed provider attempt or a runtime recovery request.
 
@@ -114,7 +106,7 @@ class ModelAttemptStartedEvent(ModelAttemptStarted, TransientEvent):
     retry_kind: RetryKind = field(default=RetryKind.PROVIDER, kw_only=True)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, config=VALUE_CONFIG)
 class ModelAttemptFinishedEvent(ModelAttemptFinished, TransientEvent):
     """Report an attempt outcome within retry_kind, not the turn's outcome.
 
@@ -130,7 +122,7 @@ class ModelAttemptFinishedEvent(ModelAttemptFinished, TransientEvent):
     retry_kind: RetryKind = field(default=RetryKind.PROVIDER, kw_only=True)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, config=VALUE_CONFIG)
 class ModelRetryScheduledEvent(ModelRetryScheduled, TransientEvent):
     """Plan a successor to the reported attempt without advancing its counters.
 

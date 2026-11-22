@@ -9,6 +9,7 @@ from pydantic.dataclasses import dataclass
 from harnessed.errors import ConfigError
 from harnessed.kernel import PluginScope
 from harnessed.models import Model
+from harnessed.models.values import VALUE_CONFIG
 
 from .budget import ContextBudget
 from .compaction import (
@@ -19,10 +20,10 @@ from .compaction import (
 )
 from .meter import ContextState
 
-_CONFIG = ConfigDict(strict=True, extra="forbid", allow_inf_nan=False, hide_input_in_errors=True)
+_DEFAULT_RATIO = 0.8
 
 
-@dataclass(frozen=True, config=_CONFIG)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class _AtRatio:
     at: Annotated[float, Field(gt=0, le=1)]
     fallback_tokens: Annotated[int, Field(ge=1)] | None = None
@@ -35,7 +36,7 @@ class _AtRatio:
         return state.ratio >= self.at
 
 
-@dataclass(frozen=True, config=_CONFIG)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class _EveryTurns:
     every: Annotated[int, Field(ge=1)]
 
@@ -43,7 +44,7 @@ class _EveryTurns:
         return state.turns_since_compaction >= self.every
 
 
-def at_ratio(at: float = 0.8) -> Callable[[ContextState], bool]:
+def at_ratio(at: float = _DEFAULT_RATIO) -> Callable[[ContextState], bool]:
     """Compact when input plus reserved output reaches this window ratio."""
     return _AtRatio(at)
 
@@ -59,8 +60,20 @@ def _sync_trigger(value: Callable[[ContextState], bool]) -> Callable[[ContextSta
     return value
 
 
+def _select_trigger(
+    trigger: Callable[[ContextState], bool] | None,
+    at: float | None,
+    fallback_tokens: int | None,
+) -> Callable[[ContextState], bool]:
+    if trigger is None:
+        return _AtRatio(_DEFAULT_RATIO if at is None else at, fallback_tokens)
+    if at is not None or fallback_tokens is not None:
+        raise ConfigError("Choose a custom trigger or a ratio")
+    return trigger
+
+
 type _Trigger = Annotated[Callable[[ContextState], bool], AfterValidator(_sync_trigger)]
-_DEFAULT_TRIGGER = _AtRatio(0.8)
+_DEFAULT_TRIGGER = _AtRatio(_DEFAULT_RATIO)
 
 
 class CompactionConfig(CompactionSettings):
@@ -105,12 +118,8 @@ class Compaction:
             and (not isinstance(prompt, str) or not prompt.strip())
         ):
             raise ConfigError("Compaction prompt must be a non-empty string or factory")
-        if trigger is not None and (at is not None or fallback_tokens is not None):
-            raise ConfigError("Choose a custom trigger or a ratio")
         self.config = CompactionConfig(
-            trigger=trigger
-            if trigger is not None
-            else _AtRatio(0.8 if at is None else at, fallback_tokens),
+            trigger=_select_trigger(trigger, at, fallback_tokens),
             keep_last_steps=keep_last_steps,
             target_ratio=target_ratio,
             target_tokens=target_tokens,

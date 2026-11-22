@@ -2,7 +2,7 @@ import asyncio
 from typing import Annotated, Protocol
 
 import pytest
-from pydantic import Field
+from pydantic import Field, ValidationError
 
 from harnessed import Agent, Plugin
 from harnessed.kernel import Bundle, Inject, InjectMarker, PluginStatus, Scope
@@ -208,7 +208,7 @@ def test_model_data_is_deeply_detached_and_immutable():
     assert call.arguments["nested"]["values"] == (1,)
     with pytest.raises(TypeError):
         call.arguments["nested"]["new"] = True
-    with pytest.raises(TypeError):
+    with pytest.raises(ValidationError):
         ToolCall("bad", {"value": float("nan")})
 
 

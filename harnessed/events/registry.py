@@ -1,19 +1,17 @@
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import fields, is_dataclass
-from functools import reduce
-from operator import or_
-from typing import Annotated, Any, Literal, Self, cast, get_args, get_origin, get_type_hints
+from typing import Any, Literal, Self, get_args, get_origin, get_type_hints
 
-from pydantic import ConfigDict, Field, TypeAdapter
+from pydantic import TypeAdapter
 
-from harnessed.models.messages import to_dict
+from harnessed.models.values import to_dict
 
 from .base import (
     DurableEvent,
     TransientEvent,
 )
-from .codec import decode_event, encode_event, validate_event
+from .codec import SessionCodec, validate_event
 from .live import LIVE_EVENT_TYPES
 from .unions import SESSION_EVENT_TYPES
 
@@ -29,7 +27,7 @@ class EventRegistry:
         self._types: dict[str, type] = {**SESSION_EVENT_TYPES, **LIVE_EVENT_TYPES}
         self._builtin_types = frozenset(self._types.values())
         self._custom: dict[type[DurableEvent | TransientEvent], TypeAdapter] = {}
-        self._adapter: TypeAdapter | None = None
+        self._codec: SessionCodec | None = None
         self.register(kinds)
 
     def copy(self) -> Self:
@@ -69,7 +67,7 @@ class EventRegistry:
             proposed[tag] = kind
         self._types = proposed
         self._custom = validators
-        self._adapter = None
+        self._codec = None
 
     def kind(self, tag: str) -> type | None:
         """Return the event class registered for ``tag``, if any."""
@@ -77,7 +75,7 @@ class EventRegistry:
 
     def validate(self, event: DurableEvent | TransientEvent) -> None:
         kind = type(event)
-        if self._types.get(getattr(event, "type", None)) is not kind:
+        if self._types.get(event.type) is not kind:
             raise TypeError("Only registered frozen event instances may be emitted")
         adapter = self._custom.get(kind)
         # Built-in live notifications are internal values on the token path.
@@ -89,24 +87,26 @@ class EventRegistry:
             adapter.validate_json(json.dumps(to_dict(event), allow_nan=False), strict=True)
 
     @property
-    def adapter(self) -> TypeAdapter:
-        if self._adapter is None:
-            kinds = [kind for kind in self._types.values() if issubclass(kind, DurableEvent)]
-            annotation = cast(Any, Annotated)[reduce(or_, kinds), Field(discriminator="type")]
-            self._adapter = TypeAdapter(
-                annotation,
-                config=ConfigDict(
-                    strict=True, extra="forbid", allow_inf_nan=False, hide_input_in_errors=True
-                ),
-            )
-        return self._adapter
+    def codec(self) -> SessionCodec:
+        """Return the session record format of this catalog's durable events."""
+        if self._codec is None:
+            kinds = {
+                tag: kind for tag, kind in self._types.items() if issubclass(kind, DurableEvent)
+            }
+            self._codec = SessionCodec(kinds)
+        return self._codec
 
     def schema(self) -> dict:
         """Return the complete discriminated schema of this catalog's durable events."""
-        return self.adapter.json_schema()
+        return self.codec.adapter.json_schema()
 
-    def encode(self, event: DurableEvent) -> dict:
-        return encode_event(event, registry=self)
+    def encode(self, event: DurableEvent) -> dict[str, Any]:
+        """Encode a registered durable event as one current session record."""
+        self.validate(event)
+        return self.codec.encode(event)
 
-    def decode(self, record: dict) -> DurableEvent:
-        return decode_event(record, registry=self)
+    def decode(self, record: Mapping[str, Any]) -> DurableEvent:
+        """Decode one session record, including application-defined events."""
+        event = self.codec.decode(record)
+        self.validate(event)
+        return event

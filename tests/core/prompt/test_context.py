@@ -7,7 +7,7 @@ from harnessed import Agent as Application
 from harnessed import Approvals, Decision, File, Image, Plugin, tool
 from harnessed.errors import SessionClosed
 from harnessed.events import ModelRequestedEvent, ObservationRecordedEvent
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.kernel import Inject, hook
 from harnessed.models import (
     ImageDetail,
@@ -57,7 +57,8 @@ async def test_file_and_image_attachments_are_snapshotted_in_log_and_wire_payloa
         assert image_part.url.startswith("data:image/png;")
         diff.write_text("changed after admission", encoding="utf-8")
         restored = tuple(
-            decode_event(json.loads(json.dumps(encode_event(e)))) for e in agent_audit.events
+            builtin_codec().decode(json.loads(json.dumps(builtin_codec().encode(e))))
+            for e in agent_audit.events
         )
         recorded = next(e.request for e in restored if isinstance(e, ModelRequestedEvent))
         assert await agent.log.resolve_request(recorded) == request

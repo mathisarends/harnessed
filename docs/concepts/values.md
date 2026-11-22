@@ -1,7 +1,14 @@
 # Immutable values and hashing
 
-Messages, tool calls, model requests and durable log events are frozen dataclasses.
-Their JSON payloads are detached from the caller: mappings become read-only mapping
+Messages, tool calls, model requests and durable log events are frozen
+Pydantic dataclasses. They remain ordinary dataclasses for `fields()`,
+`dataclasses.replace()` and pattern matching, and Pydantic validates every
+construction, including `replace()`. Validation is strict: pass enum members rather
+than their string values and tuples rather than lists. Invalid values raise
+`pydantic.ValidationError`, a subclass of `ValueError`. JSON decoding accepts the
+persisted enum values and arrays.
+
+JSON payloads are detached from the caller: mappings become read-only mapping
 proxies and lists become tuples. Mutating an input dictionary after construction
 cannot change a recorded call or request.
 
@@ -22,7 +29,7 @@ Its immutable mappings and tuples are detached from mutable runtime containers.
 Old JSONL archives are not accepted as conversation state. Unknown fields,
 invalid versions and incomplete tool pairs fail validation.
 
-Standalone audit-event envelopes use version 8 and dotted tags.
+Standalone audit-event envelopes use version 9 and dotted tags.
 Applications can encode events while executing a turn; these records are not an
 implicit session archive. [Application events](../guides/events.md) use a
 session-local catalog assembled before runtime startup. Frozen dataclasses remain

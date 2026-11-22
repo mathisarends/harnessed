@@ -13,7 +13,7 @@ from harnessed.events import (
     ToolCallFinishedEvent,
     ToolExecutionStartedEvent,
 )
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.kernel import Inject, hook
 from harnessed.models import (
     ApprovalResponse,
@@ -91,7 +91,9 @@ async def test_approval_gate_without_a_ui_fails_closed_and_preserves_unrelated_c
         assert not approvals.pending and (not approvals.grants)
         assert approvals.records[0].resolution.status == ApprovalStatus.UNAVAILABLE
         assert approvals.records[0].decision is None
-        replay = AuditProjection(tuple(decode_event(encode_event(e)) for e in agent_audit.events))
+        replay = AuditProjection(
+            tuple(builtin_codec().decode(builtin_codec().encode(e)) for e in agent_audit.events)
+        )
         assert replay.approvals == approvals
 
 
@@ -419,7 +421,7 @@ async def test_all_approval_sources_use_the_configured_response_timeout(source):
 def test_unavailable_resolution_is_not_an_answer_or_a_persistent_permission():
     with pytest.raises(ValueError):
         ApprovalResolvedEvent("request", Decision.ALLOW, status=ApprovalStatus.UNAVAILABLE)
-    with pytest.raises(TypeError):
+    with pytest.raises(ValueError):
         ApprovalResolvedEvent("request", Decision.ALLOW, reason=123)
 
 

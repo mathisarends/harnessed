@@ -19,33 +19,78 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 - `SessionState` and `SessionCheckpoint` gain `to_dict()` / `from_dict()` for
   JSON-compatible documents, such as a PostgreSQL `JSONB` column.
 
+### Changed
+
+- Messages, model values, diagnostics, assets, built-in events and session
+  values are Pydantic dataclasses that share one strict configuration
+  (`harnessed.models.values.VALUE_CONFIG`). Field types and constraints replace
+  hand-written `__post_init__` type checks; `__post_init__` remains only for
+  cross-field invariants. They stay frozen dataclasses, so `fields()`,
+  `dataclasses.replace()` (which now validates) and pattern matching keep working.
+- The session record envelope is validated by a `SessionRecord` model.
+  `SessionCodec` in `harnessed.events.codec` owns the current record format, and
+  `EventRegistry` composes it for session-local catalogs.
+- Child-session types are exported from their owning packages instead of
+  `harnessed.plugins.subagents`.
+
 ### Breaking changes
 
 - Harnessed no longer stores sessions. `SessionStore`, `StoredSession`,
   `JsonSessionStore`, `SessionWriteConflict` and `Agent(store=...)` are removed,
   together with the background writer, its 100 ms coalescing and revisions.
-- `agent.session(id=...)` names a session instead of loading it. Reopen by
-  passing the stored checkpoint as `state=`.
-- `SessionCheckpoint` gains a required `session_id` and uses format **5**.
-  `SessionCommit(checkpoint, changes)` reads `commit.session_id` from its
-  checkpoint. Passing an `id=` that differs from the checkpoint raises
-  `ConfigError`.
+- `agent.session(id=...)` names a new session instead of loading it. Reopen by
+  passing the stored checkpoint as `state=`; an `id=` that differs from the
+  checkpoint raises `ConfigError`.
+- `SessionCheckpoint` gains a required `session_id`, and
+  `SessionCommit(checkpoint, changes)` reads `commit.session_id` from it.
+- Construction is strict. Pass enum members instead of their string values, and
+  tuples instead of lists, for example `StepOutcome.COMPLETED` rather than `"completed"`
+  and `ToolResult((TextPart("x"),))` rather than `ToolResult([...])`. JSON
+  decoding still accepts the persisted enum values and arrays.
+- Invalid values raise `pydantic.ValidationError` (a `ValueError`) instead of
+  `TypeError`. Some error messages changed. Catch `ValueError` or
+  `ValidationError`.
+- `encode_event` and `decode_event` are removed. Use `builtin_codec().encode(event)`
+  and `builtin_codec().decode(record)` from `harnessed.events.codec` for built-in
+  events, or `EventRegistry.encode`/`decode` for catalogs with application
+  events. Pydantic terminal results accept any `decode(record)` implementation
+  as `context={"events": ...}`.
+- Decoding a record with non-string mapping keys or an invalid envelope raises
+  `SessionFormatError` instead of `TypeError`.
+- `freeze`, `to_dict`, `JSONMapping` and `JSONValue` moved from
+  `harnessed.models.messages` to `harnessed.models.values`.
+- `ModelCacheMetricsEvent.hit_rate` is a property derived from
+  `usage.cache_hit_rate` and is no longer a constructor argument or persisted field.
+- Audit envelopes use version **9** and execution checkpoints use format **5**,
+  because recorded cache metrics no longer contain `hit_rate` and checkpoints
+  now carry their session ID. Conversation snapshots (`SessionState`) keep
+  format **4**.
+- `harnessed.plugins.subagents` no longer re-exports child-session types. Import
+  `ChildSessionFactory`, `ChildSessionRequest` and `ChildStatusReporter` from
+  `harnessed.children`; `ChildActivity`, `ChildReport`, `ChildReportState` and
+  `ChildRuntimeState` from `harnessed.events`; and `ChildSession` from
+  `harnessed.sessions`.
+- `ToolScheduling(resources=...)`, `RuleTriggeredEvent(actions=...)` and similar
+  tuple fields reject lists and strings.
 
 ### Upgrade from 0.25.0
 
 1. Replace `Agent(store=store)` with
    `agent.session(id=conversation_id, on_commit=handler)`. A handler is an async
-   callable that saves `commit.checkpoint` (and optionally maps `commit.changes`)
-   in one transaction.
+   callable that saves `commit.checkpoint` under `commit.session_id` (and
+   optionally maps `commit.changes`) in one transaction.
 2. Replace `agent.session(id=conversation_id)` reopening with
    `agent.session(state=checkpoint, on_commit=handler)`, where `checkpoint`
-   comes from your repository and carries its session ID.
-3. Existing JSON-store files contain a version-3 envelope around a format-4
-   checkpoint. Take the envelope's `checkpoint`, add `"session_id"` (the
-   envelope's `conversation_id`), set `"version": 5` and pass it to
-   `SessionCheckpoint.from_dict()`.
-4. Revision checks are now the repository's concern. Serialize execution per
-   conversation as before.
+   comes from your repository and carries its session ID. Revision checks are
+   now the repository's concern; serialize execution per conversation as before.
+3. Replace string enum values and lists in direct constructor calls with enum
+   members and tuples. Update handlers that expected `TypeError` from invalid
+   values to catch `ValueError`.
+4. Replace `encode_event`/`decode_event` with `builtin_codec()` or your session's
+   `EventRegistry`, and update imports of the JSON helpers and child-session types.
+5. Existing audit envelopes (version 8), JSON-store files and execution
+   checkpoints (format 4) are not migrated. Export conversations as
+   `SessionState` snapshots with 0.25.0 and reopen them with `state=`.
 
 ## 0.25.0 (2026-11-21)
 

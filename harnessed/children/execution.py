@@ -14,6 +14,10 @@ from harnessed.errors import SessionStateError
 from harnessed.events import (
     ApprovalRequestedEvent,
     ApprovalResolvedEvent,
+    ChildActivity,
+    ChildReport,
+    ChildReportState,
+    ChildRuntimeState,
     DurableEvent,
     ModelRequestedEvent,
     StepEndedEvent,
@@ -31,14 +35,8 @@ from harnessed.events import (
     ToolProgressEvent,
     TurnEndedEvent,
 )
-from harnessed.events.child_status import (
-    ChildActivity,
-    ChildReport,
-    ChildReportState,
-    ChildRuntimeState,
-)
 from harnessed.models import ApprovalResponse, ModelUsage, ToolCall, UserMessage
-from harnessed.models.messages import to_dict
+from harnessed.models.values import to_dict
 from harnessed.runtime.hooks import SessionAppended
 from harnessed.tools import ToolError
 
@@ -49,8 +47,7 @@ if TYPE_CHECKING:
     from harnessed.kernel import PluginScope, Scope
     from harnessed.runtime.control import SessionControl
     from harnessed.runtime.session import Session
-    from harnessed.sessions import SessionContext
-    from harnessed.sessions.children import ChildSession
+    from harnessed.sessions import ChildSession, SessionContext
 
 logger = logging.getLogger(__name__)
 

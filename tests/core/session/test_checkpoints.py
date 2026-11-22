@@ -67,7 +67,7 @@ def test_checkpoint_extensions_are_immutable_and_roundtrip_without_a_registry():
         extension.data["changed"] = True
     with pytest.raises(FrozenInstanceError):
         value.offset = 3
-    with pytest.raises(TypeError):
+    with pytest.raises(ValidationError):
         CheckpointExtension(tag="project.details", data={"invalid": float("inf")})
 
 
@@ -105,7 +105,7 @@ def test_checkpoint_construction_and_type_adapter_validate_without_json():
             session_id="session",
             state=SessionState(),
             offset=-1,
-            control=SessionControlChangedEvent("active"),
+            control=SessionControlChangedEvent(ControlState.ACTIVE),
         )
     with pytest.raises(SessionFormatError):
         SessionCheckpoint.from_json("{}")

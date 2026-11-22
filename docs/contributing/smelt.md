@@ -70,8 +70,7 @@ necessary for deferred names under the supported Python 3.12 minimum.
 
 Public definitions precede implementation helpers. Module dunder assignments
 follow those definitions. Only package initializers declare `__all__`; the
-single-module public facades (`errors`, `hooks`, `tracing`, the optional integrations
-and `plugins.subagents`)
+single-module public facades (`errors`, `hooks`, `tracing` and the optional integrations)
 have a reasoned config exception because their module path is the documented
 import, and optional extras cannot be re-exported eagerly from a package. Class initializers and dunders precede public/private methods.
 Ordering fixes use `safe-only`. Reflection-sensitive sections require manual

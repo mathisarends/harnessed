@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, RootModel
 from pydantic.json_schema import JsonSchemaValue, model_json_schema
 
 from harnessed import Agent, Plugin, ToolContext, tool
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.hooks import ExecuteTool, ReviewToolResult, ToolPolicy
 from harnessed.kernel import hook
 from harnessed.models import ToolCall, ToolDefinition, ToolResult
@@ -76,7 +76,9 @@ async def test_envelope_fields_lead_the_schema_reach_hooks_and_never_reach_the_c
     finished_call, finished = result.tool_calls[0]
     assert finished.text == "clicked 3"
     assert finished_call.arguments == {"element": 3, "action_label": "Open the pricing page"}
-    assert all(decode_event(encode_event(event)) == event for event in result.events)
+    assert all(
+        builtin_codec().decode(builtin_codec().encode(event)) == event for event in result.events
+    )
 
 
 @pytest.mark.parametrize(

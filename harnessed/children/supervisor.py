@@ -8,9 +8,9 @@ from hashlib import sha256
 
 from harnessed.events import SubagentFinishedEvent, SubagentStartedEvent, SubagentStatus
 from harnessed.models import ToolResult, ToolStatus, UserMessage
-from harnessed.models.messages import to_dict
+from harnessed.models.values import to_dict
 from harnessed.runtime.hooks import SessionAborting, SessionClosing
-from harnessed.sessions.children import ChildSession
+from harnessed.sessions import ChildSession
 from harnessed.tools import ToolContext, ToolError
 
 from .contracts import ChildLimits, ChildSessionFactory

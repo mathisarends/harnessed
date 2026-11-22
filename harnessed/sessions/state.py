@@ -4,30 +4,20 @@ from collections.abc import Mapping
 from dataclasses import field
 from typing import Annotated, Literal, Self
 
-from pydantic import ConfigDict, Field, PlainSerializer, TypeAdapter, ValidationError
+from pydantic import ConfigDict, Field, TypeAdapter, ValidationError
 from pydantic.dataclasses import dataclass
 
 from harnessed.errors import SessionFormatError
 from harnessed.events import IncludedObservation, MessageLifetime, SubagentLinkedEvent
 from harnessed.models import AssistantMessage, ImageReference, Message, ToolMessage
 from harnessed.models.assets import AssetRef, AssetValue
-from harnessed.models.messages import JSONValue, SpillRef, freeze, to_dict
+from harnessed.models.messages import SpillRef
+from harnessed.models.values import VALUE_CONFIG, JSONMapping, JSONValue
 
 from .children import ChildSession
 from .files import TextValue
 
-_CONFIG = ConfigDict(
-    extra="forbid",
-    strict=True,
-    allow_inf_nan=False,
-    ser_json_bytes="base64",
-    val_json_bytes="base64",
-    hide_input_in_errors=True,
-)
-
-# Defined at module scope: annotations are evaluated lazily, and SessionState.to_dict
-# would otherwise shadow the serializer inside its class namespace.
-type PluginValueMap = Annotated[Mapping[str, JSONValue], PlainSerializer(to_dict, when_used="json")]
+_CONFIG = ConfigDict(**VALUE_CONFIG, ser_json_bytes="base64", val_json_bytes="base64")
 
 
 @dataclass(frozen=True, config=_CONFIG)
@@ -100,7 +90,7 @@ class SessionState:
 
     version: Literal[4] = 4
     history: tuple[HistoryEntry, ...] = ()
-    plugin_values: PluginValueMap = field(default_factory=dict)
+    plugin_values: JSONMapping = field(default_factory=dict)
     turns: tuple[HistoryTurn, ...] = ()
     steps: tuple[HistoryStep, ...] = ()
     turns_since_compaction: Annotated[int, Field(ge=0)] = 0
@@ -113,9 +103,6 @@ class SessionState:
     parent: SubagentLinkedEvent | None = None
 
     def __post_init__(self) -> None:
-        if type(self.version) is not int:
-            raise ValueError("State versions must be integers")
-        object.__setattr__(self, "plugin_values", freeze(self.plugin_values))
         self._check_links()
         self._check_history_order()
         _check_tool_pairs(self.history)

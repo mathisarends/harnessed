@@ -13,7 +13,7 @@ from harnessed.events import (
     TurnEndedEvent,
     TurnOutcome,
 )
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.kernel import PluginScope
 from harnessed.models import (
     AssistantMessage,
@@ -118,9 +118,9 @@ async def test_fallback_answer_is_validated_without_policies_or_application_tool
         request = model.requests[0]
         assert request.output_schema.mode == OutputMode.TOOL
         assert [tool.name for tool in request.tools] == ["final_answer"]
-        assert [decode_event(encode_event(e)) for e in session_audit.events] == list(
-            session_audit.events
-        )
+        assert [
+            builtin_codec().decode(builtin_codec().encode(e)) for e in session_audit.events
+        ] == list(session_audit.events)
 
 
 async def test_native_json_retries_once_and_preserves_the_accepted_raw_input():

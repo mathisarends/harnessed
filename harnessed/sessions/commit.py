@@ -2,7 +2,7 @@ from collections.abc import Awaitable, Callable
 from itertools import pairwise
 from typing import Annotated
 
-from pydantic import ConfigDict, Field
+from pydantic import Field
 from pydantic.dataclasses import dataclass
 
 from harnessed.events import (
@@ -21,10 +21,10 @@ from harnessed.events import (
     TurnEndedEvent,
 )
 from harnessed.events.codec import validate_event
+from harnessed.models.values import VALUE_CONFIG
 
 from .checkpoint import CheckpointEntry, CheckpointExtension, SessionCheckpoint
 
-_CONFIG = ConfigDict(strict=True, extra="forbid", allow_inf_nan=False, hide_input_in_errors=True)
 _BARRIERS = (
     InboxAddedEvent
     | InboxRemovedEvent
@@ -43,7 +43,7 @@ _BARRIERS = (
 )
 
 
-@dataclass(frozen=True, config=_CONFIG)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class SessionChange:
     """One new durable event at its conversation-local, zero-based log position."""
 
@@ -57,7 +57,7 @@ class SessionChange:
             validate_event(self.event)
 
 
-@dataclass(frozen=True, config=_CONFIG)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class SessionCommit:
     """A session's complete checkpoint and the ordered changes since its last commit.
 

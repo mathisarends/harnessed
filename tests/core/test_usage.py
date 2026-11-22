@@ -1,6 +1,6 @@
 from harnessed import Agent
 from harnessed.events import ModelUsageRecordedEvent, TurnEndedEvent
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.models import ModelChunk, ModelUsage
 from harnessed.models.model import sum_usage
 from harnessed.testing import ScriptedModel
@@ -10,7 +10,10 @@ from tests._audit import Audit, AuditProjection
 def test_cache_hit_rate_and_optional_totals_use_canonical_counters():
     usage = ModelUsage(100, 10, cache_read_tokens=80, cache_write_tokens=5, reasoning_tokens=4)
     assert usage.cache_hit_rate == 0.8
-    assert decode_event(encode_event(ModelUsageRecordedEvent(usage))).usage == usage
+    assert (
+        builtin_codec().decode(builtin_codec().encode(ModelUsageRecordedEvent(usage))).usage
+        == usage
+    )
     combined = sum_usage([usage, ModelUsage(20, 2)])
     assert combined.total_tokens == 132 and combined.cache_read_tokens is None
 
@@ -30,7 +33,7 @@ async def test_final_usage_is_recorded_once_and_session_totals_survive_replay():
         await session.run("Again")
         ends = [event for event in session_audit.events if isinstance(event, TurnEndedEvent)]
         assert [event.usage for event in ends] == [final, ModelUsage(20, 3)]
-        assert decode_event(encode_event(ends[0])).usage == final
+        assert builtin_codec().decode(builtin_codec().encode(ends[0])).usage == final
         recorded = [
             event for event in session_audit.events if isinstance(event, ModelUsageRecordedEvent)
         ]

@@ -38,8 +38,7 @@ from harnessed.output import OutputContract
 from harnessed.output.contracts import OutputTypes, OutputValues
 from harnessed.output.handler import OutputHandler
 from harnessed.prompts import SectionDelivery, SystemPromptStore
-from harnessed.sessions import SessionCheckpoint, SessionState
-from harnessed.sessions.children import ChildSession
+from harnessed.sessions import ChildSession, SessionCheckpoint, SessionState
 from harnessed.sessions.context import PendingObservations, SessionContext
 from harnessed.sessions.log import SessionLog
 from harnessed.sessions.publishing import SessionPublished

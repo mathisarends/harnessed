@@ -2,7 +2,10 @@ from dataclasses import dataclass
 from time import time_ns
 from typing import Annotated, NamedTuple, Protocol
 
-from pydantic import AfterValidator, ConfigDict, Field, StringConstraints, TypeAdapter
+from pydantic import AfterValidator, Field, NonNegativeInt, StringConstraints, TypeAdapter
+from pydantic.dataclasses import dataclass as value_dataclass
+
+from harnessed.models.values import VALUE_CONFIG
 
 
 def _portable_key(key: str) -> str:
@@ -23,9 +26,8 @@ type FileKey = Annotated[
 ]
 type FileOffset = Annotated[int, Field(ge=0)]
 type ReadLimit = Annotated[int, Field(ge=1, le=16_000)]
-_CONFIG = ConfigDict(strict=True, hide_input_in_errors=True)
-_KEY = TypeAdapter(FileKey, config=_CONFIG)
-_RANGE = TypeAdapter(tuple[FileOffset, ReadLimit], config=_CONFIG)
+_KEY = TypeAdapter(FileKey, config=VALUE_CONFIG)
+_RANGE = TypeAdapter(tuple[FileOffset, ReadLimit], config=VALUE_CONFIG)
 
 
 class _FileRange(NamedTuple):
@@ -48,20 +50,11 @@ class StoredFile:
     modified_ns: int
 
 
-@dataclass(frozen=True)
+@value_dataclass(frozen=True, config=VALUE_CONFIG)
 class TextValue:
     key: FileKey
     text: str
-    modified_ns: int
-
-    def __post_init__(self) -> None:
-        _validate_file_key(self.key)
-        if (
-            not isinstance(self.text, str)
-            or type(self.modified_ns) is not int
-            or self.modified_ns < 0
-        ):
-            raise ValueError("Text resources require string content and a non-negative timestamp")
+    modified_ns: NonNegativeInt
 
 
 class SessionFiles(Protocol):

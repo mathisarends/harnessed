@@ -23,7 +23,6 @@ from harnessed.models.messages import (
     ToolCall,
     ToolMessage,
     ToolStatus,
-    to_dict,
 )
 from harnessed.models.model import (
     ModelInfo,
@@ -33,6 +32,7 @@ from harnessed.models.model import (
     OutputMode,
     StopReason,
 )
+from harnessed.models.values import to_dict
 
 if TYPE_CHECKING:
     from pydantic_ai.messages import ImageUrl as NativeImageUrl

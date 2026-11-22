@@ -33,8 +33,8 @@ from harnessed.models import (
     SystemMessage,
     UserMessage,
 )
-from harnessed.models.messages import to_dict
 from harnessed.models.model import UsagePurpose, resolve_request_settings, sum_usage
+from harnessed.models.values import to_dict
 from harnessed.sessions import HistoryEntry
 from harnessed.sessions.log import SessionLog
 from harnessed.tracing import Span, span

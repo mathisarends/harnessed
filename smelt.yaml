@@ -163,8 +163,7 @@ ignore:
       - harnessed/tracing.py
       - harnessed/integrations/bubblewrap.py
       - harnessed/integrations/opentelemetry.py
-      - harnessed/plugins/subagents.py
-    reason: These module paths are documented facades. Eager package exports would load optional extras.
+    reason: These single-module paths are documented facades; the integrations load optional extras and cannot be re-exported eagerly from a package.
   - rule: layout/file-name-convention
     paths: [.github/workflows/release.yml]
     reason: PyPI trusted publishing is registered for this exact workflow filename.

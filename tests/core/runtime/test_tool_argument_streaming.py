@@ -10,7 +10,7 @@ from harnessed.events import (
     ToolArgumentsDeltaEvent,
     ToolCallRequestedEvent,
 )
-from harnessed.events.codec import encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.events.deltas import coalesce_deltas
 from harnessed.events.stream import StreamEvent
 from harnessed.models import (
@@ -89,7 +89,7 @@ async def test_previews_arrive_before_stream_completion_and_do_not_execute_argum
         assert notifications.index(deltas[-1]) < notifications.index(execution)
         assert notifications[-1].result.text == "done"
         with pytest.raises(TypeError, match="durable"):
-            encode_event(deltas[0])
+            builtin_codec().encode(deltas[0])
         assert all(
             not isinstance(
                 e, events.ToolCallGenerationStartedEvent | events.ToolArgumentsDeltaEvent

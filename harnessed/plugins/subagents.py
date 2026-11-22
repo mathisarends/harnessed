@@ -5,16 +5,9 @@ from typing import Annotated
 
 from pydantic import Field
 
-from harnessed.children.contracts import ChildLimits
-from harnessed.children.contracts import ChildSessionFactory as ChildSessionFactory
-from harnessed.children.contracts import ChildSessionRequest as ChildSessionRequest
-from harnessed.children.contracts import ChildStatusReporter as ChildStatusReporter
+from harnessed.children.contracts import ChildLimits, ChildSessionFactory
 from harnessed.children.execution import ChildParent
 from harnessed.children.supervisor import ChildSessionSupervisor
-from harnessed.events.child_status import ChildActivity as ChildActivity
-from harnessed.events.child_status import ChildReport as ChildReport
-from harnessed.events.child_status import ChildReportState as ChildReportState
-from harnessed.events.child_status import ChildRuntimeState as ChildRuntimeState
 from harnessed.kernel import Inject, PluginScope, needs
 from harnessed.models import ToolResult
 from harnessed.prompts import SystemPrompt
@@ -22,7 +15,6 @@ from harnessed.runtime.control import SessionControl
 from harnessed.runtime.hooks import SessionAborting, SessionClosing
 from harnessed.runtime.plugin import Plugin, PluginConfig
 from harnessed.sessions import SessionContext
-from harnessed.sessions.children import ChildSession as ChildSession
 from harnessed.tools import ToolContext, tool
 
 
@@ -141,17 +133,3 @@ class Subagents(Plugin[SubagentsConfig]):
     async def cancel(self, child_id: str) -> ToolResult:
         """Cancel a child and wait until its driver and plugin resources are drained."""
         return await self._supervisor.cancel(child_id)
-
-
-__all__ = [
-    "ChildActivity",
-    "ChildReport",
-    "ChildReportState",
-    "ChildRuntimeState",
-    "ChildSession",
-    "ChildSessionFactory",
-    "ChildSessionRequest",
-    "ChildStatusReporter",
-    "SubagentAction",
-    "Subagents",
-]

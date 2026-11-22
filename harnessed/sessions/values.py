@@ -10,7 +10,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from harnessed.events import PluginValueChangedEvent
 from harnessed.kernel import ServiceView
-from harnessed.models.messages import JSONValue, freeze, to_dict
+from harnessed.models.values import JSONValue, freeze, to_dict
 
 if TYPE_CHECKING:
     from .log import SessionLog

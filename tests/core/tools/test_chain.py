@@ -2,13 +2,14 @@ import asyncio
 from dataclasses import replace
 
 import pytest
+from pydantic import ValidationError
 
 from harnessed import Agent, AgentLoop, Plugin, tool
 from harnessed.events import (
     ToolCallFinishedEvent,
     ToolExecutionFinishedEvent,
 )
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.hooks import ReviewToolResult, ToolPolicy
 from harnessed.kernel import hook
 from harnessed.models import Decision, ModelChunk, ToolCall, ToolResult, ToolStatus
@@ -58,7 +59,9 @@ async def test_static_boundary_preserves_prior_work_and_skips_the_suffix_even_on
     assert [call.id for call, _ in result.tool_calls] == [call.id for call in calls]
     receipts = [e.call_id for e in result.events if isinstance(e, ToolExecutionFinishedEvent)]
     assert set(receipts[:2]) == {call.id for call in calls[:2]} and receipts[2] == calls[2].id
-    assert all(decode_event(encode_event(event)) == event for event in result.events)
+    assert all(
+        builtin_codec().decode(builtin_codec().encode(event)) == event for event in result.events
+    )
 
 
 @pytest.mark.parametrize("review_break", [False, True])
@@ -161,5 +164,5 @@ async def test_denied_boundary_does_not_break_a_chain_before_execution():
 def test_static_boundary_rejects_parallel_execution_and_break_signal_is_boolean():
     with pytest.raises(ValueError, match="sequentially"):
         tool(parallel=True, chain=ToolChain.STOP_AFTER)(lambda: None)
-    with pytest.raises(TypeError, match="bool"):
+    with pytest.raises(ValidationError, match="boolean"):
         replace(ToolResult("result"), break_chain="yes")

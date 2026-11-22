@@ -7,7 +7,7 @@ from harnessed import Agent as Application
 from harnessed import AgentLoop, Approvals, Decision, Plugin, tool
 from harnessed.errors import OutputTokenLimit
 from harnessed.events import InboxAddedEvent, InboxMode, TextDeltaEvent
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.events.stream import TurnResultEvent
 from harnessed.events.turn import TurnLimits
 from harnessed.models import ModelChunk, ModelUsage, StopReason, TokenLimitBehavior, ToolCall, user
@@ -28,7 +28,7 @@ class TwoTurns(CallbackModel):
         self.started[index].set()
         await self.release[index].wait()
         yield ModelChunk(text=f"reply {index + 1}")
-        yield ModelChunk(usage=ModelUsage(10 + index, 2), stop_reason="end")
+        yield ModelChunk(usage=ModelUsage(10 + index, 2), stop_reason=StopReason.END)
 
 
 async def test_concurrent_runs_return_their_own_text_usage_and_turn_without_waiting_for_idle():
@@ -164,7 +164,7 @@ async def test_token_budget_stops_before_the_step_that_would_exceed_it():
         assert len(model.requests) == 2
         start = session_audit.turns[-1].start
         assert start.limits == TurnLimits(max_steps=32, token_budget=20)
-        restored = decode_event(json.loads(json.dumps(encode_event(start))))
+        restored = builtin_codec().decode(json.loads(json.dumps(builtin_codec().encode(start))))
         assert restored == start
 
 

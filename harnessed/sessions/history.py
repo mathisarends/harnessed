@@ -26,7 +26,8 @@ from harnessed.events import (
     UserMessageEvent,
 )
 from harnessed.models import Message, ModelRequest, SystemMessage, ToolMessage
-from harnessed.models.messages import JSONValue, SpillRef
+from harnessed.models.messages import SpillRef
+from harnessed.models.values import JSONValue
 
 from .state import HistoryEntry, HistoryStep, SessionState
 

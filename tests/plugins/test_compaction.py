@@ -16,7 +16,7 @@ from harnessed.events import (
     TurnEndedEvent,
     TurnOutcome,
 )
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.kernel import hook
 from harnessed.models import (
     AssistantMessage,
@@ -179,7 +179,9 @@ async def test_default_summarizer_uses_the_session_model_and_preserves_fixed_ins
         assert await session.prompt.render() == "Fixed instructions."
         applied = session.last(CompactionAppliedEvent)
         assert applied.before_tokens > applied.after_tokens
-        records = [decode_event(encode_event(event)) for event in session_audit.events]
+        records = [
+            builtin_codec().decode(builtin_codec().encode(event)) for event in session_audit.events
+        ]
         assert AuditProjection(records).messages == session.messages
 
 
@@ -213,7 +215,9 @@ async def test_compaction_usage_is_counted_and_replayed_even_when_no_summary_is_
             and event.purpose is UsagePurpose.COMPACTION
         ]
         assert len(summaries) == 1 and summaries[0].usage == ModelUsage(123, 12)
-        records = [decode_event(encode_event(event)) for event in session_audit.events]
+        records = [
+            builtin_codec().decode(builtin_codec().encode(event)) for event in session_audit.events
+        ]
         assert AuditProjection(records).usage == session.usage
         assert (session.last(CompactionAppliedEvent) is not None) == reduces_context
 
@@ -240,7 +244,9 @@ async def test_invalid_summarizer_responses_still_contribute_their_usage(message
             await session.run("current")
         assert session.usage.input_tokens == 151 and session.usage.output_tokens == 16
         assert session.last(ModelUsageRecordedEvent).purpose is UsagePurpose.COMPACTION
-        records = [decode_event(encode_event(event)) for event in session_audit.events]
+        records = [
+            builtin_codec().decode(builtin_codec().encode(event)) for event in session_audit.events
+        ]
         assert AuditProjection(records).usage == session.usage
 
 
@@ -488,7 +494,9 @@ async def test_provider_context_error_compacts_once_then_retries_as_a_new_step()
             for step in session_audit.turns[-1].steps
         )
         assert not any(message.text == "x" * 4000 for message in model.requests[3].messages)
-        restored = [decode_event(encode_event(event)) for event in session_audit.events]
+        restored = [
+            builtin_codec().decode(builtin_codec().encode(event)) for event in session_audit.events
+        ]
         assert AuditProjection(restored).turns == session_audit.turns
 
 

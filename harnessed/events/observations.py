@@ -1,9 +1,13 @@
-from dataclasses import dataclass, field
+from dataclasses import field
 from enum import StrEnum
 from typing import Literal
 
+from pydantic import PositiveInt
+from pydantic.dataclasses import dataclass
+
 from harnessed.models import UserMessage
 from harnessed.models.messages import SpillRef
+from harnessed.models.values import VALUE_CONFIG
 
 from .base import DurableEvent, Identifier, StepNumber
 from .kinds import EventKind
@@ -14,7 +18,7 @@ class SpillExpirationReason(StrEnum):
     MISSING = "missing"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ObservationRecordedEvent(DurableEvent):
     __hash__ = None
 
@@ -22,22 +26,13 @@ class ObservationRecordedEvent(DurableEvent):
         default=EventKind.OBSERVATION_RECORDED, kw_only=True
     )
     message: UserMessage
-    source: str
+    source: Identifier
     turn_id: Identifier
     step: StepNumber
     refs: tuple[str, ...] = ()
 
-    def __post_init__(self) -> None:
-        if not isinstance(self.message, UserMessage):
-            raise TypeError("Observations require a user message")
-        if not isinstance(self.source, str) or not self.source:
-            raise ValueError("Observations require a non-empty source")
-        object.__setattr__(self, "refs", tuple(self.refs))
-        if any(not isinstance(ref, str) for ref in self.refs):
-            raise TypeError("Observation refs must be strings")
 
-
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class IncludedObservation:
     """One unchanged observation in the final model request, including its images."""
 
@@ -47,11 +42,8 @@ class IncludedObservation:
     step: StepNumber = field(kw_only=True)
     message_id: Identifier = field(kw_only=True)
 
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "refs", tuple(self.refs))
 
-
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ObservationsIncludedEvent(DurableEvent):
     __hash__ = None
 
@@ -61,27 +53,18 @@ class ObservationsIncludedEvent(DurableEvent):
     request_id: Identifier
     observations: tuple[IncludedObservation, ...]
 
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "observations", tuple(self.observations))
 
-
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ObservationPolicyAppliedEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.OBSERVATION_POLICY_APPLIED] = field(
         default=EventKind.OBSERVATION_POLICY_APPLIED, kw_only=True
     )
-    max_observations: int | None = None
-
-    def __post_init__(self) -> None:
-        if self.max_observations is not None and (
-            type(self.max_observations) is not int or self.max_observations < 1
-        ):
-            raise ValueError("max_observations must be a positive integer or None")
+    max_observations: PositiveInt | None = None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class SpillCreatedEvent(DurableEvent):
     __hash__ = None
 
@@ -91,7 +74,7 @@ class SpillCreatedEvent(DurableEvent):
     tokens: int
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class SpillExpiredEvent(DurableEvent):
     __hash__ = None
     type: Literal[EventKind.SPILL_EXPIRED] = field(default=EventKind.SPILL_EXPIRED, kw_only=True)

@@ -7,7 +7,7 @@ from harnessed import Agent as Application
 from harnessed import Approvals, Context, Decision, Plugin, tool
 from harnessed.context.tool_output_limit import ToolOutputLimit
 from harnessed.events import ToolCallFinishedEvent, ToolExecutionFinishedEvent
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.kernel import hook
 from harnessed.models import ModelChunk, ToolCall, ToolResult, ToolStatus
 from harnessed.plugins import Filesystem, LocalWorkspace, Shell, Spill
@@ -65,12 +65,17 @@ async def test_two_megabyte_result_is_bounded_in_model_log_and_replay_by_default
         receipt = agent.last(ToolExecutionFinishedEvent).result
         assert len(receipt.content) == 32000
         assert receipt.truncation.original_chars == len(source)
-        restored = tuple(decode_event(encode_event(e)) for e in agent_audit.events)
+        restored = tuple(
+            builtin_codec().decode(builtin_codec().encode(e)) for e in agent_audit.events
+        )
         assert AuditProjection(restored).messages == agent.log.messages
         replayed = next(e.result for e in restored if isinstance(e, ToolCallFinishedEvent))
         assert replayed == result and replayed.exit_code == 3
     # The unreviewed receipt adds one bounded copy to the durable audit trail.
-    assert len(json.dumps([encode_event(e) for e in restored])) < 5 * ToolOutputLimit().max_chars
+    assert (
+        len(json.dumps([builtin_codec().encode(e) for e in restored]))
+        < 5 * ToolOutputLimit().max_chars
+    )
 
 
 @pytest.mark.parametrize("stage", ["execution", "review", "error"])
@@ -103,9 +108,13 @@ async def test_final_guard_also_limits_review_enrichment_and_tool_errors(stage):
         result = next(e.result for e in agent_audit.events if isinstance(e, ToolCallFinishedEvent))
         assert len(result.content) <= 512 and result.truncation is not None
         assert (result.status == ToolStatus.ERROR) == (stage == "error")
-        assert decode_event(
+        assert builtin_codec().decode(
             json.loads(
-                json.dumps(encode_event(ToolCallFinishedEvent(ToolCall("call", id="call"), result)))
+                json.dumps(
+                    builtin_codec().encode(
+                        ToolCallFinishedEvent(ToolCall("call", id="call"), result)
+                    )
+                )
             )
         ) == ToolCallFinishedEvent(ToolCall("call", id="call"), result)
         assert model.requests[-1].messages[-1].text == result.content

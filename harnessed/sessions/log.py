@@ -47,8 +47,9 @@ from harnessed.models import (
     UserMessage,
 )
 from harnessed.models.assets import AssetStore, MemoryAssets
-from harnessed.models.messages import JSONValue, SpillRef
+from harnessed.models.messages import SpillRef
 from harnessed.models.model import sum_usage
+from harnessed.models.values import JSONValue
 from harnessed.runtime.hooks import SessionAppended
 
 from .approvals import ApprovalProjection

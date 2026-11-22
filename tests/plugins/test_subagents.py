@@ -18,7 +18,7 @@ from harnessed.events import (
     SubagentStatus,
     ToolProgressEvent,
 )
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.kernel import Inject, PluginScope
 from harnessed.models import (
     ApprovalResponse,
@@ -94,9 +94,9 @@ async def test_isolated_sessions_progress_receipts_and_usage():
         )
         for event in result.events:
             if isinstance(event, SubagentStartedEvent | SubagentFinishedEvent):
-                assert decode_event(encode_event(event)) == event
+                assert builtin_codec().decode(builtin_codec().encode(event)) == event
         assert snapshot.id in store
-    async with child.session(id=snapshot.id, state=store.latest(snapshot.id)) as restored:
+    async with child.session(state=store.latest(snapshot.id)) as restored:
         assert restored.parent.parent_session_id == parent_id
         assert restored.parent.parent_call_id == snapshot.call_id
         assert restored.parent.depth == 1
@@ -492,7 +492,7 @@ async def test_configuration_and_link_validation():
     with pytest.raises(TypeError):
         Subagents({"bad": object()})
     link = SubagentLinkedEvent("parent", "turn", "call", "review", 1, 1)
-    assert decode_event(encode_event(link)) == link
+    assert builtin_codec().decode(builtin_codec().encode(link)) == link
     with pytest.raises(ValueError):
         from harnessed.sessions.log import SessionLog
 

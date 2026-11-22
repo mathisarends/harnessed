@@ -715,11 +715,16 @@ class ToolRegistry:
             raise TypeError("Resource resolvers must return resource names, not an awaitable")
         if isinstance(keys, str) or not isinstance(keys, Iterable):
             raise TypeError("Resource resolvers must return an iterable of resource names")
+        try:
+            scheduling = ToolScheduling(tool.spec.parallel, tuple(keys))
+        except ValidationError as error:
+            # Resolver output is tool configuration, not model-supplied arguments.
+            raise ValueError("Resource resolvers must return non-empty resource names") from error
         layout = self._layout(tool)
         envelope, _ = layout.split(call.arguments)
         return PreparedToolCall(
             call,
-            ToolScheduling(tool.spec.parallel, tuple(keys)),
+            scheduling,
             binding=_Binding(tool, layout),
             output_limit=tool.spec.output_limit,
             tool=_tool_info(tool.spec, layout, callback=tool.callback),

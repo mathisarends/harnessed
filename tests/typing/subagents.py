@@ -1,17 +1,17 @@
 from typing import assert_type
 
 from harnessed import Agent, Session
-from harnessed.events import SubagentLinkedEvent, SubagentStatus
-from harnessed.models import ModelUsage
-from harnessed.plugins import Subagents
-from harnessed.plugins.subagents import (
+from harnessed.children import ChildSessionFactory, ChildSessionRequest
+from harnessed.events import (
     ChildActivity,
     ChildReport,
     ChildRuntimeState,
-    ChildSession,
-    ChildSessionFactory,
-    ChildSessionRequest,
+    SubagentLinkedEvent,
+    SubagentStatus,
 )
+from harnessed.models import ModelUsage
+from harnessed.plugins import Subagents
+from harnessed.sessions import ChildSession
 
 
 def configure(agent: Agent) -> Subagents:

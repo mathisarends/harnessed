@@ -2,22 +2,19 @@
 
 from collections.abc import AsyncIterator, Iterable
 from contextlib import AbstractAsyncContextManager
-from dataclasses import dataclass, field, replace
+from dataclasses import field, replace
 from enum import StrEnum
 from typing import Annotated, Protocol, Self, runtime_checkable
 
-from pydantic import ConfigDict, Field
-from pydantic.dataclasses import dataclass as validated_dataclass
+from pydantic import Field
+from pydantic.dataclasses import dataclass
 
 from .diagnostics import ModelDiagnostic
-from .messages import AssistantMessage, JSONMapping, Message, ToolCall, freeze
-
-_VALUE_CONFIG = ConfigDict(
-    strict=True, extra="forbid", allow_inf_nan=False, hide_input_in_errors=True
-)
+from .messages import AssistantMessage, Message, ToolCall
+from .values import VALUE_CONFIG, JSONMapping, NonEmptyText
 
 
-@validated_dataclass(frozen=True, slots=True, kw_only=True, config=_VALUE_CONFIG)
+@dataclass(frozen=True, slots=True, kw_only=True, config=VALUE_CONFIG)
 class GenerationSettings:
     """Immutable model defaults or per-turn overrides; None inherits a default.
 
@@ -33,14 +30,11 @@ class GenerationSettings:
     def __post_init__(self) -> None:
         if {"max_tokens", "temperature"} & self.provider_options.keys():
             raise ValueError("Use the typed generation fields for max_tokens and temperature")
-        object.__setattr__(self, "provider_options", freeze(self.provider_options))
 
     def override(self, settings: Self | None) -> Self:
         """Merge explicitly supplied values without mutating either configuration."""
         if settings is None:
             return self
-        if not isinstance(settings, GenerationSettings):
-            raise TypeError("settings must be GenerationSettings")
         return replace(
             self,
             max_tokens=self.max_tokens if settings.max_tokens is None else settings.max_tokens,
@@ -80,43 +74,33 @@ class UsagePurpose(StrEnum):
     COMPACTION = "compaction"
 
 
-@validated_dataclass(frozen=True, config=_VALUE_CONFIG)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ToolDefinition:
     __hash__ = None
-    name: Annotated[str, Field(min_length=1)]
+    name: NonEmptyText
     description: str
     parameters: JSONMapping
 
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "parameters", freeze(self.parameters))
 
-
-@validated_dataclass(frozen=True, config=_VALUE_CONFIG)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class OutputSchema:
     """A serializable response contract; Python output types stay in the host."""
 
     __hash__ = None
-    id: Annotated[str, Field(min_length=1)]
-    name: Annotated[str, Field(min_length=1)]
+    id: NonEmptyText
+    name: NonEmptyText
     json_schema: JSONMapping
     wrapped: bool = False
     mode: OutputMode = OutputMode.AUTO
 
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "json_schema", freeze(self.json_schema))
 
-
-@validated_dataclass(frozen=True, config=_VALUE_CONFIG)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ModelRequest:
     __hash__ = None
     messages: tuple[Message, ...]
     tools: tuple[ToolDefinition, ...] = ()
     settings: GenerationSettings = field(default_factory=GenerationSettings)
     output_schema: OutputSchema | None = None
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "messages", tuple(self.messages))
-        object.__setattr__(self, "tools", tuple(self.tools))
 
     def append_message(self, message: Message) -> Self:
         """Return a request with one more message, retaining all other fields.
@@ -131,7 +115,7 @@ def resolve_request_settings(request: ModelRequest, defaults: GenerationSettings
     return replace(request, settings=defaults.override(request.settings))
 
 
-@validated_dataclass(frozen=True, config=_VALUE_CONFIG)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ModelUsage:
     """Provider-neutral counters; cache writes are distinct from uncached input."""
 
@@ -184,7 +168,7 @@ class ToolArgumentsMode(StrEnum):
     REPLACE = "replace"
 
 
-@validated_dataclass(frozen=True, slots=True, config=_VALUE_CONFIG)
+@dataclass(frozen=True, slots=True, config=VALUE_CONFIG)
 class ToolCallStart:
     """Start or replace a preview at a response-local part index."""
 
@@ -193,7 +177,7 @@ class ToolCallStart:
     call_id: str | None = None
 
 
-@validated_dataclass(frozen=True, slots=True, config=_VALUE_CONFIG)
+@dataclass(frozen=True, slots=True, config=VALUE_CONFIG)
 class ToolCallDelta:
     """Unvalidated argument text, with the current name and provider call ID.
 
@@ -208,7 +192,7 @@ class ToolCallDelta:
     mode: ToolArgumentsMode = ToolArgumentsMode.APPEND
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ModelChunk:
     __hash__ = None
     text: str = ""
@@ -220,32 +204,23 @@ class ModelChunk:
     tool_call_delta: ToolCallDelta | None = None
     diagnostic: ModelDiagnostic | None = None
 
-    def __post_init__(self) -> None:
-        if self.stop_reason is not None:
-            object.__setattr__(self, "stop_reason", StopReason(self.stop_reason))
 
-
-@validated_dataclass(frozen=True, slots=True, config=_VALUE_CONFIG)
+@dataclass(frozen=True, slots=True, config=VALUE_CONFIG)
 class ModelInfo:
-    name: Annotated[str, Field(min_length=1)]
-    provider: Annotated[str, Field(min_length=1)] | None = field(default=None, kw_only=True)
+    name: NonEmptyText
+    provider: NonEmptyText | None = field(default=None, kw_only=True)
     context_window: Annotated[int, Field(ge=1)] | None = None
     max_output: Annotated[int, Field(ge=1)] | None = None
     supports_images: bool = False
     supports_structured_output: bool = False
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, config=VALUE_CONFIG)
 class ModelResponse:
     __hash__ = None
     message: AssistantMessage
     usage: ModelUsage = field(default_factory=lambda: ModelUsage(0))
     stop_reason: StopReason = StopReason.END
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.message, AssistantMessage):
-            raise TypeError("A model response must contain an assistant message")
-        object.__setattr__(self, "stop_reason", StopReason(self.stop_reason))
 
 
 class ModelStream(Protocol):

@@ -1,8 +1,11 @@
-from dataclasses import dataclass, field
+from dataclasses import field
 from enum import StrEnum
 from typing import Literal
 
+from pydantic.dataclasses import dataclass
+
 from harnessed.models import ApprovalResponse, ApprovalSource, Decision, ToolCall
+from harnessed.models.values import VALUE_CONFIG
 
 from .base import DurableEvent, Identifier, TransientEvent
 from .kinds import EventKind
@@ -20,7 +23,7 @@ class PolicySource(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ApprovalRequestedEvent(DurableEvent):
     __hash__ = None
 
@@ -30,20 +33,9 @@ class ApprovalRequestedEvent(DurableEvent):
     request_id: Identifier
     call: ToolCall
     reason: str
-    scope: str
+    scope: Identifier
     grant_id: str | None = None
     identity: str | None = None
-
-    def __post_init__(self) -> None:
-        if (
-            not isinstance(self.request_id, str)
-            or not self.request_id
-            or not isinstance(self.scope, str)
-            or not self.scope
-        ):
-            raise ValueError("Approvals require a request_id and scope")
-        if not isinstance(self.call, ToolCall):
-            raise TypeError("Approvals require a ToolCall")
 
     def allow(self, *, remember: bool = False) -> ApprovalResponse:
         return ApprovalResponse(Decision.ALLOW, remember=remember)
@@ -52,7 +44,7 @@ class ApprovalRequestedEvent(DurableEvent):
         return Decision.DENY
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ApprovalResolvedEvent(DurableEvent):
     __hash__ = None
 
@@ -67,17 +59,8 @@ class ApprovalResolvedEvent(DurableEvent):
     source: ApprovalSource | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "status", ApprovalStatus(self.status))
-        if self.decision is not None:
-            object.__setattr__(self, "decision", Decision(self.decision))
-        if type(self.remember) is not bool or (
-            self.remember and self.decision is not Decision.ALLOW
-        ):
+        if self.remember and self.decision is not Decision.ALLOW:
             raise ValueError("Only allow decisions can be remembered")
-        if self.reason is not None and not isinstance(self.reason, str):
-            raise TypeError("Approval resolution reason must be a string")
-        if self.source is not None:
-            object.__setattr__(self, "source", ApprovalSource(self.source))
         if self.remember and self.source is ApprovalSource.REVIEWER:
             raise ValueError("Reviewer approval applies to one request")
         if self.status == ApprovalStatus.ANSWERED and self.decision in (
@@ -94,7 +77,7 @@ class ApprovalResolvedEvent(DurableEvent):
         raise ValueError("Approval must be answered, interrupted or unavailable")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ApprovalRevokedEvent(DurableEvent):
     __hash__ = None
 
@@ -105,7 +88,7 @@ class ApprovalRevokedEvent(DurableEvent):
     reason: str = "revoked"
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, config=VALUE_CONFIG)
 class ApprovalNeededEvent(TransientEvent):
     type: Literal[EventKind.APPROVAL_NEEDED] = field(
         default=EventKind.APPROVAL_NEEDED, kw_only=True
