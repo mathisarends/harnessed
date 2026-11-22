@@ -282,6 +282,15 @@ class PluginRuntime:
             if handle.status == PluginStatus.WAITING and not handle._mount._closed
         )
 
+    def activations[P: PluginBase](self, kind: type[P]) -> tuple[P, ...]:
+        """Current class-plugin activations of ``kind`` in mount order."""
+        return tuple(
+            instance
+            for handle in self._handles
+            if handle.status == PluginStatus.ACTIVE
+            and isinstance(instance := handle.instance, kind)
+        )
+
     def changed(self) -> None:
         self.dirty = True
         for handle in tuple(self._handles):

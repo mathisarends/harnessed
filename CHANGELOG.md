@@ -25,6 +25,11 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   `CommitTimeout` error, so `abort()` and closing no longer wait for a hung
   handler. Subagent sessions share the parent's deadline. Without a deadline,
   delivery is unchanged. ([#159](https://github.com/mathisarends/harnessed/issues/159))
+- `session.plugin(Navigation)` returns the typed activation of a plugin class,
+  so an application can read what a plugin collected. Pass the recipe when the
+  class is mounted twice. `Scope.active_plugins(kind)` is the kernel operation
+  behind it. See
+  [read results and usage](docs/guides/sessions.md#read-results-and-usage).
 - `async with session.approvals.responder():` keeps approval questions of turns
   without an owning `session.stream()` pending, for example turns started by
   `steer()` or a background subagent's notification. They are announced as
