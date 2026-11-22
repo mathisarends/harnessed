@@ -21,6 +21,7 @@ from harnessed.sessions import (
     SessionCommit,
     SessionExecution,
     SessionState,
+    SessionValue,
 )
 from harnessed.testing import ExtractiveSummarizer, ScriptedModel, call
 
@@ -155,6 +156,22 @@ async def test_idle_value_changes_bind_execution_to_state_at_the_same_position()
     document = current.state.to_dict()
     document["plugin_values"] = {"flag": {"b": 2, "a": 1}}
     assert SessionCheckpoint.from_parts(SessionState.from_dict(document), execution) == current
+
+
+async def test_split_store_persists_type_changes_in_nested_plugin_values():
+    class Flags(Plugin, provides=True):
+        value = SessionValue(dict[str, list[bool | int | float]], key="flag")
+
+    store = SplitStore()
+    agent = Agent(model=ScriptedModel([]), plugins=[Flags()])
+    async with agent.session(id="types", on_commit=store) as session:
+        value = session.scope[Flags].value
+        for scalar in (True, 1, 1.0):
+            await value.set({"items": [scalar]})
+            actual = store.latest("types").state.plugin_values["flag"]["items"][0]
+            assert type(actual) is type(scalar)
+        await value.set({"items": [1.0]})
+    assert [commit.state_changed for commit in store.commits] == [True, True, True]
 
 
 async def test_in_turn_execution_size_does_not_grow_with_retained_images():
