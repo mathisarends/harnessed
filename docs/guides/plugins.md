@@ -323,7 +323,11 @@ plugins retain their general callable injection support.
 
 `observes(T)` does not block activation. It captures the visible
 service or `None` for that activation. Appearance, disappearance or replacement
-restarts the activation and resets its state. Optional keys appear under `observes`
+restarts the activation and resets its state. When a plugin in the same list
+declares the service with `provides=`, it starts before its observers, whatever
+their order, so a fixed composition starts each plugin once. A service published
+only through `scope.provide()` is not declared, so its observers restart when it
+appears. Optional keys appear under `observes`
 in `agent.describe()` and `PluginSpec`; they are distinct from hard `needs`.
 Mutating the same service object does not change its binding or restart the plugin.
 Optionality permits absence; provider and setup failures still propagate.

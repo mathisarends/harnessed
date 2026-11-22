@@ -1,4 +1,4 @@
-from collections.abc import AsyncGenerator, Callable, Mapping
+from collections.abc import AsyncGenerator, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
@@ -34,3 +34,41 @@ class PluginDependencyIssue:
 
     plugin: PluginSpec
     missing: tuple[ServiceKey[Any], ...]
+
+
+def awaits_provider(
+    spec: PluginSpec,
+    waiting: Sequence[PluginSpec],
+    available: Callable[[ServiceKey[Any]], bool],
+) -> bool:
+    """Whether a waiting recipe declares a service ``spec`` observes and can start first.
+
+    Mounting that provider first spares the observer a restart. A provider that
+    can only start after ``spec`` does not count, so ``observes`` never blocks.
+    """
+    providers = (
+        other
+        for other in waiting
+        if other is not spec and any(key in other.provides for key in spec.observes)
+    )
+    return any(_can_start(provider, waiting, available, path=(spec,)) for provider in providers)
+
+
+def _can_start(
+    spec: PluginSpec,
+    waiting: Sequence[PluginSpec],
+    available: Callable[[ServiceKey[Any]], bool],
+    *,
+    path: tuple[PluginSpec, ...],
+) -> bool:
+    if any(spec is visited for visited in path):
+        return False
+    visited = (*path, spec)
+    return all(
+        available(key)
+        or any(
+            key in other.provides and _can_start(other, waiting, available, path=visited)
+            for other in waiting
+        )
+        for key in spec.needs
+    )

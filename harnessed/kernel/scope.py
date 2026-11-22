@@ -14,7 +14,7 @@ from .hooks import HookFactory, ListenerFactory
 from .keys import Key as Key
 from .keys import MissingService, ServiceKey
 from .plugin import PluginHandle, PluginLike, PluginRuntime, PluginStatus, as_plugin_spec
-from .spec import PluginDependencyIssue, PluginSpec
+from .spec import PluginDependencyIssue, PluginSpec, awaits_provider
 
 _current: ContextVar[Scope | None] = ContextVar("harnessed_scope", default=None)
 
@@ -448,6 +448,9 @@ class Scope:
         self._closed = True
         await self._stack.aclose()
 
+    def _needs_met(self, spec: PluginSpec) -> bool:
+        return all(key in self for key in spec.needs)
+
     async def _install_ready(self, plugins):
         pending = [as_plugin_spec(spec) for spec in plugins]
         mounted: list[PluginHandle] = []
@@ -455,13 +458,22 @@ class Scope:
             while pending:
                 progress = False
                 for spec in tuple(pending):
-                    if all(key in self for key in spec.needs):
+                    if self._needs_met(spec) and not awaits_provider(
+                        spec, pending, self.__contains__
+                    ):
                         handle = await self.plugin(spec)
                         mounted.append(handle)
                         pending.remove(spec)
                         progress = True
-                if not progress:
+                if progress:
+                    continue
+                # Only observed providers remain ahead of these recipes, so one must go first.
+                unblocked = next((spec for spec in pending if self._needs_met(spec)), None)
+                if unblocked is None:
                     break
+                handle = await self.plugin(unblocked)
+                mounted.append(handle)
+                pending.remove(unblocked)
         except BaseException:
             for handle in reversed(mounted):
                 await handle.aclose()
