@@ -14,7 +14,7 @@ from .spec import PluginSpec
 from .state import PluginState
 
 if TYPE_CHECKING:
-    from .scope import Scope
+    from .scope import PluginScope, Scope
 
 type HookEntry = (  # smelt: ignore[TYP007] -- Callers pass plain hook tuples.
     tuple[type[Event], Callable] | tuple[type[Event], Callable, int]
@@ -118,6 +118,8 @@ class PluginBase:  # smelt: ignore[MOD002] -- Stable kernel facade name; the SDK
 
     _mount_injections: dict[str, Any] | None = None
 
+    _mount_scope: Scope | None = None
+
     _provides: ServiceKey[Any] | None = None
 
     _constructor_args: tuple[Any, ...]
@@ -174,6 +176,20 @@ class PluginBase:  # smelt: ignore[MOD002] -- Stable kernel facade name; the SDK
         """The configured recipe which owns this activation, or this recipe itself."""
         return self._recipe if self._recipe is not None else self
 
+    @property
+    def scope(self) -> PluginScope:
+        """The view ``setup`` receives, readable from tools and hooks.
+
+        It stays available through teardown and owned cleanup. Each activation has
+        its own view, so a recipe or finished activation raises ``RuntimeError``.
+        """
+        if self._mount_scope is None:
+            raise RuntimeError(
+                f"{type(self).__name__}.scope is available only on a mounted plugin, "
+                "not its recipe (or a disposed activation)"
+            )
+        return self._mount_scope.plugin_scope
+
     async def setup(self, *args: Any, **kwargs: Any) -> None:
         pass
 
@@ -216,12 +232,14 @@ class PluginBase:  # smelt: ignore[MOD002] -- Stable kernel facade name; the SDK
             def clear_state() -> None:
                 instance._mount_state = None
                 instance._mount_injections = None
+                instance._mount_scope = None
 
             scope.effect(clear_state)
             instance._mount_state = {member: member.factory() for member in state_fields}
             instance._mount_injections = {
                 name: dependency.resolve(scope) for name, dependency in dependencies.items()
             }
+            instance._mount_scope = scope
             if self._provides is not None:
                 scope.provide(self._provides, instance)
             await instance._setup(scope)

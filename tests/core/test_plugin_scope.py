@@ -6,7 +6,7 @@ from typing import override
 
 import pytest
 
-from harnessed import Plugin, tool
+from harnessed import Plugin, hook, tool
 from harnessed.kernel import (
     Emit,
     PluginScope,
@@ -192,6 +192,55 @@ async def test_dependency_replacement_creates_a_fresh_view_and_keeps_old_binding
         assert len(views) == 3 and views[2] is not views[0]
         assert cleaned == ["first", "second"]
     assert cleaned == ["first", "second", "first"]
+
+
+async def test_active_plugin_reads_its_view_from_setup_through_owned_cleanup():
+    views = []
+
+    class Feature(Plugin):
+        @override
+        async def setup(self, scope: PluginScope) -> None:
+            views.extend((scope, self.scope))
+            scope.effect(lambda: views.append(self.scope))
+
+        @hook(Ping)
+        async def pinged(self, event: Ping) -> None:
+            views.append(self.scope)
+
+        @override
+        async def teardown(self, scope: PluginScope) -> None:
+            views.append(self.scope)
+
+    async with Scope() as root:
+        await root.plugin(Feature())
+        await root.dispatch(Ping())
+    assert len(views) == 5
+    assert all(view is views[0] for view in views)
+
+
+async def test_scope_is_unavailable_on_the_recipe_and_after_the_activation_ends():
+    activations = []
+
+    class Feature(Plugin):
+        backend = needs(str)
+
+        @override
+        async def setup(self, scope: PluginScope) -> None:
+            activations.append(self)
+
+    recipe = Feature()
+    async with Scope() as root:
+        root.provide(str, "first")
+        await root.plugin(recipe)
+        first_view = activations[0].scope
+        root.provide(str, "second")
+        await root.settle()
+
+        assert activations[1].scope is not first_view
+        with pytest.raises(RuntimeError, match="mounted plugin"):
+            _ = activations[0].scope
+        with pytest.raises(RuntimeError, match="mounted plugin"):
+            _ = recipe.scope
 
 
 @pytest.mark.parametrize("phase", ["predicate", "tool"])

@@ -128,7 +128,8 @@ Plugin lifecycle methods use `PluginScope` from `harnessed`:
 `async def teardown(self, scope: PluginScope) -> None`. The same concrete view
 shares the activation's service/event environment and cleanup stack. It exposes
 resource acquisition, owned registrations, service publication, typed hooks and
-explicit lookup, without composition or closure operations. Advanced session
+explicit lookup, without composition or closure operations. An active plugin
+reads the same view as `self.scope`. Advanced session
 integrations and standalone kernel plugins retain the full `Scope` and
 `session.scope`. See the [activation contract](../guides/plugins.md#activation-scope-and-lifecycle-contract).
 Model-visible input uses messages and `PrepareRequest` hooks; per-call services
@@ -577,6 +578,7 @@ Each name has one import home:
 | Plugin.without_tools(*methods) | Return a recipe copy that skips registration of the selected `@tool` methods |
 | Plugin.without_instructions() | Return a recipe that contributes no prompt block |
 | Plugin.setup(scope: PluginScope) / teardown(scope: PluginScope) | Async activation lifecycle; dependencies bind first and cleanup remains framework-owned |
+| Plugin.scope | The activation's PluginScope for tools and hooks; raises on a recipe or finished activation |
 | PluginScope | Concrete resource/registration view; enter, effect, provide, on, dispatch, register, lookup and owner_name |
 | class Capability(Plugin, needs=(Backend,)) / Inject[T] | Temporal lifetime / per-call service resolution |
 | @hook / Scope.hook | Typed observer, bail or waterfall extension |
