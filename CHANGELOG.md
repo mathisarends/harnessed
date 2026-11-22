@@ -57,6 +57,12 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   `InboxRemovedEvent(reason=DISCARDED)` and reaches `on_commit`, so neither the
   live session nor a reopened checkpoint executes them later. A failed commit
   keeps its queue. ([#157](https://github.com/mathisarends/harnessed/issues/157))
+- A plugin that `observes(T)` a service no longer starts twice when the plugin
+  declaring `provides=T` comes later in `plugins=`. The provider now starts
+  first, so the observer and its dependents run `setup()` once and keep their
+  state. A provider that cannot start, or that needs its observer, does not
+  hold the observer back. Services published only through `scope.provide()`
+  are not declared, so their observers still restart when they appear.
 - Reopening an interrupted `SessionState` or `SessionCheckpoint` repairs it
   after the session runtime, its services and every plugin are active, and
   before `SessionOpened`. Plugins that need `SessionLog` or `SessionContext`

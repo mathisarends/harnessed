@@ -12,7 +12,7 @@ from .declarations import Bundle, PluginBase
 from .di import bind_injected
 from .events import PluginActivated, PluginFailed
 from .keys import MissingService, ServiceKey
-from .spec import PluginDependencyIssue, PluginSpec
+from .spec import PluginDependencyIssue, PluginSpec, awaits_provider
 
 if TYPE_CHECKING:
     from .scope import Scope
@@ -303,6 +303,7 @@ class PluginRuntime:
         blocked = set()
         while self.dirty:
             self.dirty = False
+            deferred: PluginHandle | None = None
             for handle in tuple(self._handles):
                 if handle in blocked or (
                     handle._disposed
@@ -310,34 +311,52 @@ class PluginRuntime:
                     or handle.status in (PluginStatus.STARTING, PluginStatus.STOPPING)
                 ):
                     continue
-                signature = handle._signature()
                 try:
-                    cycle = handle._cycle(signature)
-                    if cycle:
-                        blocked.update(cycle)
-                        await handle._suspend()
-                        raise RuntimeError(
-                            "Cyclic plugin needs: " + " -> ".join(h.name for h in cycle)
-                        )
-                    if (
-                        handle.status == PluginStatus.ACTIVE
-                        and signature != handle._active_signature
-                    ):
-                        await handle._suspend()
-                    signature = handle._signature()
-                    if (
-                        signature is not None
-                        and handle.status
-                        in (
-                            PluginStatus.WAITING,
-                            PluginStatus.FAILED,
-                        )
-                        and signature != handle._failed_signature
-                    ):
-                        await handle._activate()
+                    if await self._reconcile_handle(handle, blocked) and deferred is None:
+                        deferred = handle
                 except Exception as exc:
                     # Collect arbitrary failures so other plugins can reconcile.
                     self.errors.append(exc)
+            if deferred is not None and not self.dirty:
+                # No provider made progress, so the observer stops waiting for one.
+                try:
+                    await deferred._activate()
+                except Exception as exc:
+                    # Collect arbitrary failures so other plugins can reconcile.
+                    self.errors.append(exc)
+
+    async def _reconcile_handle(self, handle: PluginHandle, blocked: set[PluginHandle]) -> bool:
+        """Bring one handle up to date; True when it waits for an observed provider."""
+        signature = handle._signature()
+        cycle = handle._cycle(signature)
+        if cycle:
+            blocked.update(cycle)
+            await handle._suspend()
+            raise RuntimeError("Cyclic plugin needs: " + " -> ".join(h.name for h in cycle))
+        if handle.status == PluginStatus.ACTIVE and signature != handle._active_signature:
+            await handle._suspend()
+        signature = handle._signature()
+        if (
+            signature is None
+            or handle.status not in (PluginStatus.WAITING, PluginStatus.FAILED)
+            or signature == handle._failed_signature
+        ):
+            return False
+        if self._awaits_provider(handle):
+            return True
+        await handle._activate()
+        return False
+
+    def _awaits_provider(self, handle: PluginHandle) -> bool:
+        """Whether a provider of a service this handle observes is still about to start."""
+        mount = handle._mount
+        waiting = [
+            other.spec
+            for other in self._handles
+            if other._mount is mount
+            and other.status in (PluginStatus.WAITING, PluginStatus.STARTING)
+        ]
+        return awaits_provider(handle.spec, waiting, mount.__contains__)
 
 
 type PluginLike = PluginSpec | Bundle | PluginBase
