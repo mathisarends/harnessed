@@ -5,6 +5,7 @@ import pytest
 
 from harnessed import Agent, Approvals, Decision, Plugin, tool
 from harnessed.events import (
+    ApprovalNeededEvent,
     ChildActivity,
     ChildReportState,
     InboxAddedEvent,
@@ -601,3 +602,61 @@ async def test_background_timeout_or_parent_failure_drains_children(ending, noti
         assert startup_cleaned.is_set() == startup_entered.is_set()
         if ending == "startup_timeout":
             assert not started.is_set()
+
+
+async def test_a_session_responder_approves_a_turn_started_by_a_child_notification():
+    release = asyncio.Event()
+
+    class Publish(Plugin):
+        @tool
+        async def publish(self) -> str:
+            """Publish the reviewed result."""
+            return "Published."
+
+    async def child_response(request):
+        await asyncio.wait_for(release.wait(), 3)
+        yield ModelChunk(text="Child result")
+
+    calls = 0
+
+    async def parent_response(request):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            yield ModelChunk(tool_call=_spawn())
+        elif calls == 2:
+            yield ModelChunk(text="Waiting for the review")
+        elif calls == 3:
+            yield ModelChunk(tool_call=ToolCall("publish"))
+        else:
+            yield ModelChunk(text="Published the review")
+
+    parent = Agent(
+        model=CallbackModel(parent_response),
+        approvals=Approvals(allow=[Subagents.spawn], ask=[Publish.publish]),
+        plugins=[Subagents({"review": Agent(model=CallbackModel(child_response))}), Publish()],
+    )
+    async with parent.session() as session, session.approvals.responder():
+        await asyncio.wait_for(session.run("Start"), 2)
+        needed = asyncio.Event()
+        requests: list[str] = []
+
+        async def approve() -> None:
+            async for event in session.subscribe(transient=True):
+                if isinstance(event, ApprovalNeededEvent):
+                    requests.append(event.request_id)
+                    needed.set()
+                    await session.approvals.allow(event.request_id)
+                    return
+
+        approving = asyncio.create_task(approve())
+        await asyncio.sleep(0)
+        release.set()
+        async with asyncio.timeout(5):
+            await needed.wait()
+            await approving
+            await session.wait_until_idle()
+        assert len(requests) == 1
+        assert session.messages[-1].text == "Published the review"
+        results = [message for message in session.messages if isinstance(message, ToolMessage)]
+        assert results[-1].text == "Published."

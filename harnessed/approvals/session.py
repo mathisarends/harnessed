@@ -2,20 +2,25 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from dataclasses import replace
+from typing import Self
 from uuid import uuid4
 
 from harnessed.errors import ApprovalUnavailable
 from harnessed.events import (
+    ApprovalNeededEvent,
     ApprovalRequestedEvent,
     ApprovalResolvedEvent,
     ApprovalRevokedEvent,
     ApprovalStatus,
+    TurnStartedEvent,
 )
-from harnessed.kernel import Scope
+from harnessed.kernel import Priority, Scope
 from harnessed.models import ApprovalResponse, ApprovalSource, Decision, ToolCall
 from harnessed.runtime.control import SessionControl
-from harnessed.runtime.hooks import RequestApproval
+from harnessed.runtime.hooks import RequestApproval, SessionAppended
 from harnessed.sessions import SessionContext
 from harnessed.sessions.log import SessionLog
 from harnessed.tools import suspend_tool_execution
@@ -64,10 +69,41 @@ class LiveApproval:
 
 
 class LiveApprovals:
-    """Approvals a live stream can answer, shared by the session and its streams."""
+    """Approvals a live responder can answer, shared by the session and its responders.
+
+    It also records which inputs an open stream owns and which session-scoped
+    responders are attached, so a closing stream can hand its questions over.
+    """
 
     def __init__(self) -> None:
         self._items: dict[str, LiveApproval] = {}
+        self._owned: dict[str, int] = {}
+        self._responders: list[LiveResponder] = []
+
+    def own(self, input_id: str) -> None:
+        self._owned[input_id] = self._owned.get(input_id, 0) + 1
+
+    def release(self, input_id: str) -> None:
+        remaining = self._owned.pop(input_id, 0) - 1
+        if remaining > 0:
+            self._owned[input_id] = remaining
+
+    def owns(self, input_id: str) -> bool:
+        """Whether an open stream answers the turn started by this input."""
+        return input_id in self._owned
+
+    def attach(self, responder: LiveResponder) -> None:
+        self._responders.append(responder)
+
+    def detach(self, responder: LiveResponder) -> None:
+        self._responders.remove(responder)
+
+    def successor(self, leaving: LiveResponder) -> LiveResponder | None:
+        """The most recently attached session responder other than the leaving one."""
+        return next(
+            (responder for responder in reversed(self._responders) if responder is not leaving),
+            None,
+        )
 
     def open(self, request: ApprovalRequestedEvent) -> LiveApproval:
         approval = LiveApproval(request)
@@ -81,6 +117,109 @@ class LiveApprovals:
         approval = self._items.pop(request_id, None)
         if approval is not None:
             approval.close(failure)
+
+
+class LiveResponder:
+    """Announce approval requests and hold them until an answer is acknowledged.
+
+    Subclasses decide which requests they answer; ``_ack`` settles a held
+    request once its durable resolution is recorded.
+    """
+
+    def __init__(self, scope: Scope, log: SessionLog, live: LiveApprovals) -> None:
+        self.scope = scope
+        self.log = log
+        self._live = live
+        self.pending: dict[str, LiveApproval] = {}
+
+    async def __aenter__(self) -> Self:
+        self._remove_answer = self.scope.on(
+            RequestApproval, self._answer, priority=Priority.OBSERVE
+        )
+        self._remove_ack = self.scope.on(SessionAppended, self._ack)
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        await self._remove_answer()
+        await self._remove_ack()
+
+    def adopt(self, request: LiveApproval) -> None:
+        """Hold a request that another responder announced and can no longer answer."""
+        self.pending[request.request_id] = request
+
+    def open_turn_input(self) -> str | None:
+        turn = self.log.open_turn
+        start = turn.events[0] if turn is not None else None
+        return start.input_id if isinstance(start, TurnStartedEvent) else None
+
+    def answers(self) -> bool:
+        """Whether this responder holds the open turn's requests; placeholder for subclasses."""
+        raise NotImplementedError
+
+    def hand_over(self, message: str) -> None:
+        """Pass held requests to an attached session responder, or close them."""
+        successor = self._live.successor(self)
+        for request in self.pending.values():
+            if successor is not None:
+                successor.adopt(request)
+            else:
+                self._live.close(request.request_id, ApprovalUnavailable(message))
+        self.pending.clear()
+
+    async def _answer(self, event: RequestApproval) -> ApprovalResponse | None:
+        if event.session.log is not self.log or not self.answers():
+            return None
+        request = self._live.open(event.request)
+        self.pending[request.request_id] = request
+        try:
+            await self.log.publish(
+                ApprovalNeededEvent(request.request_id, request.call, request.reason)
+            )
+            return await request.decision()
+        except BaseException:
+            self._live.close(
+                request.request_id,
+                ApprovalUnavailable("The approval wait ended before acknowledgement"),
+            )
+            raise
+
+    def _ack(self, event: SessionAppended) -> None:
+        if event.log is not self.log or not isinstance(event.event, ApprovalResolvedEvent):
+            return
+        record = event.event
+        request = self.pending.pop(record.request_id, None)
+        if request is not None:
+            self._live.close(
+                request.request_id,
+                None
+                if record.status == ApprovalStatus.ANSWERED
+                else ApprovalUnavailable(record.reason or "The approval was interrupted"),
+            )
+
+
+_NO_RESPONDER = "No approval responder answered the request"
+
+
+class SessionResponder(LiveResponder):
+    """Hold the session's approval requests that no open stream owns.
+
+    It answers requests of turns started by ``steer()``, ``submit()`` or a
+    subagent notification, and requests asked while no turn is open.
+    """
+
+    async def __aenter__(self) -> Self:
+        await super().__aenter__()
+        self._live.attach(self)
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        self._live.detach(self)
+        await super().__aexit__(*exc)
+        self.hand_over("The session approval responder was closed")
+
+    def answers(self) -> bool:
+        input_id = self.open_turn_input()
+        return input_id is None or not self._live.owns(input_id)
 
 
 class SessionApprovals:
@@ -112,6 +251,19 @@ class SessionApprovals:
 
     def grant_for(self, tool: str, *, scope: str) -> Approval | None:
         return self.log.approvals.grant_for(tool, scope=scope)
+
+    @asynccontextmanager
+    async def responder(self) -> AsyncGenerator[None]:
+        """Keep approval requests answerable while this context is open.
+
+        Requests of turns that no ``session.stream()`` owns stay pending, are
+        announced as ``ApprovalNeededEvent`` on ``session.subscribe(transient=True)``
+        and wait for ``allow()`` or ``deny()`` until their timeout. A stream that
+        closes hands its pending requests over to an open responder.
+        """
+        self.control.check_open()
+        async with SessionResponder(self.scope, self.log, self._live):
+            yield
 
     async def allow(self, request_id: str, *, remember: bool = False) -> None:
         """Approve this request, optionally retaining its grant for the current session."""
@@ -235,6 +387,14 @@ class SessionApprovals:
             if latest.decision is not decision.decision or latest.remember != decision.remember:
                 raise ValueError("An approval cannot change its submitted decision")
             return
+        if record is not None and (
+            record.pending
+            or (record.resolution is not None and record.resolution.reason == _NO_RESPONDER)
+        ):
+            raise ApprovalUnavailable(
+                "No live responder held this approval; answer it from the stream that owns "
+                "its turn or open session.approvals.responder() before it is requested"
+            )
         raise ApprovalUnavailable("This approval is no longer pending")
 
     async def _answer_request(
@@ -267,7 +427,7 @@ class SessionApprovals:
                 async with asyncio.timeout(timeout_seconds):
                     decision = await self._respond(request, approver)
             if decision is None:
-                raise ApprovalUnavailable("No approval responder answered the request")
+                raise ApprovalUnavailable(_NO_RESPONDER)
             if isinstance(decision, Decision):
                 return ApprovalResponse(decision)
             if not isinstance(decision, ApprovalResponse):
