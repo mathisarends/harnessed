@@ -21,9 +21,11 @@ class ConversationCommits:
     async def __call__(self, commit: SessionCommit) -> None:
         await self._repository.save(commit.session_id, commit.checkpoint.to_dict())
 
-    async def load(self, conversation_id: str) -> SessionCheckpoint | None:
+    async def load(self, conversation_id: str) -> SessionCheckpoint:
         document = await self._repository.load(conversation_id)
-        return SessionCheckpoint.from_dict(document) if document is not None else None
+        if document is None:
+            raise KeyError(conversation_id)
+        return SessionCheckpoint.from_dict(document)
 
 
 commits = ConversationCommits(repository)
@@ -42,7 +44,7 @@ async with agent.session(state=state, on_commit=commits) as session:
 opens, closes or retries an application-owned repository, pool or transaction.
 `id=` names a new session; without it the session gets a fresh ID. Every
 checkpoint carries its `session_id`, so `state=checkpoint` reopens the session
-under the same ID, and key your rows by `commit.session_id`. Passing a different
+under the same ID. Key your rows by `commit.session_id`. Passing a different
 `id=` together with a checkpoint raises `ConfigError`. Without a handler, nothing
 is delivered and `flush()` does nothing.
 

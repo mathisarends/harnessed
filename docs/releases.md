@@ -4,6 +4,20 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md)
 is the complete version history and upgrade reference.
 
+## 0.26.0 (unreleased)
+
+Applications [persist sessions through `on_commit`](guides/sessions.md#receive-commits)
+and reopen them from checkpoints that carry their session IDs. Built-in values
+and events use strict Pydantic validation. Plugin recipes can
+[customize a declared tool](guides/tools.md#customize-a-declared-tool).
+
+**Upgrade.** Export idle conversations with 0.25.0 before removing
+`Agent(store=...)`. Conversation snapshots still use format **4**. Execution
+checkpoints now use format **5**, and standalone audit envelopes use version
+**9**. Follow the
+[0.25.0 upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-0250)
+for storage, constructor and codec changes.
+
 ## 0.25.0 (2026-11-21)
 
 Applications can [review approvals with a model](guides/approvals.md#review-an-approval-with-a-model)
@@ -177,11 +191,11 @@ contract alone does not keep a turn running. Persistence versions remain state
   notes identify these changes and any required upgrade steps.
 - Patch releases within a minor line are intended for compatible fixes. Pin the
   exact package version for reproducible deployments and persisted workflows.
-- Current conversation snapshots use format **4** and execution checkpoints use
-  format **5**. JSON-store envelopes use format **3**, and standalone audit-event
-  envelopes use version **9**. Unsupported versions fail explicitly without automatic
-  migration. The changelog records formats used by earlier releases. Former JSONL
-  session archives are not conversation snapshots.
+- Current conversation snapshots use format **4**, execution checkpoints use
+  format **5**, and standalone audit-event envelopes use version **9**.
+  Unsupported versions fail explicitly. Applications own the storage of new
+  checkpoints. The changelog records earlier formats, including the former JSON
+  session store.
 - Back up application-owned state and older archives before upgrading.
   Application-defined events and versioned output contracts have their own
   validation requirements; see
