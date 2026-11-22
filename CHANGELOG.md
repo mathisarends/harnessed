@@ -43,6 +43,13 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   [store state and execution apart](docs/guides/sessions.md#store-state-and-execution-apart).
   ([#160](https://github.com/mathisarends/harnessed/issues/160))
 
+### Changed
+
+- An activation belongs to exactly one session, and every hook it receives
+  comes from that session. This is now a documented and tested contract, so
+  hooks no longer need `event.session.log is self._session.log` checks. The
+  built-in plugins and the runtime dropped theirs.
+
 ### Fixed
 
 - A turn that fails with an exception now discards the queued runs whose

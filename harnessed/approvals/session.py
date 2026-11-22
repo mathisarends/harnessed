@@ -167,7 +167,7 @@ class LiveResponder:
         self.pending.clear()
 
     async def _answer(self, event: RequestApproval) -> ApprovalResponse | None:
-        if event.session.log is not self.log or not self.answers():
+        if not self.answers():
             return None
         request = self._live.open(event.request)
         self.pending[request.request_id] = request
@@ -184,7 +184,7 @@ class LiveResponder:
             raise
 
     def _ack(self, event: SessionAppended) -> None:
-        if event.log is not self.log or not isinstance(event.event, ApprovalResolvedEvent):
+        if not isinstance(event.event, ApprovalResolvedEvent):
             return
         record = event.event
         request = self.pending.pop(record.request_id, None)

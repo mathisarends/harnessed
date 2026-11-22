@@ -287,16 +287,15 @@ class Session:
             return applied
 
     def _session_event(self, event: SessionAppended) -> None:
-        if event.log is self.log:
-            if isinstance(event.event, TurnEndedEvent):
-                self._runner.record_turn(self.log.turns[-1])
-                self._boundary_state = self.log.snapshot()
-            self._submissions.observe(event.event, boundary=self._boundary_state)
-            if isinstance(event.event, SessionControlChangedEvent):
-                self.control.synchronize()
-            else:
-                self.control.notify()
-            self._publish(event.event)
+        if isinstance(event.event, TurnEndedEvent):
+            self._runner.record_turn(self.log.turns[-1])
+            self._boundary_state = self.log.snapshot()
+        self._submissions.observe(event.event, boundary=self._boundary_state)
+        if isinstance(event.event, SessionControlChangedEvent):
+            self.control.synchronize()
+        else:
+            self.control.notify()
+        self._publish(event.event)
 
     def _publish(self, event: DurableEvent | TransientEvent | None) -> None:
         if event is None:
@@ -311,8 +310,7 @@ class Session:
         self._streams.publish(event)
 
     def _stream_event(self, event: SessionPublished) -> None:
-        if event.log is self.log:
-            self._publish(event.event)
+        self._publish(event.event)
 
     @overload
     async def run[T](

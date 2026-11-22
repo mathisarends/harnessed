@@ -91,13 +91,11 @@ class ChildSessionSupervisor:
             await execution.cancel()
         return _view(self._child(child_id))
 
-    async def aborting(self, event: SessionAborting) -> None:
-        if event.log is self.parent.log:
-            await self._drain()
+    async def aborting(self, _event: SessionAborting) -> None:
+        await self._drain()
 
-    async def closing(self, event: SessionClosing) -> None:
-        if event.session.log is self.parent.log:
-            await self.aclose()
+    async def closing(self, _event: SessionClosing) -> None:
+        await self.aclose()
 
     async def aclose(self) -> None:
         self.closed = True

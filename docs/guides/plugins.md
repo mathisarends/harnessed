@@ -174,6 +174,12 @@ cleanup stack; creating it does not create a new container or copy any services.
 `scope` is the conventional parameter name. An async lifecycle method always
 accepts this parameter, even when it only uses `self`.
 
+An activation belongs to exactly one session. Every hook it receives comes from
+that session, so `event.session` is the same session as an injected
+`SessionContext`, and a hook needs no check for foreign sessions. A subagent runs
+in its own session with its own activations, even when the parent and child
+agents share a plugin recipe. A parent sees a child through subagent events.
+
 ```python
 from typing import override
 

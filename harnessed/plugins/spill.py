@@ -171,9 +171,7 @@ class Spill(Plugin[SpillConfig], slot="spill"):
 
     @hook(SessionAppended, priority=Priority.GUARD)
     def recorded(self, event: SessionAppended) -> None:
-        if event.log is self.store.session and isinstance(
-            event.event, SpillCreatedEvent | SpillExpiredEvent
-        ):
+        if isinstance(event.event, SpillCreatedEvent | SpillExpiredEvent):
             self.store.apply(event.event)
 
     @hook(ReviewToolResult, priority=Priority.OBSERVE)

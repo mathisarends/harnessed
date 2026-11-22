@@ -405,8 +405,6 @@ class Skills(Plugin, slot="skills"):
 
     @hook(SessionAppended)
     async def recorded(self, event: SessionAppended) -> None:
-        if event.log is not self._log:
-            return
         self._remember(event.event)
         if isinstance(event.event, ToolCallFinishedEvent):
             await self._retain()
