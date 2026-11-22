@@ -47,7 +47,9 @@ async def test_run_scoped_steering_rejects_input_after_completion():
         assert calls == 2
 
 
-@pytest.mark.parametrize(("mode", "target"), [("followup", "next_turn"), ("steer", "next_step")])
+@pytest.mark.parametrize(
+    ("mode", "target"), [(InboxMode.FOLLOWUP, "next_turn"), (InboxMode.STEER, "next_step")]
+)
 def test_input_modes_define_one_consistent_durable_route(mode, target):
     event = InboxAddedEvent.create(user("input"), mode)
     assert event.target == target
@@ -86,9 +88,9 @@ def test_inbox_plans_one_followup_per_turn_and_preserves_pending_input_order():
         inbox.pending = ()
 
 
-@pytest.mark.parametrize("mode", ["followup", "steer"])
+@pytest.mark.parametrize("mode", [InboxMode.FOLLOWUP, InboxMode.STEER])
 def test_inbox_inputs_require_user_messages(mode):
-    with pytest.raises(ValueError, match="requires a user message"):
+    with pytest.raises(ValueError, match="UserMessage"):
         InboxAddedEvent.create(system("context"), mode)
 
 

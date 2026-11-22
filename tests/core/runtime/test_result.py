@@ -28,7 +28,7 @@ class TwoTurns(CallbackModel):
         self.started[index].set()
         await self.release[index].wait()
         yield ModelChunk(text=f"reply {index + 1}")
-        yield ModelChunk(usage=ModelUsage(10 + index, 2), stop_reason="end")
+        yield ModelChunk(usage=ModelUsage(10 + index, 2), stop_reason=StopReason.END)
 
 
 async def test_concurrent_runs_return_their_own_text_usage_and_turn_without_waiting_for_idle():
