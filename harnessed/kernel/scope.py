@@ -430,6 +430,15 @@ class Scope:
         """
         return self._runtime.diagnostics()
 
+    async def install_available(self, plugins: Iterable[PluginLike]) -> tuple[PluginSpec, ...]:
+        """Mount ready recipes and return the remainder for a later installation phase.
+
+        A declared provider in the batch takes precedence over its observer even
+        when the provider needs a service that the next phase will supply.
+        """
+        _, pending = await self._install_ready(plugins, partial=True)
+        return tuple(pending)
+
     def active_plugins[P: PluginBase](self, kind: type[P]) -> tuple[P, ...]:
         """Snapshot active plugins of ``kind`` in the shared runtime, including extended scopes."""
         return self._runtime.activations(kind)
@@ -456,22 +465,25 @@ class Scope:
     def _needs_met(self, spec: PluginSpec) -> bool:
         return all(key in self for key in spec.needs)
 
-    async def _install_ready(self, plugins):
+    async def _install_ready(
+        self, plugins: Iterable[PluginLike], *, partial: bool = False
+    ) -> tuple[list[PluginHandle], list[PluginSpec]]:
         pending = [as_plugin_spec(spec) for spec in plugins]
         mounted: list[PluginHandle] = []
+        available = None if partial else self.__contains__
         try:
             while pending:
                 progress = False
                 for spec in tuple(pending):
-                    if self._needs_met(spec) and not awaits_provider(
-                        spec, pending, self.__contains__
-                    ):
+                    if self._needs_met(spec) and not awaits_provider(spec, pending, available):
                         handle = await self.plugin(spec)
                         mounted.append(handle)
                         pending.remove(spec)
                         progress = True
                 if progress:
                     continue
+                if partial:
+                    break
                 # Only observed providers remain ahead of these recipes, so one must go first.
                 unblocked = next((spec for spec in pending if self._needs_met(spec)), None)
                 if unblocked is None:
@@ -479,6 +491,8 @@ class Scope:
                 handle = await self.plugin(unblocked)
                 mounted.append(handle)
                 pending.remove(unblocked)
+            if partial:
+                await self.settle()
         except BaseException:
             for handle in reversed(mounted):
                 await handle.aclose()

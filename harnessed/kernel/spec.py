@@ -39,7 +39,7 @@ class PluginDependencyIssue:
 def awaits_provider(
     spec: PluginSpec,
     waiting: Sequence[PluginSpec],
-    available: Callable[[ServiceKey[Any]], bool],
+    available: Callable[[ServiceKey[Any]], bool] | None,
 ) -> bool:
     """Whether a waiting recipe declares a service ``spec`` observes and can start first.
 
@@ -51,6 +51,9 @@ def awaits_provider(
         for other in waiting
         if other is not spec and any(key in other.provides for key in spec.observes)
     )
+    if available is None:
+        # During staged installation, another phase can supply missing services.
+        return any(providers)
     return any(_can_start(provider, waiting, available, path=(spec,)) for provider in providers)
 
 

@@ -5,7 +5,7 @@ from harnessed.children import ChildSessionRequest
 from harnessed.children.reports import ChildReports
 from harnessed.errors import ConfigError
 from harnessed.events import TurnStartedEvent
-from harnessed.kernel import Scope
+from harnessed.kernel import PluginSpec, Scope
 from harnessed.models.assets import AssetStore, MemoryAssets
 from harnessed.output.contracts import OutputTypes
 from harnessed.sessions import CommitHandler, SessionCheckpoint, SessionContext, SessionState
@@ -27,6 +27,7 @@ async def open_session(
     state: SessionState | SessionCheckpoint | None,
     *,
     loop: AgentLoop,
+    pending: tuple[PluginSpec, ...],
     plugin_validation: PluginValidation,
     on_commit: CommitHandler | None = None,
     commit_timeout_seconds: float | None = None,
@@ -78,6 +79,7 @@ async def open_session(
                 Service(SessionLog, log),
                 Service(SessionContext, runtime.plugin_context),
                 Service(PluginValues, PluginValues(log)),
+                *pending,
             ]
         )
     except BaseException:

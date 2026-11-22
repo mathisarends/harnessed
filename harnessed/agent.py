@@ -155,11 +155,12 @@ class Agent:
             )
             await scope.install(core, settle=True)
             self.approvals.install(scope.plugin_scope)
-            await scope.install(self.plugins, settle=True)
+            pending = await scope.install_available(self.plugins)
             yield await open_session(
                 scope,
                 state,
                 loop=self.loop,
+                pending=pending,
                 plugin_validation=self.plugin_validation,
                 on_commit=on_commit,
                 commit_timeout_seconds=commit_timeout_seconds,
