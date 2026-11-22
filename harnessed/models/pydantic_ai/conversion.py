@@ -35,14 +35,14 @@ from harnessed.models.model import (
 from harnessed.models.values import to_dict
 
 if TYPE_CHECKING:
-    from pydantic_ai.messages import ImageUrl as NativeImageUrl
-    from pydantic_ai.messages import ModelMessage as NativeMessage
-    from pydantic_ai.messages import ModelRequest as NativeRequest
-    from pydantic_ai.messages import ModelResponse as NativeResponse
-    from pydantic_ai.messages import ToolCallPart as NativeToolCall
+    from pydantic_ai import ImageUrl as NativeImageUrl
+    from pydantic_ai import ModelMessage as NativeMessage
+    from pydantic_ai import ModelRequest as NativeRequest
+    from pydantic_ai import ModelResponse as NativeResponse
+    from pydantic_ai import RequestUsage as NativeUsage
+    from pydantic_ai import ToolCallPart as NativeToolCall
     from pydantic_ai.models import ModelRequestParameters
     from pydantic_ai.native_tools import AbstractNativeTool
-    from pydantic_ai.usage import RequestUsage as NativeUsage
 
 
 def history(request: ModelRequest, info: ModelInfo) -> list[NativeMessage]:
@@ -76,9 +76,9 @@ def request_parameters(
     native_output: bool = False,
     native_tools: Sequence[AbstractNativeTool] = (),
 ) -> ModelRequestParameters:
+    from pydantic_ai import ToolDefinition
     from pydantic_ai.models import ModelRequestParameters
     from pydantic_ai.output import OutputObjectDefinition
-    from pydantic_ai.tools import ToolDefinition
 
     schema = request.output_schema
     if schema is None:

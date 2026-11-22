@@ -1,8 +1,8 @@
 # Smelt policy and adoption feedback
 
-Harnessed pins `smelt-cli` 0.14.0 in the development group. The executable
+Harnessed pins `smelt-cli` 0.16.0 in the development group. The executable
 policy in `smelt.yaml` complements Ruff, ty, runtime tests and the architecture
-suite. [Smelt 0.14.0 release](https://github.com/mathisarends/smelt/releases/tag/v0.14.0)
+suite. [Smelt 0.16.0 release](https://github.com/mathisarends/smelt/releases/tag/v0.16.0)
 
 ## Architecture policy
 
@@ -61,7 +61,7 @@ package-specific settings under `style.overrides`. Rule selectors use canonical
 | Error | Test quality checks cover private access, patch targets, observable outcomes, bounded waits, awaited mocks and deterministic data. At most three patches per test. Architecture and executable example tests run without mocks. |
 | Error (package policy) | `complexity/excess-comprehension-loops` allows one loop and `complexity/excess-constructor-decisions` allows two decisions in `models.pydantic_ai`, `plugins.mcp` and `integrations.sandbox.worker`. |
 | Warning | `imports/excess-package-imports`, parameters beyond the third positional one, unused inline suppressions, logger placement and package re-export spelling. |
-| Hint | Facade gaps, re-export-only modules, inline generic parameters, attribute depth, mutation in stateful dataclasses, loop-invariant collections, independent test cases, and comprehension and constructor complexity outside the stricter packages. |
+| Hint | Facade gaps, re-export-only modules, inline generic parameters, attribute depth, method calls on inline constructors, mutation in stateful dataclasses, loop-invariant collections, independent test cases, and comprehension and constructor complexity outside the stricter packages. |
 
 Hooks and CI use `--fail-on warning`, so metadata warnings such as unused
 suppressions fail too. Optional defaults select a fallback only for `None`;
@@ -110,7 +110,7 @@ The catalog review leaves these rules inactive for the current project.
 | `IDM003` | Approvers, summarizers and responders have named protocol methods. |
 | `MOD006`, `MOD007`, `MOD008` | Dataclass options follow ownership and runtime requirements. Plugin configs, provider data, and kernel and SDK exceptions have distinct contracts. |
 | `FWK001`, `FWK002` | The project has no Pydantic Settings models or Dishka providers. |
-| `TST001` | Tests are grouped by behavior, with separate consumer typing contracts. |
+| `TST001`, `TST012` | Tests are grouped by behavior, with separate consumer typing contracts, rather than mirrored module paths. |
 
 ## Reviewed exceptions
 
@@ -139,11 +139,17 @@ A preceding standalone comment does not suppress the following statement.
 ## Working loop
 
 ```bash
-uv run smelt context harnessed.runtime.session
+uv run smelt context harnessed.runtime.session --guide
 uv run smelt check --changed --base origin/main --format json
+uv run smelt check --diff
 uv run smelt check --show-hints --fail-on warning
 uv run prek run --all-files
 ```
+
+`context --guide` lists the active rules for a module or planned path without
+running the analysis. `check --diff` previews safe fixes without writing;
+`--fix` applies them. Add `--unsafe-fixes` or `--suggestions` only to review
+edits by hand: they can change evaluation order or every call site.
 
 The local Git hook runs Smelt through prek and always checks the whole project
 with the locked tool. CI invokes that same hook. Checking only changed filenames
@@ -157,6 +163,35 @@ uv run smelt config schema > .smelt.schema.json
 If a bundled Smelt agent skill is installed locally, refresh it with
 `uv run smelt skill install --force`, preserving its custom destination and any
 local edits first. This repository does not vendor a generated skill copy.
+
+## Review after the 0.16.0 upgrade
+
+The upgrade from 0.14.0 reviews 0.15.0 and 0.16.0 together. Configuration format
+2, the layer map and every existing rule severity stay unchanged.
+
+- `style.third_party_reexports` lets `imports/prefer-package-import` (IMP004)
+  check imports from the declared optional dependencies. The 13 initial findings
+  move PydanticAI message, settings, usage, tool and profile imports and
+  `PydanticInvalidForJsonSchema` to the packages' root APIs. Run Smelt after
+  `uv sync --locked --all-extras` so it can read every declared package.
+- `complexity/inline-constructor-receiver` (CPX008) runs as a design hint. The
+  worker client validates requests through one module-level `TypeAdapter`, and
+  the skill plugin reuses one JSON decoder instead of building it per call. The
+  remaining hints are `Path(...)` normalization, `httpx2.Timeout` serialization,
+  settings composition and per-class `TypeAdapter(cls)` validation, where a
+  temporary receiver keeps the statement clear.
+- `style.navigation.namespace_types` declares `asyncio.subprocess.Process` and
+  `fastmcp.Client`. Their pipes and transport are standard SDK API, so CPX001
+  no longer reports them. Collaborator navigation inside Harnessed remains a
+  visible hint.
+- `TYP008` now offers an unsafe PEP 695 fix for the kernel's `Event` base. Do not
+  apply it: inferred variance would replace the explicit invariant result type.
+- `tests/missing-mirror-test` and `test_access: mirrored` need `tests.layout:
+  mirror`; the topic-grouped suite keeps `tests.layout: none`.
+- Facade imports no longer produce ARC007 or IMP001 false positives; the check
+  reports no unused suppressions after the upgrade.
+
+[Upstream migration guide](https://github.com/mathisarends/smelt/blob/v0.16.0/docs/upgrading.md#015-to-016)
 
 ## Review after the 0.14.0 upgrade
 
