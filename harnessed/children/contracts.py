@@ -33,7 +33,8 @@ class ChildSessionRequest:
     """Application boundary for opening an isolated, parent-owned session.
 
     ``on_commit`` is the parent's commit handler, so one application handler
-    receives the commits of a whole delegation tree.
+    receives the commits of a whole delegation tree under the parent's
+    ``commit_timeout_seconds``.
     """
 
     session_id: str
@@ -41,6 +42,7 @@ class ChildSessionRequest:
     approver: Approver
     reporter: ChildStatusReporter | None = None
     on_commit: CommitHandler | None = None
+    commit_timeout_seconds: float | None = None
 
 
 @runtime_checkable

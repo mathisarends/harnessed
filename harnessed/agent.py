@@ -90,6 +90,7 @@ class Agent:
         state: SessionState | SessionCheckpoint | None = None,
         id: str | None = None,
         on_commit: CommitHandler | None = None,
+        commit_timeout_seconds: float | None = None,
         restore_outputs: Iterable[type[Any] | OutputContract[Any]] = (),
     ) -> AsyncGenerator[Session]:
         """Open a live conversation, optionally continuing an application-owned value.
@@ -98,10 +99,17 @@ class Agent:
         which may contain an open turn; interrupted activity is repaired on open.
         ``on_commit`` receives every ``SessionCommit`` of this session and of the
         child sessions it delegates to, at durability barriers. Harnessed does
-        not store conversations itself.
+        not store conversations itself. The handler must not write to or flush
+        its own session. ``commit_timeout_seconds`` bounds each delivery; an
+        expired one fails the commit with ``CommitTimeout``. Child sessions
+        share the deadline.
         """
         async with self._open_session(
-            state=state, id=id, on_commit=on_commit, restore_outputs=restore_outputs
+            state=state,
+            id=id,
+            on_commit=on_commit,
+            commit_timeout_seconds=commit_timeout_seconds,
+            restore_outputs=restore_outputs,
         ) as session:
             yield session
 
@@ -109,7 +117,10 @@ class Agent:
     async def child_session(self, request: ChildSessionRequest) -> AsyncGenerator[Session]:
         """Open a fresh isolated session for a parent-owned delegation."""
         async with self._open_session(
-            id=request.session_id, on_commit=request.on_commit, child=request
+            id=request.session_id,
+            on_commit=request.on_commit,
+            commit_timeout_seconds=request.commit_timeout_seconds,
+            child=request,
         ) as session:
             yield session
 
@@ -120,6 +131,7 @@ class Agent:
         state: SessionState | SessionCheckpoint | None = None,
         id: str | None = None,
         on_commit: CommitHandler | None = None,
+        commit_timeout_seconds: float | None = None,
         restore_outputs: Iterable[type[Any] | OutputContract[Any]] = (),
         child: ChildSessionRequest | None = None,
     ) -> AsyncGenerator[Session]:
@@ -150,6 +162,7 @@ class Agent:
                 loop=self.loop,
                 plugin_validation=self.plugin_validation,
                 on_commit=on_commit,
+                commit_timeout_seconds=commit_timeout_seconds,
                 id=id,
             )
 

@@ -4,7 +4,13 @@ import pytest
 from pydantic import BaseModel
 
 from harnessed import Agent, OutputContract, Plugin, tool
-from harnessed.errors import ConfigError, SessionClosed, SessionFormatError
+from harnessed.errors import (
+    CommitTimeout,
+    ConfigError,
+    SessionClosed,
+    SessionFormatError,
+    SessionStateError,
+)
 from harnessed.events import ApprovalRequestedEvent, MessageAppendedEvent
 from harnessed.models import ApprovalResponse, Decision, ImageReference, ToolCall, UserMessage
 from harnessed.plugins import Spill
@@ -225,6 +231,82 @@ async def test_failed_commit_rejects_later_admissions_until_reopened():
     async with agent_session(recorder.latest(session_id), recorder) as restored:
         await restored.append_message(UserMessage("second"))
         assert [message.text for message in restored.messages] == ["first", "second"]
+
+
+@pytest.mark.parametrize("operation", ["flush", "append_message"])
+async def test_handler_writing_to_its_own_session_fails_the_commit(operation):
+    holder: list = []
+    seen: list[BaseException] = []
+
+    async def handler(commit: SessionCommit) -> None:
+        if not holder:
+            return
+        session = holder[0]
+        assert session.checkpoint().session_id == commit.session_id
+        try:
+            if operation == "flush":
+                await session.flush()
+            else:
+                await session.append_message(UserMessage("nested"))
+        except SessionStateError as error:
+            seen.append(error)
+            raise
+
+    async with Agent(model=ScriptedModel(["hi"])).session(on_commit=handler) as session:
+        holder.append(session)
+        async with asyncio.timeout(5):
+            with pytest.raises(SessionStateError, match="cannot write to or flush its own"):
+                await session.run("x")
+            with pytest.raises(SessionStateError, match="cannot write to or flush its own"):
+                await session.append_message(UserMessage("rejected"))
+    assert len(seen) == 1
+
+
+async def test_commit_deadline_fails_a_hung_handler_and_releases_abort_and_close():
+    hung, gate = asyncio.Event(), asyncio.Event()
+    delivered: list[SessionCommit] = []
+
+    async def handler(commit: SessionCommit) -> None:
+        delivered.append(commit)
+        if len(delivered) >= 3:
+            hung.set()
+            await gate.wait()
+
+    opening = Agent(model=ScriptedModel(["hi"])).session(
+        on_commit=handler, commit_timeout_seconds=0.2
+    )
+    session = await opening.__aenter__()
+    try:
+        run = asyncio.create_task(session.run("x"))
+        async with asyncio.timeout(5):
+            await hung.wait()
+            with pytest.raises(CommitTimeout, match=r"within 0.2 seconds"):
+                await session.abort()
+            with pytest.raises(CommitTimeout):
+                await run
+            with pytest.raises(CommitTimeout):
+                await session.append_message(UserMessage("rejected"))
+    finally:
+        async with asyncio.timeout(5):
+            await opening.__aexit__(None, None, None)
+    assert not gate.is_set()
+
+
+async def test_commit_deadline_does_not_fail_a_handler_that_returns_in_time():
+    recorder = CommitRecorder()
+    agent = Agent(model=ScriptedModel(["hi"]))
+    async with agent.session(on_commit=recorder, commit_timeout_seconds=5.0) as session:
+        assert (await session.run("x")).text == "hi"
+    assert recorder.commits
+
+
+@pytest.mark.parametrize("seconds", [0, -1.0])
+async def test_commit_deadline_must_be_positive(seconds):
+    with pytest.raises(ConfigError, match="commit_timeout_seconds"):
+        async with Agent(model=ScriptedModel([])).session(
+            on_commit=CommitRecorder(), commit_timeout_seconds=seconds
+        ):
+            pytest.fail("Session opened with an invalid commit deadline")
 
 
 def agent_session(state: SessionCheckpoint, recorder: CommitRecorder):

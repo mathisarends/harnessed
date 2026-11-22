@@ -62,6 +62,22 @@ events. Thus an awaited `run()` has delivered its final reply, and `pause()` wai
 for the completed step's commit. Model and tool execution happens between commits,
 so keep database transactions inside the handler and outside model calls.
 
+The handler runs inside log admission: the session holds its admission lock until
+the handler returns. It may read the session, for example `session.checkpoint()`,
+`messages` or `events`, but it must not write to or flush its own session. A call
+such as `flush()`, `emit()`, `append_message()` or `steer()` from the handler
+raises `SessionStateError`, which fails the commit like any other handler error.
+Harnessed cannot detect tasks that the handler spawns: such a task waits until the
+handler returns, so awaiting it from the handler deadlocks the session.
+
+By default a delivery may take as long as the handler needs, and cancelling a
+waiter does not interrupt it: abort and close wait for the delivery in progress.
+Pass `commit_timeout_seconds=` to `agent.session()` to bound each delivery. When
+the deadline expires, the handler is cancelled and the commit fails with
+`CommitTimeout` from `harnessed.errors`, following the failed-commit path below.
+Subagent sessions share their parent's deadline. Choose a deadline that leaves
+room for storing large checkpoints.
+
 Other durable events, such as `ToolProgressEvent`, are collected and travel with
 the next barrier, `await session.flush()` or close. Text/reasoning deltas and
 tool-argument previews are `TransientEvent` values: they never enter a checkpoint
@@ -86,11 +102,13 @@ async def save(commit: SessionCommit) -> None:
 
 ### When a commit fails
 
-An exception raised by the handler reaches the waiting `run()`,
+An exception raised by the handler, or `CommitTimeout` after an expired
+`commit_timeout_seconds`, reaches the waiting `run()`,
 `RunHandle.result()` or stream iterator. The session then rejects further
 admissions with the same error, cancels active work for cleanup and does not
-retry. A failed input commit therefore prevents the input from running, and a
-failed model or tool intent commit prevents its execution. Applications map these
+retry. Controls such as `abort()` that need a commit raise the same error, while
+closing the session still completes. A failed input commit therefore prevents the
+input from running, and a failed model or tool intent commit prevents its execution. Applications map these
 exceptions to their HTTP, SSE, WebSocket or job-status API. Resolve the storage
 failure and reopen from the last stored checkpoint; the uncommitted turn is lost
 rather than half-applied.

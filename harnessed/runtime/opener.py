@@ -29,15 +29,11 @@ async def open_session(
     loop: AgentLoop,
     plugin_validation: PluginValidation,
     on_commit: CommitHandler | None = None,
+    commit_timeout_seconds: float | None = None,
     id: str | None = None,
 ) -> Session:
     """Open fresh runtime resources around an application-owned conversation value."""
-    if state is not None and not isinstance(state, SessionState | SessionCheckpoint):
-        raise ConfigError("state must be a SessionState, a SessionCheckpoint or None")
-    if id is not None and (not isinstance(id, str) or not id.strip()):
-        raise ConfigError("Conversation IDs must be non-empty strings")
-    if on_commit is not None and not callable(on_commit):
-        raise ConfigError("on_commit must be an async callable")
+    _check_options(state, id, on_commit=on_commit, commit_timeout_seconds=commit_timeout_seconds)
     if isinstance(state, SessionCheckpoint):
         if id is not None and id != state.session_id:
             raise ConfigError("id must match the checkpoint's session_id")
@@ -53,6 +49,7 @@ async def open_session(
         scope=scope,
         state=selected,
         on_commit=on_commit,
+        commit_timeout_seconds=commit_timeout_seconds,
         assets=(
             MemoryAssets((*checkpoint.state.assets, *checkpoint.assets))
             if checkpoint is not None
@@ -101,6 +98,23 @@ async def open_session(
         await scope.dispatch(SessionOpened(runtime.plugin_context, at=monotonic()))
     runtime.start()
     return runtime
+
+
+def _check_options(
+    state: object,
+    id: str | None,
+    *,
+    on_commit: CommitHandler | None,
+    commit_timeout_seconds: float | None,
+) -> None:
+    if state is not None and not isinstance(state, SessionState | SessionCheckpoint):
+        raise ConfigError("state must be a SessionState, a SessionCheckpoint or None")
+    if id is not None and (not isinstance(id, str) or not id.strip()):
+        raise ConfigError("Conversation IDs must be non-empty strings")
+    if on_commit is not None and not callable(on_commit):
+        raise ConfigError("on_commit must be an async callable")
+    if commit_timeout_seconds is not None and not commit_timeout_seconds > 0:
+        raise ConfigError("commit_timeout_seconds must be positive or None")
 
 
 def _restore_output_schemas(outputs: OutputTypes, log: SessionLog) -> None:

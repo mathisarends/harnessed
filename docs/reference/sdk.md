@@ -274,7 +274,7 @@ plugin_validation=PluginValidation.ERROR)` resolves reusable configuration.
 | agent.loop | The configured AgentLoop |
 | agent.describe() | Immutable CompositionDescription with the configured plugins in order |
 | agent.prompt | Inspectable PromptComposition with final order, origins and format |
-| agent.session(*, state=None, id=None, on_commit=None, restore_outputs=()) | Open a Session, optionally from a SessionState or SessionCheckpoint; on_commit receives its commits |
+| agent.session(*, state=None, id=None, on_commit=None, commit_timeout_seconds=None, restore_outputs=()) | Open a Session, optionally from a SessionState or SessionCheckpoint; on_commit receives its commits inside log admission and must not write to or flush its own session; commit_timeout_seconds bounds each delivery and fails it with CommitTimeout, shared by subagent sessions |
 | agent.run(content, state=None, **options) | Run one turn from text or a Message and return its terminal result and state |
 | agent.child_session(request) | Factory boundary for a fresh parent-owned child; application code normally uses Subagents |
 | SessionState.from_json(payload) / state.to_json() | Validate or encode the canonical conversation snapshot in memory |
@@ -450,8 +450,9 @@ boundaries, including their full observations, plus unfinished/current context.
 Await methods that perform durable writes. Closed handles raise SessionClosed.
 SDK failures derive from `HarnessedError`, importable from `harnessed.errors`: operations
 invalid in the current status raise `SessionStateError` (SessionClosed is one),
-corrupt stored records raise `SessionFormatError`, and `on_max_tokens=FAIL` raises
-`OutputTokenLimit`.
+corrupt stored records raise `SessionFormatError`, an `on_commit` delivery that
+exceeds `commit_timeout_seconds` raises `CommitTimeout`, and `on_max_tokens=FAIL`
+raises `OutputTokenLimit`.
 See [session boundaries and restart behavior](../guides/sessions.md).
 
 Use `AgentLoop` for step limits, parallelism, tool timeouts and output retries.

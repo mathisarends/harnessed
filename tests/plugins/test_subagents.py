@@ -19,7 +19,8 @@ from harnessed.events import (
     ToolProgressEvent,
 )
 from harnessed.events.codec import builtin_codec
-from harnessed.kernel import Inject, PluginScope
+from harnessed.hooks import SessionOpened
+from harnessed.kernel import Inject, PluginScope, hook, needs
 from harnessed.models import (
     ApprovalResponse,
     ApprovalSource,
@@ -61,6 +62,26 @@ class Progress(Plugin):
     async def inspect(self, *, context: Inject[ToolContext]) -> str:
         await context.progress("Inspecting")
         return "Inspected"
+
+
+async def test_child_sessions_share_the_parent_commit_deadline():
+    deadlines: list[float | None] = []
+
+    class Deadline(Plugin, needs=(SessionLog,)):
+        log = needs(SessionLog)
+
+        @hook(SessionOpened)
+        def opened(self, event: SessionOpened) -> None:
+            deadlines.append(self.log.commit_timeout_seconds)
+
+    child = Agent(model=ScriptedModel(["Child answer"]), plugins=[Deadline()])
+    parent = coordinator(child)
+    store = CommitRecorder()
+    async with parent.session(on_commit=store, commit_timeout_seconds=30.0) as session:
+        await session.run("Delegate")
+        child_id = session.children[0].id
+    assert deadlines == [30.0]
+    assert child_id in store
 
 
 async def test_isolated_sessions_progress_receipts_and_usage():

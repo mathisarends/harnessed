@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Awaitable, Callable
 from itertools import pairwise
 from typing import Annotated
@@ -5,6 +6,7 @@ from typing import Annotated
 from pydantic import Field
 from pydantic.dataclasses import dataclass
 
+from harnessed.errors import CommitTimeout, SessionStateError
 from harnessed.events import (
     ApprovalRequestedEvent,
     ApprovalResolvedEvent,
@@ -106,13 +108,19 @@ class CommitDelivery:
     A failing handler raises to the appending caller and rejects every later
     admission with the same error: the application's last stored commit stays
     the truth, and the conversation continues by reopening from it.
+
+    The handler runs while the log holds its admission lock, so it must not
+    write to or flush its own log. ``timeout_seconds`` bounds each delivery;
+    an expired delivery fails like a raising handler, with ``CommitTimeout``.
     """
 
-    def __init__(self, handler: CommitHandler) -> None:
+    def __init__(self, handler: CommitHandler, *, timeout_seconds: float | None = None) -> None:
         self.handler = handler
+        self.timeout_seconds = timeout_seconds
         self._changes: list[SessionChange] = []
         self._closing = False
         self._failure: BaseException | None = None
+        self._delivering: asyncio.Task[object] | None = None
 
     @property
     def failed(self) -> bool:
@@ -123,6 +131,15 @@ class CommitDelivery:
         """Reject admission after a failed delivery."""
         if self._failure is not None:
             raise self._failure
+
+    def check_reentry(self) -> None:
+        """Reject a write or flush from the task that is running the handler.
+
+        Tasks the handler spawns cannot be detected; they wait for the lock.
+        """
+        task = asyncio.current_task()
+        if task is not None and task is self._delivering:
+            raise SessionStateError("An on_commit handler cannot write to or flush its own session")
 
     def record(self, change: SessionChange) -> bool:
         """Queue a change and report whether it must be delivered before admission returns."""
@@ -135,11 +152,22 @@ class CommitDelivery:
         if not self._changes:
             return
         commit = SessionCommit(capture(), tuple(self._changes))
+        deadline = asyncio.timeout(self.timeout_seconds)
+        self._delivering = asyncio.current_task()
         try:
-            await self.handler(commit)
+            async with deadline:
+                await self.handler(commit)
         except Exception as error:
+            if isinstance(error, TimeoutError) and deadline.expired():
+                timeout = CommitTimeout(
+                    f"The on_commit handler did not return within {self.timeout_seconds} seconds"
+                )
+                self._failure = timeout
+                raise timeout from error
             self._failure = error
             raise
+        finally:
+            self._delivering = None
         self._changes.clear()
 
     def close(self) -> None:
