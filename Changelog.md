@@ -5,6 +5,42 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## Unreleased
+
+### Added
+
+- `agent.session(on_commit=...)` delivers each `SessionCommit` to an
+  application-owned async handler at durability barriers. Commits carry
+  `session_id`, so one handler serves a parent and its subagent sessions.
+- `session.checkpoint()` returns the complete `SessionCheckpoint` on demand,
+  including a running or paused turn. `agent.session(state=...)` accepts a
+  `SessionState` or a `SessionCheckpoint`.
+- `SessionState` and `SessionCheckpoint` gain `to_dict()` / `from_dict()` for
+  JSON-compatible documents, such as a PostgreSQL `JSONB` column.
+
+### Breaking changes
+
+- Harnessed no longer stores sessions. `SessionStore`, `StoredSession`,
+  `JsonSessionStore`, `SessionWriteConflict` and `Agent(store=...)` are removed,
+  together with the background writer, its 100 ms coalescing and revisions.
+- `agent.session(id=...)` names a session instead of loading it. Reopen by
+  passing the stored checkpoint as `state=`.
+- `SessionCommit` takes the session ID as its first field.
+
+### Upgrade from 0.25.0
+
+1. Replace `Agent(store=store)` with
+   `agent.session(id=conversation_id, on_commit=handler)`. A handler is an async
+   callable that saves `commit.checkpoint` (and optionally maps `commit.changes`)
+   in one transaction.
+2. Replace `agent.session(id=conversation_id)` reopening with
+   `agent.session(id=conversation_id, state=checkpoint, on_commit=handler)`, where
+   `checkpoint` comes from your repository.
+3. Existing JSON-store files contain a version-3 envelope around a checkpoint.
+   Read the envelope's checkpoint and pass it to `SessionCheckpoint.from_dict()`.
+4. Revision checks are now the repository's concern. Serialize execution per
+   conversation as before.
+
 ## 0.25.0 (2026-11-21)
 
 ### Added

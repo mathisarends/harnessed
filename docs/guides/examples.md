@@ -59,9 +59,9 @@ tool-call results. See [the response-contract guide](structured-output.md).
 | 13 | [Context strategies](https://github.com/mathisarends/harnessed/blob/main/examples/applications/13_context_strategies.py) | Combining observations, spill and compaction |
 | 14 | [Session state](https://github.com/mathisarends/harnessed/blob/main/examples/applications/14_session_state.py) | Snapshot export and independent continuations |
 | 15 | [External state](https://github.com/mathisarends/harnessed/blob/main/examples/applications/15_external_state.py) | Application-owned persistence |
-| 16 | [Session store](https://github.com/mathisarends/harnessed/blob/main/examples/applications/16_session_store.py) | Opt-in JSON checkpoints and a persisted pause |
-| 17 | [Typed session store](https://github.com/mathisarends/harnessed/blob/main/examples/applications/17_typed_session_store.py) | Typed checkpoints and a repository adapter |
-| 18 | [Atomic session store](https://github.com/mathisarends/harnessed/blob/main/examples/applications/18_atomic_session_store.py) | Domain messages and checkpoints in one commit |
+| 16 | [Session commits](https://github.com/mathisarends/harnessed/blob/main/examples/applications/16_session_commits.py) | Application-owned checkpoint files and a persisted pause |
+| 17 | [Typed documents](https://github.com/mathisarends/harnessed/blob/main/examples/applications/17_typed_documents.py) | Checkpoints as JSONB-style documents in a repository |
+| 18 | [Atomic commits](https://github.com/mathisarends/harnessed/blob/main/examples/applications/18_atomic_commits.py) | Domain messages and checkpoints in one transaction |
 | 19 | [Subagents](#subagents) | Delegating to an isolated child |
 | 20 | [Background subagents](#background-subagents) | A child running while the coordinator continues |
 | 21 | [Tracing](#tracing) | OpenTelemetry spans for a tool loop |

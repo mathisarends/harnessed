@@ -259,7 +259,7 @@ Run-only backends explicitly reject background starts. See
 ## Agent
 
 `Agent(*, model=None, instructions=None, approvals=None, context=None, plugins=(), loop=None,
-plugin_validation=PluginValidation.ERROR, store=None)` resolves reusable configuration.
+plugin_validation=PluginValidation.ERROR)` resolves reusable configuration.
 
 | Member | Behavior |
 | --- | --- |
@@ -274,37 +274,33 @@ plugin_validation=PluginValidation.ERROR, store=None)` resolves reusable configu
 | agent.loop | The configured AgentLoop |
 | agent.describe() | Immutable CompositionDescription with the configured plugins in order |
 | agent.prompt | Inspectable PromptComposition with final order, origins and format |
-| store | Optional application-owned SessionStore; None keeps sessions ephemeral |
-| agent.session(*, state=None, id=None, restore_outputs=()) | Open a Session from explicit state or a stored conversation; id requires a store |
+| agent.session(*, state=None, id=None, on_commit=None, restore_outputs=()) | Open a Session, optionally from a SessionState or SessionCheckpoint; on_commit receives its commits |
 | agent.run(content, state=None, **options) | Run one turn from text or a Message and return its terminal result and state |
 | agent.child_session(request) | Factory boundary for a fresh parent-owned child; application code normally uses Subagents |
 | SessionState.from_json(payload) / state.to_json() | Validate or encode the canonical conversation snapshot in memory |
+| SessionState.from_dict(document) / state.to_dict() | The same snapshot as a JSON-compatible dict, for example a JSONB column |
 
-`SessionCommit`, `SessionChange`, `SessionCheckpoint`, `SessionStore` and
-`StoredSession(checkpoint: SessionCheckpoint, revision: int)`
-are exported from `harnessed.sessions`. Implement `load_session(conversation_id) -> StoredSession | None`
-and `save_session(conversation_id, commit, *, expected_revision) -> int`.
-`SessionCommit.checkpoint` is recovery state; `SessionCommit.changes` contains
-ordered `SessionChange(sequence, event)` values since the previous acknowledged
-save. Map domain changes and checkpoint in one application-owned transaction.
-Old changes are not emitted again on restore. Token deltas are excluded. The JSON
-store ignores changes and retains its format-3 checkpoint envelope.
+`SessionCommit`, `SessionChange`, `SessionCheckpoint` and `CommitHandler`
+(`Callable[[SessionCommit], Awaitable[None]]`) are exported from `harnessed.sessions`.
+Harnessed stores nothing itself. `SessionCommit(session_id, checkpoint, changes)`
+carries the complete recovery checkpoint and the ordered
+`SessionChange(sequence, event)` values since the previous delivered commit.
+Map domain changes and the checkpoint in one application-owned transaction. Old
+changes are not emitted again on restore. Token deltas are excluded.
+Commits are awaited inline at input, model/tool intent, result, pause, turn-end
+and custom durable event barriers; other durable events travel with the next
+barrier, `session.flush()` or close. Child sessions deliver through their parent's
+handler. A handler exception reaches run/result/stream consumers and rejects
+later admissions; reopen from the last stored checkpoint.
+`session.checkpoint()` captures the same value on demand, including an open turn.
 Checkpoints are frozen Pydantic dataclasses with typed state, execution events,
-controls and resources. Adapters map them to application-owned repository models;
-the SDK defines no database schema. `to_json()` / `from_json()` provide optional
-canonical encoding without requiring a plugin catalog. `CheckpointExtension`
-preserves application-defined event data for validation by the owning session.
-Writes atomically compare revisions and return the next integer; None expects
-absence. Conflicts raise `SessionWriteConflict` from `harnessed.errors`.
-The application owns pool lifetime and coordinates active workers per ID.
+controls and resources. `to_dict()` / `from_dict()` and `to_json()` /
+`from_json()` provide canonical encoding without requiring a plugin catalog.
+`CheckpointExtension` preserves application-defined event data for validation by
+the owning session. The application owns pool lifetime and coordinates active
+workers per ID.
 
-`harnessed.integrations.json.JsonSessionStore(*, root)` ships without an extra.
-It uses atomic JSON replacement and OS locks for revision checks on a local
-filesystem. Persistence remains opt-in. An owned writer coalesces intermediate
-state in the background and awaits commits at input, model/tool intent, result,
-pause and turn-end barriers. `session.flush()` explicitly commits pending state;
-closing drains the writer. Background failures reach run/result/stream consumers.
-Closing a persistent paused session preserves
+Closing a paused session with a commit handler delivers
 its execution; reopening it remains paused. Explicit `SessionState` values still
 contain terminal conversation state only. See [sessions](../guides/sessions.md)
 for recovery, output-validator restoration and checkpoint format boundaries.

@@ -1,4 +1,5 @@
 import hashlib
+import json
 from collections.abc import Mapping
 from dataclasses import field
 from typing import Annotated, Literal, Self
@@ -23,6 +24,10 @@ _CONFIG = ConfigDict(
     val_json_bytes="base64",
     hide_input_in_errors=True,
 )
+
+# Defined at module scope: annotations are evaluated lazily, and SessionState.to_dict
+# would otherwise shadow the serializer inside its class namespace.
+type PluginValueMap = Annotated[Mapping[str, JSONValue], PlainSerializer(to_dict, when_used="json")]
 
 
 @dataclass(frozen=True, config=_CONFIG)
@@ -95,9 +100,7 @@ class SessionState:
 
     version: Literal[4] = 4
     history: tuple[HistoryEntry, ...] = ()
-    plugin_values: Annotated[
-        Mapping[str, JSONValue], PlainSerializer(to_dict, when_used="json")
-    ] = field(default_factory=dict)
+    plugin_values: PluginValueMap = field(default_factory=dict)
     turns: tuple[HistoryTurn, ...] = ()
     steps: tuple[HistoryStep, ...] = ()
     turns_since_compaction: Annotated[int, Field(ge=0)] = 0
@@ -121,6 +124,19 @@ class SessionState:
     def to_json(self) -> str:
         """Serialize in memory; this method performs no filesystem or network I/O."""
         return _STATE.dump_json(self).decode("utf-8")
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        """Return the canonical JSON document as Python values, e.g. for a JSONB column."""
+        return json.loads(self.to_json())
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, JSONValue]) -> Self:
+        """Validate a document returned by ``to_dict`` or decoded from ``to_json``."""
+        try:
+            encoded = json.dumps(payload, allow_nan=False)
+        except (TypeError, ValueError) as error:
+            raise SessionFormatError("Invalid conversation state") from error
+        return cls.from_json(encoded)
 
     @classmethod
     def from_json(cls, payload: str | bytes) -> Self:

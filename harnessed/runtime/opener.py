@@ -8,10 +8,9 @@ from harnessed.events import TurnStartedEvent
 from harnessed.kernel import Scope
 from harnessed.models.assets import AssetStore, MemoryAssets
 from harnessed.output.contracts import OutputTypes
-from harnessed.sessions import SessionContext, SessionState
+from harnessed.sessions import CommitHandler, SessionCheckpoint, SessionContext, SessionState
 from harnessed.sessions.files import MemoryFiles, SessionFiles
 from harnessed.sessions.log import SessionLog
-from harnessed.sessions.store import SessionPersistence, SessionStore
 from harnessed.sessions.values import PluginValues
 from harnessed.tools import ToolRegistry
 from harnessed.tracing import bind_tracer
@@ -25,38 +24,32 @@ from .session import Session
 
 async def open_session(
     scope: Scope,
-    state: SessionState | None,
+    state: SessionState | SessionCheckpoint | None,
     *,
     loop: AgentLoop,
     plugin_validation: PluginValidation,
-    store: SessionStore | None = None,
+    on_commit: CommitHandler | None = None,
     id: str | None = None,
 ) -> Session:
     """Open fresh runtime resources around an application-owned conversation value."""
-    if state is not None and not isinstance(state, SessionState):
-        raise ConfigError("state must be a SessionState or None")
+    if state is not None and not isinstance(state, SessionState | SessionCheckpoint):
+        raise ConfigError("state must be a SessionState, a SessionCheckpoint or None")
     if id is not None and (not isinstance(id, str) or not id.strip()):
         raise ConfigError("Conversation IDs must be non-empty strings")
-    if id is not None and store is None and ChildSessionRequest not in scope:
-        raise ConfigError("Opening a conversation by ID requires an explicit store")
+    if on_commit is not None and not callable(on_commit):
+        raise ConfigError("on_commit must be an async callable")
     session_id = uuid4().hex if id is None else id
-    stored = await store.load_session(session_id) if store is not None else None
-    if ChildSessionRequest in scope and (stored is not None or state is not None):
-        raise ConfigError("A delegation cannot reopen an existing child session")
-    if stored is not None and state is not None:
-        raise ConfigError("An existing stored conversation cannot also receive state")
-    checkpoint = stored.checkpoint if stored is not None else None
-    selected = checkpoint.state if checkpoint is not None else state
-    persistence = (
-        SessionPersistence(store, session_id, stored.revision if stored is not None else None)
-        if store is not None
-        else None
-    )
+    if isinstance(state, SessionCheckpoint):
+        checkpoint: SessionCheckpoint | None = state
+        selected: SessionState | None = state.state
+    else:
+        checkpoint = None
+        selected = state
     log = SessionLog(
         session_id,
         scope=scope,
         state=selected,
-        persistence=persistence,
+        on_commit=on_commit,
         assets=(
             MemoryAssets((*checkpoint.state.assets, *checkpoint.assets))
             if checkpoint is not None

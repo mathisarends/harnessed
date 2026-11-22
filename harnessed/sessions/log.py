@@ -2,7 +2,6 @@ import asyncio
 import hashlib
 from collections.abc import AsyncIterator, Callable
 from dataclasses import replace
-from functools import partial
 from typing import cast
 
 from harnessed.approvals.policy import Approval, ApprovalState
@@ -60,7 +59,7 @@ from .checkpoint import (
     SessionCheckpoint,
 )
 from .children import ChildProjection, ChildSession
-from .commit import SessionChange
+from .commit import CommitDelivery, CommitHandler, SessionChange
 from .control import RunControl
 from .files import MemoryFiles
 from .history import WorkingHistory
@@ -79,7 +78,6 @@ from .state import (
     SessionState,
     image_refs,
 )
-from .store import SessionPersistence
 from .turns import Turn, TurnProjection, recorded_usage
 
 
@@ -95,7 +93,7 @@ class SessionLog:
         files: MemoryFiles | None = None,
         registry: EventRegistry | None = None,
         assets: MemoryAssets | None = None,
-        persistence: SessionPersistence | None = None,
+        on_commit: CommitHandler | None = None,
     ) -> None:
         if registry is None:
             registry = (
@@ -141,27 +139,30 @@ class SessionLog:
         self._preserved_turns = state.preserved_turns if state else ()
         self._uncompacted_turns = state.turns_since_compaction if state else 0
         self._closed_count = len(self._turn_boundaries)
-        self._persistence = persistence
+        self._commits = CommitDelivery(session_id, on_commit) if on_commit is not None else None
         self._restoring = False
         self._turn_state: SessionState | None = None
         self._turn_seed: tuple[CheckpointSeed, ...] = ()
         self._turn_offset = self._sequence
-        if persistence is not None:
-            persistence.bind(partial(self._flush_checkpoint, report=False))
 
     @property
     def persistent(self) -> bool:
-        return self._persistence is not None
+        return self._commits is not None
 
     @property
     def persistence_failed(self) -> bool:
-        return self._persistence is not None and self._persistence.failed
+        return self._commits is not None and self._commits.failed
+
+    @property
+    def commit_handler(self) -> CommitHandler | None:
+        """The application handler receiving this log's commits, if any."""
+        return self._commits.handler if self._commits is not None else None
 
     async def flush(self) -> None:
-        """Commit preceding changes, draining a write even if the waiter is cancelled."""
-        if self._persistence is None:
+        """Deliver pending changes, draining a delivery even if the waiter is cancelled."""
+        if self._commits is None:
             return
-        task = asyncio.create_task(self._flush_checkpoint())
+        task = asyncio.create_task(self._deliver())
         cancelled = False
         while not task.done():
             try:
@@ -172,13 +173,12 @@ class SessionLog:
         if cancelled:
             raise asyncio.CancelledError
 
-    def set_persistence_error_handler(self, callback: Callable[[Exception], None]) -> None:
-        if self._persistence is not None:
-            self._persistence.set_error_handler(callback)
-
     async def close_persistence(self) -> None:
-        if self._persistence is not None:
-            await self._persistence.aclose()
+        """Deliver remaining changes and commit later teardown changes immediately."""
+        if self._commits is not None:
+            self._commits.close()
+            if not self._commits.failed:
+                await self.flush()
 
     @property
     def boundary_state(self) -> SessionState:
@@ -215,7 +215,8 @@ class SessionLog:
         finally:
             self._restoring = False
 
-    def _checkpoint(self) -> SessionCheckpoint:
+    def checkpoint(self) -> SessionCheckpoint:
+        """Capture the complete conversation, including an open turn's execution suffix."""
         turn = self.open_turn
         state = self.snapshot() if turn is None else self.boundary_state
         assets = {value.ref.sha256 for value in state.assets}
@@ -240,10 +241,10 @@ class SessionLog:
             return CheckpointExtension.from_event(event, registry=self.registry)
         return cast(LogEvent, event)
 
-    async def _flush_checkpoint(self, *, report: bool = True) -> None:
+    async def _deliver(self) -> None:
         async with self._lock:
-            if self._persistence is not None:
-                await self._persistence.flush(self._checkpoint, report=report)
+            if self._commits is not None:
+                await self._commits.deliver(self.checkpoint)
 
     def _checkpoint_seed(self) -> tuple[CheckpointSeed, ...]:
         events: list[CheckpointSeed] = list(self._inbox.pending)
@@ -506,7 +507,7 @@ class SessionLog:
         """
         self.registry.validate(event)
         cancelled = False
-        terminal = self._persistence is not None or isinstance(
+        terminal = self._commits is not None or isinstance(
             event,
             ToolExecutionFinishedEvent
             | ToolCallFinishedEvent
@@ -563,8 +564,8 @@ class SessionLog:
     ) -> tuple[int, DurableEvent]:
         async with self._lock:
             self.registry.validate(event)
-            if self._persistence is not None and not self._restoring:
-                self._persistence.check()
+            if self._commits is not None and not self._restoring:
+                self._commits.check()
             # Additive input must not claim an acknowledged run's queued message.
             # Check under the admission lock, before retaining images or recording state.
             if (
@@ -598,11 +599,11 @@ class SessionLog:
             self._project(event, seq, approval)
             self.registry.validate(event)
             if (
-                self._persistence is not None
+                self._commits is not None
                 and not self._restoring
-                and self._persistence.record(SessionChange(seq, self._checkpoint_entry(event)))
+                and self._commits.record(SessionChange(seq, self._checkpoint_entry(event)))
             ):
-                await self._persistence.flush(self._checkpoint)
+                await self._commits.deliver(self.checkpoint)
             if not self._restoring:
                 self._observers.notify(event)
         return seq, event

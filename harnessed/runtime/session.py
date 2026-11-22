@@ -38,7 +38,7 @@ from harnessed.output import OutputContract
 from harnessed.output.contracts import OutputTypes, OutputValues
 from harnessed.output.handler import OutputHandler
 from harnessed.prompts import SectionDelivery, SystemPromptStore
-from harnessed.sessions import SessionState
+from harnessed.sessions import SessionCheckpoint, SessionState
 from harnessed.sessions.children import ChildSession
 from harnessed.sessions.context import PendingObservations, SessionContext
 from harnessed.sessions.log import SessionLog
@@ -119,7 +119,6 @@ class Session:
             observations,
         )
         self._runner = TurnRunner(scope, session, options, self.control, self._steps, self._context)
-        session.set_persistence_error_handler(self._persistence_failed)
         scope.on(SessionAppended, self._session_event)
         scope.on(SessionPublished, self._stream_event)
 
@@ -192,8 +191,17 @@ class Session:
     async def emit(self, event: DurableEvent | TransientEvent) -> None:
         await self._context.emit(event)
 
+    def checkpoint(self) -> SessionCheckpoint:
+        """Capture the complete conversation for application-owned storage.
+
+        Unlike ``snapshot()``, this also works while paused or running: an open
+        turn is captured as its execution suffix and repaired when reopened.
+        """
+        self.control.check_open()
+        return self.log.checkpoint()
+
     async def flush(self) -> None:
-        """Wait for the latest checkpoint; no I/O occurs without a configured store."""
+        """Deliver pending changes to ``on_commit``; does nothing without a handler."""
         self.control.check_open()
         await self.log.flush()
 
@@ -234,7 +242,7 @@ class Session:
         Each call appends to conversation history, including repeated messages.
         It follows ordinary history retention and may be summarized by compaction.
         Await this method before starting work that must see the contribution.
-        A configured session store commits the contribution before this returns.
+        A configured ``on_commit`` handler receives the contribution before this returns.
         A message ID still queued in the inbox raises ValueError without changing
         history or the queued run; use a fresh UserMessage for additive input.
         """
@@ -306,10 +314,6 @@ class Session:
     def _stream_event(self, event: SessionPublished) -> None:
         if event.log is self.log:
             self._publish(event.event)
-
-    def _persistence_failed(self, error: Exception) -> None:
-        self.control.fail(error)
-        self._publish(None)
 
     @overload
     async def run[T](

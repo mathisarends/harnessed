@@ -7,11 +7,11 @@ from pydantic import BaseModel, PositiveInt, Strict
 
 from harnessed import Agent, Plugin, tool
 from harnessed.events import PluginValueChangedEvent
-from harnessed.integrations.json import JsonSessionStore
 from harnessed.kernel import hook
 from harnessed.sessions import SessionState, SessionValue
 from harnessed.testing import ScriptedModel, call
 from tests._audit import Audit
+from tests._commits import CommitRecorder
 
 
 class Todo(BaseModel):
@@ -140,7 +140,7 @@ async def test_value_schema_uses_json_validation_after_restoration():
         assert session.scope[Calendar].day.get() == selected
 
 
-async def test_value_observer_can_commit_another_value(tmp_path):
+async def test_value_observer_can_commit_another_value():
     class Mirror(Plugin, provides=True):
         original = SessionValue(int, key="tests.original", default=0)
         mirrored = SessionValue(int, key="tests.mirrored", default=0)
@@ -150,15 +150,15 @@ async def test_value_observer_can_commit_another_value(tmp_path):
             if event.key == "tests.original":
                 await self.mirrored.set(self.original.get())
 
-    store = JsonSessionStore(root=tmp_path)
-    agent = Agent(model=ScriptedModel([]), plugins=[Mirror()], store=store)
-    async with agent.session(id="mirrored") as session:
+    store = CommitRecorder(documents=True)
+    agent = Agent(model=ScriptedModel([]), plugins=[Mirror()])
+    async with agent.session(id="mirrored", on_commit=store) as session:
         plugin = session.scope[Mirror]
         deadline_seconds = 3
         async with asyncio.timeout(deadline_seconds):
             await plugin.original.set(42)
         assert plugin.mirrored.get() == 42
-    async with agent.session(id="mirrored") as session:
+    async with agent.session(state=store.latest("mirrored")) as session:
         assert session.scope[Mirror].mirrored.get() == 42
 
 

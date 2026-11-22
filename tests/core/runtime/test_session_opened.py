@@ -4,13 +4,13 @@ import pytest
 
 from harnessed import Agent, Plugin
 from harnessed.hooks import SessionOpened
-from harnessed.integrations.json import JsonSessionStore
 from harnessed.kernel import PluginScope, hook
 from harnessed.models import UserMessage
 from harnessed.testing import ScriptedModel
+from tests._commits import CommitRecorder
 
 
-async def test_session_opened_observes_the_restored_context_before_entry(tmp_path):
+async def test_session_opened_observes_the_restored_context_before_entry():
     openings: list[SessionOpened] = []
 
     class Clock(Plugin, provides=True):
@@ -21,15 +21,16 @@ async def test_session_opened_observes_the_restored_context_before_entry(tmp_pat
             self.started = event.at
             openings.append(event)
 
-    agent = Agent(model=ScriptedModel([]), plugins=[Clock()], store=JsonSessionStore(root=tmp_path))
+    store = CommitRecorder(documents=True)
+    agent = Agent(model=ScriptedModel([]), plugins=[Clock()])
     before = monotonic()
-    async with agent.session(id="case") as session:
+    async with agent.session(id="case", on_commit=store) as session:
         first = session.scope[Clock]
         (opened,) = openings
         assert before <= first.started == opened.at <= monotonic()
         assert opened.session is session.plugin_context
         await session.append_message(UserMessage("existing history"))
-    async with agent.session(id="case") as restored:
+    async with agent.session(state=store.latest("case")) as restored:
         _, reopened = openings
         assert reopened.session is restored.plugin_context
         assert reopened.session.messages[-1].text == "existing history"

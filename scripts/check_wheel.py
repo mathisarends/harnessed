@@ -23,12 +23,11 @@ from harnessed.models import ModelRequest, StopReason, UserMessage
 from harnessed.events import TextDeltaEvent
 from harnessed.events.stream import TurnResultEvent
 from harnessed.plugins import Service, Skill, Skills
-from harnessed.integrations.json import JsonSessionStore
 from harnessed.integrations.sandbox.bundle import worker_source
 from harnessed.prompts import Instructions, PromptFormat, SectionDelivery, SystemPromptStore
 from harnessed.runtime.composition import CompositionDescription
 from harnessed.runtime.handles import RunHandle, RunStream
-from harnessed.sessions import SessionContext, SessionState, StoredSession
+from harnessed.sessions import SessionCheckpoint, SessionCommit, SessionContext, SessionState
 from harnessed.testing import ScriptedModel, call, reply, assert_tool_called, mount_plugin
 from harnessed.tools import SessionTools, ToolPresentation, ToolRegistry
 from pydantic import BaseModel
@@ -131,17 +130,19 @@ async def main():
     assert len(next_turn.state.history) == 4
     assert not hasattr(continuation, "sessions")
 
-    with TemporaryDirectory(prefix='wheel-sessions-') as directory:
-        store = JsonSessionStore(root=directory)
-        persistent = Agent(model=ScriptedModel(['persisted', 'restored']), store=store)
-        async with persistent.session(id='wheel-conversation') as session:
-            await session.append_message(UserMessage('The customer is Ada.'))
-            await session.run('Remember the customer.')
-        record = await store.load_session('wheel-conversation')
-        assert isinstance(record, StoredSession)
-        async with persistent.session(id='wheel-conversation') as session:
-            assert session.messages[0].text == 'The customer is Ada.'
-            assert (await session.run('Continue.')).text == 'restored'
+    documents: dict[str, dict[str, object]] = {}
+
+    async def save(commit: SessionCommit) -> None:
+        documents[commit.session_id] = commit.checkpoint.to_dict()
+
+    persistent = Agent(model=ScriptedModel(['persisted', 'restored']))
+    async with persistent.session(id='wheel-conversation', on_commit=save) as session:
+        await session.append_message(UserMessage('The customer is Ada.'))
+        await session.run('Remember the customer.')
+    stored = SessionCheckpoint.from_dict(documents['wheel-conversation'])
+    async with persistent.session(id='wheel-conversation', state=stored, on_commit=save) as session:
+        assert session.messages[0].text == 'The customer is Ada.'
+        assert (await session.run('Continue.')).text == 'restored'
 
     guidance = Guidance()
     simple = Agent(instructions='Role.', plugins=[guidance])

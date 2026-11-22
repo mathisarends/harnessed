@@ -2,126 +2,93 @@
 
 `Agent` holds reusable configuration. `Agent.session()` opens a live conversation;
 `SessionState` is an immutable value that your application can save and inject
-into another session. Sessions are in memory by default. Supplying an explicit
-`SessionStore` enables automatic checkpoints and reopening by application-owned ID.
+into another session. Harnessed does not store anything itself. Sessions are in
+memory, and the application decides where their state goes: it receives each
+durable change through an `on_commit` handler and reopens a conversation by passing
+the stored value back as `state=`.
 
-## Opt into JSON persistence
+## Receive commits
 
 ```python
-from pathlib import Path
-
 from harnessed import Agent
-from harnessed.integrations.json import JsonSessionStore
+from harnessed.sessions import SessionCheckpoint, SessionCommit
 
-agent = Agent(
-    model=model,
-    instructions="Include source URLs.",
-    store=JsonSessionStore(root=Path(".harnessed/sessions")),
-)
 
-async with agent.session(id="voyager") as session:
-    result = await session.run("Compare the Voyager missions.", max_steps=20)
+class ConversationCommits:
+    def __init__(self, repository: ConversationRepository) -> None:
+        self._repository = repository
 
-# A later request or process opens the same conversation.
-async with agent.session(id="voyager") as session:
-    result = await session.run("Explain their different trajectories.")
+    async def __call__(self, commit: SessionCommit) -> None:
+        await self._repository.save(commit.session_id, commit.checkpoint.to_dict())
+
+    async def load(self, conversation_id: str) -> SessionCheckpoint | None:
+        document = await self._repository.load(conversation_id)
+        return SessionCheckpoint.from_dict(document) if document is not None else None
+
+
+commits = ConversationCommits(repository)
+agent = Agent(model=model, instructions="Include source URLs.")
+
+async with agent.session(id="voyager", on_commit=commits) as session:
+    await session.run("Compare the Voyager missions.", max_steps=20)
+
+# A later request or process continues the same conversation.
+state = await commits.load("voyager")
+async with agent.session(id="voyager", state=state, on_commit=commits) as session:
+    await session.run("Explain their different trajectories.")
 ```
 
-The JSON implementation ships in the base package and requires no extra. It
-creates its directory on the first save. Without `store=`, no session directory
-is created and an explicit `id=` raises `ConfigError`. With a store, omitting
-`id` generates a fresh ID; retain `session.id` if it must be reopened.
+`on_commit` is any async callable that accepts a `SessionCommit`. Harnessed never
+opens, closes or retries an application-owned repository, pool or transaction.
+`id=` names the session in commits and correlation; without it each session gets a
+fresh ID. Keep `session.id` if the conversation must be reopened. Without a
+handler, nothing is delivered and `flush()` does nothing.
 
-The session owns one background writer. Intermediate changes mark its latest state
-dirty and are coalesced into a checkpoint requested after 100 ms; no separate queue
-of checkpoint copies grows with the event rate. Checkpoint JSON encoding and file
-I/O run in workers. Model and tool activity can overlap a background save; state
-admission and writes remain serialized within each session.
+`session.checkpoint()` returns the same `SessionCheckpoint` on demand, also while a
+turn is running or paused. `session.snapshot()` remains the smaller terminal
+`SessionState` for idle conversations; both are accepted by `state=`.
 
-Durability barriers await committed state: input admission/removal, model request
-intent, tool execution intent and receipts, reviewed tool results, turn completion,
-controls, approval changes, feature-owned instruction state, compaction and custom durable events.
-Thus an awaited `run()` has saved its final reply, and `pause()` waits for the
-completed step's checkpoint. Transient token notifications and unrecorded
-observations are not saved. Intermediate internal events may be lost in a crash
-before the next checkpoint, while external-action intent and acknowledged results
-retain their commit guarantees.
+### When commits arrive
 
-The live view can advance beyond the persisted view while a model is streaming.
-Text/reasoning deltas and tool-argument previews use `TransientEvent`: they never
-enter the checkpoint or `SessionCommit.changes` and do not schedule writes. The
-assembled assistant message, including a captured interrupted partial reply, is
-recorded as one durable event. Other request/observation metadata can still be
-committed during a stream; those writes are independent of token frequency.
+Commits are delivered inline at durability barriers, and the session waits for the
+handler before it continues: input admission/removal, model request intent, tool
+execution intent and receipts, reviewed tool results, turn completion, controls,
+approval changes, feature-owned instruction state, compaction and custom durable
+events. Thus an awaited `run()` has delivered its final reply, and `pause()` waits
+for the completed step's commit. Model and tool execution happens between commits,
+so keep database transactions inside the handler and outside model calls.
 
-`ToolProgressEvent` is currently a durable intermediate event, so continuous tool
-progress is batched after roughly 100 ms or at the next mandatory barrier. For
-frequent UI-only progress, declare a custom `TransientEvent`. Custom `DurableEvent`
-values are mandatory barriers and await a commit for each emitted event. Named
-context changes are also durable, rather than a destination for live draft tokens.
+Other durable events, such as `ToolProgressEvent`, are collected and travel with
+the next barrier, `await session.flush()` or close. Text/reasoning deltas and
+tool-argument previews are `TransientEvent` values: they never enter a checkpoint
+or `SessionCommit.changes`. The assembled assistant message, including a captured
+interrupted partial reply, is recorded as one durable event. Custom `DurableEvent`
+values are barriers and await a commit for each emitted event; declare a custom
+`TransientEvent` for frequent UI-only progress.
 
-Use `await session.flush()` to commit pending state explicitly. Closing drains the
-writer before releasing its resources. Without a store, `flush()` performs no I/O.
-The writer reuses image and text bytes already present in its conversation baseline
-instead of embedding a second copy in the same checkpoint.
+Subagent sessions deliver their commits through their parent's handler.
+`commit.session_id` tells the sessions of one tree apart.
 
-A failed background save stops further admissions, cancels active work for cleanup
-and reaches `run()`, `RunHandle.result()` or the stream iterator. A previously
-unobserved idle failure is also reported when closing. Applications map these
-exceptions to their HTTP, SSE, WebSocket or job-status API; ignoring a submitted
-handle does not create a frontend notification channel. Reopen after resolving
-the storage failure.
+### When a commit fails
 
-JSON stores use hashed filenames, a revision envelope, a flushed temporary file
-and atomic replacement. An OS writer lock protects revision checking and writing
-across local processes. Lock files remain in place. Choose a local filesystem
-supporting locking and atomic replacement; this is not a distributed lease or a
-network-filesystem coordination service. Each update serializes the current
-checkpoint, including resource bytes, rather than appending an audit log.
+An exception raised by the handler reaches the waiting `run()`,
+`RunHandle.result()` or stream iterator. The session then rejects further
+admissions with the same error, cancels active work for cleanup and does not
+retry. A failed input commit therefore prevents the input from running, and a
+failed model or tool intent commit prevents its execution. Applications map these
+exceptions to their HTTP, SSE, WebSocket or job-status API. Resolve the storage
+failure and reopen from the last stored checkpoint; the uncommitted turn is lost
+rather than half-applied.
 
-## Use an existing conversation repository
-
-Import `SessionCommit`, `SessionCheckpoint`, `SessionStore` and `StoredSession` from
-`harnessed.sessions`. A store implements two async methods structurally:
-
-```python
-from harnessed.sessions import SessionCheckpoint, SessionCommit, SessionStore, StoredSession
-
-
-class ConversationSessionStore:
-    async def load_session(self, conversation_id: str) -> StoredSession | None: ...
-
-    async def save_session(
-        self,
-        conversation_id: str,
-        commit: SessionCommit,
-        *,
-        expected_revision: int | None,
-    ) -> int: ...
-
-
-store: SessionStore = ConversationSessionStore(...)
-agent = Agent(model=model, store=store)
-```
-
-`StoredSession(checkpoint, revision)` contains a typed checkpoint and a positive
-revision. Harnessed passes an immutable exchange value to the adapter; it does
-not prescribe your domain models, database columns or repository method names.
-Keep an existing repository independent of Harnessed and map its own records
-inside this application-owned adapter. Implementing the protocol directly is
-also possible. The agent never closes an application-owned store or pool.
-
-The executable
-[adapter example](https://github.com/mathisarends/harnessed/blob/main/examples/applications/17_typed_session_store.py)
-wraps a [repository with no SDK imports](https://github.com/mathisarends/harnessed/blob/main/examples/applications/_conversation_repository.py).
-It maps typed checkpoint information to application-owned fields and translates
-the repository's conflict error to `SessionWriteConflict`. Its storage layout is
-illustrative; applications can map fields into their own records instead of
-storing one document.
+A lost acknowledgement can leave the client uncertain even when the database
+committed. Reopen and reconcile using application IDs rather than blindly
+rerunning external actions. Harnessed does not coordinate concurrent writers:
+serialize execution for each conversation through your job runner or ownership
+mechanism, and use the repository's own revision or lock if two workers can race.
 
 ### Commit application changes atomically
 
-Each `save_session` receives one frozen, Pydantic-validated `SessionCommit`:
+Each delivery is one frozen, Pydantic-validated `SessionCommit`:
 
 ```python
 checkpoint = commit.checkpoint
@@ -130,36 +97,30 @@ for change in commit.changes:
     event = change.event  # Concrete built-in event or CheckpointExtension.
 ```
 
-`changes` contains all new durable events since the previous acknowledged save,
-in order. Sequences are contiguous and end at `commit.next_sequence`, which is
-`checkpoint.offset + len(checkpoint.events)`. The runtime retains these immutable
-event references until the store acknowledges the commit, including events that
-compaction removes from working history. A failed save poisons the binding; the
-SDK does not silently discard changes or automatically retry uncertain commits.
-Reopening restores the checkpoint without replaying old changes into the store;
-recovery repairs can generate new changes. Token deltas are transient and are
-excluded. Importing a terminal `SessionState` does not synthesize historical
-changes. Manually constructed `SessionCommit(checkpoint)` values can seed storage
-without an event archive; runtime saves always include their pending changes.
+`changes` contains all new durable events since the previous delivered commit, in
+order. Sequences are contiguous and end at `commit.next_sequence`, which is
+`checkpoint.offset + len(checkpoint.events)`. They include events that compaction
+removes from working history. Reopening restores the checkpoint without replaying
+old changes; recovery repairs can generate new ones. Importing a terminal
+`SessionState` does not synthesize historical changes.
 
-To keep domain messages and recovery state atomic, map the changes inside your
-adapter and apply them with the checkpoint in one application-owned transaction:
+To keep domain messages and recovery state consistent, map the changes inside
+your handler and write them with the checkpoint in one application-owned
+transaction:
 
 ```text
 BEGIN
-  Apply mapped message/domain changes
-  Compare the revision and write the checkpoint
+  Insert or upsert mapped message/domain rows
+  Upsert the checkpoint
 COMMIT
 ```
 
-Raise on a revision conflict so the transaction rolls back both writes. Return
-only after commit; storage errors then reach the waiting run/result/stream caller.
-Model and tool execution happens between short transactions, outside DB locks.
-The SDK passes a commit request; your repository implements its atomicity.
-Separate writes before `session.run()` are not automatically enrolled.
+Return only after commit. If the transaction raises, both writes roll back and
+the session stops as described above. Separate writes before `session.run()` are
+not automatically enrolled.
 
 The executable
-[atomic adapter example](https://github.com/mathisarends/harnessed/blob/main/examples/applications/_atomic_session_store.py)
+[atomic adapter example](https://github.com/mathisarends/harnessed/blob/main/examples/applications/_atomic_commits.py)
 maps `InboxAddedEvent` to an accepted user message and `AssistantMessageEvent` to
 an assistant message. `UserMessageEvent` also records an admitted input during
 execution, so treating both input events as separate domain messages would
@@ -168,23 +129,13 @@ final/draft-message semantics; an assistant event can be an intermediate tool
 reply. Stable message IDs support application upserts. The
 [repository](https://github.com/mathisarends/harnessed/blob/main/examples/applications/_atomic_repository.py)
 uses a real SQLite transaction for this offline example, with no SDK imports.
-Run `uv run python -m examples.applications.18_atomic_session_store`. No database driver,
+Run `uv run python -m examples.applications.18_atomic_commits`. No database driver,
 Unit-of-Work abstraction or web-framework integration is added to Harnessed.
 
-Adapters can ignore `changes` when only recovery state is needed. The bundled
-JSON store does this: its file remains a current checkpoint, not a domain-message
-archive or an incremental journal. Checkpoint and JSON-envelope formats are 3.
-Application-specific event payloads use the same `CheckpointExtension` boundary
-as checkpoints. Resource references are SDK event data; retained checkpoint
-resources cover recovery, while long-term application attachment storage remains
-application-owned.
+Handlers can ignore `changes` when only recovery state is needed; the checkpoint
+is always the complete current state, not an incremental journal.
 
-A lost commit acknowledgement can leave the client uncertain even when the DB
-committed. Reopen and reconcile using revisions/application IDs rather than
-blindly rerunning external actions. Transient streaming text may arrive before
-its commit; successful terminal completion still awaits committed storage.
-
-### Inspect and encode typed checkpoints
+### Store checkpoints as typed documents
 
 `SessionCheckpoint` is a frozen, Pydantic-validated dataclass:
 
@@ -196,74 +147,69 @@ its commit; successful terminal completion still awaits committed storage.
 | `events` | Discriminated built-in events plus explicit `CheckpointExtension` values |
 | `control` | Typed `SessionControlChangedEvent` with its `ControlState` |
 | `assets` / `files` | Resources needed in addition to the conversation baseline |
-| `version` | Current checkpoint format, `Literal[3]` |
+| `version` | Current checkpoint format, `Literal[4]` |
 
 For example, `checkpoint.state.history[i].message` is the SDK's typed message
 union. Narrow with `isinstance(message, UserMessage)` from `harnessed.models`.
 The baseline may be compacted and excludes an open turn; it is not a complete
 application message archive. Your domain messages remain application-owned.
 
-Construct checkpoints from your repository's typed records, or use the optional
-canonical JSON codec at the persistence boundary:
+Store the checkpoint as one document and keep the queryable domain data in your
+own tables. With PostgreSQL, a `JSONB` column fits the document:
 
 ```python
-document = checkpoint.to_json()
-restored = SessionCheckpoint.from_json(document)
+document = checkpoint.to_dict()  # JSON-compatible dict for a JSONB column.
+restored = SessionCheckpoint.from_dict(document)
+
+text = checkpoint.to_json()  # Or a canonical JSON string.
+restored = SessionCheckpoint.from_json(text)
 ```
 
-The codec performs no I/O and needs no plugin catalog. Missing required fields,
-unsupported versions and invalid built-in events fail validation. Pydantic
-`TypeAdapter(SessionCheckpoint)` supplies schema generation and serialization.
-The dataclass can also be nested in a technical `BaseModel` with
-`model_dump_json()` / `model_validate_json()`; applications do not need to adopt
-Pydantic or embed an SDK type in their domain models. Serialization is synchronous;
-offload large documents in async adapters. The bundled JSON store performs its
-encoding and file I/O in a worker. Typed in-memory stores need no JSON conversion.
+`SessionState` has the same four methods. They perform no I/O and need no plugin
+catalog. Missing required fields, unsupported versions and invalid built-in events
+raise `SessionFormatError`. Store `checkpoint.version` beside the document if your
+schema needs to select rows by format. Pydantic `TypeAdapter(SessionCheckpoint)`
+supplies schema generation, and the dataclass can be nested in a technical
+`BaseModel`; applications do not need to embed an SDK type in their domain models.
+Serialization is synchronous; offload large documents in async handlers.
+The [typed document example](https://github.com/mathisarends/harnessed/blob/main/examples/applications/17_typed_documents.py)
+keeps its [repository](https://github.com/mathisarends/harnessed/blob/main/examples/applications/_conversation_repository.py)
+free of SDK imports.
+
+Checkpoints embed the bytes of retained images and spilled text. Keep large
+attachments in application storage when the document size matters.
 
 Custom durable events become `CheckpointExtension(tag=..., data=...)` values.
 Their recursively immutable JSON payload is the explicit application-defined
-boundary. Stores preserve extensions without registering or importing plugins.
+boundary. Documents preserve extensions without registering or importing plugins.
 When reopening, Harnessed validates each extension against the agent's explicitly
 registered event class before starting execution. Unknown tags and invalid
 application payloads fail restoration. Built-in events retain their concrete
 Python types throughout storage and restoration.
-
-Saving must atomically compare the stored revision with `expected_revision`.
-None requires a missing entry and returns revision 1; an update returns the
-previous revision plus one. Raise `SessionWriteConflict` from `harnessed.errors`
-when the expected revision does not match. Return only after commit. Keep database
-transactions local to each store call, outside model and tool execution.
-Authorization, retention, connection pools and the backend schema remain owned
-by the application. To include domain writes, perform them in the same repository
-transaction as the checkpoint, using `commit.changes` as the incremental input.
-
-Revisions prevent lost updates; they do not stop two workers from executing tools
-before one loses the write race. Applications must serialize execution for each
-conversation through their job runner or distributed ownership mechanism. Do not
-automatically retry a conflicted run: its external actions may already have happened.
 
 ## Persist a deliberate pause
 
 ```python
 from harnessed.models import UserMessage
 
-async with agent.session(id="investigation") as session:
+async with agent.session(id="investigation", on_commit=commits) as session:
     handle = await session.submit("Investigate the outage.", max_steps=20)
     await session.pause()
     await session.append_message(UserMessage("Checks passed."))
 
-# The previous Python handles close; the persisted execution remains paused.
-async with agent.session(id="investigation") as session:
+# The previous Python handles close; the stored execution remains paused.
+state = await commits.load("investigation")
+async with agent.session(id="investigation", state=state, on_commit=commits) as session:
     await session.resume()
     await session.wait_until_idle()
     print(session.messages[-1].text)
 ```
 
-Closing a persistent paused session preserves its open turn, completed steps,
-limits, queued inputs and active approval grants. Reopening keeps it paused until
-`resume()`; committed tools are not replayed. Live result handles, Python stacks,
-plugin counters, processes and connections do not survive closure. Closing an
-unpaused session still aborts and cleans up its unfinished work.
+Closing a paused session that has a commit handler delivers its open turn,
+completed steps, limits, queued inputs and active approval grants. Reopening keeps
+it paused until `resume()`; committed tools are not replayed. Live result handles,
+Python stacks, plugin counters, processes and connections do not survive closure.
+Closing an unpaused session still aborts and cleans up its unfinished work.
 
 After an unexpected interruption, reopening repairs incomplete model calls and
 tool batches before starting work. An active interrupted turn is ended as aborted.
@@ -271,14 +217,14 @@ An interrupted tool's external outcome may be unknown; it is not automatically
 executed again. Pending approval waiters are interrupted rather than resurrected.
 Register the same custom event classes and explicitly supply validators for
 pending structured work with
-`agent.session(id="...", restore_outputs=[YourOutputTypeOrContract])`. Restoration
-matches validator identity and schema; stored JSON never imports Python code.
+`agent.session(state=checkpoint, restore_outputs=[YourOutputTypeOrContract])`.
+Restoration matches validator identity and schema; stored JSON never imports
+Python code.
 
 Execution checkpoints have format **4** and contain a conversation snapshot plus
-the current execution suffix, queue, grants and resources. They are distinct from
-`SessionState` JSON and old JSONL archives; formats are not automatically migrated.
-Supplying both `state=` and an existing stored ID fails instead of overwriting it.
-To create an independent branch, supply a terminal `SessionState` and a new ID.
+the current execution suffix, queue, grants and resources. Formats are not
+automatically migrated. To create an independent branch, open a terminal
+`SessionState` or checkpoint under a new ID.
 
 ## Continue from application-owned state
 
@@ -298,7 +244,7 @@ print(result.text)
 ```
 
 Omit `state` to start empty. Supply a `SessionState` to continue its conversation.
-Without a store, each open session has a fresh runtime ID for correlation. Your application owns
+Each open session without `id=` has a fresh runtime ID for correlation. Your application owns
 conversation keys, authorization, revisions, deletion and expiration. Coordinate
 concurrent writes through your repository, for example with revision checks.
 

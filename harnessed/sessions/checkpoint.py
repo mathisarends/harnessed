@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from dataclasses import field
 from enum import StrEnum
@@ -22,7 +23,7 @@ from harnessed.events import (
 from harnessed.events.codec import CURRENT_VERSION, validate_event
 from harnessed.events.unions import SESSION_EVENT_TYPES
 from harnessed.models.assets import AssetValue
-from harnessed.models.messages import JSONMapping, freeze, to_dict
+from harnessed.models.messages import JSONMapping, JSONValue, freeze, to_dict
 
 from .files import TextValue
 from .state import SessionState
@@ -133,6 +134,19 @@ class SessionCheckpoint:
     def to_json(self) -> str:
         """Serialize the canonical versioned document in memory, without I/O."""
         return _CHECKPOINT.dump_json(self).decode("utf-8")
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        """Return the canonical JSON document as Python values, e.g. for a JSONB column."""
+        return json.loads(self.to_json())
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, JSONValue]) -> Self:
+        """Validate a document returned by ``to_dict`` or decoded from ``to_json``."""
+        try:
+            encoded = json.dumps(payload, allow_nan=False)
+        except (TypeError, ValueError) as error:
+            raise SessionFormatError("Invalid session checkpoint") from error
+        return cls.from_json(encoded)
 
     @classmethod
     def from_json(cls, payload: str | bytes) -> Self:
