@@ -21,7 +21,7 @@ with `uv run smelt context <module-or-path>` before editing it.
 Validate external configuration and payloads with Pydantic. Keep constructors
 repeatable, mutable activation state in `PluginState`, and resource cleanup in
 `scope.effect()`. Declare required service fields with `needs()` and optional
-fields with `observes()` from `harnessed.kernel`; use `Inject` for per-call
+fields with `observes()` from `harnessed`; use `Inject` for per-call
 services. See [plugin recipes](docs/contributing/plugin-recipes.md) for ownership
 and [plugins](docs/guides/plugins.md) for the public contract.
 

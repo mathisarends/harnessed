@@ -30,9 +30,8 @@ uv add "harnessed[openai]"
 ```python
 import asyncio
 
-from harnessed import Agent, Plugin, SystemPrompt, tool
+from harnessed import Agent, Plugin, SystemPrompt, hook, tool
 from harnessed.events import ToolCallFinishedEvent
-from harnessed.kernel import hook
 
 
 class Calculator(Plugin):
@@ -161,9 +160,8 @@ middleware:
 ```python
 from pathlib import Path
 
-from harnessed import Plugin, ToolContext, tool
+from harnessed import Inject, Plugin, ToolContext, hook, needs, tool
 from harnessed.hooks import Next, ReviewToolResult
-from harnessed.kernel import Inject, hook, needs
 from harnessed.models import ToolResult
 from harnessed.plugins.filesystem import FileSystemBackend
 

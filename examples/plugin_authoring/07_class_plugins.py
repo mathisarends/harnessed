@@ -3,9 +3,8 @@
 import asyncio
 from typing import override
 
-from harnessed import Agent, Plugin, tool
+from harnessed import Agent, Plugin, PluginScope, hook, needs, tool
 from harnessed.hooks import Next, ReviewToolResult
-from harnessed.kernel import PluginScope, hook, needs
 from harnessed.models import ToolResult
 from harnessed.sessions.log import SessionLog
 from harnessed.testing import ScriptedModel, call

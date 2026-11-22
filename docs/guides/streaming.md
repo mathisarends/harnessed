@@ -310,9 +310,8 @@ Plugins hook durable event classes directly. Each event is dispatched once,
 after the log committed it, so a hook sees exactly the persisted records:
 
 ```python
-from harnessed import Plugin
+from harnessed import Plugin, hook
 from harnessed.events import CompactionAppliedEvent, DurableEvent, TurnEndedEvent
-from harnessed.kernel import hook
 
 
 class Recorder(Plugin):

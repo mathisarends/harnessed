@@ -16,7 +16,7 @@ method parameter resolves a value at call time, such as the current `ToolContext
 
 Class lifecycle methods have one signature: `async def setup(self, scope:
 PluginScope) -> None` and `async def teardown(self, scope: PluginScope) -> None`.
-Import `PluginScope` from `harnessed.kernel`. It is the resource and registration
+Import `PluginScope` from `harnessed`. It is the resource and registration
 view for this activation; the framework owns composition and closure. See the
 [activation contract](#activation-scope-and-lifecycle-contract) below.
 
@@ -75,8 +75,7 @@ The configuration object is a reusable recipe. Declare mutable runtime state wit
 before `setup`, and again after a dependency restart. Each mount owns its value.
 
 ```python
-from harnessed import Plugin, tool
-from harnessed.kernel import PluginState
+from harnessed import Plugin, PluginState, tool
 
 
 class Counter(Plugin):
@@ -178,9 +177,8 @@ accepts this parameter, even when it only uses `self`.
 ```python
 from typing import override
 
-from harnessed import Plugin
+from harnessed import Plugin, PluginScope, needs
 from harnessed.sessions.log import SessionLog
-from harnessed.kernel import PluginScope, needs
 
 
 class BrowserPlugin(Plugin):
@@ -295,9 +293,8 @@ surfaces.
 Declare plugin services once with `needs` and `observes` from the public kernel facade:
 
 ```python
-from harnessed import Plugin
+from harnessed import Plugin, PluginScope, needs, observes
 from harnessed.sessions.log import SessionLog
-from harnessed.kernel import PluginScope, needs, observes
 
 
 class Activity(Plugin, provides=True):
@@ -350,9 +347,7 @@ state or setup.
 ```python
 from typing import Protocol
 
-from harnessed import Plugin, tool
-from harnessed.kernel import needs
-from harnessed.plugins import Service
+from harnessed import Plugin, Service, needs, tool
 
 
 class Database(Protocol):
@@ -401,7 +396,7 @@ See [system prompt composition](context.md) for explicit ordering and rendering.
 ## Test one activation without an agent
 
 ```python
-from harnessed.plugins import Service
+from harnessed import Service
 from harnessed.testing import mount_plugin
 
 async with mount_plugin(Activity(), services=(Service(SessionLog, fake_log),)) as active:
@@ -481,9 +476,8 @@ raises during repair fails the opening like a raising `SessionOpened` hook. A
 paused checkpoint keeps its open turn and stays paused.
 
 ```python
-from harnessed import Agent, Plugin
+from harnessed import Agent, Plugin, hook
 from harnessed.hooks import SessionOpened
-from harnessed.kernel import hook
 
 
 class SessionClock(Plugin, provides=True):

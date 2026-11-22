@@ -2,10 +2,9 @@
 
 import asyncio
 
-from harnessed import Agent, Plugin, tool
+from harnessed import Agent, Plugin, hook, tool
 from harnessed.events import ToolCallFinishedEvent
 from harnessed.hooks import ReviewToolResult
-from harnessed.kernel import hook
 from harnessed.models import ModelChunk, ToolCall, ToolResult, ToolStatus, UserMessage, user
 from harnessed.plugins import Filesystem
 from harnessed.plugins.rules import Rules, when

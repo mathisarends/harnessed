@@ -4,10 +4,9 @@ import asyncio
 from dataclasses import dataclass
 from typing import Protocol, override
 
-from harnessed import Agent, Approvals, Plugin, SystemPrompt, tool
+from harnessed import Agent, Approvals, Plugin, PluginScope, PluginState, SystemPrompt, needs, tool
 from harnessed.events import TurnEndedEvent
 from harnessed.hooks import ExecuteTool
-from harnessed.kernel import PluginScope, PluginState, needs
 from harnessed.models import Decision, ModelChunk, ToolCall
 from harnessed.testing import ScriptedModel
 

@@ -5,11 +5,10 @@ from typing import Annotated
 
 import pytest
 
-from harnessed import Agent, AgentLoop, Approvals, Decision, Plugin, ToolContext, tool
+from harnessed import Agent, AgentLoop, Approvals, Decision, Plugin, Service, ToolContext, tool
 from harnessed.events import ApprovalRequestedEvent, ToolCallFinishedEvent
 from harnessed.kernel import Inject, InjectMarker, Key, PluginState, Scope
 from harnessed.models import ApprovalResponse, AssistantMessage, ModelResponse, ToolCall
-from harnessed.plugins import Service
 from harnessed.testing import ScriptedModel, call, reply
 from harnessed.tools import ToolRegistry, ToolSpec
 from tests._audit import Audit

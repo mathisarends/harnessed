@@ -7,10 +7,9 @@ from uuid import UUID
 import pytest
 from pydantic import BaseModel, ConfigDict, Field
 
-from harnessed import Agent, Plugin, tool
+from harnessed import Agent, Plugin, Service, tool
 from harnessed.kernel import Inject, Scope
 from harnessed.models import ToolCall
-from harnessed.plugins import Service
 from harnessed.testing import ScriptedModel
 from harnessed.tools import ToolRegistry
 

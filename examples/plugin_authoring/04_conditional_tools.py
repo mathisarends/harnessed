@@ -3,9 +3,7 @@
 import asyncio
 from dataclasses import dataclass
 
-from harnessed import Agent, Plugin, tool
-from harnessed.kernel import needs
-from harnessed.plugins import Service
+from harnessed import Agent, Plugin, Service, needs, tool
 from harnessed.testing import ScriptedModel, call
 
 

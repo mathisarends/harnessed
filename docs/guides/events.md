@@ -97,9 +97,8 @@ see [completion and delivery](streaming.md#completion-and-delivery).
 The same classes work with kernel hooks and session subscriptions:
 
 ```python
-from harnessed import Plugin
+from harnessed import Plugin, hook
 from harnessed.events import TurnEndedEvent
-from harnessed.kernel import hook
 
 
 class TurnObserver(Plugin):
@@ -219,9 +218,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal
 
-from harnessed import Plugin, ToolContext, tool
+from harnessed import Inject, Plugin, ToolContext, tool
 from harnessed.events import DurableEvent
-from harnessed.kernel import Inject
 
 
 class ProjectEventKind(StrEnum):

@@ -3,7 +3,7 @@ import asyncio
 import pytest
 from pydantic import ValidationError
 
-from harnessed import Agent, AgentLoop, Approvals, Context, Decision, Plugin, tool
+from harnessed import Agent, AgentLoop, Approvals, Context, Decision, Plugin, Service, tool
 from harnessed.context import TokenCounter
 from harnessed.context.budget import ContextBudget
 from harnessed.context.tokens import ApproximateTokenCounter, CalibratedTokenCounter
@@ -11,7 +11,6 @@ from harnessed.context.tool_output_limit import ToolOutputLimit
 from harnessed.errors import ConfigError
 from harnessed.events import ModelRequestedEvent
 from harnessed.models import ModelChunk, ModelInfo, ModelUsage, ToolStatus
-from harnessed.plugins import Service
 from harnessed.testing import ScriptedModel, call
 
 

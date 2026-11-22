@@ -494,9 +494,8 @@ reserved summary step without tools, and `last_tool_step` is the last step that
 still offers tools.
 
 ```python
-from harnessed import Plugin
-from harnessed.hooks import PrepareRequest
-from harnessed.kernel import Next, hook
+from harnessed import Plugin, hook
+from harnessed.hooks import Next, PrepareRequest
 from harnessed.models import ModelRequest, UserMessage
 
 

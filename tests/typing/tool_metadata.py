@@ -1,11 +1,10 @@
 from dataclasses import dataclass
 from typing import assert_type
 
-from harnessed import AgentLoop, Plugin, tool
+from harnessed import AgentLoop, FinalStepPolicy, Plugin, tool
 from harnessed.hooks import ExecuteTool, Next, PreStep, ReviewToolResult, ToolPolicy
 from harnessed.kernel import hook
 from harnessed.models import ToolResult
-from harnessed.plugins import FinalStepPolicy
 from harnessed.tools import (
     Param,
     ToolAnnotations,

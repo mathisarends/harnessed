@@ -5,11 +5,22 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Literal, Protocol
 
-from harnessed import Agent, Plugin, PluginConfig, SystemPrompt, ToolContext, tool
+from harnessed import (
+    Agent,
+    Inject,
+    Instructions,
+    Plugin,
+    PluginConfig,
+    PluginState,
+    Service,
+    SystemPrompt,
+    ToolContext,
+    hook,
+    needs,
+    observes,
+    tool,
+)
 from harnessed.events import DurableEvent
-from harnessed.kernel import Inject, PluginState, hook, needs, observes
-from harnessed.plugins import Service
-from harnessed.prompts import Instructions
 from harnessed.testing import ScriptedModel, call, mount_plugin
 
 

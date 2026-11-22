@@ -45,8 +45,8 @@ def test_unslotted_plugins_are_additive_even_when_they_provide_the_same_service(
 
 
 def test_a_model_argument_and_a_model_service_conflict():
+    from harnessed import Service
     from harnessed.models import Model
-    from harnessed.plugins import Service
 
     with pytest.raises(PluginConflict, match="model"):
         Agent(model=ScriptedModel([]), plugins=[Service(Model, ScriptedModel([]))])

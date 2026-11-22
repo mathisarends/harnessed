@@ -136,10 +136,9 @@ that cap alone when the model does not report a window. `ratio` is `None` only
 when both are unknown.
 
 ```python
-from harnessed import Plugin
+from harnessed import Plugin, hook, needs
 from harnessed.context import ContextMeter
-from harnessed.hooks import PrepareRequest
-from harnessed.kernel import Next, hook, needs
+from harnessed.hooks import Next, PrepareRequest
 from harnessed.models import ModelRequest, UserMessage
 
 
@@ -165,9 +164,8 @@ automatic, recovery or manual compaction. A plugin can inspect the effective
 agent request and offer text to prepend to the committed summary.
 
 ```python
-from harnessed import Plugin
+from harnessed import Plugin, hook
 from harnessed.hooks import PrepareCompaction
-from harnessed.kernel import hook
 
 
 class TaskMemory(Plugin):

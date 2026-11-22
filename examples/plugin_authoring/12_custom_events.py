@@ -7,10 +7,9 @@ from typing import Annotated, Literal
 
 from pydantic import Field, TypeAdapter
 
-from harnessed import Agent, Plugin, ToolContext, tool
+from harnessed import Agent, Inject, Plugin, ToolContext, tool
 from harnessed.events import DurableEvent, TextDeltaEvent
 from harnessed.events.stream import StreamEvent
-from harnessed.kernel import Inject
 from harnessed.testing import ScriptedModel, call
 
 

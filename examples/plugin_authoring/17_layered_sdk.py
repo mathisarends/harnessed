@@ -3,8 +3,8 @@
 import asyncio
 from typing import override
 
-from harnessed import Agent, Plugin
-from harnessed.kernel import Key, PluginScope, Scope, needs
+from harnessed import Agent, Plugin, PluginScope, needs
+from harnessed.kernel import Key, Scope
 from harnessed.plugins import Filesystem
 from harnessed.plugins.rules import Rules, when
 from harnessed.testing import ScriptedModel

@@ -4,7 +4,7 @@ import asyncio
 
 from pydantic import BaseModel
 
-from harnessed import Agent, Plugin, ToolContext, tool
+from harnessed import Agent, Inject, Plugin, ToolContext, tool
 from harnessed.events import (
     ApprovalNeededEvent,
     ReasoningDeltaEvent,
@@ -17,7 +17,6 @@ from harnessed.events import (
     ToolProgressEvent,
 )
 from harnessed.events.stream import TurnResultEvent
-from harnessed.kernel import Inject
 from harnessed.models import ModelChunk, ToolCall, ToolCallDelta, ToolCallStart
 from harnessed.testing import ScriptedModel
 

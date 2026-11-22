@@ -17,12 +17,21 @@ import re
 
 from harnessed.kernel import Scope, Key, needs
 assert 'pydantic' not in sys.modules
-from harnessed import Agent, AgentLoop, OutputContract, Plugin, PluginConfig, SystemPrompt, tool
+from harnessed import (
+    Agent,
+    AgentLoop,
+    OutputContract,
+    Plugin,
+    PluginConfig,
+    Service,
+    SystemPrompt,
+    tool,
+)
 from harnessed.errors import PluginConflict
 from harnessed.models import ModelRequest, StopReason, UserMessage
 from harnessed.events import TextDeltaEvent
 from harnessed.events.stream import TurnResultEvent
-from harnessed.plugins import Service, Skill, Skills
+from harnessed.plugins import Skill, Skills
 from harnessed.integrations.sandbox.bundle import worker_source
 from harnessed.prompts import Instructions, PromptFormat, SectionDelivery, SystemPromptStore
 from harnessed.runtime.composition import CompositionDescription

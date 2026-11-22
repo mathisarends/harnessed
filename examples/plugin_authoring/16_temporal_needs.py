@@ -4,8 +4,8 @@ import asyncio
 from dataclasses import dataclass
 from typing import override
 
-from harnessed import Plugin, tool
-from harnessed.kernel import Emit, PluginScope, Scope, needs
+from harnessed import Plugin, PluginScope, needs, tool
+from harnessed.kernel import Emit, Scope
 from harnessed.models import ToolCall
 from harnessed.prompts import SystemPromptStore
 from harnessed.tools import ToolRegistry

@@ -4,9 +4,8 @@ import asyncio
 from dataclasses import dataclass
 from typing import Protocol
 
-from harnessed import Agent, Plugin, tool
+from harnessed import Agent, Plugin, PluginScope, hook, needs, tool
 from harnessed.hooks import Next, PreStep, StepDecision
-from harnessed.kernel import PluginScope, hook, needs
 from harnessed.models import ImagePart, ModelChunk, TextPart, ToolCall, UserMessage
 from harnessed.testing import ScriptedModel
 

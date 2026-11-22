@@ -20,7 +20,16 @@ from harnessed.plugins.shell import LocalShell, ProcResult, ShellBackend
 from harnessed.kernel import Scope, Inject, hook
 ```
 
-Plugin implementations and examples must use the public `harnessed.kernel` facade
+Consumer-facing code, meaning examples, documentation snippets and applications,
+imports the plugin authoring names from the SDK root: `Plugin`, `PluginScope`,
+`PluginState`, `Service`, `Instructions`, `SystemPrompt`, `ToolError`, `hook`,
+`needs`, `observes`, `Inject` and `tool`. Hook points and `Next` come from
+`harnessed.hooks`. `harnessed.kernel` remains the home of the container and of
+the bases for custom hook types, such as `Scope`, `Key`, `Waterfall`, `Bail` and
+`Emit`. Each public name has one documented import home; do not re-export a root
+name from a second feature facade.
+
+Plugin implementations inside `harnessed` must use the public `harnessed.kernel` facade
 for kernel APIs, such as `Scope`, `Inject`, and `hook`. Do not import
 these through `harnessed.kernel.scope`, `.di`, or `.plugin`. Keep the facade's
 exports in `harnessed/kernel/__init__.py` stable when reorganizing kernel internals.

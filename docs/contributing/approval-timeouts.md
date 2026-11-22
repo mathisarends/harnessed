@@ -13,8 +13,7 @@ the asking task's remaining execution budget.
 ## Developer-facing API
 
 ```python
-from harnessed import Agent, Plugin, ToolContext, tool
-from harnessed.kernel import Inject
+from harnessed import Agent, Inject, Plugin, ToolContext, tool
 from harnessed import Approvals
 
 
