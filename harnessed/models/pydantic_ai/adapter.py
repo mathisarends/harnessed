@@ -26,11 +26,11 @@ from harnessed.models.values import to_dict
 from .conversion import history, model_response, model_usage, provider_error, request_parameters
 
 if TYPE_CHECKING:
-    from pydantic_ai.messages import PartDeltaEvent, PartStartEvent
+    from pydantic_ai import ModelSettings as NativeSettings
+    from pydantic_ai import PartDeltaEvent, PartStartEvent
     from pydantic_ai.models import Model as NativeModel
     from pydantic_ai.models import ModelRequestParameters, StreamedResponse
     from pydantic_ai.native_tools import AbstractNativeTool
-    from pydantic_ai.settings import ModelSettings as NativeSettings
 
 
 class PydanticAIModel:

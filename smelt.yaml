@@ -114,6 +114,11 @@ architecture:
 
 style:
   forbidden_names: [utils, helpers]
+  # IMP004 reads these installed packages' public APIs; run Smelt in the locked environment.
+  third_party_reexports: [pydantic, pydantic_ai, fastmcp, mcp, opentelemetry, httpx2, anyio, jsonschema, referencing, yaml]
+  # Process pipes and the MCP client transport are standard SDK API, not Harnessed collaborators.
+  navigation:
+    namespace_types: [asyncio.subprocess.Process, fastmcp.Client]
   future_annotations: when-needed
   ordering:
     module: [docstring, future-imports, imports, type-vars, public, private, dunder-assignments, main-guard]
@@ -242,6 +247,7 @@ rules:
   tests/nondeterministic-data: error
   # Design reviews
   complexity/excess-attribute-depth: hint
+  complexity/inline-constructor-receiver: hint
   tests/independent-case-loop: hint
   modeling/dataclass-field-mutation: hint
   idioms/loop-invariant-collection: hint

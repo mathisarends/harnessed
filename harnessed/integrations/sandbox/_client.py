@@ -109,7 +109,7 @@ class WorkerClient:
             "max_transfer_bytes": self.config.limits.max_transfer_bytes,
             **values,
         }
-        return TypeAdapter(Request).validate_python(data)
+        return _REQUEST_ADAPTER.validate_python(data)
 
     async def run(self, argv: Sequence[str], *, cwd: Path, timeout_seconds: float) -> ProcResult:
         if not argv or not 0 < timeout_seconds <= 600:
@@ -183,3 +183,6 @@ class WorkerClient:
     async def replace(self, path: PurePath, old: str, new: str) -> None:
         request = self._file_request(Operation.REPLACE, path, old=old, new=new)
         await self.request(request, TypeAdapter(type(None)))
+
+
+_REQUEST_ADAPTER = TypeAdapter(Request)

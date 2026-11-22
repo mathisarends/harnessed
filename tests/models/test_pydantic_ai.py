@@ -72,7 +72,7 @@ async def test_response_contracts_use_native_schema_or_output_tools_and_repair_i
     native_output,
 ):
     from pydantic import BaseModel
-    from pydantic_ai.profiles import ModelProfile
+    from pydantic_ai import ModelProfile
 
     class Triage(BaseModel):
         severity: int
@@ -290,7 +290,7 @@ async def test_provider_native_tool_deltas_are_not_previewed_or_executed(monkeyp
 
 
 async def test_native_tools_are_forwarded_and_their_parts_replay_from_provider_state():
-    from pydantic_ai.native_tools import WebSearchTool
+    from pydantic_ai import WebSearchTool
 
     received = []
 
@@ -315,7 +315,7 @@ async def test_native_tools_are_forwarded_and_their_parts_replay_from_provider_s
 
 @pytest.mark.parametrize("native_tools", [["web_search"], "web_search", [object()]])
 def test_native_tools_must_be_pydantic_ai_native_tool_instances(native_tools):
-    from pydantic_ai.native_tools import WebSearchTool
+    from pydantic_ai import WebSearchTool
 
     with pytest.raises(ConfigError, match="native_tools"):
         PydanticAIModel(FunctionModel(lambda m, i: None), native_tools=native_tools)

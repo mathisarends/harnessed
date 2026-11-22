@@ -394,7 +394,7 @@ class Skills(Plugin, slot="skills"):
 
     def _remember_instructions(self, text: str) -> None:
         try:
-            data, _ = json.JSONDecoder().raw_decode(text.lstrip())
+            data, _ = _JSON_DECODER.raw_decode(text.lstrip())
             loaded = _Loaded.model_validate(data)
         except (ValueError, TypeError):
             return
@@ -452,3 +452,6 @@ class Skills(Plugin, slot="skills"):
             return await asyncio.to_thread(_read_resource, entry.directory, path)
         except (OSError, ValueError, RuntimeError) as error:
             raise ToolError(f"Cannot read skill file: {error}") from error
+
+
+_JSON_DECODER = json.JSONDecoder()

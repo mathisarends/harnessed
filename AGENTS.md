@@ -130,13 +130,15 @@ workflows and bump the key when Python validation behavior changes.
 
 ## Architecture and convention checks
 
-`smelt.yaml` is the executable policy and `uv.lock` pins Smelt CLI 0.14.0.
+`smelt.yaml` is the executable policy and `uv.lock` pins Smelt CLI 0.16.0.
 Layer assignments live in `architecture.layers.<layer>.modules`, and package APIs
 live under `architecture.packages`. Activate rules and set their limits in `rules`.
 Shared conventions live under `style` and package exceptions under `style.overrides`.
 Use canonical `family/finding` rule names in configuration. Inline suppressions
 accept those names or their family codes.
-Before editing, run `uv run smelt context <module-or-path>` to inspect its role.
+Before editing, run `uv run smelt context <module-or-path> --guide` to inspect its
+role and the active rules for writing it. Preview machine-readable repairs with
+`uv run smelt check --diff`; review `--unsafe-fixes` and `--suggestions` by hand.
 After editing, run `uv run smelt check --changed --base origin/main --format json`.
 Before finishing, run `uv run smelt check --show-hints --fail-on warning`,
 `uv run ruff check .`, `uv run ruff format --check .`,
