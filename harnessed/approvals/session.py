@@ -339,6 +339,11 @@ class SessionApprovals:
             )
             return decision
         except BaseException as exc:
+            # A failed resolution never reaches the responder's admission listener.
+            failure = (
+                exc if isinstance(exc, Exception) else ApprovalUnavailable("Approval interrupted")
+            )
+            self._live.close(request.request_id, failure)
             record = self.log.approval(request.request_id)
             if record is not None and record.pending:
                 await self.log.append(
@@ -362,6 +367,7 @@ class SessionApprovals:
 
     async def _answer(self, request_id: str, decision: ApprovalResponse) -> None:
         self.control.check_open()
+        self.log.check_persistence()
         pending = self._live.get(request_id)
         if pending is not None:
             await pending.answer(decision)

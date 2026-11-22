@@ -1,8 +1,15 @@
 import asyncio
 
+import pytest
+
 from harnessed import Agent, Approvals, Plugin, tool
 from harnessed.errors import ApprovalUnavailable
-from harnessed.events import ApprovalNeededEvent, ApprovalRequestedEvent, ToolCallFinishedEvent
+from harnessed.events import (
+    ApprovalNeededEvent,
+    ApprovalRequestedEvent,
+    ApprovalResolvedEvent,
+    ToolCallFinishedEvent,
+)
 from harnessed.kernel import hook
 from harnessed.models import ToolStatus
 from harnessed.testing import ScriptedModel, call
@@ -13,6 +20,28 @@ class Publish(Plugin):
     async def publish(self) -> str:
         """Publish the draft."""
         return "Published."
+
+
+async def test_answer_and_run_report_the_failed_resolution_commit():
+    failure = OSError("Could not save the approval")
+
+    async def save(commit):
+        if any(isinstance(change.event, ApprovalResolvedEvent) for change in commit.changes):
+            raise failure
+
+    async with _agent().session(on_commit=save) as session, session.stream("Publish") as run:
+        async with asyncio.timeout(5):
+            async for event in run:
+                if isinstance(event, ApprovalNeededEvent):
+                    break
+            assert isinstance(event, ApprovalNeededEvent)
+            with pytest.raises(OSError) as answer:
+                await session.approvals.allow(event.request_id)
+            with pytest.raises(OSError) as result:
+                await run.result()
+            with pytest.raises(OSError) as retry:
+                await session.approvals.allow(event.request_id)
+        assert answer.value is result.value is retry.value is failure
 
 
 def _agent(*, timeout_seconds: float = 300.0) -> Agent:
