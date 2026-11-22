@@ -13,7 +13,13 @@ from harnessed.events import (
 )
 from harnessed.hooks import PrepareRequest
 from harnessed.kernel import hook
-from harnessed.models import ImageReference, UserMessage
+from harnessed.models import (
+    AssistantMessage,
+    ImageReference,
+    ModelResponse,
+    ProviderState,
+    UserMessage,
+)
 from harnessed.runtime.control import SessionStatus
 from harnessed.sessions import (
     CheckpointRequest,
@@ -21,6 +27,7 @@ from harnessed.sessions import (
     SessionCommit,
     SessionExecution,
     SessionState,
+    SessionValue,
 )
 from harnessed.testing import ExtractiveSummarizer, ScriptedModel, call
 
@@ -157,6 +164,22 @@ async def test_idle_value_changes_bind_execution_to_state_at_the_same_position()
     assert SessionCheckpoint.from_parts(SessionState.from_dict(document), execution) == current
 
 
+async def test_split_store_persists_type_changes_in_nested_plugin_values():
+    class Flags(Plugin, provides=True):
+        value = SessionValue(dict[str, list[bool | int | float]], key="flag")
+
+    store = SplitStore()
+    agent = Agent(model=ScriptedModel([]), plugins=[Flags()])
+    async with agent.session(id="types", on_commit=store) as session:
+        value = session.scope[Flags].value
+        for scalar in (True, 1, 1.0):
+            await value.set({"items": [scalar]})
+            actual = store.latest("types").state.plugin_values["flag"]["items"][0]
+            assert type(actual) is type(scalar)
+        await value.set({"items": [1.0]})
+    assert [commit.state_changed for commit in store.commits] == [True, True, True]
+
+
 async def test_in_turn_execution_size_does_not_grow_with_retained_images():
     store = SplitStore()
     model = ScriptedModel(["seen"] * 6)
@@ -234,6 +257,41 @@ async def test_requests_changed_by_a_hook_keep_the_messages_the_model_received()
     (recorded,) = [event for event in restored.events if isinstance(event, ModelRequestedEvent)]
     assert recorded.request.messages == model.requests[1].messages
     assert restored == last
+
+
+async def test_rebuilt_request_preserves_provider_state_changed_by_a_hook():
+    class UpdateReplay(Plugin):
+        @hook(PrepareRequest)
+        async def update_replay(self, event, next_):
+            request = await next_()
+            messages = []
+            for message in request.messages:
+                if isinstance(message, AssistantMessage) and message.provider_state is not None:
+                    changed = replace(message.provider_state, data={"flag": 1})
+                    message = replace(message, provider_state=changed)
+                messages.append(message)
+            return replace(request, messages=tuple(messages))
+
+    original = ProviderState(
+        format="test", version=1, provider="test", model="test", data={"flag": True}
+    )
+    response = ModelResponse(AssistantMessage("first", provider_state=original))
+    model = ScriptedModel([response, "second"])
+    store = SplitStore()
+    async with Agent(model=model, plugins=[UpdateReplay()]).session(on_commit=store) as session:
+        await session.run("one")
+        await session.run("two")
+    last = _last_in_turn(store).checkpoint
+    restored = SessionCheckpoint.from_parts(
+        SessionState.from_json(last.state.to_json()),
+        SessionExecution.from_json(last.execution.to_json()),
+    )
+    (event,) = [event for event in restored.events if isinstance(event, ModelRequestedEvent)]
+    (reply,) = [
+        message for message in event.request.messages if isinstance(message, AssistantMessage)
+    ]
+    flag = reply.provider_state.data["flag"]
+    assert type(flag) is int and flag == 1
 
 
 async def test_an_execution_referring_to_an_unknown_message_is_rejected():

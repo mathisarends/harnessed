@@ -186,6 +186,10 @@ class CommitDelivery:
         self._closing = True
 
     def _state_changed(self, state: SessionState) -> bool:
-        # Retained entries and assets are shared objects, so equality is cheap.
         previous = self._delivered
-        return previous is None or (previous is not state and previous != state)
+        if previous is state:
+            return False
+        if previous is None or previous != state:
+            return True
+        # Python equality also equates true, 1 and 1.0 in nested JSON data.
+        return previous.content_sha256 != state.content_sha256

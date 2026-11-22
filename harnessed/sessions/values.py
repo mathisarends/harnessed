@@ -33,8 +33,12 @@ class PluginValues:
         """Append an encoded change unless the committed value is already equal."""
         event = PluginValueChangedEvent(key, value)
         present, current = self.raw(key)
-        if not present or current != event.value:
-            await self._log.append(event, on_committed=on_committed)
+        if present and current == event.value:
+            # Equal Python containers can still encode different JSON scalar types.
+            stored = dumps(to_dict(current), sort_keys=True)
+            if stored == dumps(to_dict(event.value), sort_keys=True):
+                return
+        await self._log.append(event, on_committed=on_committed)
 
     async def change[T](self, declaration: SessionValue[T], candidate: Callable[[], T]) -> T:
         """Serialize changes through commit, then allow observers to write values too."""
