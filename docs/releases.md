@@ -4,7 +4,7 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md)
 is the complete version history and upgrade reference.
 
-## 0.26.0 (unreleased)
+## 0.26.0 (2026-11-22)
 
 Applications [persist sessions through `on_commit`](guides/sessions.md#receive-commits)
 and reopen them from checkpoints that carry their session IDs. Built-in values
