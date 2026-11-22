@@ -122,20 +122,21 @@ class SessionExecution:
     ``SessionCheckpoint.from_parts(state, execution)``. Inside a turn its size
     depends on that turn, not on earlier history or retained assets: recorded
     model requests are ``CheckpointRequest`` values that refer to the state's
-    messages by ID. ``state_sequence`` binds it to the state it was captured with.
+    messages by ID. ``state_sha256`` binds it to the state it was captured with.
     """
 
     __hash__ = None
 
     session_id: Annotated[str, Field(min_length=1)]
     state_sequence: Annotated[int, Field(ge=0)]
+    state_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] = field(kw_only=True)
     offset: Annotated[int, Field(ge=0)]
     control: SessionControlChangedEvent
     seed: tuple[CheckpointSeed, ...] = ()
     events: tuple[ExecutionEntry, ...] = ()
     assets: tuple[AssetValue, ...] = ()
     files: tuple[TextValue, ...] = ()
-    version: Literal[5] = 5
+    version: Literal[6] = 6
 
     def __post_init__(self) -> None:
         if self.offset < self.state_sequence:
@@ -208,6 +209,7 @@ class SessionCheckpoint:
         return SessionExecution(
             session_id=self.session_id,
             state_sequence=self.state.next_sequence,
+            state_sha256=self.state.content_sha256,
             offset=self.offset,
             control=self.control,
             seed=self.seed,
@@ -219,7 +221,10 @@ class SessionCheckpoint:
     @classmethod
     def from_parts(cls, state: SessionState, execution: SessionExecution) -> Self:
         """Rebuild a checkpoint from a stored state and an execution captured with it."""
-        if execution.state_sequence != state.next_sequence:
+        if (
+            execution.state_sequence != state.next_sequence
+            or execution.state_sha256 != state.content_sha256
+        ):
             raise SessionFormatError("The execution belongs to a different conversation state")
         try:
             events = _resolve_messages(execution.events, state)
