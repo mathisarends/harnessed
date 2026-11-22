@@ -280,7 +280,8 @@ plugin_validation=PluginValidation.ERROR)` resolves reusable configuration.
 | SessionState.from_json(payload) / state.to_json() | Validate or encode the canonical conversation snapshot in memory |
 | SessionState.from_dict(document) / state.to_dict() | The same snapshot as a JSON-compatible dict, for example a JSONB column |
 
-`SessionCommit`, `SessionChange`, `SessionCheckpoint`, `SessionExecution` and
+`SessionCommit`, `SessionChange`, `SessionCheckpoint`, `SessionExecution`,
+`CheckpointRequest`, `ExecutionEntry` and
 `CommitHandler` (`Callable[[SessionCommit], Awaitable[None]]`) are exported from
 `harnessed.sessions`.
 Harnessed stores nothing itself. `SessionCommit(checkpoint, changes)`
@@ -299,7 +300,10 @@ of the session's previous delivered commit and true for its first commit.
 `checkpoint.execution` returns the `SessionExecution` without the state, with
 the same `to_dict()` / `from_dict()` and `to_json()` / `from_json()` encoding;
 `SessionCheckpoint.from_parts(state, execution)` rebuilds the checkpoint and
-rejects an execution captured with another state.
+rejects an execution captured with another state. In `execution.events`, each
+`ModelRequestedEvent` becomes a `CheckpointRequest` whose `messages` hold the ID
+of a message already in the state or an earlier request, and the full message
+otherwise; `from_parts()` rejects an ID it cannot resolve.
 `session.checkpoint()` captures the same value on demand, including an open turn.
 Checkpoints are frozen Pydantic dataclasses with typed state, execution events,
 controls and resources. `to_dict()` / `from_dict()` and `to_json()` /

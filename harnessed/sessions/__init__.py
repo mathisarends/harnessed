@@ -3,7 +3,9 @@ from harnessed.models.assets import AssetValue
 from .checkpoint import (
     CheckpointEntry,
     CheckpointExtension,
+    CheckpointRequest,
     CheckpointSeed,
+    ExecutionEntry,
     SessionCheckpoint,
     SessionExecution,
 )
@@ -19,9 +21,11 @@ __all__ = [
     "BoundSessionValue",
     "CheckpointEntry",
     "CheckpointExtension",
+    "CheckpointRequest",
     "CheckpointSeed",
     "ChildSession",
     "CommitHandler",
+    "ExecutionEntry",
     "HistoryEntry",
     "HistoryStep",
     "HistoryTurn",

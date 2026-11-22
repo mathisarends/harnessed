@@ -26,7 +26,9 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   `SessionExecution` without the state, and
   `SessionCheckpoint.from_parts(state, execution)` rebuilds the checkpoint, so a
   store can write the state once per change and only the execution part at
-  barriers inside a turn. See
+  barriers inside a turn. The execution part stores recorded model requests as
+  `CheckpointRequest` values that refer to the state's messages by ID, so its
+  size inside a turn no longer grows with the conversation. See
   [store state and execution apart](docs/guides/sessions.md#store-state-and-execution-apart).
   ([#160](https://github.com/mathisarends/harnessed/issues/160))
 

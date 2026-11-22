@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import field
+from dataclasses import field, replace
 from enum import StrEnum
 from typing import TYPE_CHECKING, Annotated, Literal, Self
 
@@ -16,12 +16,14 @@ from harnessed.events import (
     DurableEvent,
     InboxAddedEvent,
     LogEvent,
+    ModelRequestedEvent,
     SessionControlChangedEvent,
     TurnEndedEvent,
     TurnStartedEvent,
 )
 from harnessed.events.codec import CURRENT_VERSION, validate_event
 from harnessed.events.unions import SESSION_EVENT_TYPES
+from harnessed.models import Message
 from harnessed.models.assets import AssetValue
 from harnessed.models.values import VALUE_CONFIG, JSONMapping, JSONValue, to_dict
 
@@ -38,6 +40,7 @@ class CheckpointRecordKind(StrEnum):
     """Checkpoint-only record tags that sit beside built-in log events."""
 
     EXTENSION = "checkpoint.extension"
+    REQUEST = "checkpoint.request"
 
 
 @dataclass(frozen=True, config=_CONFIG)
@@ -80,7 +83,31 @@ class CheckpointExtension:
         return event
 
 
+@dataclass(frozen=True, config=_CONFIG)
+class CheckpointRequest:
+    """A recorded model request in a ``SessionExecution``, with messages by reference.
+
+    ``messages`` lists the request's messages in order. A string is the ID of a
+    message equal to the latest earlier message with that ID, taken from the
+    state's history or from an earlier request of the same execution. Every
+    other message, such as one a ``PrepareRequest`` hook or compaction changed,
+    is stored in full, so the rebuilt request equals the one the model received.
+    ``event`` is the recorded event without its request messages.
+    """
+
+    __hash__ = None
+
+    event: ModelRequestedEvent
+    messages: tuple[str | Message, ...]
+    type: Literal[CheckpointRecordKind.REQUEST] = field(
+        default=CheckpointRecordKind.REQUEST, kw_only=True
+    )
+
+
 type CheckpointEntry = Annotated[LogEvent | CheckpointExtension, Field(discriminator="type")]
+type ExecutionEntry = Annotated[
+    LogEvent | CheckpointExtension | CheckpointRequest, Field(discriminator="type")
+]
 type CheckpointSeed = Annotated[
     InboxAddedEvent | ApprovalRequestedEvent | ApprovalResolvedEvent, Field(discriminator="type")
 ]
@@ -93,8 +120,9 @@ class SessionExecution:
     Store ``checkpoint.state`` when ``SessionCommit.state_changed`` is true and
     this part at every commit, then rebuild the checkpoint with
     ``SessionCheckpoint.from_parts(state, execution)``. Inside a turn its size
-    depends on that turn, not on earlier history or retained assets.
-    ``state_sequence`` binds it to the state it was captured with.
+    depends on that turn, not on earlier history or retained assets: recorded
+    model requests are ``CheckpointRequest`` values that refer to the state's
+    messages by ID. ``state_sequence`` binds it to the state it was captured with.
     """
 
     __hash__ = None
@@ -104,7 +132,7 @@ class SessionExecution:
     offset: Annotated[int, Field(ge=0)]
     control: SessionControlChangedEvent
     seed: tuple[CheckpointSeed, ...] = ()
-    events: tuple[CheckpointEntry, ...] = ()
+    events: tuple[ExecutionEntry, ...] = ()
     assets: tuple[AssetValue, ...] = ()
     files: tuple[TextValue, ...] = ()
     version: Literal[5] = 5
@@ -183,7 +211,7 @@ class SessionCheckpoint:
             offset=self.offset,
             control=self.control,
             seed=self.seed,
-            events=self.events,
+            events=_refer_messages(self.events, self.state),
             assets=self.assets,
             files=self.files,
         )
@@ -194,13 +222,19 @@ class SessionCheckpoint:
         if execution.state_sequence != state.next_sequence:
             raise SessionFormatError("The execution belongs to a different conversation state")
         try:
+            events = _resolve_messages(execution.events, state)
+        except KeyError as error:
+            raise SessionFormatError(
+                "The execution refers to a message its state does not contain"
+            ) from error
+        try:
             return cls(
                 session_id=execution.session_id,
                 state=state,
                 offset=execution.offset,
                 control=execution.control,
                 seed=execution.seed,
-                events=execution.events,
+                events=events,
                 assets=execution.assets,
                 files=execution.files,
             )
@@ -227,6 +261,49 @@ class SessionCheckpoint:
             return TypeAdapter(cls).validate_json(payload)
         except (ValidationError, ValueError, TypeError, KeyError) as error:
             raise SessionFormatError("Invalid session checkpoint") from error
+
+
+def _history_messages(state: SessionState) -> dict[str, Message]:
+    return {entry.message.id: entry.message for entry in state.history}
+
+
+def _refer_messages(
+    events: tuple[CheckpointEntry, ...], state: SessionState
+) -> tuple[ExecutionEntry, ...]:
+    """Replace request messages equal to the latest known message with that ID."""
+    known = _history_messages(state)
+    entries: list[ExecutionEntry] = []
+    for event in events:
+        if not isinstance(event, ModelRequestedEvent):
+            entries.append(event)
+            continue
+        slots: list[str | Message] = []
+        for message in event.request.messages:
+            slots.append(message.id if known.get(message.id) == message else message)
+            known[message.id] = message
+        request = replace(event.request, messages=())
+        entries.append(CheckpointRequest(replace(event, request=request), tuple(slots)))
+    return tuple(entries)
+
+
+def _resolve_messages(
+    entries: tuple[ExecutionEntry, ...], state: SessionState
+) -> tuple[CheckpointEntry, ...]:
+    """Rebuild request messages in the order ``_refer_messages`` recorded them."""
+    known = _history_messages(state)
+    events: list[CheckpointEntry] = []
+    for entry in entries:
+        if not isinstance(entry, CheckpointRequest):
+            events.append(entry)
+            continue
+        messages: list[Message] = []
+        for slot in entry.messages:
+            message = known[slot] if isinstance(slot, str) else slot
+            messages.append(message)
+            known[message.id] = message
+        request = replace(entry.event.request, messages=tuple(messages))
+        events.append(replace(entry.event, request=request))
+    return tuple(events)
 
 
 def _encode_document(payload: Mapping[str, JSONValue], failure: str) -> str:

@@ -32,9 +32,6 @@ Applications own persistence through `SessionState`, `session.checkpoint()` and
   applications store a single type. `SessionCheckpoint.execution` and
   `from_parts()` already let a store keep the state and the execution part
   apart; a merged value should keep that split.
-- Record model requests in the execution part as references to the messages of
-  its state, so a barrier inside a turn no longer grows with the conversation's
-  text.
 - Add a typed `commit.messages` projection, so handlers need not map
   `InboxAddedEvent` and `AssistantMessageEvent` themselves.
 - Application-supplied blob storage for large resources; current checkpoints

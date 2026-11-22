@@ -136,9 +136,13 @@ async def load(session_id: str) -> SessionCheckpoint:
 `SessionCheckpoint.from_parts()` rejects an execution part that was captured
 with a different state, and `Agent.session(state=...)` validates the result like
 any checkpoint. The execution part does not contain the images and spill text
-retained in the state. Inside a turn its size depends on that turn, with one
-exception: each recorded model request lists the messages it sent, so barriers
-that carry a `ModelRequestedEvent` still grow with the conversation's text.
+retained in the state, and its size inside a turn depends on that turn, not on
+the conversation before it. A recorded model request lists every message it
+sent, so the execution part stores it as a `CheckpointRequest`: a message equal
+to one in the state, or to one in an earlier request of the same turn, is stored
+as its ID. A message that a `PrepareRequest` hook or compaction changed is stored
+in full, so `from_parts()` rebuilds exactly the request the model received.
+`checkpoint.events` always holds the complete `ModelRequestedEvent`.
 `SessionExecution` uses the checkpoint's format version. See
 [the runnable split-commit example](https://github.com/mathisarends/harnessed/blob/main/examples/applications/23_split_commits.py).
 
