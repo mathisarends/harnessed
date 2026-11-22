@@ -14,6 +14,11 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   `InboxRemovedEvent(reason=DISCARDED)` and reaches `on_commit`, so neither the
   live session nor a reopened checkpoint executes them later. A failed commit
   keeps its queue. ([#157](https://github.com/mathisarends/harnessed/issues/157))
+- Reopening an interrupted `SessionState` or `SessionCheckpoint` repairs it
+  after the session runtime, its services and every plugin are active, and
+  before `SessionOpened`. Plugins that need `SessionLog` or `SessionContext`
+  now observe the repair records, such as the aborted `TurnEndedEvent`.
+  ([#158](https://github.com/mathisarends/harnessed/issues/158))
 
 ## 0.26.0 (2026-11-22)
 

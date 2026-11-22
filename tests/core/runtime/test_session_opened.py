@@ -1,12 +1,16 @@
+import asyncio
 from time import monotonic
 
 import pytest
 
 from harnessed import Agent, Plugin
+from harnessed.events import TurnEndedEvent, TurnOutcome
 from harnessed.hooks import SessionOpened
-from harnessed.kernel import PluginScope, hook
-from harnessed.models import UserMessage
-from harnessed.testing import ScriptedModel
+from harnessed.kernel import PluginScope, hook, needs
+from harnessed.models import ModelChunk, UserMessage
+from harnessed.sessions import SessionCheckpoint
+from harnessed.sessions.log import SessionLog
+from harnessed.testing import CallbackModel, ScriptedModel
 from tests._commits import CommitRecorder
 
 
@@ -54,3 +58,48 @@ async def test_open_hook_failure_releases_resources_before_propagating():
         async with agent.session():
             pytest.fail("Session body ran after an opening failure")
     assert released == [True]
+
+
+async def _interrupted_checkpoint() -> SessionCheckpoint:
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def respond(request):
+        started.set()
+        await release.wait()
+        yield ModelChunk(text="late")
+
+    async with Agent(model=CallbackModel(respond)).session() as session:
+        await session.submit("go")
+        await asyncio.wait_for(started.wait(), timeout=5)
+        checkpoint = session.checkpoint()
+        release.set()
+    assert checkpoint.state is not None
+    return checkpoint
+
+
+async def test_reopening_repairs_the_interrupted_turn_after_every_plugin_is_active():
+    observed: list[str] = []
+
+    class Watch(Plugin, needs=(SessionLog,)):
+        log = needs(SessionLog)
+
+        @hook(TurnEndedEvent)
+        def ended(self, event: TurnEndedEvent) -> None:
+            observed.append(f"turn.ended({event.reason})")
+
+        @hook(SessionOpened)
+        def opened(self, event: SessionOpened) -> None:
+            observed.append(f"session.opened(open_turn={self.log.open_turn})")
+
+    checkpoint = await _interrupted_checkpoint()
+    store = CommitRecorder()
+    agent = Agent(model=ScriptedModel([]), plugins=[Watch()])
+    async with agent.session(state=checkpoint, on_commit=store):
+        assert observed == [
+            f"turn.ended({TurnOutcome.ABORTED})",
+            "session.opened(open_turn=None)",
+        ]
+        assert any(
+            isinstance(change.event, TurnEndedEvent) and change.event.reason is TurnOutcome.ABORTED
+            for change in store.changes(checkpoint.session_id)
+        )
