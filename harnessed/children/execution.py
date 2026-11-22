@@ -386,7 +386,7 @@ class ChildExecution:
         self._messages.clear()
 
     async def _observe(self, event: SessionAppended) -> None:
-        if self.child is None or event.log is not self.child.log:
+        if self.child is None:
             return
         record = event.event
         if isinstance(record, ToolProgressEvent):
