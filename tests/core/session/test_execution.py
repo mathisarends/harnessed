@@ -60,6 +60,19 @@ class Look(Plugin):
         return "Seen."
 
 
+async def test_idle_controls_reuse_the_last_committed_conversation():
+    store = SplitStore()
+    async with Agent(model=ScriptedModel(["done"])).session(on_commit=store) as session:
+        await session.run("remember this")
+        final = store.commits[-1].checkpoint.state
+        await session.pause()
+        await session.resume()
+        paused, resumed = store.commits[-2:]
+        assert paused.checkpoint.state is resumed.checkpoint.state is final
+        assert not paused.state_changed and not resumed.state_changed
+        assert store.latest(session.id) == session.checkpoint()
+
+
 def _ends_turn(commit: SessionCommit) -> bool:
     return any(isinstance(change.event, TurnEndedEvent) for change in commit.changes)
 
