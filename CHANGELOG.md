@@ -32,6 +32,11 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   `session.approvals.allow()` / `deny()`. A closing stream hands its pending
   questions over to an open responder. Without one, behaviour is unchanged.
   ([#162](https://github.com/mathisarends/harnessed/issues/162))
+- An active plugin reads its `PluginScope` as `self.scope`, so tools and hooks
+  can look up services and dispatch events without storing the `setup()`
+  parameter. It is the object `setup()` receives and stays available through
+  owned cleanup. On a recipe or a finished activation it raises `RuntimeError`.
+  See the [activation contract](docs/guides/plugins.md#activation-scope-and-lifecycle-contract).
 - `SessionCommit.state_changed` says whether the commit's conversation state
   differs from the previous delivered commit. `checkpoint.execution` returns a
   `SessionExecution` without the state, and
@@ -97,6 +102,20 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 
   # after
   from harnessed import FinalStepPolicy, Service
+  ```
+
+- `Plugin.scope` is a read-only property, so a plugin that assigns `self.scope`
+  now raises `AttributeError`. Remove the assignment if it stored the `setup()`
+  parameter, and rename the attribute if it held something else:
+
+  ```python
+  # before
+  async def setup(self, scope: PluginScope) -> None:
+      self.scope = scope
+
+
+  # after: self.scope is already bound, so setup() needs no assignment
+  async def setup(self, scope: PluginScope) -> None: ...
   ```
 
 ## 0.26.0 (2026-11-22)

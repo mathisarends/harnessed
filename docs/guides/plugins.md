@@ -216,8 +216,9 @@ that distinction belongs to the resource's context manager.
 
 The lifecycle contract is:
 
-1. The framework reconstructs a fresh instance and binds `needs`, `observes` and
-   `PluginState` before setup. These bindings remain stable through cleanup.
+1. The framework reconstructs a fresh instance and binds `needs`, `observes`,
+   `PluginState` and `self.scope` before setup. These bindings remain stable
+   through cleanup.
 2. Setup acquires resources and installs owned services, listeners and integration
    registrations. The activation can use its own services during setup. Other
    plugins cannot resolve its services or invoke its listeners until setup and
@@ -278,6 +279,25 @@ can release the registration early. Repeated disposal and later owner cleanup
 run its cleanup at most once. Prefer `needs(T)` and `observes(T)` for plugin
 dependencies: an explicit lookup does not declare a lifetime requirement or
 subscribe to provider replacement.
+
+Tools and hooks reach the same view as `self.scope`, so a plugin does not need
+to store the `setup` parameter:
+
+```python
+from harnessed import Plugin, tool
+
+
+class Readiness(Plugin):
+    @tool(readonly=True)
+    async def check_ready(self) -> bool:
+        return await self.scope.dispatch(CheckReadiness(), default=page_loaded)
+```
+
+`CheckReadiness` is a hook type and `page_loaded` a callback of the integrating
+library. `self.scope` is available from before setup through owned cleanup. On
+a recipe or a finished activation it raises `RuntimeError`, like `needs` and
+`PluginState`. A restart creates a new view, so read it from `self` instead of
+keeping it outside the activation.
 
 Plugins cannot install other plugins, extend composition, settle dependencies or
 close the owner through this view. Applications and standalone kernel integrations
