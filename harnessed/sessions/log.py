@@ -139,7 +139,7 @@ class SessionLog:
         self._preserved_turns = state.preserved_turns if state else ()
         self._uncompacted_turns = state.turns_since_compaction if state else 0
         self._closed_count = len(self._turn_boundaries)
-        self._commits = CommitDelivery(session_id, on_commit) if on_commit is not None else None
+        self._commits = CommitDelivery(on_commit) if on_commit is not None else None
         self._restoring = False
         self._turn_state: SessionState | None = None
         self._turn_seed: tuple[CheckpointSeed, ...] = ()
@@ -222,6 +222,7 @@ class SessionLog:
         assets = {value.ref.sha256 for value in state.assets}
         files = {value.key: value for value in state.files}
         return SessionCheckpoint(
+            session_id=self.id,
             state=state,
             offset=self._turn_offset if turn is not None else self._sequence,
             seed=self._turn_seed if turn is not None else self._checkpoint_seed(),

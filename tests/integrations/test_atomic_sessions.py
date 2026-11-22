@@ -74,7 +74,7 @@ async def test_a_failed_transaction_continues_from_the_last_stored_checkpoint():
                 await session.run(UserMessage("Lost", id="lost-message"))
         connection.execute("DROP TRIGGER reject_update")
         state = await commits.load("retry")
-        async with agent.session(id="retry", state=state, on_commit=commits) as session:
+        async with agent.session(state=state, on_commit=commits) as session:
             await session.run(UserMessage("Again", id="second-message"))
         messages = await repository.messages("retry")
         assert [(message.speaker, message.text) for message in messages] == [

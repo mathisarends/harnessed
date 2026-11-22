@@ -100,14 +100,17 @@ type CheckpointSeed = Annotated[
 class SessionCheckpoint:
     """An immutable conversation boundary and its current bounded execution suffix.
 
-    This is an SDK exchange value, not an application's database schema. Stores
-    may map every field into their own records, but must reconstruct the complete
-    checkpoint. Serialization performs no I/O and requires no plugin catalog.
-    Application event schemas are checked by the owning session before replay.
+    This is an SDK exchange value, not an application's database schema.
+    Applications may map every field into their own records, but must reconstruct
+    the complete checkpoint. It carries its ``session_id``, so reopening it with
+    ``Agent.session(state=...)`` continues under the same ID. Serialization
+    performs no I/O and requires no plugin catalog. Application event schemas are
+    checked by the owning session before replay.
     """
 
     __hash__ = None
 
+    session_id: Annotated[str, Field(min_length=1)]
     state: SessionState
     offset: Annotated[int, Field(ge=0)]
     control: SessionControlChangedEvent
@@ -115,11 +118,13 @@ class SessionCheckpoint:
     events: tuple[CheckpointEntry, ...] = ()
     assets: tuple[AssetValue, ...] = ()
     files: tuple[TextValue, ...] = ()
-    version: Literal[4] = 4
+    version: Literal[5] = 5
 
     def __post_init__(self) -> None:
         if type(self.version) is not int:
             raise ValueError("Checkpoint versions must be integers")
+        if not self.session_id.strip():
+            raise ValueError("Checkpoint session IDs must not be blank")
         if self.events and (
             not isinstance(self.events[0], TurnStartedEvent)
             or any(

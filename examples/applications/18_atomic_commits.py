@@ -25,7 +25,7 @@ async def main() -> None:
             assert messages[1].text == "Remembered."
 
         state = await commits.load("support:4711")
-        async with agent.session(id="support:4711", state=state, on_commit=commits) as session:
+        async with agent.session(state=state, on_commit=commits) as session:
             await session.run("Continue.")
         assert len(await repository.messages("support:4711")) == 4
         print("Messages and recovery checkpoints committed together.")

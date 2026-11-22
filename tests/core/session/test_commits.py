@@ -176,7 +176,6 @@ def test_commit_rejects_duplicate_reversed_or_gapped_changes(sequences):
     event = MessageAppendedEvent(UserMessage("fact"))
     with pytest.raises(ValidationError, match="contiguous"):
         SessionCommit(
-            "session",
             replace(checkpoint(), offset=3),
             tuple(SessionChange(sequence, event) for sequence in sequences),
         )
@@ -188,8 +187,8 @@ def test_commit_validates_its_checkpoint_boundary_and_nested_backend_schema():
 
     event = MessageAppendedEvent(UserMessage("fact"))
     with pytest.raises(ValidationError, match="next sequence"):
-        SessionCommit("session", checkpoint(), (SessionChange(0, event),))
-    value = SessionCommit("session", replace(checkpoint(), offset=1), (SessionChange(0, event),))
+        SessionCommit(checkpoint(), (SessionChange(0, event),))
+    value = SessionCommit(replace(checkpoint(), offset=1), (SessionChange(0, event),))
     envelope = BackendEnvelope(commit=value)
     assert BackendEnvelope.model_validate_json(envelope.model_dump_json()).commit == value
     assert "SessionChange" in BackendEnvelope.model_json_schema()["$defs"]

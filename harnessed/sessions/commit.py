@@ -69,7 +69,6 @@ class SessionCommit:
 
     __hash__ = None
 
-    session_id: Annotated[str, Field(min_length=1)]
     checkpoint: SessionCheckpoint
     changes: tuple[SessionChange, ...] = ()
 
@@ -81,6 +80,11 @@ class SessionCommit:
             raise ValueError("Session changes must have contiguous ascending sequences")
         if self.changes and self.changes[-1].sequence + 1 != self.next_sequence:
             raise ValueError("Session changes must end at their checkpoint's next sequence")
+
+    @property
+    def session_id(self) -> str:
+        """The committing session; subagent sessions share their parent's handler."""
+        return self.checkpoint.session_id
 
     @property
     def next_sequence(self) -> int:
@@ -104,9 +108,8 @@ class CommitDelivery:
     the truth, and the conversation continues by reopening from it.
     """
 
-    def __init__(self, session_id: str, handler: CommitHandler) -> None:
+    def __init__(self, handler: CommitHandler) -> None:
         self.handler = handler
-        self._session_id = session_id
         self._changes: list[SessionChange] = []
         self._closing = False
         self._failure: BaseException | None = None
@@ -131,7 +134,7 @@ class CommitDelivery:
         """Hand pending changes to the application while the owning log holds its lock."""
         if not self._changes:
             return
-        commit = SessionCommit(self._session_id, capture(), tuple(self._changes))
+        commit = SessionCommit(capture(), tuple(self._changes))
         try:
             await self.handler(commit)
         except Exception as error:

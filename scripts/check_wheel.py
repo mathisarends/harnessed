@@ -140,7 +140,7 @@ async def main():
         await session.append_message(UserMessage('The customer is Ada.'))
         await session.run('Remember the customer.')
     stored = SessionCheckpoint.from_dict(documents['wheel-conversation'])
-    async with persistent.session(id='wheel-conversation', state=stored, on_commit=save) as session:
+    async with persistent.session(state=stored, on_commit=save) as session:
         assert session.messages[0].text == 'The customer is Ada.'
         assert (await session.run('Continue.')).text == 'restored'
 

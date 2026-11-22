@@ -282,8 +282,9 @@ plugin_validation=PluginValidation.ERROR)` resolves reusable configuration.
 
 `SessionCommit`, `SessionChange`, `SessionCheckpoint` and `CommitHandler`
 (`Callable[[SessionCommit], Awaitable[None]]`) are exported from `harnessed.sessions`.
-Harnessed stores nothing itself. `SessionCommit(session_id, checkpoint, changes)`
-carries the complete recovery checkpoint and the ordered
+Harnessed stores nothing itself. `SessionCommit(checkpoint, changes)`
+carries the complete recovery checkpoint, whose `session_id` is also
+`commit.session_id`, and the ordered
 `SessionChange(sequence, event)` values since the previous delivered commit.
 Map domain changes and the checkpoint in one application-owned transaction. Old
 changes are not emitted again on restore. Token deltas are excluded.

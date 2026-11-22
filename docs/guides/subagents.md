@@ -206,7 +206,7 @@ Snapshots are also available from `SessionLog.children` after replay.
 Child sessions deliver their commits through the parent session's `on_commit`
 handler; `commit.session_id` identifies the child. Without a parent handler they
 remain ephemeral. Reopen a child with
-`specialist.session(id=child_id, state=checkpoint)`. Applications own execution
+`specialist.session(state=checkpoint)`; the checkpoint carries the child's ID. Applications own execution
 coordination, retention and deletion; deleting a parent does not cascade-delete
 its children.
 

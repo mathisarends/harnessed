@@ -34,15 +34,17 @@ async with agent.session(id="voyager", on_commit=commits) as session:
 
 # A later request or process continues the same conversation.
 state = await commits.load("voyager")
-async with agent.session(id="voyager", state=state, on_commit=commits) as session:
+async with agent.session(state=state, on_commit=commits) as session:
     await session.run("Explain their different trajectories.")
 ```
 
 `on_commit` is any async callable that accepts a `SessionCommit`. Harnessed never
 opens, closes or retries an application-owned repository, pool or transaction.
-`id=` names the session in commits and correlation; without it each session gets a
-fresh ID. Keep `session.id` if the conversation must be reopened. Without a
-handler, nothing is delivered and `flush()` does nothing.
+`id=` names a new session; without it the session gets a fresh ID. Every
+checkpoint carries its `session_id`, so `state=checkpoint` reopens the session
+under the same ID, and key your rows by `commit.session_id`. Passing a different
+`id=` together with a checkpoint raises `ConfigError`. Without a handler, nothing
+is delivered and `flush()` does nothing.
 
 `session.checkpoint()` returns the same `SessionCheckpoint` on demand, also while a
 turn is running or paused. `session.snapshot()` remains the smaller terminal
@@ -66,8 +68,19 @@ interrupted partial reply, is recorded as one durable event. Custom `DurableEven
 values are barriers and await a commit for each emitted event; declare a custom
 `TransientEvent` for frequent UI-only progress.
 
-Subagent sessions deliver their commits through their parent's handler.
-`commit.session_id` tells the sessions of one tree apart.
+Subagent sessions deliver their commits through their parent's handler, each
+under its own `commit.session_id`. Store one row per session; a child's
+`commit.checkpoint.state.parent.parent_session_id` links it to its parent:
+
+```python
+async def save(commit: SessionCommit) -> None:
+    parent = commit.checkpoint.state.parent
+    await repository.save(
+        commit.session_id,
+        commit.checkpoint.to_dict(),
+        parent_id=parent.parent_session_id if parent is not None else None,
+    )
+```
 
 ### When a commit fails
 
@@ -141,13 +154,14 @@ is always the complete current state, not an incremental journal.
 
 | Field | Meaning |
 | --- | --- |
+| `session_id` | The session this checkpoint reopens |
 | `state` | Typed terminal `SessionState` before the open turn, or the current idle conversation |
 | `offset` | Sequence position where the execution suffix begins |
 | `seed` | Typed pending inputs and active approval grants |
 | `events` | Discriminated built-in events plus explicit `CheckpointExtension` values |
 | `control` | Typed `SessionControlChangedEvent` with its `ControlState` |
 | `assets` / `files` | Resources needed in addition to the conversation baseline |
-| `version` | Current checkpoint format, `Literal[4]` |
+| `version` | Current checkpoint format, `Literal[5]` |
 
 For example, `checkpoint.state.history[i].message` is the SDK's typed message
 union. Narrow with `isinstance(message, UserMessage)` from `harnessed.models`.
@@ -199,7 +213,7 @@ async with agent.session(id="investigation", on_commit=commits) as session:
 
 # The previous Python handles close; the stored execution remains paused.
 state = await commits.load("investigation")
-async with agent.session(id="investigation", state=state, on_commit=commits) as session:
+async with agent.session(state=state, on_commit=commits) as session:
     await session.resume()
     await session.wait_until_idle()
     print(session.messages[-1].text)
@@ -221,10 +235,10 @@ pending structured work with
 Restoration matches validator identity and schema; stored JSON never imports
 Python code.
 
-Execution checkpoints have format **4** and contain a conversation snapshot plus
-the current execution suffix, queue, grants and resources. Formats are not
-automatically migrated. To create an independent branch, open a terminal
-`SessionState` or checkpoint under a new ID.
+Execution checkpoints have format **5** and contain their session ID, a
+conversation snapshot plus the current execution suffix, queue, grants and
+resources. Formats are not automatically migrated. To create an independent
+branch, open the checkpoint's terminal `checkpoint.state` under a new ID.
 
 ## Continue from application-owned state
 

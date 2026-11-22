@@ -14,7 +14,8 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   `session_id`, so one handler serves a parent and its subagent sessions.
 - `session.checkpoint()` returns the complete `SessionCheckpoint` on demand,
   including a running or paused turn. `agent.session(state=...)` accepts a
-  `SessionState` or a `SessionCheckpoint`.
+  `SessionState` or a `SessionCheckpoint`. Checkpoints carry their
+  `session_id`, so reopening one keeps its ID without passing `id=`.
 - `SessionState` and `SessionCheckpoint` gain `to_dict()` / `from_dict()` for
   JSON-compatible documents, such as a PostgreSQL `JSONB` column.
 
@@ -25,7 +26,10 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   together with the background writer, its 100 ms coalescing and revisions.
 - `agent.session(id=...)` names a session instead of loading it. Reopen by
   passing the stored checkpoint as `state=`.
-- `SessionCommit` takes the session ID as its first field.
+- `SessionCheckpoint` gains a required `session_id` and uses format **5**.
+  `SessionCommit(checkpoint, changes)` reads `commit.session_id` from its
+  checkpoint. Passing an `id=` that differs from the checkpoint raises
+  `ConfigError`.
 
 ### Upgrade from 0.25.0
 
@@ -34,10 +38,12 @@ Version-specific breaking changes and upgrade instructions are recorded below.
    callable that saves `commit.checkpoint` (and optionally maps `commit.changes`)
    in one transaction.
 2. Replace `agent.session(id=conversation_id)` reopening with
-   `agent.session(id=conversation_id, state=checkpoint, on_commit=handler)`, where
-   `checkpoint` comes from your repository.
-3. Existing JSON-store files contain a version-3 envelope around a checkpoint.
-   Read the envelope's checkpoint and pass it to `SessionCheckpoint.from_dict()`.
+   `agent.session(state=checkpoint, on_commit=handler)`, where `checkpoint`
+   comes from your repository and carries its session ID.
+3. Existing JSON-store files contain a version-3 envelope around a format-4
+   checkpoint. Take the envelope's `checkpoint`, add `"session_id"` (the
+   envelope's `conversation_id`), set `"version": 5` and pass it to
+   `SessionCheckpoint.from_dict()`.
 4. Revision checks are now the repository's concern. Serialize execution per
    conversation as before.
 

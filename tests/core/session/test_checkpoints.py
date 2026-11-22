@@ -48,7 +48,7 @@ def test_checkpoint_has_typed_messages_and_nested_pydantic_roundtrip():
     assert message.message.id == "user-id" and message.message.text == "hello"
     assert restored.control.state is ControlState.PAUSED
     schema = BackendEnvelope.model_json_schema()
-    assert schema["$defs"]["SessionCheckpoint"]["properties"]["version"]["const"] == 4
+    assert schema["$defs"]["SessionCheckpoint"]["properties"]["version"]["const"] == 5
     assert "UserMessageEvent" in schema["$defs"]
 
 
@@ -72,18 +72,22 @@ def test_checkpoint_extensions_are_immutable_and_roundtrip_without_a_registry():
 
 
 @pytest.mark.parametrize(
-    "change", ["old-version", "bool-version", "extra", "offset", "seed", "end"]
+    "change", ["old-version", "bool-version", "extra", "offset", "seed", "end", "id", "blank-id"]
 )
 def test_checkpoint_rejects_invalid_documents(change):
     data = json.loads(checkpoint().to_json())
     if change == "old-version":
-        data["version"] = 3
+        data["version"] = 4
     elif change == "bool-version":
         data["version"] = True
     elif change == "extra":
         data["unknown"] = "ignored?"
     elif change == "offset":
         data["offset"] = -1
+    elif change == "id":
+        del data["session_id"]
+    elif change == "blank-id":
+        data["session_id"] = " "
     elif change == "seed":
         data["seed"] = [{"type": "turn.started", "turn_id": "turn"}]
     else:
@@ -98,7 +102,10 @@ def test_checkpoint_rejects_invalid_documents(change):
 def test_checkpoint_construction_and_type_adapter_validate_without_json():
     with pytest.raises(ValidationError):
         SessionCheckpoint(
-            state=SessionState(), offset=-1, control=SessionControlChangedEvent("active")
+            session_id="session",
+            state=SessionState(),
+            offset=-1,
+            control=SessionControlChangedEvent("active"),
         )
     with pytest.raises(SessionFormatError):
         SessionCheckpoint.from_json("{}")

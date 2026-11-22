@@ -435,7 +435,7 @@ async def test_interrupted_parent_marks_child_without_repeating_work():
     store = CommitRecorder()
     started = SubagentStartedEvent("child-one", "review", "task", "turn", "call", 1)
     suffix = (TurnStartedEvent("turn", "input"), started)
-    seed = replace(checkpoint(), events=suffix)
+    seed = replace(checkpoint(), session_id="parent", events=suffix)
     agent = Agent(model=ScriptedModel([]))
     async with agent.session(id="parent", state=seed, on_commit=store) as session:
         assert session.children[0].status is SubagentStatus.INTERRUPTED

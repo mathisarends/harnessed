@@ -288,6 +288,22 @@ async def test_application_ids_need_no_handler_and_invalid_states_are_rejected()
             pytest.fail("Serialized documents must be validated by the application")
 
 
+async def test_a_checkpoint_reopens_under_its_own_session_id(recorder):
+    agent = Agent(model=ScriptedModel(["first"]))
+    async with agent.session(id="conversation-7", on_commit=recorder) as session:
+        await session.run("Hello")
+    stored = recorder.latest("conversation-7")
+    assert stored.session_id == "conversation-7"
+    async with agent.session(state=stored, on_commit=recorder) as session:
+        assert session.id == "conversation-7"
+        await session.flush()
+    with pytest.raises(ConfigError, match="session_id"):
+        async with agent.session(id="other", state=stored):
+            pytest.fail("A checkpoint must not be reopened under another ID")
+    async with agent.session(state=stored.state) as branch:
+        assert branch.id != "conversation-7"
+
+
 def test_corrupt_documents_raise_a_format_error():
     with pytest.raises(SessionFormatError):
         SessionCheckpoint.from_dict({"version": 99})

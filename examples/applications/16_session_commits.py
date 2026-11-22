@@ -46,7 +46,7 @@ async def main() -> None:
             print(first.text)
 
         saved = await files.load("support:4711")
-        async with agent.session(id="support:4711", state=saved, on_commit=files) as restored:
+        async with agent.session(state=saved, on_commit=files) as restored:
             assert restored.messages[0].text == "The customer is Ada."
             second = await restored.run("Continue our conversation.")
             print(second.text)
@@ -57,7 +57,7 @@ async def main() -> None:
 
         next_request = Agent(model=ScriptedModel(["Resumed."]))
         saved = await files.load("queued")
-        async with next_request.session(id="queued", state=saved, on_commit=files) as restored:
+        async with next_request.session(state=saved, on_commit=files) as restored:
             await restored.resume()
             await restored.wait_until_idle()
             print(restored.messages[-1].text)

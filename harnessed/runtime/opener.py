@@ -38,13 +38,16 @@ async def open_session(
         raise ConfigError("Conversation IDs must be non-empty strings")
     if on_commit is not None and not callable(on_commit):
         raise ConfigError("on_commit must be an async callable")
-    session_id = uuid4().hex if id is None else id
     if isinstance(state, SessionCheckpoint):
+        if id is not None and id != state.session_id:
+            raise ConfigError("id must match the checkpoint's session_id")
         checkpoint: SessionCheckpoint | None = state
         selected: SessionState | None = state.state
+        session_id = state.session_id
     else:
         checkpoint = None
         selected = state
+        session_id = uuid4().hex if id is None else id
     log = SessionLog(
         session_id,
         scope=scope,

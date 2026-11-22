@@ -44,7 +44,7 @@ async def main() -> None:
     row = await repository.fetch("support:4711")
     assert row is not None and row.retained_messages == 2
     state = await commits.load("support:4711")
-    async with agent.session(id="support:4711", state=state, on_commit=commits) as session:
+    async with agent.session(state=state, on_commit=commits) as session:
         user = session.messages[0]
         assert isinstance(user, UserMessage) and user.id == "customer-message-id"
         print((await session.run("Continue.")).text)
