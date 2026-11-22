@@ -25,6 +25,10 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   retained 2 MB images, a plain turn's overhead drops from about 970 ms to
   450 ms. Decoding a tampered document still fails.
   ([#161](https://github.com/mathisarends/harnessed/issues/161))
+- A parallel tool call waiting for an approval answer no longer holds one of
+  the `max_parallel_tools` slots. Calls of the same group that need no approval
+  run meanwhile, and every approval question of the group is pending at once.
+  ([#163](https://github.com/mathisarends/harnessed/issues/163))
 
 ## 0.26.0 (2026-11-22)
 

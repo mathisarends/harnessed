@@ -127,7 +127,8 @@ async def test_dynamic_parallel_break_drains_started_calls_and_prevents_further_
         finally:
             release_second.set()
         result = await asyncio.wait_for(task, 3)
-    assert executed == [0, 1] and policies == [0, 1]
+    # Authorization holds no slot, so every call is authorized; only two start.
+    assert executed == [0, 1] and sorted(policies) == [0, 1, 2, 3, 4]
     assert [value.status for _, value in result.tool_calls] == [
         ToolStatus.OK,
         ToolStatus.OK,

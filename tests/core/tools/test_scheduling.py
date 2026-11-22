@@ -13,7 +13,7 @@ from harnessed.events import (
 )
 from harnessed.events.codec import builtin_codec
 from harnessed.kernel import Inject, PluginScope, hook
-from harnessed.models import Decision, ModelChunk, Role, ToolCall
+from harnessed.models import Decision, ModelChunk, Role, ToolCall, ToolStatus
 from harnessed.plugins.filesystem import Filesystem, FileSystemBackend, LocalFileSystem
 from harnessed.runtime.hooks import ReviewToolResult
 from harnessed.testing import ScriptedModel
@@ -548,3 +548,95 @@ def test_parallel_limit_is_validated(limit):
             loop=AgentLoop(max_parallel_tools=limit),
             approvals=Approvals(default=Decision.ALLOW),
         )
+
+
+async def test_calls_waiting_for_approval_do_not_hold_parallel_slots():
+    asked: list[str] = []
+    all_asked, allowed_ran, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    executed: list[int] = []
+
+    class ToolsPlugin(Plugin):
+        @tool(parallel=True)
+        async def publish(self, index: int) -> str:
+            executed.append(index)
+            return f"published {index}"
+
+        @tool(parallel=True)
+        async def lookup(self) -> str:
+            allowed_ran.set()
+            return "looked up"
+
+    async def approver(request) -> Decision:
+        asked.append(request.call.id)
+        if len(asked) == 2:
+            all_asked.set()
+        await release.wait()
+        return Decision.ALLOW
+
+    tools = ToolsPlugin(name="slots")
+    calls = (
+        ToolCall("publish", {"index": 0}),
+        ToolCall("publish", {"index": 1}),
+        ToolCall("lookup"),
+    )
+    model = ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "done"])
+    async with Application(
+        model=model,
+        loop=AgentLoop(max_parallel_tools=2),
+        approvals=Approvals(ask=[tools.publish], default=Decision.ALLOW, approver=approver),
+        plugins=[tools],
+    ).session() as session:
+        session_audit = Audit(session)
+        running = asyncio.create_task(session.run("go"))
+        try:
+            async with asyncio.timeout(5):
+                await all_asked.wait()
+                await allowed_ran.wait()
+                assert executed == []
+                release.set()
+                await running
+        finally:
+            release.set()
+            await session.control.join()
+        assert sorted(executed) == [0, 1]
+        finished = [e for e in session_audit.events if isinstance(e, ToolCallFinishedEvent)]
+        assert [event.call_id for event in finished] == [call.id for call in calls]
+        assert all(event.result.status is ToolStatus.OK for event in finished)
+
+
+async def test_more_approval_questions_than_slots_are_pending_together():
+    slots = 2
+    asked: list[str] = []
+    all_asked, release = asyncio.Event(), asyncio.Event()
+
+    class ToolsPlugin(Plugin):
+        @tool(parallel=True)
+        async def publish(self, index: int) -> str:
+            return f"published {index}"
+
+    async def approver(request) -> Decision:
+        asked.append(request.call.id)
+        if len(asked) == slots + 1:
+            all_asked.set()
+        await release.wait()
+        return Decision.ALLOW
+
+    tools = ToolsPlugin(name="slots")
+    calls = tuple(ToolCall("publish", {"index": index}) for index in range(slots + 1))
+    model = ScriptedModel([[ModelChunk(tool_call=call) for call in calls], "done"])
+    async with Application(
+        model=model,
+        loop=AgentLoop(max_parallel_tools=slots),
+        approvals=Approvals(ask=[tools.publish], approver=approver),
+        plugins=[tools],
+    ).session() as session:
+        running = asyncio.create_task(session.run("go"))
+        try:
+            async with asyncio.timeout(5):
+                await all_asked.wait()
+                assert len(session.approvals.pending) == slots + 1
+                release.set()
+                assert (await running).text == "done"
+        finally:
+            release.set()
+            await session.control.join()
