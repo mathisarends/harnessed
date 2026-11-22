@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from harnessed import Agent, Plugin, PluginScope, needs, observes
+from harnessed import Agent, Plugin, PluginScope, Service, needs, observes
 from harnessed.kernel import Key, PluginBase, PluginStatus, Scope
 from harnessed.sessions import SessionContext
 from harnessed.testing import ScriptedModel
@@ -150,3 +150,22 @@ async def test_a_session_starts_an_observer_once_when_its_provider_is_listed_lat
     async with agent.session() as session:
         assert session.scope[Perception].secrets is session.scope[SessionSecrets]
     assert log.setups == ["provider", "observer", "dependent"]
+
+
+@pytest.mark.parametrize("session_bound", [False, True], ids=["service", "session-provider"])
+async def test_observer_without_session_dependencies_starts_with_its_backend(session_bound):
+    class SessionProvider(Plugin, provides=Secrets):
+        context = needs(SessionContext)
+
+    seen = []
+
+    class Observer(Plugin):
+        backend = observes(Secrets)
+
+        async def setup(self, scope: PluginScope) -> None:
+            seen.append(self.backend)
+
+    provider = SessionProvider() if session_bound else Service(Secrets, Secrets())
+    agent = Agent(model=ScriptedModel([]), plugins=[Observer(), provider])
+    async with agent.session() as session:
+        assert seen == [session.scope[Secrets]]

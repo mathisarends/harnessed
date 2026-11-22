@@ -4,6 +4,7 @@ import inspect
 from collections.abc import Callable, Mapping
 from contextlib import AbstractAsyncContextManager
 from copy import copy
+from dataclasses import replace
 from types import get_original_bases
 from typing import Any, ClassVar, Self, TypeVar, cast, get_args, get_origin, overload
 
@@ -339,3 +340,8 @@ class Service[T](Plugin):
         if self.key is Model and isinstance(self.value, AbstractAsyncContextManager):
             await scope.enter(self.value)
         scope.provide(self.key, self.value)
+
+    def _as_plugin_spec(self) -> PluginSpec:
+        spec = super()._as_plugin_spec()
+        provides = tuple(dict.fromkeys((*spec.provides, self.key)))
+        return replace(spec, provides=provides)
