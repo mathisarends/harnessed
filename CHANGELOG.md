@@ -5,7 +5,7 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
-## Unreleased
+## 0.27.0 (unreleased)
 
 ### Added
 
@@ -95,6 +95,14 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 - Answering an approval that no live responder held now raises
   `ApprovalUnavailable` saying so, instead of "This approval is no longer
   pending". ([#162](https://github.com/mathisarends/harnessed/issues/162))
+- Split executions include a digest of their conversation state. Reassembly
+  rejects stale snapshots even when they have the same history position.
+  ([#172](https://github.com/mathisarends/harnessed/pull/172))
+- Split commits preserve changes in JSON value types, such as changing `1` to
+  `true`. Checkpoint request references preserve the exact JSON data captured in
+  model requests, including tool arguments and provider metadata.
+  ([#173](https://github.com/mathisarends/harnessed/pull/173),
+  [#174](https://github.com/mathisarends/harnessed/pull/174))
 
 ### Breaking changes
 
@@ -122,6 +130,22 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   # after: self.scope is already bound, so setup() needs no assignment
   async def setup(self, scope: PluginScope) -> None: ...
   ```
+
+### Upgrade from 0.26.0
+
+1. Move `Service` and `FinalStepPolicy` imports from `harnessed.plugins` to
+   `harnessed`. Remove assignments that cache the setup scope in `self.scope`
+   and rename any unrelated attributes with that name.
+2. If a plugin declares `observes(T)` and the provider declares `provides=T`,
+   review any setup behavior that relied on the observer starting before the
+   service became available. The kernel can now start the declared provider first.
+3. Continue opening existing format **4** conversation snapshots and format **5**
+   `SessionCheckpoint` documents directly. Standalone audit envelopes remain
+   version **9**. To adopt split persistence, write `checkpoint.state` and
+   `checkpoint.execution` together when `SessionCommit.state_changed` is true
+   or when initializing a store. Later execution-only updates must use the
+   matching saved state. The new split `SessionExecution` document uses format
+   **6**. See [store state and execution apart](docs/guides/sessions.md#store-state-and-execution-apart).
 
 ## 0.26.0 (2026-11-22)
 

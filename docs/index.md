@@ -8,8 +8,8 @@ Harnessed 0.x is alpha software. Read the
 [release notes and compatibility policy](releases.md) before depending on its
 public APIs or persisted session formats.
 
-Harnessed 0.26.0 gives applications ownership of session persistence and lets
-plugin recipes customize individual tools.
+Harnessed 0.27.0 adds split checkpoint persistence, typed access to session
+plugin activations, and approval handling for turns without an owning stream.
 See the [release overview](releases.md) for upgrade steps and earlier releases.
 
 | I want to... | Read |

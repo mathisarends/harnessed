@@ -4,6 +4,20 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md)
 is the complete version history and upgrade reference.
 
+## 0.27.0 (unreleased)
+
+Applications can [store conversation state and execution separately](guides/sessions.md#store-state-and-execution-apart),
+[read typed plugin activations](guides/sessions.md#read-results-and-usage), and
+keep approval questions pending for turns without an owning stream. Plugin
+authors can import common declarations from `harnessed` and access the active
+scope through `self.scope`.
+
+**Upgrade.** Import `Service` and `FinalStepPolicy` from `harnessed` and update
+plugins that assign `self.scope`. Existing conversation snapshots, full
+checkpoints, and audit envelopes retain their formats. The new split execution
+document uses format **6**. Follow the
+[0.26.0 upgrade checklist](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-0260).
+
 ## 0.26.0 (2026-11-22)
 
 Applications [persist sessions through `on_commit`](guides/sessions.md#receive-commits)
@@ -191,8 +205,9 @@ contract alone does not keep a turn running. Persistence versions remain state
   notes identify these changes and any required upgrade steps.
 - Patch releases within a minor line are intended for compatible fixes. Pin the
   exact package version for reproducible deployments and persisted workflows.
-- Current conversation snapshots use format **4**, execution checkpoints use
-  format **5**, and standalone audit-event envelopes use version **9**.
+- Current conversation snapshots use format **4**, full checkpoints use format
+  **5**, split execution documents use format **6**, and standalone audit-event
+  envelopes use version **9**.
   Unsupported versions fail explicitly. Applications own the storage of new
   checkpoints. The changelog records earlier formats, including the former JSON
   session store.
