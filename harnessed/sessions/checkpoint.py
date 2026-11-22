@@ -272,6 +272,17 @@ def _history_messages(state: SessionState) -> dict[str, Message]:
     return {entry.message.id: entry.message for entry in state.history}
 
 
+def _message_slot(message: Message, previous: Message | None) -> str | Message:
+    if previous is message:
+        return message.id
+    if previous is not None and previous == message:
+        # Tool arguments and provider replay data can contain type-sensitive JSON.
+        stored = _MESSAGE.dump_json(previous)
+        if stored == _MESSAGE.dump_json(message):
+            return message.id
+    return message
+
+
 def _refer_messages(
     events: tuple[CheckpointEntry, ...], state: SessionState
 ) -> tuple[ExecutionEntry, ...]:
@@ -284,7 +295,7 @@ def _refer_messages(
             continue
         slots: list[str | Message] = []
         for message in event.request.messages:
-            slots.append(message.id if known.get(message.id) == message else message)
+            slots.append(_message_slot(message, known.get(message.id)))
             known[message.id] = message
         request = replace(event.request, messages=())
         entries.append(CheckpointRequest(replace(event, request=request), tuple(slots)))
@@ -320,3 +331,4 @@ def _encode_document(payload: Mapping[str, JSONValue], failure: str) -> str:
 
 _CHECKPOINT = TypeAdapter(SessionCheckpoint)
 _EXECUTION = TypeAdapter(SessionExecution)
+_MESSAGE = TypeAdapter(Message)
