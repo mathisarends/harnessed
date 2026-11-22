@@ -292,6 +292,8 @@ For durable JSON envelopes, import `EventRegistry` from `harnessed.events.regist
 `encode(event)` and `decode(record)`. A live session exposes its complete catalog
 at `session.log.registry`. Use `context={"events": registry}` when decoding a
 Pydantic terminal result whose nested log contains application events.
+`builtin_codec()` from `harnessed.events.codec` encodes and decodes built-in
+events only; it is the default when no registry is supplied.
 Request IDs and approval payloads are data; answer them through
 `session.approvals.allow(request_id)` or `session.approvals.deny(request_id)`, not through an event handle.
 

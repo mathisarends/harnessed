@@ -19,7 +19,7 @@ from harnessed.events import (
     SubagentStatus,
     ToolProgressEvent,
 )
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.integrations.json import JsonSessionStore
 from harnessed.kernel import Inject, PluginScope
 from harnessed.models import (
@@ -118,7 +118,7 @@ async def test_isolated_sessions_progress_receipts_and_usage():
         )
         for event in result.events:
             if isinstance(event, SubagentStartedEvent | SubagentFinishedEvent):
-                assert decode_event(encode_event(event)) == event
+                assert builtin_codec().decode(builtin_codec().encode(event)) == event
         assert snapshot.id in store.rows
     async with child.session(id=snapshot.id) as restored:
         assert restored.parent.parent_session_id == parent_id
@@ -517,7 +517,7 @@ async def test_configuration_and_link_validation():
     with pytest.raises(TypeError):
         Subagents({"bad": object()})
     link = SubagentLinkedEvent("parent", "turn", "call", "review", 1, 1)
-    assert decode_event(encode_event(link)) == link
+    assert builtin_codec().decode(builtin_codec().encode(link)) == link
     with pytest.raises(ValueError):
         from harnessed.sessions.log import SessionLog
 
@@ -729,8 +729,8 @@ async def test_repeated_cancellation_does_not_interrupt_child_cleanup():
 
 async def test_child_factory_rejects_existing_stored_conversation():
     from harnessed.approvals.responders import CallbackApprover
+    from harnessed.children import ChildSessionRequest
     from harnessed.errors import ConfigError
-    from harnessed.plugins.subagents import ChildSessionRequest
 
     child = Agent(model=ScriptedModel(["Existing answer"]), store=RecordingStore())
     async with child.session(id="occupied") as session:

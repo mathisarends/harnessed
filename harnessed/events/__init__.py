@@ -11,6 +11,7 @@ from .approvals import (
     PolicySource,
 )
 from .base import DurableEvent, SessionEvent, TransientEvent
+from .child_status import ChildActivity, ChildReport, ChildReportState, ChildRuntimeState
 from .compaction import (
     CompactionAppliedEvent,
     CompactionFinishedEvent,
@@ -91,6 +92,10 @@ __all__ = [
     "ApprovalRevokedEvent",
     "ApprovalStatus",
     "AssistantMessageEvent",
+    "ChildActivity",
+    "ChildReport",
+    "ChildReportState",
+    "ChildRuntimeState",
     "CompactionAppliedEvent",
     "CompactionFinishedEvent",
     "CompactionOutcome",

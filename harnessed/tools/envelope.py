@@ -13,7 +13,7 @@ from typing import Any, NamedTuple, Self
 from pydantic import BaseModel, RootModel
 
 from harnessed.models import ToolCall, ToolDefinition
-from harnessed.models.messages import freeze, to_dict
+from harnessed.models.values import freeze, to_dict
 
 from .info import ToolEnvelope, ToolInfo
 

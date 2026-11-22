@@ -48,7 +48,7 @@ def test_checkpoint_has_typed_messages_and_nested_pydantic_roundtrip():
     assert message.message.id == "user-id" and message.message.text == "hello"
     assert restored.control.state is ControlState.PAUSED
     schema = BackendEnvelope.model_json_schema()
-    assert schema["$defs"]["SessionCheckpoint"]["properties"]["version"]["const"] == 4
+    assert schema["$defs"]["SessionCheckpoint"]["properties"]["version"]["const"] == 5
     assert "UserMessageEvent" in schema["$defs"]
 
 
@@ -67,7 +67,7 @@ def test_checkpoint_extensions_are_immutable_and_roundtrip_without_a_registry():
         extension.data["changed"] = True
     with pytest.raises(FrozenInstanceError):
         value.offset = 3
-    with pytest.raises(TypeError):
+    with pytest.raises(ValidationError):
         CheckpointExtension(tag="project.details", data={"invalid": float("inf")})
 
 
@@ -98,14 +98,14 @@ def test_checkpoint_rejects_invalid_documents(change):
 def test_checkpoint_construction_and_type_adapter_validate_without_json():
     with pytest.raises(ValidationError):
         SessionCheckpoint(
-            state=SessionState(), offset=-1, control=SessionControlChangedEvent("active")
+            state=SessionState(), offset=-1, control=SessionControlChangedEvent(ControlState.ACTIVE)
         )
     with pytest.raises(SessionFormatError):
         SessionCheckpoint.from_json("{}")
     value = checkpoint("typed")
     assert TypeAdapter(SessionCheckpoint).validate_python(value) is value
     assert value.state.plugin_values == {"marker": "typed"}
-    with pytest.raises(TypeError, match="SessionCheckpoint"):
+    with pytest.raises(ValidationError, match="SessionCheckpoint"):
         StoredSession("{}", 1)
 
 

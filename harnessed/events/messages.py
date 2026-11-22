@@ -1,10 +1,12 @@
-from dataclasses import dataclass, field
+from dataclasses import field
 from enum import StrEnum
 from typing import Literal
 from uuid import uuid4
 
+from pydantic.dataclasses import dataclass
+
 from harnessed.models import AssistantMessage, Message, StopReason, UserMessage
-from harnessed.models.messages import JSONValue, freeze
+from harnessed.models.values import VALUE_CONFIG, JSONValue
 
 from .base import DurableEvent, Identifier, TransientEvent
 from .kinds import EventKind
@@ -15,7 +17,7 @@ class MessageLifetime(StrEnum):
     TURN = "turn"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class SystemMessageEvent(DurableEvent):
     __hash__ = None
 
@@ -23,19 +25,15 @@ class SystemMessageEvent(DurableEvent):
     content: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class UserMessageEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[EventKind.USER_MESSAGE] = field(default=EventKind.USER_MESSAGE, kw_only=True)
     message: UserMessage
 
-    def __post_init__(self) -> None:
-        if not isinstance(self.message, UserMessage):
-            raise TypeError("UserMessageEvent requires a user message value")
 
-
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class MessageAppendedEvent(DurableEvent):
     __hash__ = None
 
@@ -47,7 +45,7 @@ class MessageAppendedEvent(DurableEvent):
     turn_id: str | None = None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class PluginValueChangedEvent(DurableEvent):
     """Record the JSON value a plugin committed under its stable session key."""
 
@@ -56,17 +54,12 @@ class PluginValueChangedEvent(DurableEvent):
     type: Literal[EventKind.PLUGIN_VALUE_CHANGED] = field(
         default=EventKind.PLUGIN_VALUE_CHANGED, kw_only=True
     )
-    key: str
+    key: Identifier
     value: JSONValue
     id: str = field(default_factory=lambda: uuid4().hex)
 
-    def __post_init__(self) -> None:
-        if not isinstance(self.key, str) or not self.key:
-            raise ValueError("Plugin value keys must be non-empty strings")
-        object.__setattr__(self, "value", freeze(self.value))
 
-
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class AssistantMessageEvent(DurableEvent):
     """Close a model request with its accepted or interrupted partial message.
 
@@ -84,21 +77,15 @@ class AssistantMessageEvent(DurableEvent):
     interrupted: bool = False
     stop_reason: StopReason | None = None
 
-    def __post_init__(self) -> None:
-        if not isinstance(self.message, AssistantMessage):
-            raise TypeError("AssistantMessageEvent requires an assistant message value")
-        if self.stop_reason is not None:
-            object.__setattr__(self, "stop_reason", StopReason(self.stop_reason))
 
-
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, config=VALUE_CONFIG)
 class TextDeltaEvent(TransientEvent):
     type: Literal[EventKind.TEXT_DELTA] = field(default=EventKind.TEXT_DELTA, kw_only=True)
     message_id: str
     text: str = ""
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, config=VALUE_CONFIG)
 class ReasoningDeltaEvent(TransientEvent):
     type: Literal[EventKind.REASONING_DELTA] = field(
         default=EventKind.REASONING_DELTA, kw_only=True

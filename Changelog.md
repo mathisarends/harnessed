@@ -5,6 +5,64 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## Unreleased
+
+### Changed
+
+- Messages, model values, diagnostics, assets, built-in events and session
+  values are Pydantic dataclasses that share one strict configuration
+  (`harnessed.models.values.VALUE_CONFIG`). Field types and constraints replace
+  hand-written `__post_init__` type checks; `__post_init__` remains only for
+  cross-field invariants. They stay frozen dataclasses, so `fields()`,
+  `dataclasses.replace()` (which now validates) and pattern matching keep working.
+- The session record envelope is validated by a `SessionRecord` model.
+  `SessionCodec` in `harnessed.events.codec` owns the current record format, and
+  `EventRegistry` composes it for session-local catalogs.
+- Child-session types are exported from their owning packages instead of
+  `harnessed.plugins.subagents`.
+
+### Breaking changes
+
+- Construction is strict. Pass enum members instead of their string values, and
+  tuples instead of lists, for example `StepOutcome.COMPLETED` rather than `"completed"`
+  and `ToolResult((TextPart("x"),))` rather than `ToolResult([...])`. JSON
+  decoding still accepts the persisted enum values and arrays.
+- Invalid values raise `pydantic.ValidationError` (a `ValueError`) instead of
+  `TypeError`. Some error messages changed. Catch `ValueError` or
+  `ValidationError`.
+- `encode_event` and `decode_event` are removed. Use `builtin_codec().encode(event)`
+  and `builtin_codec().decode(record)` from `harnessed.events.codec` for built-in
+  events, or `EventRegistry.encode`/`decode` for catalogs with application
+  events. Pydantic terminal results accept any `decode(record)` implementation
+  as `context={"events": ...}`.
+- Decoding a record with non-string mapping keys or an invalid envelope raises
+  `SessionFormatError` instead of `TypeError`.
+- `freeze`, `to_dict`, `JSONMapping` and `JSONValue` moved from
+  `harnessed.models.messages` to `harnessed.models.values`.
+- `ModelCacheMetricsEvent.hit_rate` is a property derived from
+  `usage.cache_hit_rate` and is no longer a constructor argument or persisted field.
+- Audit envelopes use version **9** and execution checkpoints use format **5**,
+  because recorded cache metrics no longer contain `hit_rate`. Conversation
+  snapshots (`SessionState`) keep format **4**; JSON-store envelopes keep format **3**.
+- `harnessed.plugins.subagents` no longer re-exports child-session types. Import
+  `ChildSessionFactory`, `ChildSessionRequest` and `ChildStatusReporter` from
+  `harnessed.children`; `ChildActivity`, `ChildReport`, `ChildReportState` and
+  `ChildRuntimeState` from `harnessed.events`; and `ChildSession` from
+  `harnessed.sessions`.
+- `ToolScheduling(resources=...)`, `RuleTriggeredEvent(actions=...)` and similar
+  tuple fields reject lists and strings.
+
+### Upgrade from 0.25.0
+
+1. Replace string enum values and lists in direct constructor calls with enum
+   members and tuples. Update handlers that expected `TypeError` from invalid
+   values to catch `ValueError`.
+2. Replace `encode_event`/`decode_event` with `builtin_codec()` or your session's
+   `EventRegistry`, and update imports of the JSON helpers and child-session types.
+3. Existing audit envelopes (version 8) and execution checkpoints (format 4) are
+   not migrated. Export conversations as `SessionState` snapshots with 0.25.0
+   and import them into a fresh store.
+
 ## 0.25.0 (2026-11-21)
 
 ### Added

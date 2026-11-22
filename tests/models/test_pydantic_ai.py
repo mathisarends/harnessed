@@ -32,8 +32,15 @@ from harnessed.errors import (
     RateLimited,
 )
 from harnessed.events import ModelUsageRecordedEvent
-from harnessed.events.codec import decode_event, encode_event
-from harnessed.models import ImagePart, ModelRequest, StopReason, TextPart, ToolArgumentsMode
+from harnessed.events.codec import builtin_codec
+from harnessed.models import (
+    ImagePart,
+    ModelRequest,
+    StopReason,
+    TextPart,
+    ToolArgumentsMode,
+    ToolStatus,
+)
 from harnessed.models.pydantic_ai import PydanticAIModel
 from harnessed.testing import ScriptedModel
 from harnessed.tools import tool
@@ -118,8 +125,10 @@ async def test_direct_stream_preserves_thinking_signature_tools_and_replay_state
         session_audit = Audit(session)
         result = await session.run("Add")
         assert result.text == "3" and result.tool_calls[0][1].content == "3"
-        records = json.loads(json.dumps([encode_event(event) for event in session_audit.events]))
-        replay = AuditProjection([decode_event(record) for record in records])
+        records = json.loads(
+            json.dumps([builtin_codec().encode(event) for event in session_audit.events])
+        )
+        replay = AuditProjection([builtin_codec().decode(record) for record in records])
         assert replay.messages == session.messages
         thinking = next(
             part
@@ -497,7 +506,10 @@ async def test_session_settings_are_durable_and_reach_each_step_of_the_turn():
         session_audit = Audit(session)
         await session.run("Add", settings=GenerationSettings(temperature=0.1))
         replay = AuditProjection(
-            [decode_event(encode_event(event)) for event in session_audit.events]
+            [
+                builtin_codec().decode(builtin_codec().encode(event))
+                for event in session_audit.events
+            ]
         )
         assert [request.settings.temperature for request in replay.requests] == [0.1, 0.1]
     assert seen == [{"temperature": 0.1}, {"temperature": 0.1}]
@@ -1069,7 +1081,9 @@ async def test_tool_status_is_not_lost_in_native_model_history(status, exit_code
         ModelRequest(
             (
                 AssistantMessage(tool_calls=(ToolCall("work", id="call"),)),
-                ToolMessage("result", tool_call_id="call", status=status, exit_code=exit_code),
+                ToolMessage(
+                    "result", tool_call_id="call", status=ToolStatus(status), exit_code=exit_code
+                ),
             )
         )
     )

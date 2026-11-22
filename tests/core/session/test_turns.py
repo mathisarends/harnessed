@@ -17,7 +17,7 @@ from harnessed.events import (
     TurnStartedEvent,
     UserMessageEvent,
 )
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.models import ModelChunk, ModelInfo, ModelRequest, ToolCall
 from harnessed.runtime.hooks import PreStep, StepDecision
 from harnessed.testing import CallbackModel, ScriptedModel
@@ -70,7 +70,9 @@ async def test_turns_group_model_requests_and_tools_while_followups_wait_for_the
         second_users = [e.message.text for e in turns[1].events if isinstance(e, UserMessageEvent)]
         assert first_users == ["first task", "focus here"]
         assert second_users == ["second task"]
-        restored = tuple(decode_event(encode_event(event)) for event in agent_audit.events)
+        restored = tuple(
+            builtin_codec().decode(builtin_codec().encode(event)) for event in agent_audit.events
+        )
         assert derive_turns(restored) == turns
         with pytest.raises(FrozenInstanceError):
             turns[0].steps[0].number = 2

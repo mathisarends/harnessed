@@ -232,7 +232,7 @@ references and receipts; it does not clone children.
 
 `Agent` implements the small `ChildSessionFactory` protocol. Applications may
 provide another implementation using `ChildSessionFactory` and
-`ChildSessionRequest` from `harnessed.plugins.subagents`. Its `child_session(request)`
+`ChildSessionRequest` from `harnessed.children`. Its `child_session(request)`
 returns an asynchronous context manager yielding a `Session`. The factory must
 honor the requested fresh ID, parent link, routed approver and optional status
 reporter before starting

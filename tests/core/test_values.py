@@ -1,6 +1,7 @@
 from collections.abc import Hashable
 
 import pytest
+from pydantic import ValidationError
 
 from harnessed.events import ModelRequestedEvent, ObservationRecordedEvent, TurnStartedEvent
 from harnessed.models import (
@@ -35,12 +36,15 @@ def test_mapping_values_and_log_records_are_explicitly_unhashable(value):
         hash(value)
 
 
-def test_observation_detaches_content_and_refs_from_mutable_capture_buffers():
+def test_observations_reject_mutable_capture_buffers():
     parts = [TextPart("page"), ImagePart("https://example.test/screen.png")]
-    refs = ["frame"]
-    snapshot = ObservationRecordedEvent(UserMessage(parts), "browser", "turn", 1, refs)
+    with pytest.raises(ValidationError):
+        UserMessage(parts)
+    message = UserMessage(tuple(parts))
+    with pytest.raises(ValidationError):
+        ObservationRecordedEvent(message, "browser", "turn", 1, ["frame"])
+    snapshot = ObservationRecordedEvent(message, "browser", "turn", 1, ("frame",))
     parts.clear()
-    refs.clear()
     assert snapshot.message.content == (
         TextPart("page"),
         ImagePart("https://example.test/screen.png"),
@@ -50,7 +54,7 @@ def test_observation_detaches_content_and_refs_from_mutable_capture_buffers():
 
 @pytest.mark.parametrize("content", [None, 42, ("plain text is not a content part",)])
 def test_observation_rejects_unsupported_content(content):
-    with pytest.raises(TypeError):
+    with pytest.raises(ValidationError):
         UserMessage(content)
 
 

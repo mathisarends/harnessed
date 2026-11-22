@@ -1,8 +1,10 @@
-from dataclasses import dataclass
 from enum import StrEnum
 from typing import Annotated
 
 from pydantic import Field
+from pydantic.dataclasses import dataclass
+
+from harnessed.models.values import VALUE_CONFIG
 
 
 class ChildActivity(StrEnum):
@@ -20,7 +22,7 @@ class ChildReportState(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ChildReport:
     """A correlated, explicit child answer, separate from its task result."""
 
@@ -29,7 +31,7 @@ class ChildReport:
     text: Annotated[str, Field(max_length=8192)] = ""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ChildRuntimeState:
     """Bounded observation of a child; contains neither history nor reasoning."""
 

@@ -13,7 +13,7 @@ from harnessed.events import (
     ToolCallFinishedEvent,
     UserMessageEvent,
 )
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.models import (
     AssistantMessage,
     ModelInfo,
@@ -80,6 +80,8 @@ def test_event_json_roundtrip_includes_requests_and_frozen_tool_data():
         ),
         ToolCallFinishedEvent(call, ToolResult("ok")),
     )
-    restored = tuple(decode_event(json.loads(json.dumps(encode_event(e)))) for e in events)
+    restored = tuple(
+        builtin_codec().decode(json.loads(json.dumps(builtin_codec().encode(e)))) for e in events
+    )
     assert restored == events
     assert derive_messages(restored) == derive_messages(events)

@@ -1,29 +1,30 @@
 import hashlib
-import re
-from dataclasses import dataclass
-from typing import Protocol
+from typing import Annotated, Protocol, Self
+
+from pydantic import ConfigDict, Field, NonNegativeInt
+from pydantic.dataclasses import dataclass
+
+from .values import VALUE_CONFIG
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class AssetRef:
     """Content identity, independent of storage location or temporary URLs."""
 
-    sha256: str
-    media_type: str
-    size_bytes: int
-
-    def __post_init__(self) -> None:
-        if not re.fullmatch(r"[0-9a-f]{64}", self.sha256):
-            raise ValueError("Asset digest must be a lowercase SHA-256")
-        if not re.fullmatch(r"[a-z0-9.+-]+/[a-z0-9.+-]+", self.media_type):
-            raise ValueError("Asset media type must be a MIME type")
-        if type(self.size_bytes) is not int or self.size_bytes < 0:
-            raise ValueError("Asset size must be a non-negative integer")
+    sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+    media_type: Annotated[str, Field(pattern=r"^[a-z0-9.+-]+/[a-z0-9.+-]+$")]
+    size_bytes: NonNegativeInt
 
     def verify(self, data: bytes) -> None:
         """Raise ValueError if bytes differ in size or digest; usable by custom stores."""
         if len(data) != self.size_bytes or hashlib.sha256(data).hexdigest() != self.sha256:
             raise ValueError(f"Asset content does not match {self.sha256}")
+
+    def require_image(self) -> Self:
+        """Return this reference, or raise ValueError when it is not an image."""
+        if not self.media_type.startswith("image/"):
+            raise ValueError("Image references require an image asset")
+        return self
 
 
 class AssetStore(Protocol):
@@ -42,7 +43,11 @@ class AssetStore(Protocol):
         ...
 
 
-@dataclass(frozen=True)
+# Asset bytes cross JSON boundaries as base64, wherever the value is nested.
+_ASSET_CONFIG = ConfigDict(**VALUE_CONFIG, ser_json_bytes="base64", val_json_bytes="base64")
+
+
+@dataclass(frozen=True, config=_ASSET_CONFIG)
 class AssetValue:
     ref: AssetRef
     data: bytes

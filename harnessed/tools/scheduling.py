@@ -1,9 +1,13 @@
 import asyncio
 import inspect
 from collections.abc import Awaitable, Callable, Iterable, Iterator
-from dataclasses import dataclass
+from typing import Annotated
+
+from pydantic import AfterValidator
+from pydantic.dataclasses import dataclass
 
 from harnessed.models import ToolCall, ToolResult
+from harnessed.models.values import VALUE_CONFIG, NonEmptyText
 
 from .info import ToolEnvelope, ToolInfo
 from .policy import OutputLimit, OutputLimitSetting
@@ -11,20 +15,16 @@ from .policy import OutputLimit, OutputLimitSetting
 type ResourceSpec = tuple[str, ...] | Callable[[ToolCall], Iterable[str]]
 
 
-@dataclass(frozen=True)
-class ToolScheduling:
-    parallel: bool = False
-    resources: tuple[str, ...] = ()
+def _distinct(keys: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(keys))
 
-    def __post_init__(self) -> None:
-        if type(self.parallel) is not bool:
-            raise ValueError("parallel must be a bool")
-        if isinstance(self.resources, str):
-            raise TypeError("resources must be a tuple of resource names")
-        keys = tuple(self.resources)
-        if any(not isinstance(key, str) or not key for key in keys):
-            raise ValueError("Resource names must be non-empty strings")
-        object.__setattr__(self, "resources", tuple(dict.fromkeys(keys)))
+
+@dataclass(frozen=True, config=VALUE_CONFIG)
+class ToolScheduling:
+    """Whether a tool may run in parallel and the named resources it locks."""
+
+    parallel: bool = False
+    resources: Annotated[tuple[NonEmptyText, ...], AfterValidator(_distinct)] = ()
 
 
 def resource_spec(resources: ResourceSpec) -> ResourceSpec:

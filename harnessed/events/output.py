@@ -1,16 +1,16 @@
-from dataclasses import dataclass, field
-from typing import Annotated, Any, Literal
+from dataclasses import field
+from typing import Literal
 from uuid import uuid4
 
-from pydantic import PlainSerializer
+from pydantic.dataclasses import dataclass
 
-from harnessed.models.messages import freeze, to_dict
+from harnessed.models.values import VALUE_CONFIG, JSONValue
 
 from .base import DurableEvent, Identifier, StepNumber
 from .kinds import EventKind
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class OutputValidatedEvent(DurableEvent):
     """An accepted JSON answer, tied to the exact assistant message it validates."""
 
@@ -21,15 +21,12 @@ class OutputValidatedEvent(DurableEvent):
     turn_id: Identifier
     schema_id: Identifier
     message_id: Identifier
-    data: Annotated[Any, PlainSerializer(to_dict, when_used="json")]
+    data: JSONValue
     call_id: str | None = None
     id: Identifier = field(default_factory=lambda: uuid4().hex)
 
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "data", freeze(self.data))
 
-
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class OutputValidationFailedEvent(DurableEvent):
     """A bounded repair attempt; rejected input values are never echoed here."""
 

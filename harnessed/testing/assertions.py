@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from harnessed.models import ToolCall, ToolResult
-from harnessed.models.messages import freeze
+from harnessed.models.values import freeze
 
 if TYPE_CHECKING:
     from harnessed.sessions.result import RunResult

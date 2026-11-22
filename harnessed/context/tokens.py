@@ -12,7 +12,8 @@ from harnessed.models import (
     ModelRequest,
     OutputMode,
 )
-from harnessed.models.messages import content_text, to_dict
+from harnessed.models.messages import content_text
+from harnessed.models.values import to_dict
 
 
 class TokenCounter(Protocol):

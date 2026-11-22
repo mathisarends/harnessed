@@ -9,7 +9,7 @@ from pydantic import ConfigDict, TypeAdapter, ValidationError, create_model
 
 from harnessed.errors import ConfigError
 from harnessed.models import OutputSchema
-from harnessed.models.messages import freeze, to_dict
+from harnessed.models.values import freeze, to_dict
 
 FINAL_ANSWER = "final_answer"
 

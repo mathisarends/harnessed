@@ -1,14 +1,17 @@
-from dataclasses import dataclass, field
+from dataclasses import field
 from typing import Literal
 
+from pydantic.dataclasses import dataclass
+
 from harnessed.models import Decision, ToolCall, ToolCallDelta, ToolCallStart, ToolResult
+from harnessed.models.values import VALUE_CONFIG
 
 from .approvals import PolicySource
 from .base import DurableEvent, Identifier, TransientEvent
 from .kinds import EventKind
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ToolPolicyAppliedEvent(DurableEvent):
     __hash__ = None
 
@@ -20,13 +23,11 @@ class ToolPolicyAppliedEvent(DurableEvent):
     source: PolicySource = PolicySource.POLICY
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "source", PolicySource(self.source))
-        object.__setattr__(self, "decision", Decision(self.decision))
         if self.decision is Decision.ASK:
             raise ValueError("ToolPolicyAppliedEvent requires a final decision")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ToolExecutionStartedEvent(DurableEvent):
     __hash__ = None
 
@@ -36,7 +37,7 @@ class ToolExecutionStartedEvent(DurableEvent):
     call_id: Identifier
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ToolExecutionFinishedEvent(DurableEvent):
     """The unreviewed execution receipt, saved before ordered result review.
 
@@ -53,7 +54,7 @@ class ToolExecutionFinishedEvent(DurableEvent):
     result: ToolResult
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ToolCallRequestedEvent(DurableEvent):
     """A complete call accepted for scheduling, before policy or execution."""
 
@@ -69,7 +70,7 @@ class ToolCallRequestedEvent(DurableEvent):
         return self.call.name
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ToolCallFinishedEvent(DurableEvent):
     """The final reviewed and limited result, committed in model call order.
 
@@ -85,16 +86,12 @@ class ToolCallFinishedEvent(DurableEvent):
     call: ToolCall
     result: ToolResult
 
-    def __post_init__(self) -> None:
-        if not isinstance(self.call, ToolCall):
-            raise TypeError("ToolCallFinishedEvent requires a ToolCall")
-
     @property
     def call_id(self) -> str:
         return self.call.id
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ToolProgressEvent(DurableEvent):
     __hash__ = None
 
@@ -103,7 +100,7 @@ class ToolProgressEvent(DurableEvent):
     text: str
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, config=VALUE_CONFIG)
 class ToolCallGenerationStartedEvent(TransientEvent):
     """The model began generating a call preview; no tool has been scheduled."""
 
@@ -114,7 +111,7 @@ class ToolCallGenerationStartedEvent(TransientEvent):
     call: ToolCallStart
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, config=VALUE_CONFIG)
 class ToolArgumentsDeltaEvent(TransientEvent):
     type: Literal[EventKind.TOOL_ARGUMENTS_DELTA] = field(
         default=EventKind.TOOL_ARGUMENTS_DELTA, kw_only=True

@@ -177,9 +177,9 @@ contract alone does not keep a turn running. Persistence versions remain state
   notes identify these changes and any required upgrade steps.
 - Patch releases within a minor line are intended for compatible fixes. Pin the
   exact package version for reproducible deployments and persisted workflows.
-- Current conversation snapshots and execution checkpoints use format **4**.
-  JSON-store envelopes use format **3**, and standalone audit-event envelopes
-  use version **8**. Unsupported versions fail explicitly without automatic
+- Current conversation snapshots use format **4** and execution checkpoints use
+  format **5**. JSON-store envelopes use format **3**, and standalone audit-event
+  envelopes use version **9**. Unsupported versions fail explicitly without automatic
   migration. The changelog records formats used by earlier releases. Former JSONL
   session archives are not conversation snapshots.
 - Back up application-owned state and older archives before upgrading.

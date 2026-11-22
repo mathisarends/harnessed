@@ -4,7 +4,7 @@ from dataclasses import FrozenInstanceError, dataclass
 import pytest
 
 from harnessed import Agent, Plugin, ToolContext, tool
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.hooks import ExecuteTool, ReviewToolResult, ToolPolicy
 from harnessed.kernel import hook
 from harnessed.models import ToolCall, ToolDefinition, ToolResult
@@ -66,7 +66,9 @@ async def test_hooks_share_the_captured_description_without_sending_or_persistin
     assert seen[0].metadata.get(AuditTag) == AuditTag("private audit category")
     assert seen[0].definition.name == "inspect" and seen[0].readonly
     assert "private audit category" not in str(model.requests)
-    assert all(decode_event(encode_event(event)) == event for event in result.events)
+    assert all(
+        builtin_codec().decode(builtin_codec().encode(event)) == event for event in result.events
+    )
 
 
 @pytest.mark.parametrize("route", ["register", "decorator", "external"])

@@ -13,7 +13,7 @@ from harnessed.events import (
     TurnEndedEvent,
     TurnStartedEvent,
 )
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.kernel import PluginScope
 from harnessed.models import (
     ApprovalResponse,
@@ -204,7 +204,7 @@ async def test_denial_provenance_is_recorded_in_log_and_result(source, denied_by
                 else None
             )
             assert resolution.reason == expected_reason
-            assert decode_event(encode_event(resolution)) == resolution
+            assert builtin_codec().decode(builtin_codec().encode(resolution)) == resolution
 
 
 async def test_feature_instruction_state_survives_compaction_without_creating_messages():

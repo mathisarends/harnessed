@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict
 from pydantic.dataclasses import dataclass as validated_dataclass
 
 from harnessed.models import ToolDefinition
-from harnessed.models.messages import JSONMapping, freeze
+from harnessed.models.values import JSONMapping, freeze
 
 from .references import ToolReference, ToolSelector, tool_selector
 

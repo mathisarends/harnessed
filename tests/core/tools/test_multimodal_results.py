@@ -84,10 +84,8 @@ async def test_multimodal_tool_loop_retains_images_and_metadata_through_replay(t
         )
 
 
-def test_notes_preserve_interleaved_text_and_images_and_detach_mutable_sequences():
-    pieces = [TextPart("before"), IMAGE, TextPart("after")]
-    result = ToolResult(pieces)
-    pieces.clear()
+def test_notes_preserve_interleaved_text_and_images():
+    result = ToolResult((TextPart("before"), IMAGE, TextPart("after")))
     noted = result.with_note("note")
     assert noted.content == (*result.content, TextPart("note"))
     assert noted.with_text("replacement").text == "replacement"

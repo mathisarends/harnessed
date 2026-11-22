@@ -11,7 +11,8 @@ from pydantic.fields import FieldInfo
 
 from harnessed.kernel import PluginScope, needs
 from harnessed.models import ToolResult, ToolStatus
-from harnessed.models.messages import result_content, to_dict
+from harnessed.models.messages import result_content
+from harnessed.models.values import to_dict
 from harnessed.prompts import Instructions, SystemPrompt
 from harnessed.runtime.hooks import SessionClosing
 from harnessed.runtime.inbox import SessionInbox

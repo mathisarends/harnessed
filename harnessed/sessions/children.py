@@ -2,6 +2,9 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 
 from harnessed.events import (
+    ChildActivity,
+    ChildReportState,
+    ChildRuntimeState,
     DurableEvent,
     SubagentApprovalRequestedEvent,
     SubagentFinishedEvent,
@@ -11,7 +14,6 @@ from harnessed.events import (
     SubagentStatus,
     SubagentUpdatedEvent,
 )
-from harnessed.events.child_status import ChildActivity, ChildReportState, ChildRuntimeState
 from harnessed.models import ModelUsage
 
 

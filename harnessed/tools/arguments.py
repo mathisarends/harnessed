@@ -12,7 +12,8 @@ from pydantic.fields import FieldInfo
 from pydantic.json_schema import JsonSchemaValue
 
 from harnessed.kernel import Dependency, PluginScope, RegistrationState, Scope
-from harnessed.models.messages import result_content, to_dict
+from harnessed.models.messages import result_content
+from harnessed.models.values import to_dict
 
 from .context import ToolContext
 from .enabled import bind_enabled
