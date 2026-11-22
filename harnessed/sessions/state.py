@@ -108,6 +108,17 @@ class SessionState:
         _check_tool_pairs(self.history)
         self._check_resources()
 
+    @property
+    def next_sequence(self) -> int:
+        """The first log position after this conversation; it binds execution parts."""
+        return max(
+            0,
+            self.compacted_through,
+            *(entry.position + 1 for entry in self.history),
+            *(turn.boundary for turn in self.turns),
+            *(step.boundary for step in self.steps),
+        )
+
     def to_json(self) -> str:
         """Serialize in memory; this method performs no filesystem or network I/O."""
         return _STATE.dump_json(self).decode("utf-8")

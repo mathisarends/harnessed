@@ -66,6 +66,7 @@ tool-call results. See [the response-contract guide](structured-output.md).
 | 20 | [Background subagents](#background-subagents) | A child running while the coordinator continues |
 | 21 | [Tracing](#tracing) | OpenTelemetry spans for a tool loop |
 | 22 | [Reviewing approvals](#reviewing-approvals) | Review shell calls with a separate model and pass uncertain decisions to a UI responder |
+| 23 | [Split commits](https://github.com/mathisarends/harnessed/blob/main/examples/applications/23_split_commits.py) | Store the state once per change and the execution part per commit |
 
 ### UI streaming
 
