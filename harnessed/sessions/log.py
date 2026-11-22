@@ -138,6 +138,7 @@ class SessionLog:
         )
         self._restoring = False
         self._turn_state: SessionState | None = None
+        self._idle_state: SessionState | None = None
         self._turn_seed: tuple[CheckpointSeed, ...] = ()
         self._turn_offset = self._sequence
 
@@ -278,6 +279,7 @@ class SessionLog:
         return self._files
 
     def close_resources(self) -> None:
+        self._idle_state = None
         self._images.clear()
         self._assets.clear()
         self._files.clear()
@@ -339,7 +341,13 @@ class SessionLog:
             raise SessionStateError("Export requires a terminal turn boundary")
         entries = tuple(entry for entry in self._history.items() if entry.message.id != "system")
         keys = {ref.path for entry in entries for ref in entry.resources}
-        return SessionState(
+        assets = self._assets.snapshot(image_refs(entries))
+        files = self._files.snapshot(keys)
+        # Plugins can update stored files independently of a log append.
+        cached = self._idle_state
+        if cached is not None and cached.files == files and cached.assets == assets:
+            return cached
+        self._idle_state = SessionState(
             history=entries,
             plugin_values=self.plugin_values,
             turns=tuple(HistoryTurn(turn, boundary) for boundary, turn in self._turn_boundaries),
@@ -348,11 +356,12 @@ class SessionLog:
             compacted_through=self._compacted_through,
             preserved_turns=self._preserved_turns,
             observation_limit=self._history.max_observations,
-            assets=self._assets.snapshot(image_refs(entries)),
-            files=self._files.snapshot(keys),
+            assets=assets,
+            files=files,
             children=self.children,
             parent=self.parent,
         )
+        return self._idle_state
 
     @property
     def model_request_count(self) -> int:
@@ -696,6 +705,9 @@ class SessionLog:
             raise ValueError("Compaction must not split unanswered tool calls")
 
     def _project(self, event: DurableEvent, seq: int, approval: Approval | None) -> None:
+        # Control and queued inputs live in the execution part of a checkpoint.
+        if not isinstance(event, SessionControlChangedEvent | InboxAddedEvent | InboxRemovedEvent):
+            self._idle_state = None
         self._sequence += 1
         self._events.append(event)
         self._last[type(event)] = (seq, event)
