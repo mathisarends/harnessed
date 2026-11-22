@@ -167,8 +167,7 @@ class ToolExecutor:
         async def worker(index: int, plan: PreparedToolCall) -> None:
             try:
                 limit = self._output_limit(plan)
-                async with scheduler.slots:
-                    result, reviewable = await self._attempt(plan, batch)
+                result, reviewable = await self._attempt(plan, batch, scheduler.slots)
                 if index:
                     await reviewed[index - 1].wait()
                 if reviewable:
@@ -195,17 +194,23 @@ class ToolExecutor:
             case _:
                 return ToolOutputLimit(plan.output_limit)
 
-    async def _attempt(self, plan: PreparedToolCall, batch: ToolBatch) -> tuple[ToolResult, bool]:
-        """Authorize and invoke one call unless an earlier tool broke the action chain."""
+    async def _attempt(
+        self, plan: PreparedToolCall, batch: ToolBatch, slots: asyncio.Semaphore
+    ) -> tuple[ToolResult, bool]:
+        """Authorize and invoke one call unless an earlier tool broke the action chain.
+
+        Only invocation holds a parallel slot; waiting for approval does not.
+        """
         if batch.broken:
             return ToolResult(_CHAIN_BROKEN, ToolStatus.SKIPPED), False
         result = await self._authorize(plan)
         if result is not None:
             return result, False
-        # Approval can yield while another worker breaks the chain.
-        if batch.broken:
-            return ToolResult(_CHAIN_BROKEN, ToolStatus.SKIPPED), False
-        return await self.invoke(plan, batch)
+        async with slots:
+            # Approval and the slot wait can yield while another worker breaks the chain.
+            if batch.broken:
+                return ToolResult(_CHAIN_BROKEN, ToolStatus.SKIPPED), False
+            return await self.invoke(plan, batch)
 
     async def _authorize(self, plan: PreparedToolCall) -> ToolResult | None:
         call = plan.call

@@ -473,7 +473,10 @@ still supply the types and defaults; injected or unknown parameter names are rej
 
 Tools run sequentially unless `parallel=True`. Declare shared resource keys for
 parallel tools that touch the same file or external object; overlapping keys
-serialize those calls. Results commit in the model's original call order even
+serialize those calls. `AgentLoop(max_parallel_tools=...)` limits how many
+calls execute at once; a call waiting for an approval answer holds no slot, so
+calls that need no approval run meanwhile and every question of the group is
+pending together. Results commit in the model's original call order even
 when execution finishes out of order. An explicit `override=True` is required to
 replace an existing live tool name. Removing that registration restores the
 previous owner.
