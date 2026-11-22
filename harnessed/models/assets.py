@@ -49,6 +49,12 @@ _ASSET_CONFIG = ConfigDict(**VALUE_CONFIG, ser_json_bytes="base64", val_json_byt
 
 @dataclass(frozen=True, config=_ASSET_CONFIG)
 class AssetValue:
+    """Bytes verified against their reference once, when the value is constructed.
+
+    Decoding a document constructs values and therefore verifies them. A frozen
+    value cannot change afterwards, so holders reuse it without hashing again.
+    """
+
     ref: AssetRef
     data: bytes
 
@@ -61,12 +67,18 @@ class MemoryAssets:
         self._values: dict[str, AssetValue] = {value.ref.sha256: value for value in values}
 
     def snapshot(self, refs: set[AssetRef] | None = None) -> tuple[AssetValue, ...]:
+        """Return the stored, already verified values for these references."""
         if refs is None:
             return tuple(self._values.values())
-        return tuple(
-            AssetValue(ref, self._values[ref.sha256].data)
-            for ref in sorted(refs, key=lambda ref: (ref.sha256, ref.media_type))
-        )
+        ordered = sorted(refs, key=lambda ref: (ref.sha256, ref.media_type))
+        return tuple(self._value(ref) for ref in ordered)
+
+    def _value(self, ref: AssetRef) -> AssetValue:
+        stored = self._values[ref.sha256]
+        if stored.ref == ref:
+            return stored
+        # The same bytes under another media type need their own verified value.
+        return AssetValue(ref, stored.data)
 
     def retain(self, refs: set[AssetRef]) -> None:
         self._values = {ref.sha256: self._values[ref.sha256] for ref in refs}

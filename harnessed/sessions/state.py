@@ -164,8 +164,7 @@ class SessionState:
         refs = image_refs(self.history)
         if refs != {value.ref for value in self.assets} or len(refs) != len(self.assets):
             raise ValueError("Snapshot images must exactly match retained references")
-        for value in self.assets:
-            value.ref.verify(value.data)
+        # AssetValue verifies its bytes when constructed, including while decoding.
         resources = {ref.path: ref for entry in self.history for ref in entry.resources}
         file_keys = {value.key for value in self.files}
         if len(file_keys) != len(self.files):

@@ -1,3 +1,4 @@
+import hashlib
 from dataclasses import replace
 
 import pytest
@@ -97,3 +98,27 @@ async def test_request_hook_inline_images_are_stored_before_recording(tmp_path):
 def test_asset_references_reject_invalid_digest_paths(sha):
     with pytest.raises(ValueError):
         AssetRef(sha, "image/png", 1)
+
+
+_RETAINED_IMAGE_BYTES = 4099
+
+
+async def test_a_plain_turn_does_not_rehash_retained_images_to_build_snapshots(monkeypatch):
+    images = [bytes([index]) * _RETAINED_IMAGE_BYTES for index in range(3)]
+    async with Agent(model=ScriptedModel(["seen", "next"])).session() as session:
+        refs = [await session.assets.put(data, media_type="image/png") for data in images]
+        await session.run(UserMessage(tuple(ImageReference(ref) for ref in refs)))
+        digests = []
+        original = hashlib.sha256
+
+        def counting(data: bytes = b"", **options):
+            if len(data) == _RETAINED_IMAGE_BYTES:
+                digests.append(data[:1])
+            return original(data, **options)
+
+        monkeypatch.setattr(hashlib, "sha256", counting)
+        await session.run("next")
+        session.checkpoint()
+        monkeypatch.undo()
+    # Resolving the model request reads each retained image once; snapshots do not hash.
+    assert sorted(digests) == sorted(data[:1] for data in images)
