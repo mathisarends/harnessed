@@ -126,17 +126,7 @@ class SessionLog:
         self._turn_boundaries = [(turn.boundary, turn.id) for turn in state.turns] if state else []
         self._known_turns = {turn.id for turn in state.turns} if state else set()
         self._history = WorkingHistory(state)
-        self._sequence = max(
-            [
-                0,
-                state.compacted_through,
-                *(entry.position + 1 for entry in state.history),
-                *(turn.boundary for turn in state.turns),
-                *(step.boundary for step in state.steps),
-            ]
-            if state
-            else [0]
-        )
+        self._sequence = state.next_sequence if state else 0
         self._compacted_through = state.compacted_through if state else 0
         self._preserved_turns = state.preserved_turns if state else ()
         self._uncompacted_turns = state.turns_since_compaction if state else 0

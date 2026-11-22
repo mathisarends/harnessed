@@ -100,6 +100,48 @@ async def save(commit: SessionCommit) -> None:
     )
 ```
 
+### Store state and execution apart
+
+A checkpoint has two parts. `checkpoint.state` is the conversation at its last
+closed turn and holds the history, retained images and spill text.
+`checkpoint.execution` is a `SessionExecution`: the open turn's events, queued
+inputs, the control state and the resources added since that boundary. While a
+turn runs, every barrier carries the same state, so rewriting it at each commit
+repeats work that grows with the conversation.
+
+`commit.state_changed` says whether `checkpoint.state` differs from the state of
+the session's previous delivered commit. It is true for the first commit, at turn
+end, after idle compaction and after idle changes such as `append_message()`, and
+false for barriers inside a turn and for idle input admission. Write the state
+only when it changed and the execution part at every commit, in one transaction:
+
+```python
+from harnessed.sessions import SessionCheckpoint, SessionCommit, SessionExecution, SessionState
+
+
+async def save(commit: SessionCommit) -> None:
+    async with repository.transaction() as tx:
+        if commit.state_changed:
+            await tx.save_state(commit.session_id, commit.checkpoint.state.to_dict())
+        await tx.save_execution(commit.session_id, commit.checkpoint.execution.to_dict())
+
+
+async def load(session_id: str) -> SessionCheckpoint:
+    state, execution = await repository.load(session_id)
+    return SessionCheckpoint.from_parts(
+        SessionState.from_dict(state), SessionExecution.from_dict(execution)
+    )
+```
+
+`SessionCheckpoint.from_parts()` rejects an execution part that was captured
+with a different state, and `Agent.session(state=...)` validates the result like
+any checkpoint. The execution part does not contain the images and spill text
+retained in the state. Inside a turn its size depends on that turn, with one
+exception: each recorded model request lists the messages it sent, so barriers
+that carry a `ModelRequestedEvent` still grow with the conversation's text.
+`SessionExecution` uses the checkpoint's format version. See
+[the runnable split-commit example](https://github.com/mathisarends/harnessed/blob/main/examples/applications/23_split_commits.py).
+
 ### When a commit fails
 
 An exception raised by the handler, or `CommitTimeout` after an expired

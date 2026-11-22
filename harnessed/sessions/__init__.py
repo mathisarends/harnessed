@@ -5,6 +5,7 @@ from .checkpoint import (
     CheckpointExtension,
     CheckpointSeed,
     SessionCheckpoint,
+    SessionExecution,
 )
 from .children import ChildSession
 from .commit import CommitHandler, SessionChange, SessionCommit
@@ -28,6 +29,7 @@ __all__ = [
     "SessionCheckpoint",
     "SessionCommit",
     "SessionContext",
+    "SessionExecution",
     "SessionState",
     "SessionValue",
     "TextValue",

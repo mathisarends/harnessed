@@ -26,6 +26,7 @@ from harnessed.events.codec import validate_event
 from harnessed.models.values import VALUE_CONFIG
 
 from .checkpoint import CheckpointEntry, CheckpointExtension, SessionCheckpoint
+from .state import SessionState
 
 _BARRIERS = (
     InboxAddedEvent
@@ -67,12 +68,17 @@ class SessionCommit:
     and map the changes into application records in the same transaction.
     Sequences are stable, so applications can upsert redelivered changes. Neither
     value dictates the backend's schema.
+
+    ``state_changed`` is false when ``checkpoint.state`` equals the state of the
+    session's previous delivered commit; a store may then write only
+    ``checkpoint.execution``. It is true for a session's first commit.
     """
 
     __hash__ = None
 
     checkpoint: SessionCheckpoint
     changes: tuple[SessionChange, ...] = ()
+    state_changed: bool = True
 
     def __post_init__(self) -> None:
         if any(
@@ -121,6 +127,7 @@ class CommitDelivery:
         self._closing = False
         self._failure: BaseException | None = None
         self._delivering: asyncio.Task[object] | None = None
+        self._delivered: SessionState | None = None
 
     @property
     def failed(self) -> bool:
@@ -151,7 +158,10 @@ class CommitDelivery:
         """Hand pending changes to the application while the owning log holds its lock."""
         if not self._changes:
             return
-        commit = SessionCommit(capture(), tuple(self._changes))
+        checkpoint = capture()
+        commit = SessionCommit(
+            checkpoint, tuple(self._changes), state_changed=self._state_changed(checkpoint.state)
+        )
         deadline = asyncio.timeout(self.timeout_seconds)
         self._delivering = asyncio.current_task()
         try:
@@ -168,8 +178,14 @@ class CommitDelivery:
             raise
         finally:
             self._delivering = None
+        self._delivered = checkpoint.state
         self._changes.clear()
 
     def close(self) -> None:
         """Deliver every later change immediately."""
         self._closing = True
+
+    def _state_changed(self, state: SessionState) -> bool:
+        # Retained entries and assets are shared objects, so equality is cheap.
+        previous = self._delivered
+        return previous is None or (previous is not state and previous != state)

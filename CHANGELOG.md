@@ -21,6 +21,14 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   `session.approvals.allow()` / `deny()`. A closing stream hands its pending
   questions over to an open responder. Without one, behaviour is unchanged.
   ([#162](https://github.com/mathisarends/harnessed/issues/162))
+- `SessionCommit.state_changed` says whether the commit's conversation state
+  differs from the previous delivered commit. `checkpoint.execution` returns a
+  `SessionExecution` without the state, and
+  `SessionCheckpoint.from_parts(state, execution)` rebuilds the checkpoint, so a
+  store can write the state once per change and only the execution part at
+  barriers inside a turn. See
+  [store state and execution apart](docs/guides/sessions.md#store-state-and-execution-apart).
+  ([#160](https://github.com/mathisarends/harnessed/issues/160))
 
 ### Fixed
 

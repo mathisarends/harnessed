@@ -29,11 +29,17 @@ Applications own persistence through `SessionState`, `session.checkpoint()` and
 `on_commit` handlers; see the [session guide](../guides/sessions.md). Candidates:
 
 - Merge `SessionState` and `SessionCheckpoint` into one persisted value, so
-  applications store a single type.
+  applications store a single type. `SessionCheckpoint.execution` and
+  `from_parts()` already let a store keep the state and the execution part
+  apart; a merged value should keep that split.
+- Record model requests in the execution part as references to the messages of
+  its state, so a barrier inside a turn no longer grows with the conversation's
+  text.
 - Add a typed `commit.messages` projection, so handlers need not map
   `InboxAddedEvent` and `AssistantMessageEvent` themselves.
 - Application-supplied blob storage for large resources; current checkpoints
-  include their image and spill bytes.
+  include their image and spill bytes. The execution part only carries the
+  resources added during the open turn.
 
 The optional [MCP client](../guides/mcp.md) now exposes tools over stdio and
 Streamable HTTP. Resources, prompts, sampling, elicitation and live catalog

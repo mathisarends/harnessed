@@ -87,6 +87,56 @@ type CheckpointSeed = Annotated[
 
 
 @dataclass(frozen=True, config=_CONFIG)
+class SessionExecution:
+    """A checkpoint's execution part, without its conversation state.
+
+    Store ``checkpoint.state`` when ``SessionCommit.state_changed`` is true and
+    this part at every commit, then rebuild the checkpoint with
+    ``SessionCheckpoint.from_parts(state, execution)``. Inside a turn its size
+    depends on that turn, not on earlier history or retained assets.
+    ``state_sequence`` binds it to the state it was captured with.
+    """
+
+    __hash__ = None
+
+    session_id: Annotated[str, Field(min_length=1)]
+    state_sequence: Annotated[int, Field(ge=0)]
+    offset: Annotated[int, Field(ge=0)]
+    control: SessionControlChangedEvent
+    seed: tuple[CheckpointSeed, ...] = ()
+    events: tuple[CheckpointEntry, ...] = ()
+    assets: tuple[AssetValue, ...] = ()
+    files: tuple[TextValue, ...] = ()
+    version: Literal[5] = 5
+
+    def __post_init__(self) -> None:
+        if self.offset < self.state_sequence:
+            raise ValueError("An execution cannot start before its conversation state")
+
+    def to_json(self) -> str:
+        """Serialize the canonical versioned document in memory, without I/O."""
+        return _EXECUTION.dump_json(self).decode("utf-8")
+
+    def to_dict(self) -> dict[str, JSONValue]:
+        """Return the canonical JSON document as Python values, e.g. for a JSONB column."""
+        return json.loads(self.to_json())
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, JSONValue]) -> Self:
+        """Validate a document returned by ``to_dict`` or decoded from ``to_json``."""
+        return cls.from_json(_encode_document(payload, "Invalid session execution"))
+
+    @classmethod
+    def from_json(cls, payload: str | bytes) -> Self:
+        """Validate structural data; combine it with its state to check the rest."""
+        adapter = TypeAdapter(cls)
+        try:
+            return adapter.validate_json(payload)
+        except (ValidationError, ValueError, TypeError, KeyError) as error:
+            raise SessionFormatError("Invalid session execution") from error
+
+
+@dataclass(frozen=True, config=_CONFIG)
 class SessionCheckpoint:
     """An immutable conversation boundary and its current bounded execution suffix.
 
@@ -124,6 +174,39 @@ class SessionCheckpoint:
             if not isinstance(event, CheckpointExtension):
                 validate_event(event)
 
+    @property
+    def execution(self) -> SessionExecution:
+        """This checkpoint without its state, for storing state and execution apart."""
+        return SessionExecution(
+            session_id=self.session_id,
+            state_sequence=self.state.next_sequence,
+            offset=self.offset,
+            control=self.control,
+            seed=self.seed,
+            events=self.events,
+            assets=self.assets,
+            files=self.files,
+        )
+
+    @classmethod
+    def from_parts(cls, state: SessionState, execution: SessionExecution) -> Self:
+        """Rebuild a checkpoint from a stored state and an execution captured with it."""
+        if execution.state_sequence != state.next_sequence:
+            raise SessionFormatError("The execution belongs to a different conversation state")
+        try:
+            return cls(
+                session_id=execution.session_id,
+                state=state,
+                offset=execution.offset,
+                control=execution.control,
+                seed=execution.seed,
+                events=execution.events,
+                assets=execution.assets,
+                files=execution.files,
+            )
+        except (ValidationError, ValueError, TypeError) as error:
+            raise SessionFormatError("Invalid session checkpoint") from error
+
     def to_json(self) -> str:
         """Serialize the canonical versioned document in memory, without I/O."""
         return _CHECKPOINT.dump_json(self).decode("utf-8")
@@ -135,11 +218,7 @@ class SessionCheckpoint:
     @classmethod
     def from_dict(cls, payload: Mapping[str, JSONValue]) -> Self:
         """Validate a document returned by ``to_dict`` or decoded from ``to_json``."""
-        try:
-            encoded = json.dumps(payload, allow_nan=False)
-        except (TypeError, ValueError) as error:
-            raise SessionFormatError("Invalid session checkpoint") from error
-        return cls.from_json(encoded)
+        return cls.from_json(_encode_document(payload, "Invalid session checkpoint"))
 
     @classmethod
     def from_json(cls, payload: str | bytes) -> Self:
@@ -150,4 +229,12 @@ class SessionCheckpoint:
             raise SessionFormatError("Invalid session checkpoint") from error
 
 
+def _encode_document(payload: Mapping[str, JSONValue], failure: str) -> str:
+    try:
+        return json.dumps(payload, allow_nan=False)
+    except (TypeError, ValueError) as error:
+        raise SessionFormatError(failure) from error
+
+
 _CHECKPOINT = TypeAdapter(SessionCheckpoint)
+_EXECUTION = TypeAdapter(SessionExecution)
