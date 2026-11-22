@@ -6,9 +6,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from harnessed import Agent, AgentLoop, Approvals, Plugin, ToolContext, tool
+from harnessed import Agent, AgentLoop, Approvals, Inject, Plugin, ToolContext, tool
 from harnessed.events import ToolCallFinishedEvent
-from harnessed.kernel import Inject
 from harnessed.models import ModelChunk, ToolCall
 from harnessed.testing import ScriptedModel
 

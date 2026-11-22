@@ -2,10 +2,9 @@ from typing import Annotated
 
 import pytest
 
-from harnessed import Agent, Plugin, ToolContext, tool
+from harnessed import Agent, Plugin, Service, ToolContext, tool
 from harnessed.errors import PluginDependencyWarning
 from harnessed.kernel import Inject, InjectMarker, Key, PluginScope
-from harnessed.plugins import Service
 from harnessed.runtime.composition import PluginValidation
 from harnessed.testing import ScriptedModel
 from harnessed.tools import SessionTools, ToolAvailability

@@ -214,7 +214,7 @@ def test_public_exports_resolve_to_their_canonical_classes_and_functions(module)
     assert facade.__all__ == sorted(set(facade.__all__))
 
 
-def test_application_facade_stays_small_and_has_no_transitional_names():
+def test_sdk_root_exports_application_and_plugin_authoring_names_only():
     import harnessed
 
     assert set(harnessed.__all__) == {
@@ -226,15 +226,25 @@ def test_application_facade_stays_small_and_has_no_transitional_names():
         "Context",
         "Decision",
         "File",
+        "FinalStepPolicy",
+        "Inject",
+        "Instructions",
         "Image",
         "OutputContract",
         "Plugin",
         "PluginConfig",
+        "PluginScope",
+        "PluginState",
         "RunResult",
+        "Service",
         "Session",
         "SystemPrompt",
         "ToolContext",
+        "ToolError",
         "events",
+        "hook",
+        "needs",
+        "observes",
         "tool",
         "SessionStatus",
         "PluginValidation",

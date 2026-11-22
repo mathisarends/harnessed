@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from harnessed import Agent as Application
-from harnessed import AgentLoop, Approvals, Plugin, Session, ToolContext, tool
+from harnessed import AgentLoop, Approvals, Plugin, Service, Session, ToolContext, tool
 from harnessed.approvals.responders import Approver, CallbackApprover
 from harnessed.events import (
     AssistantMessageEvent,
@@ -26,7 +26,6 @@ from harnessed.models import (
     ToolCall,
     ToolStatus,
 )
-from harnessed.plugins import Service
 from harnessed.runtime.hooks import (
     ExecuteTool,
     PreStep,

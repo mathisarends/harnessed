@@ -123,7 +123,7 @@ Each mount owns one connection and a fixed catalog of namespaced tools. See
 
 ## Session tool inspection and plugin services
 
-Plugin lifecycle methods use `PluginScope` from `harnessed.kernel`:
+Plugin lifecycle methods use `PluginScope` from `harnessed`:
 `async def setup(self, scope: PluginScope) -> None` and
 `async def teardown(self, scope: PluginScope) -> None`. The same concrete view
 shares the activation's service/event environment and cleanup stack. It exposes
@@ -441,7 +441,7 @@ after completion it raises `SessionStateError` instead of starting a new turn.
 | control | Advanced: the SessionControl service for plugins and external UIs |
 | log | Advanced: live SessionLog state owner, current-turn buffer and event catalog |
 
-`from harnessed import SessionLog` exposes the injectable log service for plugins.
+`from harnessed.sessions.log import SessionLog` exposes the injectable log service for plugins.
 Applications read through the session views above. `session.log` exposes the same
 data for plugins and integrations; prefer the session views when both exist.
 `SessionLog.request(request_id)` returns a submitted model request or `None`;
@@ -473,7 +473,7 @@ Per-run `max_steps=` and `token_budget=` narrow execution for a single turn.
 
 `AgentLoop(final_step=FinalStepPolicy.SUMMARIZE)` reserves the last available
 step for an action-free text summary. Import `FinalStepPolicy` from
-`harnessed.plugins`; the default is `NONE`. The summary returns `MAX_STEPS` with
+`harnessed`; the default is `NONE`. The summary returns `MAX_STEPS` with
 `completed=False`, respects per-run limits and produces only `result.text`, even
 when the run requested structured output. See [reserved summaries](../guides/sessions.md#step-progress-and-a-reserved-summary).
 
@@ -544,6 +544,18 @@ unhashable. See [values and record versions](../concepts/values.md).
 
 ## Plugin authoring
 
+Each name has one import home:
+
+| Import from | Names |
+| --- | --- |
+| `harnessed` | What you write an agent or plugin with: `Agent`, `Session`, `Plugin`, `PluginConfig`, `PluginScope`, `PluginState`, `Service`, `SystemPrompt`, `Instructions`, `ToolContext`, `ToolError`, `FinalStepPolicy`, `tool`, `hook`, `needs`, `observes`, `Inject` |
+| `harnessed.hooks` | The hook points a plugin subscribes to, their decision values and `Next` |
+| `harnessed.events` | Durable and transient event records |
+| `harnessed.models` | Messages, tool results and model values |
+| `harnessed.sessions` | `SessionContext`, `SessionValue` and conversation state |
+| `harnessed.sessions.log` | `SessionLog`, which stays in its own module because the event vocabulary must load without it |
+| `harnessed.kernel` | The container and the bases for custom hook types: `Scope`, `Key`, `Waterfall`, `Bail`, `Emit` |
+
 | API | Purpose |
 | --- | --- |
 | Plugin / @tool | Class-based reusable capability |
@@ -587,7 +599,7 @@ See [typed configuration](../guides/plugins.md#typed-configuration-without-dupli
 
 Tool parameters supplied by the framework require `Inject[T]`, including
 `Inject[ToolContext]`. An unmarked `ToolContext` is rejected at registration.
-Declare stable service bindings with `needs` and `observes` from `harnessed.kernel`; add
+Declare stable service bindings with `needs` and `observes` from `harnessed`; add
 `needs=(...)` for lifetime requirements without an attribute. Optional fields are
 reported as `observes`. Class-level `Inject` fields were removed. Callable `Inject`
 parameters bind values without adding lifetime dependencies.

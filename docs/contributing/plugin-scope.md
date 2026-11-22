@@ -25,8 +25,8 @@ make a second container, event bus, cleanup stack or lifetime. The kernel still
 owns activation, suspension, dependency ordering and disposal. The view is an API
 boundary, not an isolation mechanism for arbitrary Python code.
 
-`PluginScope` is exported by `harnessed.kernel`, alongside `Scope`, without adding
-another root-SDK entrypoint. The standalone kernel remains standard-library-only.
+`PluginScope` is defined in `harnessed.kernel`, alongside `Scope`, and plugin authors
+import it from the lazy SDK root. The standalone kernel remains standard-library-only.
 Kernel `PluginBase` and function plugins retain their general composition and
 injection capabilities. The application retains `session.scope`.
 
@@ -35,8 +35,7 @@ injection capabilities. The application retains `session.scope`.
 ```python
 from typing import override
 
-from harnessed import Plugin
-from harnessed.kernel import PluginScope
+from harnessed import Plugin, PluginScope
 
 
 class Feature(Plugin):
@@ -113,9 +112,9 @@ are inferred from the name of a library-owned `BrowserEvents` service.
 
 ## Migration
 
-1. Import `PluginScope` from `harnessed.kernel` for higher-level class-plugin
-   lifecycle methods. Retain `Scope` for standalone composition and application
-   session integrations.
+1. Import `PluginScope` from `harnessed` for higher-level class-plugin
+   lifecycle methods. Retain `Scope` from `harnessed.kernel` for standalone
+   composition and application session integrations.
 2. Annotate setup and teardown with `scope: PluginScope`; add the parameter to
    previously parameterless methods. Keep service dependencies in fields.
 3. Update deferred instruction factory annotations to `PluginScope`.

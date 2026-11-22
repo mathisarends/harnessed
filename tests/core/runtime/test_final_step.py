@@ -3,7 +3,7 @@ from dataclasses import replace
 import pytest
 from pydantic import BaseModel
 
-from harnessed import Agent, AgentLoop, Plugin, tool
+from harnessed import Agent, AgentLoop, FinalStepPolicy, Plugin, tool
 from harnessed.errors import OutputUnavailable
 from harnessed.events import (
     ModelRequestedEvent,
@@ -22,7 +22,6 @@ from harnessed.models import (
     ToolDefinition,
     ToolStatus,
 )
-from harnessed.plugins import FinalStepPolicy
 from harnessed.testing import ScriptedModel, call
 from tests._audit import Audit
 

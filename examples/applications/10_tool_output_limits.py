@@ -4,9 +4,8 @@ import asyncio
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from harnessed import Agent, Context, Plugin, tool
+from harnessed import Agent, Context, Plugin, needs, tool
 from harnessed.events import ToolCallFinishedEvent
-from harnessed.kernel import needs
 from harnessed.models import Role, ToolResult, ToolStatus
 from harnessed.plugins import LocalWorkspace
 from harnessed.plugins.filesystem import Filesystem, FileSystemBackend

@@ -2,9 +2,8 @@
 
 import asyncio
 
-from harnessed import Agent, Plugin, SystemPrompt, tool
+from harnessed import Agent, Instructions, Plugin, SystemPrompt, tool
 from harnessed.models import ModelChunk, ToolCall
-from harnessed.prompts import Instructions
 from harnessed.testing import ScriptedModel
 
 

@@ -9,6 +9,17 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 
 ### Added
 
+- The SDK root exports the names a plugin is written with: `PluginScope`,
+  `PluginState`, `Instructions`, `ToolError`, `Service`, `FinalStepPolicy`,
+  `hook`, `needs`, `observes` and `Inject`, next to `Plugin` and `tool`. A
+  plugin module no longer needs `harnessed.kernel`, `harnessed.prompts` and
+  `harnessed.tools` for them. The root stays lazy, so importing a kernel name
+  from it loads no Pydantic or provider code. The existing homes
+  `harnessed.kernel`, `harnessed.prompts` and `harnessed.tools` keep exporting
+  their names. See the
+  [import homes](docs/reference/sdk.md#plugin-authoring).
+- `harnessed.context` exports `CompactionPolicy`, so a plugin that declares
+  `observes(CompactionPolicy)` imports it through the package facade.
 - `agent.session(commit_timeout_seconds=...)` bounds each `on_commit` delivery.
   An expired delivery cancels the handler and fails the commit with the new
   `CommitTimeout` error, so `abort()` and closing no longer wait for a hung
@@ -61,6 +72,19 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 - Answering an approval that no live responder held now raises
   `ApprovalUnavailable` saying so, instead of "This approval is no longer
   pending". ([#162](https://github.com/mathisarends/harnessed/issues/162))
+
+### Breaking changes
+
+- `harnessed.plugins` no longer exports `Service` and `FinalStepPolicy`.
+  Import both from `harnessed`:
+
+  ```python
+  # before
+  from harnessed.plugins import FinalStepPolicy, Service
+
+  # after
+  from harnessed import FinalStepPolicy, Service
+  ```
 
 ## 0.26.0 (2026-11-22)
 

@@ -1,8 +1,7 @@
 from typing import Protocol, assert_type
 
-from harnessed import Plugin
+from harnessed import Plugin, Service
 from harnessed.kernel import DependencyField, Key, needs, observes
-from harnessed.plugins import Service
 from harnessed.testing import mount_plugin
 
 

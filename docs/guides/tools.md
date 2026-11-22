@@ -6,8 +6,7 @@ argument schemas. A docstring is the fallback when no description is supplied.
 Python tools use this declaration path, including tools mounted at runtime:
 
 ```python
-from harnessed import Plugin, tool
-from harnessed.kernel import needs
+from harnessed import Plugin, needs, tool
 from my_application import Database
 
 
@@ -102,8 +101,7 @@ validated Pydantic object. Its fields form the tool's top-level JSON schema:
 ```python
 from pydantic import BaseModel, Field
 
-from harnessed import Plugin, tool
-from harnessed.kernel import Inject
+from harnessed import Inject, Plugin, tool
 from my_application import CatalogClient
 
 
@@ -191,8 +189,7 @@ a bool. An unbound instance method is bound to the same mounted plugin as the to
 ```python
 from dataclasses import dataclass
 
-from harnessed import Plugin, tool
-from harnessed.kernel import Inject
+from harnessed import Inject, Plugin, tool
 
 
 @dataclass
@@ -321,8 +318,7 @@ See the [offline conditional parameters example](https://github.com/mathisarends
 ## Per-call state
 
 ```python
-from harnessed import Plugin, ToolContext, tool
-from harnessed.kernel import Inject
+from harnessed import Inject, Plugin, ToolContext, tool
 
 
 class Worker(Plugin):
@@ -373,8 +369,7 @@ It returns True for an allowed request, including a remembered grant, and raises
 can answer.
 
 ```python
-from harnessed import Plugin, ToolContext, tool
-from harnessed.kernel import Inject
+from harnessed import Inject, Plugin, ToolContext, tool
 
 
 class WorkspaceTools(Plugin):
@@ -490,10 +485,9 @@ Attach immutable application values without changing the model's tool schema:
 ```python
 from dataclasses import dataclass
 
-from harnessed import Plugin, tool
+from harnessed import Plugin, hook, tool
 from harnessed.models import ToolResult
 from harnessed.hooks import Next, ReviewToolResult
-from harnessed.kernel import hook
 
 
 @dataclass(frozen=True)
@@ -533,9 +527,8 @@ action enum member or a decorated `@tool` method. Plain strings are rejected, so
 renaming a tool with `@tool(name=...)` cannot silently break a rule.
 
 ```python
-from harnessed import Plugin
-from harnessed.hooks import ReviewToolResult
-from harnessed.kernel import Next, hook
+from harnessed import Plugin, hook
+from harnessed.hooks import Next, ReviewToolResult
 from harnessed.models import ToolResult
 from harnessed.plugins import Shell
 
@@ -578,10 +571,9 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 
-from harnessed import Plugin, tool
+from harnessed import Plugin, hook, tool
 from harnessed.models import ToolResult
 from harnessed.hooks import ExecuteTool, Next
-from harnessed.kernel import hook
 
 
 class ActionLabel(BaseModel):
@@ -829,8 +821,9 @@ middleware handle actions with independent result types:
 from dataclasses import dataclass
 from typing import Protocol
 
-from harnessed import Plugin
-from harnessed.kernel import Next, Waterfall, hook
+from harnessed import Plugin, hook
+from harnessed.hooks import Next
+from harnessed.kernel import Waterfall
 
 
 class Intent[R](Protocol):
@@ -898,9 +891,8 @@ instead of widening the dispatch result to `str | int`.
 Pass several event classes to `@hook(...)` to share one handler:
 
 ```python
-from harnessed import Plugin
+from harnessed import Plugin, hook
 from harnessed.events import CompactionFinishedEvent, CompactionStartedEvent
-from harnessed.kernel import hook
 
 
 class CompactionLog(Plugin):

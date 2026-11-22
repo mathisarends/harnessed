@@ -10,8 +10,7 @@ a message to the session only when it belongs in conversation history.
 A configured plugin supplies its content through one synchronous method:
 
 ```python
-from harnessed.prompts import Instructions
-from harnessed import Plugin, PluginConfig, SystemPrompt
+from harnessed import Instructions, Plugin, PluginConfig, SystemPrompt
 
 
 class ObserveConfig(PluginConfig):
@@ -115,8 +114,8 @@ values raise `TypeError`. Empty rendered content is omitted. Equal or repeated
 content is retained; content values have no plugin-reference identity.
 
 ```python
-from harnessed import Agent, SystemPrompt
-from harnessed.prompts import Instructions, PromptFormat
+from harnessed import Agent, Instructions, SystemPrompt
+from harnessed.prompts import PromptFormat
 
 agent = Agent(
     instructions=SystemPrompt(
@@ -145,7 +144,7 @@ placement selectors, exclusions or unplaced policies. Override a plugin's
 `Instructions.from_file(path="AGENTS.md", missing_ok=True)` reads a file once per
 opened session. `Instructions.from_factory(factory=callback, title="Catalog",
 description="Read at session startup")` accepts an async callback taking the
-session owner's `PluginScope` view from `harnessed.kernel`. Registrations and
+session owner's `PluginScope` view from `harnessed`. Registrations and
 cleanup belong to that session. The view provides resource, service and event
 operations while composition and closure stay with the framework.
 Return these values inside the plugin's `SystemPrompt`, or include application
@@ -202,9 +201,8 @@ Files and images can also be supplied through `attachments=` as before.
 ## Enrich one model request
 
 ```python
-from harnessed import Plugin
+from harnessed import Plugin, hook
 from harnessed.hooks import Next, PrepareRequest
-from harnessed.kernel import hook
 from harnessed.models import ModelRequest, UserMessage
 
 

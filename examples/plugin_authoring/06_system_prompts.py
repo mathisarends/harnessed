@@ -3,8 +3,8 @@
 import asyncio
 from enum import StrEnum
 
-from harnessed import Agent, Plugin, PluginConfig, SystemPrompt
-from harnessed.prompts import Instructions, PromptFormat, SectionDelivery
+from harnessed import Agent, Instructions, Plugin, PluginConfig, SystemPrompt
+from harnessed.prompts import PromptFormat, SectionDelivery
 from harnessed.testing import ScriptedModel
 
 

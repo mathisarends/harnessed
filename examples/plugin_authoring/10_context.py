@@ -6,11 +6,20 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Protocol, override
 
-from harnessed import Agent, File, Image, Plugin, SystemPrompt, tool
+from harnessed import (
+    Agent,
+    File,
+    Image,
+    Instructions,
+    Plugin,
+    PluginScope,
+    SystemPrompt,
+    hook,
+    needs,
+    tool,
+)
 from harnessed.hooks import PrepareRequest
-from harnessed.kernel import PluginScope, hook, needs
 from harnessed.models import ModelChunk, ToolCall, UserMessage
-from harnessed.prompts import Instructions
 from harnessed.testing import ScriptedModel
 
 

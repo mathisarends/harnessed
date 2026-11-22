@@ -28,9 +28,7 @@ The plugin declares consumption; the application chooses the implementations.
 ```python
 from typing import Protocol
 
-from harnessed import Agent, Plugin, ToolContext, tool
-from harnessed.kernel import Inject, needs, observes
-from harnessed.plugins import Service
+from harnessed import Agent, Inject, Plugin, Service, ToolContext, needs, observes, tool
 
 
 class Database(Protocol):

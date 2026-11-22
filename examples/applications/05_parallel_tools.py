@@ -6,9 +6,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import override
 
-from harnessed import Agent, AgentLoop, Plugin, tool
+from harnessed import Agent, AgentLoop, Plugin, PluginScope, needs, tool
 from harnessed.events import ToolCallFinishedEvent
-from harnessed.kernel import PluginScope, needs
 from harnessed.models import ModelChunk, Role, ToolCall
 from harnessed.plugins import Filesystem, LocalWorkspace
 from harnessed.plugins.filesystem import FileSystemBackend

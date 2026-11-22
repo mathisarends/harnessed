@@ -4,11 +4,10 @@ import asyncio
 from enum import StrEnum
 from time import perf_counter
 
-from harnessed import Agent, Approvals, Decision, Plugin, tool
+from harnessed import Agent, Approvals, Decision, Plugin, hook, tool
 from harnessed.errors import ApprovalUnavailable
 from harnessed.events import ApprovalStatus, ToolCallFinishedEvent
 from harnessed.hooks import RequestApproval, ToolPolicy
-from harnessed.kernel import hook
 from harnessed.models import ApprovalResponse, ModelChunk, ToolCall, ToolStatus
 from harnessed.testing import ScriptedModel, call
 

@@ -197,9 +197,8 @@ from collections.abc import AsyncGenerator
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from time import monotonic
 
-from harnessed import Plugin
+from harnessed import Plugin, hook
 from harnessed.hooks import Next, StreamModel
-from harnessed.kernel import hook
 from harnessed.models import ModelStream
 
 

@@ -10,9 +10,8 @@ from typing import override
 
 from pydantic import Field
 
-from harnessed import Agent, Plugin, PluginConfig, tool
+from harnessed import Agent, Plugin, PluginConfig, PluginScope, hook, tool
 from harnessed.hooks import PrepareRequest, ReviewToolResult
-from harnessed.kernel import PluginScope, hook
 from harnessed.models import ToolResult, ToolStatus, UserMessage
 from harnessed.testing import ScriptedModel, call
 

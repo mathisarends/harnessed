@@ -8,9 +8,8 @@ import asyncio
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from harnessed import Agent, Plugin, ToolContext, tool
+from harnessed import Agent, Inject, Plugin, ToolContext, needs, tool
 from harnessed.events import ToolCallFinishedEvent, ToolProgressEvent
-from harnessed.kernel import Inject, needs
 from harnessed.plugins import LocalWorkspace
 from harnessed.plugins.filesystem import FileSystemBackend
 from harnessed.testing import ScriptedModel, call

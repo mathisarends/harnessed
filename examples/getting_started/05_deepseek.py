@@ -4,11 +4,10 @@ import asyncio
 import os
 from pathlib import Path
 
-from harnessed import Agent, AgentLoop, Approvals, SystemPrompt
+from harnessed import Agent, AgentLoop, Approvals, Instructions, SystemPrompt
 from harnessed.events import ApprovalNeededEvent, TextDeltaEvent, ToolCallRequestedEvent
 from harnessed.models import Decision
 from harnessed.plugins import Filesystem, LocalWorkspace
-from harnessed.prompts import Instructions
 
 
 async def main():
