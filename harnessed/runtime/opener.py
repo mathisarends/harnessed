@@ -74,9 +74,6 @@ async def open_session(
     if checkpoint is not None:
         await log.restore(checkpoint)
         _restore_output_schemas(scope[OutputTypes], log)
-        await log.repair_interrupted()
-    elif selected is not None:
-        await log.repair_interrupted()
     runtime = loop.create(scope, log)
     try:
         await scope.install(
@@ -97,6 +94,9 @@ async def open_session(
     await scope.settle()
     validate_plugins(scope, plugin_validation)
     scope[ToolRegistry].validate_references()
+    if selected is not None:
+        # Repair once every plugin is active, so all of them observe the records.
+        await log.repair_interrupted()
     with bind_tracer(scope):
         await scope.dispatch(SessionOpened(runtime.plugin_context, at=monotonic()))
     runtime.start()
