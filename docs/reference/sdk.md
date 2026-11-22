@@ -436,6 +436,7 @@ after completion it raises `SessionStateError` instead of starting a new turn.
 | `async with approvals.responder():` | Keep questions of turns without an owning stream pending and announce them as `ApprovalNeededEvent` on `subscribe(transient=True)`; a closing stream hands its questions over |
 | id / prompt | Session ID / effective system prompt |
 | tools | Read-only `SessionTools` mapping of currently visible tool names to definitions; `.names` returns a frozenset |
+| plugin(PluginClass or recipe) | The current typed activation; raises `LookupError` unless exactly one matches and `SessionClosed` after closing |
 | plugin_context | The restricted `SessionContext` view that plugins and hooks receive |
 | scope | Advanced: resolve services in this session's scope (`session.scope[ToolRegistry]`); import container types from `harnessed.kernel` |
 | control | Advanced: the SessionControl service for plugins and external UIs |

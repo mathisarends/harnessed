@@ -135,6 +135,35 @@ class Session:
         """Inspect currently visible tools without changing their registrations."""
         return self._tools_view
 
+    @overload
+    def plugin[P: Plugin](self, plugin: type[P]) -> P: ...
+
+    @overload
+    def plugin[P: Plugin](self, plugin: P) -> P: ...
+
+    def plugin(self, plugin: type[Plugin] | Plugin) -> Plugin:
+        """Return the current activation of a plugin class or mounted recipe.
+
+        A restart creates a new activation with fresh state, so read it when needed
+        instead of keeping it across turns. Raises ``LookupError`` unless exactly one
+        activation matches, and ``SessionClosed`` once the session has closed.
+        """
+        self.control.check_open()
+        if isinstance(plugin, Plugin):
+            kind = type(plugin)
+            active = self.scope.active_plugins(kind)
+            matches = tuple(candidate for candidate in active if candidate.recipe is plugin)
+        else:
+            kind = plugin
+            matches = self.scope.active_plugins(kind)
+        if len(matches) == 1:
+            return matches[0]
+        if matches:
+            raise LookupError(
+                f"Several active {kind.__name__} plugins; pass the mounted recipe instead"
+            )
+        raise LookupError(f"No active {kind.__name__} plugin in this session")
+
     @property
     def prompt(self) -> SystemPromptStore:
         return self.scope[SystemPromptStore]

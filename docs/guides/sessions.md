@@ -458,6 +458,33 @@ requests without starting work. `observe(observation)` buffers the latest pendin
 the next step records it. Unrecorded observations are not exported. Use these
 operations from hooks as described in [context](context.md).
 
+## Read results and usage
+
+```python
+async with agent.session() as session:
+    result = await session.run("Inspect the project.")
+
+    print(result.usage.total_tokens)  # this turn
+    print(session.usage.total_tokens)  # this session, without children
+    print(session.tree_usage.total_tokens)  # with recorded child sessions
+    print(session.model_request_count)  # model calls, including failed ones
+
+    pages = list(session.plugin(Navigation).pages)
+```
+
+The object passed to `plugins=[...]` is a recipe. Each session builds its own
+activation from it, so data a plugin collects lives on the activation and never
+appears on the recipe. `session.plugin(Navigation)` returns that activation with
+its type. When a session mounts the same class twice, pass the recipe to select
+one: `session.plugin(primary)`. It raises `LookupError` unless exactly one
+activation matches, for example while the plugin waits for a dependency.
+
+Copy what you need before leaving the `async with` block. `PluginState` is
+released when the session closes, and `session.plugin()` then raises
+`SessionClosed`. A restart creates a new activation with empty state, so call
+`session.plugin()` when you need the value instead of keeping the reference
+across turns. The usage properties stay readable after closing.
+
 ## Control a live run
 
 ```python

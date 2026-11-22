@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any, Self, cast, overload
 from weakref import ref
 
+from .declarations import PluginBase
 from .effects import Disposer, effect
 from .events import Event, EventBus
 from .hooks import HookFactory, ListenerFactory
@@ -428,6 +429,10 @@ class Scope:
         Inspection neither activates plugins nor rejects deferred dependencies.
         """
         return self._runtime.diagnostics()
+
+    def active_plugins[P: PluginBase](self, kind: type[P]) -> tuple[P, ...]:
+        """Snapshot active plugins of ``kind`` in the shared runtime, including extended scopes."""
+        return self._runtime.activations(kind)
 
     async def settle(self) -> None:
         """Wait for scheduled dependency teardown/rebuild; report background setup failures."""
