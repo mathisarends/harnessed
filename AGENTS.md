@@ -130,7 +130,7 @@ workflows and bump the key when Python validation behavior changes.
 
 ## Architecture and convention checks
 
-`smelt.yaml` is the executable policy and `uv.lock` pins Smelt CLI 0.16.0.
+`smelt.yaml` is the executable policy and `uv.lock` pins Smelt CLI 0.16.1.
 Layer assignments live in `architecture.layers.<layer>.modules`, and package APIs
 live under `architecture.packages`. Activate rules and set their limits in `rules`.
 Shared conventions live under `style` and package exceptions under `style.overrides`.

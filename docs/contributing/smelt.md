@@ -1,8 +1,8 @@
 # Smelt policy and adoption feedback
 
-Harnessed pins `smelt-cli` 0.16.0 in the development group. The executable
+Harnessed pins `smelt-cli` 0.16.1 in the development group. The executable
 policy in `smelt.yaml` complements Ruff, ty, runtime tests and the architecture
-suite. [Smelt 0.16.0 release](https://github.com/mathisarends/smelt/releases/tag/v0.16.0)
+suite. [Smelt 0.16.1 release](https://github.com/mathisarends/smelt/releases/tag/v0.16.1)
 
 ## Architecture policy
 
@@ -163,6 +163,18 @@ uv run smelt config schema > .smelt.schema.json
 If a bundled Smelt agent skill is installed locally, refresh it with
 `uv run smelt skill install --force`, preserving its custom destination and any
 local edits first. This repository does not vendor a generated skill copy.
+
+## Review after the 0.16.1 upgrade
+
+The 0.16.1 patch release changes only caching, performance and packaging: cold
+checks share syntax tree walks, `check`, `check --staged` and `check --changed`
+share cached facts, and `check --changed` reads its base revision from Git
+objects. Policy, configuration format and report schema are unchanged, so
+`smelt.yaml` needs no edits. The first check on the new version repopulates
+`.smelt_cache/`. The bundled agent skill is committed under
+`.agents/skills/smelt` and refreshed with `uv run smelt skill install --force`
+after each Smelt upgrade so its reference matches the pinned version.
+[Upstream upgrade guide](https://github.com/mathisarends/smelt/blob/v0.16.1/docs/upgrading.md)
 
 ## Review after the 0.16.0 upgrade
 
