@@ -17,9 +17,9 @@ from harnessed.events import (
     TurnOutcome,
     TurnStartedEvent,
 )
-from harnessed.events.codec import CURRENT_VERSION, decode_event
+from harnessed.events.codec import CURRENT_VERSION, EventDecoder, builtin_codec
 from harnessed.models import Message, ModelUsage, OutputSchema, StopReason, ToolCall, ToolResult
-from harnessed.models.messages import to_dict
+from harnessed.models.values import to_dict
 from harnessed.output.contracts import OutputTypes, OutputValues
 
 from .history import derive_messages
@@ -42,8 +42,10 @@ def _result_event(value: Any, info: ValidationInfo) -> DurableEvent:
         raise ValueError("Result events require tagged data")
     body = dict(value)
     tag = body.pop("type", None)
-    registry = info.context.get("events") if isinstance(info.context, dict) else None
-    return decode_event({"version": CURRENT_VERSION, "type": tag, "data": body}, registry=registry)
+    decoder = info.context.get("events") if isinstance(info.context, dict) else None
+    if not isinstance(decoder, EventDecoder):
+        decoder = builtin_codec()
+    return decoder.decode({"version": CURRENT_VERSION, "type": tag, "data": body})
 
 
 type ResultEvent = Annotated[

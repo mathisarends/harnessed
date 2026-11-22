@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Annotated, Literal, Self
@@ -22,7 +21,7 @@ from harnessed.events import (
 from harnessed.events.codec import CURRENT_VERSION, validate_event
 from harnessed.events.unions import SESSION_EVENT_TYPES
 from harnessed.models.assets import AssetValue
-from harnessed.models.messages import JSONMapping, freeze, to_dict
+from harnessed.models.values import VALUE_CONFIG, JSONMapping, to_dict
 
 from .files import TextValue
 from .state import SessionState
@@ -30,14 +29,7 @@ from .state import SessionState
 if TYPE_CHECKING:
     from harnessed.events.registry import EventRegistry
 
-_CONFIG = ConfigDict(
-    extra="forbid",
-    strict=True,
-    allow_inf_nan=False,
-    ser_json_bytes="base64",
-    val_json_bytes="base64",
-    hide_input_in_errors=True,
-)
+_CONFIG = ConfigDict(**VALUE_CONFIG, ser_json_bytes="base64", val_json_bytes="base64")
 
 
 class CheckpointRecordKind(StrEnum):
@@ -70,9 +62,6 @@ class CheckpointExtension:
             or self.tag in SESSION_EVENT_TYPES
         ):
             raise ValueError("Checkpoint extensions require an application event tag")
-        if not isinstance(self.data, Mapping):
-            raise TypeError("Checkpoint extension data must be an object")
-        object.__setattr__(self, "data", freeze(self.data))
 
     @classmethod
     def from_event(cls, event: DurableEvent, *, registry: EventRegistry) -> Self:
@@ -114,11 +103,9 @@ class SessionCheckpoint:
     events: tuple[CheckpointEntry, ...] = ()
     assets: tuple[AssetValue, ...] = ()
     files: tuple[TextValue, ...] = ()
-    version: Literal[4] = 4
+    version: Literal[5] = 5
 
     def __post_init__(self) -> None:
-        if type(self.version) is not int:
-            raise ValueError("Checkpoint versions must be integers")
         if self.events and (
             not isinstance(self.events[0], TurnStartedEvent)
             or any(

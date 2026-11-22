@@ -18,7 +18,7 @@ from harnessed.events import (
     ModelRequestOutcome,
     TurnOutcome,
 )
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.hooks import DeferCompaction
 from harnessed.models import (
     GenerationSettings,
@@ -90,7 +90,10 @@ async def test_sliding_window_preserves_recent_turns_first_turn_and_tool_pairs_v
         assert any(m.text == "CURRENT" for m in request.messages)
         assert not any(m.role == Role.TOOL for m in request.messages)
         assert any(m.text.startswith("FIRST GOAL") for m in summaries.sources[1])
-        replayed = tuple(decode_event(json.loads(json.dumps(encode_event(e)))) for e in events)
+        replayed = tuple(
+            builtin_codec().decode(json.loads(json.dumps(builtin_codec().encode(e))))
+            for e in events
+        )
         assert AuditProjection(replayed).messages == agent.log.messages
         assert events[: len(prefix)] == prefix
 

@@ -1,6 +1,10 @@
-from dataclasses import dataclass, field
+from dataclasses import field
 from enum import StrEnum
 from typing import Literal
+
+from pydantic.dataclasses import dataclass
+
+from harnessed.models.values import VALUE_CONFIG
 
 from .base import DurableEvent, TransientEvent
 from .kinds import EventKind
@@ -23,7 +27,7 @@ class ControlState(StrEnum):
     STOPPED = "stopped"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class SessionControlChangedEvent(DurableEvent):
     __hash__ = None
 
@@ -34,16 +38,15 @@ class SessionControlChangedEvent(DurableEvent):
     keep_inbox: bool = False
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "state", ControlState(self.state))
-        if type(self.keep_inbox) is not bool or (
-            self.keep_inbox
-            and self.state
-            not in (ControlState.STOPPING, ControlState.ABORTING, ControlState.STOPPED)
+        if self.keep_inbox and self.state not in (
+            ControlState.STOPPING,
+            ControlState.ABORTING,
+            ControlState.STOPPED,
         ):
             raise ValueError("keep_inbox applies only to stop or abort requests")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, config=VALUE_CONFIG)
 class SessionStatusChangedEvent(TransientEvent):
     type: Literal[EventKind.SESSION_STATUS_CHANGED] = field(
         default=EventKind.SESSION_STATUS_CHANGED, kw_only=True

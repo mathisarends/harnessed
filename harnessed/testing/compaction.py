@@ -4,7 +4,7 @@ from harnessed.context import TokenCounter
 from harnessed.context.budget import truncate
 from harnessed.context.compaction import CompactionRequest, Summary
 from harnessed.context.tokens import ApproximateTokenCounter
-from harnessed.models.messages import to_dict
+from harnessed.models.values import to_dict
 
 
 class ExtractiveSummarizer:

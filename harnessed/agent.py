@@ -5,7 +5,7 @@ from typing import Any, Unpack, overload
 
 from harnessed.approvals import Approvals
 from harnessed.approvals.responders import PARENT_APPROVER
-from harnessed.children.contracts import ChildSessionRequest
+from harnessed.children import ChildSessionRequest
 from harnessed.context import Context
 from harnessed.context.tool_output_limit import ToolOutputLimit
 from harnessed.errors import ConfigError

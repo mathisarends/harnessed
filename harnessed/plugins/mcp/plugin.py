@@ -34,7 +34,7 @@ from harnessed.models import (
     ToolResult,
     ToolStatus,
 )
-from harnessed.models.messages import to_dict
+from harnessed.models.values import to_dict
 from harnessed.runtime.plugin import Plugin, PluginConfig
 from harnessed.tools import (
     ToolAnnotations,

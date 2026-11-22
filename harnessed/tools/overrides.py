@@ -1,19 +1,21 @@
 import math
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import field
 from difflib import get_close_matches
 from types import MappingProxyType, MethodType
-from typing import Any, Protocol, Self, runtime_checkable
+from typing import Annotated, Any, Protocol, Self, runtime_checkable
 
-from pydantic import AliasChoices, BaseModel, Field, create_model
+from pydantic import AfterValidator, AliasChoices, BaseModel, Field, create_model
+from pydantic.dataclasses import dataclass
 from pydantic.fields import FieldInfo
 
 from harnessed.kernel import PluginBase
+from harnessed.models.values import VALUE_CONFIG
 
 _UNSET = object()
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, config=VALUE_CONFIG)
 class Param:
     """Overrides for one model-facing field. Numeric bounds are inclusive."""
 
@@ -21,16 +23,6 @@ class Param:
     description: str | None = None
     ge: int | float | None = None
     le: int | float | None = None
-
-    def __post_init__(self) -> None:
-        if self.description is not None and not isinstance(self.description, str):
-            raise TypeError("Parameter description must be text")
-        for bound in (self.ge, self.le):
-            if bound is not None and (
-                type(bound) not in (float, int)
-                or (isinstance(bound, float) and not math.isfinite(bound))
-            ):
-                raise ValueError("Numeric bounds must be finite numbers")
 
     def updated(self, patch: Self) -> Self:
         return type(self)(
@@ -41,22 +33,23 @@ class Param:
         )
 
 
-@dataclass(frozen=True)
+def _read_only(parameters: Mapping[str, Param]) -> Mapping[str, Param]:
+    return MappingProxyType(dict(parameters))
+
+
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class ToolOverride:
     description: str | None = None
-    parameters: Mapping[str, Param] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        if self.description is not None and not isinstance(self.description, str):
-            raise TypeError("Tool description must be text")
-        object.__setattr__(self, "parameters", MappingProxyType(dict(self.parameters)))
+    parameters: Annotated[Mapping[str, Param], AfterValidator(_read_only)] = field(
+        default_factory=dict
+    )
 
     def updated(self, description: str | None, parameters: Mapping[str, Param] | None) -> Self:
         merged = dict(self.parameters)
         if parameters is not None:
-            for name, patch in parameters.items():
-                if not isinstance(patch, Param):
-                    raise TypeError(f"Expected Param for {name!r}")
+            # Validate the patches before merging them into existing overrides.
+            patches = type(self)(parameters=parameters).parameters
+            for name, patch in patches.items():
                 merged[name] = merged[name].updated(patch) if name in merged else patch
         return type(self)(self.description if description is None else description, merged)
 

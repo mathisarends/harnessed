@@ -1,10 +1,12 @@
-from dataclasses import dataclass, field
+from dataclasses import field
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Literal
 
-from pydantic import Field
+from pydantic import PositiveInt
+from pydantic.dataclasses import dataclass
 
 from harnessed.models import GenerationSettings, ModelUsage, OutputSchema
+from harnessed.models.values import VALUE_CONFIG
 
 from .base import DurableEvent, Identifier, StepNumber
 from .kinds import EventKind
@@ -33,24 +35,15 @@ class StepOutcome(StrEnum):
     CONTEXT_LIMIT = "context_limit"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class TurnLimits:
     """Queued overrides; turn-start records store the resolved step limit."""
 
-    max_steps: Annotated[int, Field(ge=1)] | None = None
-    token_budget: Annotated[int, Field(ge=1)] | None = None
-
-    def __post_init__(self) -> None:
-        _check_limit("max_steps", self.max_steps)
-        _check_limit("token_budget", self.token_budget)
+    max_steps: PositiveInt | None = None
+    token_budget: PositiveInt | None = None
 
 
-def _check_limit(name: str, value: int | None) -> None:
-    if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 1):
-        raise ValueError(f"{name} must be a positive integer or None")
-
-
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class TurnStartedEvent(DurableEvent):
     __hash__ = None
 
@@ -62,13 +55,8 @@ class TurnStartedEvent(DurableEvent):
     limits: TurnLimits = field(default_factory=TurnLimits, kw_only=True)
     final_step: FinalStepPolicy = field(default=FinalStepPolicy.NONE, kw_only=True)
 
-    def __post_init__(self) -> None:
-        if not isinstance(self.settings, GenerationSettings):
-            raise TypeError("Turn settings must be GenerationSettings")
-        object.__setattr__(self, "final_step", FinalStepPolicy(self.final_step))
 
-
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class TurnEndedEvent(DurableEvent):
     """Close a turn with its outcome and aggregate provider-reported usage."""
 
@@ -79,11 +67,8 @@ class TurnEndedEvent(DurableEvent):
     reason: TurnOutcome = TurnOutcome.COMPLETED
     usage: ModelUsage = field(default_factory=lambda: ModelUsage(0), kw_only=True)
 
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "reason", TurnOutcome(self.reason))
 
-
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class StepStartedEvent(DurableEvent):
     __hash__ = None
 
@@ -92,7 +77,7 @@ class StepStartedEvent(DurableEvent):
     step: StepNumber
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class StepEndedEvent(DurableEvent):
     __hash__ = None
 
@@ -100,6 +85,3 @@ class StepEndedEvent(DurableEvent):
     turn_id: Identifier
     step: StepNumber
     reason: StepOutcome = StepOutcome.COMPLETED
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "reason", StepOutcome(self.reason))

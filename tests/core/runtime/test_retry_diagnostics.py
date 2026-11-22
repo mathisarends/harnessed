@@ -27,7 +27,7 @@ from harnessed.events import (
     RetryKind,
     RetryReason,
 )
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.events.stream import StreamEvent
 from harnessed.models import (
     ModelAttemptFinished,
@@ -224,7 +224,7 @@ async def test_output_corrections_have_their_own_counter_and_durable_request_cor
         assert len(starts) == 1 and starts[0].attempt == 2 and starts[0].max_retries == 1
         records = [e for e in session_audit.events if isinstance(e, ModelRequestedEvent)]
         assert records[1].retry_group_id == records[0].request_id == scheduled[0].retry_group_id
-        assert decode_event(encode_event(records[1])) == records[1]
+        assert builtin_codec().decode(builtin_codec().encode(records[1])) == records[1]
         finished = [
             e
             for e in notifications

@@ -1,7 +1,7 @@
 from time import monotonic
 from uuid import uuid4
 
-from harnessed.children.contracts import ChildSessionRequest
+from harnessed.children import ChildSessionRequest
 from harnessed.children.reports import ChildReports
 from harnessed.errors import ConfigError
 from harnessed.events import TurnStartedEvent

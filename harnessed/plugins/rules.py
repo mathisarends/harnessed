@@ -4,12 +4,11 @@ import inspect
 import json
 from collections import Counter
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass as event_dataclass
 from dataclasses import field, replace
 from enum import StrEnum
 from typing import Annotated, Any, Literal, Self, override
 
-from pydantic import AfterValidator, ConfigDict, Field, StringConstraints, TypeAdapter
+from pydantic import AfterValidator, ConfigDict, Field, PositiveInt, StringConstraints, TypeAdapter
 from pydantic.dataclasses import dataclass
 
 from harnessed.context import TokenCounter
@@ -18,7 +17,7 @@ from harnessed.events import DurableEvent
 from harnessed.events.base import Identifier
 from harnessed.kernel import Next, PluginScope, PluginState, hook, needs
 from harnessed.models import ModelRequest, ToolCall, ToolResult, UserMessage, user
-from harnessed.models.messages import to_dict
+from harnessed.models.values import VALUE_CONFIG, to_dict
 from harnessed.runtime.hooks import PrepareRequest, ReviewToolResult
 from harnessed.runtime.inbox import SessionInbox
 from harnessed.runtime.plugin import Plugin
@@ -38,18 +37,15 @@ class RuleAction(StrEnum):
     STEER = "steer"
 
 
-@event_dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class RuleTriggeredEvent(DurableEvent):
     __hash__ = None
 
     type: Literal[RuleEventKind.TRIGGERED] = field(default=RuleEventKind.TRIGGERED, kw_only=True)
     rule: str
     call_id: Identifier
-    occurrence: int
+    occurrence: PositiveInt
     actions: tuple[RuleAction, ...]
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "actions", tuple(self.actions))
 
 
 def _synchronous(callback):
@@ -67,7 +63,6 @@ type ExitCondition = Annotated[Callable[[int], bool], AfterValidator(_synchronou
 type ResultCondition = Annotated[
     Callable[[ToolCall, ToolResult], bool], AfterValidator(_synchronous)
 ]
-_CONFIG = ConfigDict(strict=True, extra="forbid", allow_inf_nan=False, hide_input_in_errors=True)
 _BOOL = TypeAdapter(bool, config=ConfigDict(strict=True, hide_input_in_errors=True))
 
 
@@ -78,7 +73,7 @@ def _condition(callback, *args) -> bool:
     return _BOOL.validate_python(result)
 
 
-@dataclass(frozen=True, config=_CONFIG)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class Rule:
     __hash__ = None
 

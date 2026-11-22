@@ -6,6 +6,7 @@ from .checkpoint import (
     CheckpointSeed,
     SessionCheckpoint,
 )
+from .children import ChildSession
 from .commit import SessionChange, SessionCommit
 from .context import SessionContext
 from .files import TextValue
@@ -19,6 +20,7 @@ __all__ = [
     "CheckpointEntry",
     "CheckpointExtension",
     "CheckpointSeed",
+    "ChildSession",
     "HistoryEntry",
     "HistoryStep",
     "HistoryTurn",

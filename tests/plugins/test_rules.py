@@ -8,7 +8,7 @@ from harnessed.events import (
     PluginValueChangedEvent,
     ToolCallFinishedEvent,
 )
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.kernel import PluginScope, PluginStatus
 from harnessed.models import ModelChunk, Role, ToolCall, ToolResult, ToolStatus
 from harnessed.plugins.rules import RuleAction, Rules, RuleTriggeredEvent, when
@@ -265,7 +265,7 @@ async def test_process_return_values_are_normalized_with_exit_codes():
         event = next(e for e in agent_audit.events if isinstance(e, ToolCallFinishedEvent))
         assert event.result.status == ToolStatus.ERROR and event.result.exit_code == 7
         assert event.result.with_note("note").exit_code == 7
-        assert decode_event(encode_event(event)) == event
+        assert builtin_codec().decode(builtin_codec().encode(event)) == event
 
 
 @pytest.mark.parametrize(

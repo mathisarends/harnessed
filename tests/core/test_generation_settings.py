@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from harnessed import Agent, Plugin
 from harnessed.events import ModelRequestedEvent
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.kernel import PluginScope
 from harnessed.models import GenerationSettings, Model, ModelInfo, ModelRequest
 from harnessed.models.model import resolve_request_settings
@@ -65,7 +65,7 @@ async def test_shared_model_defaults_are_not_changed_by_session_overrides():
         event = first.last(ModelRequestedEvent)
         assert event.model == model.info
         assert event.request.settings == GenerationSettings(max_tokens=512, temperature=0.2)
-        assert decode_event(encode_event(event)) == event
+        assert builtin_codec().decode(builtin_codec().encode(event)) == event
         assert model.requests[1].settings == defaults
     assert model.settings is defaults
 

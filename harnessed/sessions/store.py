@@ -1,8 +1,10 @@
 import asyncio
 import contextlib
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from typing import Protocol
+
+from pydantic import PositiveInt
+from pydantic.dataclasses import dataclass
 
 from harnessed.errors import SessionStateError
 from harnessed.events import (
@@ -20,23 +22,18 @@ from harnessed.events import (
     ToolExecutionStartedEvent,
     TurnEndedEvent,
 )
+from harnessed.models.values import VALUE_CONFIG
 
 from .checkpoint import CheckpointExtension, SessionCheckpoint
 from .commit import SessionChange, SessionCommit
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, config=VALUE_CONFIG)
 class StoredSession:
     """A typed Harnessed checkpoint and its repository revision."""
 
     checkpoint: SessionCheckpoint
-    revision: int
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.checkpoint, SessionCheckpoint):
-            raise TypeError("Stored sessions require a SessionCheckpoint")
-        if type(self.revision) is not int or self.revision < 1:
-            raise ValueError("Session revisions must be positive integers")
+    revision: PositiveInt
 
 
 class SessionStore(Protocol):

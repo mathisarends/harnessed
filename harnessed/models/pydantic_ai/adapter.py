@@ -8,7 +8,6 @@ from types import TracebackType
 from typing import TYPE_CHECKING, Any, Self
 
 from harnessed.errors import ConfigError
-from harnessed.models.messages import to_dict
 from harnessed.models.model import (
     GenerationSettings,
     ModelChunk,
@@ -22,6 +21,7 @@ from harnessed.models.model import (
     ToolCallStart,
     resolve_request_settings,
 )
+from harnessed.models.values import to_dict
 
 from .conversion import history, model_response, model_usage, provider_error, request_parameters
 

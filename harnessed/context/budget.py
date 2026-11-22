@@ -1,11 +1,12 @@
 import inspect
 from typing import Annotated
 
-from pydantic import ConfigDict, Field
+from pydantic import Field
 from pydantic.dataclasses import dataclass
 
 from harnessed.errors import ContextBudgetExceeded
 from harnessed.models import ModelRequest
+from harnessed.models.values import VALUE_CONFIG
 
 from .tokens import TokenCounter
 
@@ -23,7 +24,7 @@ def truncate(text: str, max_tokens: int, counter: TokenCounter) -> str:
 
 @dataclass(
     frozen=True,
-    config=ConfigDict(strict=True, extra="forbid", allow_inf_nan=False, hide_input_in_errors=True),
+    config=VALUE_CONFIG,
 )
 class ContextBudget:
     limit: Annotated[int, Field(ge=1)] | None = None

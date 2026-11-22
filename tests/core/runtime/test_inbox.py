@@ -13,7 +13,7 @@ from harnessed.events import (
     InboxRemovedEvent,
     UserMessageEvent,
 )
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.models import ModelChunk, system, user
 from harnessed.sessions.inbox import Inbox
 from harnessed.testing import CallbackModel, ScriptedModel
@@ -47,11 +47,13 @@ async def test_run_scoped_steering_rejects_input_after_completion():
         assert calls == 2
 
 
-@pytest.mark.parametrize(("mode", "target"), [("followup", "next_turn"), ("steer", "next_step")])
+@pytest.mark.parametrize(
+    ("mode", "target"), [(InboxMode.FOLLOWUP, "next_turn"), (InboxMode.STEER, "next_step")]
+)
 def test_input_modes_define_one_consistent_durable_route(mode, target):
     event = InboxAddedEvent.create(user("input"), mode)
     assert event.target == target
-    assert decode_event(encode_event(event)) == event
+    assert builtin_codec().decode(builtin_codec().encode(event)) == event
 
 
 @pytest.mark.parametrize(
@@ -86,9 +88,9 @@ def test_inbox_plans_one_followup_per_turn_and_preserves_pending_input_order():
         inbox.pending = ()
 
 
-@pytest.mark.parametrize("mode", ["followup", "steer"])
+@pytest.mark.parametrize("mode", [InboxMode.FOLLOWUP, InboxMode.STEER])
 def test_inbox_inputs_require_user_messages(mode):
-    with pytest.raises(ValueError, match="requires a user message"):
+    with pytest.raises(ValueError, match="UserMessage"):
         InboxAddedEvent.create(system("context"), mode)
 
 
@@ -153,6 +155,6 @@ async def test_public_inbox_removal_discards_only_the_selected_queued_run():
 
 
 def test_old_inbox_records_have_a_deterministic_creation_time():
-    record = encode_event(InboxAddedEvent.create(user("old"), InboxMode.FOLLOWUP))
+    record = builtin_codec().encode(InboxAddedEvent.create(user("old"), InboxMode.FOLLOWUP))
     record["data"].pop("created_at")
-    assert decode_event(record).created_at == 0.0
+    assert builtin_codec().decode(record).created_at == 0.0

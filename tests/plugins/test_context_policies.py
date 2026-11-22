@@ -23,7 +23,7 @@ from harnessed.events import (
     TurnStartedEvent,
     UserMessageEvent,
 )
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.hooks import PrepareRequest
 from harnessed.kernel import Next, hook, needs
 from harnessed.models import (
@@ -78,7 +78,8 @@ async def test_large_results_spill_to_session_files_and_keep_structured_metadata
         assert model.requests[1].messages[-1].text == result.content
         assert result.with_note("extra").spill == result.spill
         events = tuple(
-            decode_event(json.loads(json.dumps(encode_event(e)))) for e in agent_audit.events
+            builtin_codec().decode(json.loads(json.dumps(builtin_codec().encode(e))))
+            for e in agent_audit.events
         )
         assert AuditProjection(events).messages == agent.log.messages
         assert any(isinstance(e, SpillCreatedEvent) for e in events)
@@ -351,7 +352,7 @@ async def test_cache_usage_is_preserved_as_provider_reported_usage():
         await agent.run("one")
         event = agent.log.last(ModelUsageRecordedEvent)
         assert event.usage.cache_hit_rate == 0.8
-        assert decode_event(encode_event(event)) == event
+        assert builtin_codec().decode(builtin_codec().encode(event)) == event
 
 
 async def test_model_summarizer_uses_explicit_model_without_tools_and_closes_stream():

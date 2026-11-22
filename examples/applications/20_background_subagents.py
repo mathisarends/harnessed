@@ -4,10 +4,9 @@ import asyncio
 import json
 
 from harnessed import Agent, Approvals, Plugin, tool
-from harnessed.events import SubagentUpdatedEvent
+from harnessed.events import ChildReportState, SubagentUpdatedEvent
 from harnessed.models import ModelChunk, ModelRequest, ToolCall
 from harnessed.plugins import SubagentAction, Subagents
-from harnessed.plugins.subagents import ChildReportState
 from harnessed.testing import CallbackModel
 
 

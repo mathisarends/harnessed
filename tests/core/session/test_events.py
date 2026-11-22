@@ -3,11 +3,12 @@ from dataclasses import FrozenInstanceError, dataclass, is_dataclass, replace
 from typing import ClassVar
 
 import pytest
+from pydantic import ValidationError
 
 from harnessed import Agent as Application
 from harnessed import Approvals, Decision, Plugin, tool
 from harnessed.events import DurableEvent, ModelRequestedEvent, SystemMessageEvent, TurnEndedEvent
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.events.unions import SESSION_EVENT_TYPES
 from harnessed.kernel import hook
 from harnessed.models import ModelChunk, SystemMessage, ToolCall, ToolResult
@@ -19,7 +20,8 @@ from tests._audit import Audit, AuditProjection
 
 def roundtrip(events):
     return tuple(
-        decode_event(record) for record in json.loads(json.dumps([encode_event(e) for e in events]))
+        builtin_codec().decode(record)
+        for record in json.loads(json.dumps([builtin_codec().encode(e) for e in events]))
     )
 
 
@@ -82,20 +84,25 @@ class UnknownEvent(DurableEvent):
     type: ClassVar[str] = "unknown/event"
 
 
-@pytest.mark.parametrize("event", [DurableEvent(), UnknownEvent(), SystemMessageEvent(["mutable"])])
-async def test_memory_logs_seeds_and_codecs_reject_unregistered_or_mutable_events(event):
+def test_built_in_events_reject_mutable_values_on_construction():
+    with pytest.raises(ValidationError):
+        SystemMessageEvent(["mutable"])
+
+
+@pytest.mark.parametrize("event", [DurableEvent(), UnknownEvent()])
+async def test_memory_logs_seeds_and_codecs_reject_unregistered_events(event):
     session = SessionLog("immutable")
     with pytest.raises(TypeError):
         await session.append(event)
     with pytest.raises(TypeError):
         AuditProjection([event])
     with pytest.raises(TypeError):
-        encode_event(event)
+        builtin_codec().encode(event)
     assert session.events == ()
 
 
 def test_tool_results_reject_unsupported_parts_before_reaching_the_log():
-    with pytest.raises(TypeError, match="text/image parts"):
+    with pytest.raises(ValidationError):
         ToolResult(["mutable"])
 
 

@@ -2,7 +2,7 @@ from importlib import import_module
 from typing import Annotated, get_args
 
 import pytest
-from pydantic import Field, TypeAdapter
+from pydantic import Field, TypeAdapter, ValidationError
 
 from harnessed import Agent, Approvals, Decision, Plugin, events, tool
 from harnessed.events import (
@@ -15,7 +15,7 @@ from harnessed.events import (
     TurnEndedEvent,
     stream,
 )
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.events.registry import EventRegistry
 from harnessed.events.stream import StreamEvent, TurnResultEvent
 from harnessed.kernel import hook
@@ -122,7 +122,7 @@ async def test_direct_public_event_imports_observe_the_canonical_runtime_events(
 
 def test_current_record_format_roundtrips_the_turn_end_payload():
     record = {
-        "version": 8,
+        "version": 9,
         "type": "turn.ended",
         "data": {
             "turn_id": "turn",
@@ -137,9 +137,9 @@ def test_current_record_format_roundtrips_the_turn_end_payload():
             },
         },
     }
-    event = decode_event(record)
+    event = builtin_codec().decode(record)
     assert type(event) is TurnEndedEvent
-    assert encode_event(event) == record
+    assert builtin_codec().encode(event) == record
 
 
 def test_data_notifications_roundtrip_through_a_discriminated_union():
@@ -160,19 +160,18 @@ def test_data_notifications_roundtrip_through_a_discriminated_union():
 
 def test_namespaced_log_events_use_canonical_tags_only():
     event = events.TurnStartedEvent("turn")
-    record = encode_event(event)
-    assert record["type"] == "turn.started" and record["version"] == 8
+    record = builtin_codec().encode(event)
+    assert record["type"] == "turn.started" and record["version"] == 9
     record.update(type="TurnStartedEvent", version=4)
     with pytest.raises(ValueError):
-        decode_event(record)
+        builtin_codec().decode(record)
     assert events.CompactionAppliedEvent.type == "compaction.applied"
     assert events.SpillCreatedEvent.type == "spill.created"
 
 
 def test_live_notifications_cannot_spoof_a_different_registered_discriminator():
-    registry = EventRegistry()
-    with pytest.raises(TypeError, match="registered"):
-        registry.validate(events.TextDeltaEvent("message", "hello", type="reasoning.delta"))
+    with pytest.raises(ValidationError):
+        events.TextDeltaEvent("message", "hello", type="reasoning.delta")
 
 
 def test_compaction_lifecycle_roundtrips_as_live_events_but_cannot_enter_the_durable_codec():
@@ -185,4 +184,4 @@ def test_compaction_lifecycle_roundtrips_as_live_events_but_cannot_enter_the_dur
     ):
         assert adapter.validate_json(adapter.dump_json(event)) == event
         with pytest.raises(TypeError):
-            encode_event(event)
+            builtin_codec().encode(event)

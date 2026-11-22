@@ -11,7 +11,7 @@ from harnessed.events import (
     ToolExecutionFinishedEvent,
     ToolProgressEvent,
 )
-from harnessed.events.codec import decode_event, encode_event
+from harnessed.events.codec import builtin_codec
 from harnessed.kernel import Inject, PluginScope, hook
 from harnessed.models import Decision, ModelChunk, Role, ToolCall
 from harnessed.plugins.filesystem import Filesystem, FileSystemBackend, LocalFileSystem
@@ -83,7 +83,7 @@ async def test_parallel_execution_overlaps_but_reviews_results_and_history_keep_
         assert [m.tool_call_id for m in model.requests[-1].messages if m.role == Role.TOOL] == [
             c.id for c in calls
         ]
-        restored = tuple(decode_event(encode_event(event)) for event in events)
+        restored = tuple(builtin_codec().decode(builtin_codec().encode(event)) for event in events)
         assert AuditProjection(restored).messages == agent.log.messages
 
 
@@ -427,7 +427,10 @@ async def test_abort_after_final_commit_keeps_the_reviewed_result_without_duplic
         assert finished[0].result.content == "reviewed output"
         assert result.tool_calls == ((call, ToolResult("reviewed output")),)
         replay = AuditProjection(
-            tuple(decode_event(encode_event(event)) for event in session_audit.events)
+            tuple(
+                builtin_codec().decode(builtin_codec().encode(event))
+                for event in session_audit.events
+            )
         )
         assert replay.events == session_audit.events
         assert "private raw result" not in result.tool_calls[0][1].content

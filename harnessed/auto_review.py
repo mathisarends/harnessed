@@ -17,7 +17,7 @@ from harnessed.models import (
     ToolMessage,
     UserMessage,
 )
-from harnessed.models.messages import to_dict
+from harnessed.models.values import to_dict
 from harnessed.runtime.agent_loop import AgentLoop
 
 _CONVERSATION_BUDGET_CHARS = 12_000

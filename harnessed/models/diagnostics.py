@@ -1,9 +1,13 @@
 from collections.abc import Awaitable, Callable, Generator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
 from enum import StrEnum
-from math import isfinite
+from typing import Annotated
+
+from pydantic import Field, NonNegativeFloat, NonNegativeInt, PositiveInt
+from pydantic.dataclasses import dataclass
+
+from .values import VALUE_CONFIG
 
 
 class RetryKind(StrEnum):
@@ -29,20 +33,13 @@ class ModelAttemptOutcome(StrEnum):
     CANCELLED = "cancelled"
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, config=VALUE_CONFIG)
 class _AttemptCounts:
-    attempt: int | None = None
-    retry_count: int | None = None
-    max_retries: int | None = None
+    attempt: PositiveInt | None = None
+    retry_count: NonNegativeInt | None = None
+    max_retries: NonNegativeInt | None = None
 
     def __post_init__(self) -> None:
-        for name, value, minimum in (
-            ("attempt", self.attempt, 1),
-            ("retry_count", self.retry_count, 0),
-            ("max_retries", self.max_retries, 0),
-        ):
-            if value is not None and (type(value) is not int or value < minimum):
-                raise ValueError(f"{name} must be an integer >= {minimum}, or None")
         count = self.attempt - 1 if self.attempt is not None else None
         if self.retry_count is not None and self.retry_count != count:
             raise ValueError("retry_count must equal attempt - 1; unknown attempts use None")
@@ -51,50 +48,29 @@ class _AttemptCounts:
             raise ValueError("Observed retries cannot exceed max_retries")
 
 
-def _validate_status_code(status_code: int | None) -> None:
-    if status_code is not None and (type(status_code) is not int or not 100 <= status_code <= 599):
-        raise ValueError("status_code must be an HTTP status integer, or None")
+type _StatusCode = Annotated[int, Field(ge=100, le=599)]
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, config=VALUE_CONFIG)
 class ModelAttemptStarted(_AttemptCounts):
     """An adapter observed an actual provider attempt starting, numbered from one."""
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, config=VALUE_CONFIG)
 class ModelRetryScheduled(_AttemptCounts):
     """A retry decision after `attempt`; its successor has not started yet."""
 
     reason: RetryReason = RetryReason.UNKNOWN
-    status_code: int | None = None
-    delay_seconds: float | None = None
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        object.__setattr__(self, "reason", RetryReason(self.reason))
-        _validate_status_code(self.status_code)
-        if self.delay_seconds is not None and (
-            type(self.delay_seconds) not in (int, float)
-            or not isfinite(self.delay_seconds)
-            or self.delay_seconds < 0
-        ):
-            raise ValueError("delay_seconds must be finite and non-negative")
+    status_code: _StatusCode | None = None
+    delay_seconds: NonNegativeFloat | None = None
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, config=VALUE_CONFIG)
 class ModelAttemptFinished(_AttemptCounts):
     outcome: ModelAttemptOutcome
     reason: RetryReason = RetryReason.UNKNOWN
-    status_code: int | None = None
+    status_code: _StatusCode | None = None
     partial: bool = False
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        object.__setattr__(self, "outcome", ModelAttemptOutcome(self.outcome))
-        object.__setattr__(self, "reason", RetryReason(self.reason))
-        _validate_status_code(self.status_code)
-        if type(self.partial) is not bool:
-            raise ValueError("partial must be a boolean")
 
 
 type ModelDiagnostic = ModelAttemptStarted | ModelRetryScheduled | ModelAttemptFinished
