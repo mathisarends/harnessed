@@ -149,6 +149,11 @@ class SessionLog:
     def persistence_failed(self) -> bool:
         return self._commits is not None and self._commits.failed
 
+    def check_persistence(self) -> None:
+        """Raise the stored delivery error before acknowledging a projected change."""
+        if self._commits is not None:
+            self._commits.check()
+
     @property
     def commit_handler(self) -> CommitHandler | None:
         """The application handler receiving this log's commits, if any."""
@@ -569,8 +574,8 @@ class SessionLog:
     ) -> tuple[int, DurableEvent]:
         async with self._lock:
             self.registry.validate(event)
-            if self._commits is not None and not self._restoring:
-                self._commits.check()
+            if not self._restoring:
+                self.check_persistence()
             # Additive input must not claim an acknowledged run's queued message.
             # Check under the admission lock, before retaining images or recording state.
             if (
