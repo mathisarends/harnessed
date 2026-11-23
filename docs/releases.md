@@ -4,6 +4,14 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md)
 is the complete version history and upgrade reference.
 
+## 0.27.2 (unreleased)
+
+Sessions process committed input when the submitter is cancelled during the
+commit. They also reject reserved user message IDs before admission.
+
+**Upgrade.** Update to `0.27.2` and keep using existing storage formats.
+See the [0.27.2 upgrade notes](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-0271).
+
 ## 0.27.1 (2026-11-22)
 
 Approval callers receive persistence errors, plugins observing services start
