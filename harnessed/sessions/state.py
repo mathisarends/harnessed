@@ -57,13 +57,18 @@ def image_refs(entries: tuple[HistoryEntry, ...]) -> set[AssetRef]:
     }
 
 
+def validate_conversation_message_id(message_id: str) -> None:
+    """Keep configuration-only message IDs out of persisted conversation history."""
+    if message_id == "system" or message_id.startswith("mount-context:"):
+        raise ValueError(f"Message ID {message_id!r} is reserved for agent configuration")
+
+
 def _check_tool_pairs(history: tuple[HistoryEntry, ...]) -> None:
     """Require conversation-only messages whose tool calls are answered in order."""
     pending: set[str] = set()
     for entry in history:
         message = entry.message
-        if message.id == "system" or message.id.startswith("mount-context:"):
-            raise ValueError("Agent configuration is not conversation state")
+        validate_conversation_message_id(message.id)
         if isinstance(message, AssistantMessage):
             if pending:
                 raise ValueError("Tool calls must be answered before the next assistant")

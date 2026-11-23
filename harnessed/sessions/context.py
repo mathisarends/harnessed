@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, NamedTuple
 from harnessed.events import DurableEvent, MessageAppendedEvent, SessionStatus, TransientEvent
 from harnessed.models import Message, UserMessage
 
+from .state import validate_conversation_message_id
+
 if TYPE_CHECKING:
     from harnessed.approvals.session import SessionApprovals
     from harnessed.runtime.control import SessionControl
@@ -30,6 +32,7 @@ class PendingObservations:
     def add(self, message: UserMessage, *, source: str, refs: Iterable[str]) -> None:
         if not isinstance(message, UserMessage):
             raise TypeError("Observations require a UserMessage")
+        validate_conversation_message_id(message.id)
         if not isinstance(source, str) or not source:
             raise ValueError("Observations require a non-empty source")
         references = tuple(refs)

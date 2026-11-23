@@ -72,6 +72,8 @@ handler returns, so awaiting it from the handler deadlocks the session.
 
 By default a delivery may take as long as the handler needs, and cancelling a
 waiter does not interrupt it: abort and close wait for the delivery in progress.
+If the caller cancels `submit()` during its input commit and the commit succeeds,
+the session runs the accepted input even though the caller receives no handle.
 Pass `commit_timeout_seconds=` to `agent.session()` to bound each delivery. When
 the deadline expires, the handler is cancelled and the commit fails with
 `CommitTimeout` from `harnessed.errors`, following the failed-commit path below.
@@ -457,6 +459,10 @@ while idle. `append_message(UserMessage(content))` appends quiet background for 
 requests without starting work. `observe(observation)` buffers the latest pending snapshot per source until
 the next step records it. Unrecorded observations are not exported. Use these
 operations from hooks as described in [context](context.md).
+
+When assigning IDs to user messages, reserve `system` and the `mount-context:`
+prefix for agent configuration. Submitting, steering, appending or observing a
+message with one of those IDs raises `ValueError` before admission.
 
 ## Read results and usage
 

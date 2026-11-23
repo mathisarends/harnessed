@@ -16,6 +16,7 @@ from harnessed.models import (
     user,
 )
 from harnessed.models.assets import AssetStore
+from harnessed.sessions.state import validate_conversation_message_id
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,7 @@ async def prepare_input(
     message = user(content) if isinstance(content, str) else content
     if not isinstance(message, UserMessage):
         raise TypeError("Run input must be text or a UserMessage")
+    validate_conversation_message_id(message.id)
     attachments = tuple(attachments)
     if attachments:
         if message.role != Role.USER:
