@@ -5,6 +5,23 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## 0.27.2 (unreleased)
+
+### Fixed
+
+- A session starts processing a submitted input after its commit succeeds,
+  even if the caller cancels `submit()` before receiving a handle.
+- Sessions reject the message ID `system` and the prefix `mount-context:`
+  at admission. These IDs are reserved for agent configuration.
+
+Both fixes are in [#185](https://github.com/mathisarends/harnessed/pull/185).
+
+### Upgrade from 0.27.1
+
+Update to `0.27.2`. Existing conversation snapshots, checkpoints, split
+execution documents, and audit envelopes use the same formats. If your
+application assigns message IDs, avoid `system` and the `mount-context:` prefix.
+
 ## 0.27.1 (2026-11-22)
 
 ### Fixed
