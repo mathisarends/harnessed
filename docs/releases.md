@@ -4,7 +4,7 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md)
 is the complete version history and upgrade reference.
 
-## 0.27.2 (unreleased)
+## 0.27.2 (2026-11-23)
 
 Sessions process committed input when the submitter is cancelled during the
 commit. They also reject reserved user message IDs before admission.
