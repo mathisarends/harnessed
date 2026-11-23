@@ -22,6 +22,7 @@ from harnessed.events import (
     MessageAppendedEvent,
     ModelRequestFailedEvent,
     ModelRequestOutcome,
+    ObservationRecordedEvent,
     SessionControlChangedEvent,
     StepEndedEvent,
     StepOutcome,
@@ -33,6 +34,7 @@ from harnessed.events import (
     TransientEvent,
     TurnEndedEvent,
     TurnStartedEvent,
+    UserMessageEvent,
 )
 from harnessed.events.registry import EventRegistry
 from harnessed.events.unions import SESSION_EVENT_TYPES
@@ -78,6 +80,7 @@ from .state import (
     HistoryTurn,
     SessionState,
     image_refs,
+    validate_conversation_message_id,
 )
 from .turns import Turn, TurnProjection, recorded_usage
 
@@ -559,10 +562,11 @@ class SessionLog:
                 expected_turn=expected_turn,
                 expected_input=expected_input,
             )
-        if cancelled and terminal:
-            raise asyncio.CancelledError
         if on_committed is not None:
+            # A successful commit transfers ownership even if its caller disconnected.
             on_committed()
+        if cancelled:
+            raise asyncio.CancelledError
         try:
             if self.scope is not None:
                 await self.scope.dispatch(SessionAppended(self, event, seq))
@@ -570,8 +574,6 @@ class SessionLog:
         finally:
             if isinstance(event, TurnEndedEvent):
                 self._release_turn()
-        if cancelled:
-            raise asyncio.CancelledError
 
     async def _append(
         self,
@@ -585,6 +587,14 @@ class SessionLog:
             self.registry.validate(event)
             if not self._restoring:
                 self.check_persistence()
+            if isinstance(
+                event,
+                InboxAddedEvent
+                | MessageAppendedEvent
+                | UserMessageEvent
+                | ObservationRecordedEvent,
+            ):
+                validate_conversation_message_id(event.message.id)
             # Additive input must not claim an acknowledged run's queued message.
             # Check under the admission lock, before retaining images or recording state.
             if (

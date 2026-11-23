@@ -17,6 +17,7 @@ from harnessed.kernel import hook
 from harnessed.models import ModelChunk, StopReason, UserMessage
 from harnessed.runtime.control import SessionStatus
 from harnessed.runtime.handles import RunHandle, RunStream
+from harnessed.sessions import SessionCommit
 from harnessed.testing import CallbackModel, ScriptedModel, call
 from tests._audit import Audit
 from tests._commits import CommitRecorder
@@ -58,6 +59,56 @@ async def test_cancelling_a_result_waiter_leaves_the_acknowledged_run_queued():
         assert not handle.done() and session.inbox.pending[0].id == handle.id
         await session.resume()
         assert (await handle.result()).text == "done"
+
+
+async def test_cancelled_submit_runs_once_after_its_input_commit_succeeds() -> None:
+    saving = asyncio.Event()
+    release = asyncio.Event()
+    store = CommitRecorder()
+
+    async def persist(commit: SessionCommit) -> None:
+        if any(isinstance(change.event, InboxAddedEvent) for change in commit.changes):
+            saving.set()
+            await asyncio.wait_for(release.wait(), timeout=3)
+        await store(commit)
+
+    model = ScriptedModel(["done"])
+    async with Agent(model=model).session(on_commit=persist) as session:
+        submit = asyncio.create_task(session.submit("accepted work"))
+        try:
+            await asyncio.wait_for(saving.wait(), timeout=3)
+            submit.cancel()
+        finally:
+            release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(submit, timeout=3)
+        await asyncio.wait_for(session.control.join(), timeout=3)
+        assert session.inbox.pending == ()
+        assert len(model.requests) == 1
+        checkpoint = store.latest(session.id)
+        assert [entry.message.text for entry in checkpoint.state.history] == [
+            "accepted work",
+            "done",
+        ]
+
+
+@pytest.mark.parametrize("message_id", ["system", "mount-context:1"])
+async def test_reserved_input_ids_are_rejected_before_admission(message_id: str) -> None:
+    store = CommitRecorder()
+    model = ScriptedModel(["done"])
+    async with Agent(model=model).session(on_commit=store) as session:
+        message = UserMessage("invalid", id=message_id)
+        with pytest.raises(ValueError, match="reserved"):
+            await session.run(message)
+        with pytest.raises(ValueError, match="reserved"):
+            await session.append_message(message)
+        with pytest.raises(ValueError, match="reserved"):
+            session.observe(message, source="test")
+        assert store.commits == [] and model.requests == []
+        assert session.inbox.pending == () and session.messages == ()
+
+        result = await session.run(UserMessage("valid", id="system-1"))
+        assert result.state.history[0].message.id == "system-1"
 
 
 @pytest.mark.parametrize("plugin_context", [False, True])
