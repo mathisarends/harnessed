@@ -42,7 +42,7 @@ async def main() -> None:
     print(agent.loop)
     print((await agent.run("Label Hello")).text)
     try:
-        Agent(plugins=[*text_plugins(), TextTools(prefix="Other")])
+        Agent(plugins=[text_plugins(), TextTools(prefix="Other")])
     except PluginConflict as error:
         print(f"Conflict: {error}")
 

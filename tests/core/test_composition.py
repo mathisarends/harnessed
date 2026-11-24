@@ -1,3 +1,4 @@
+from collections import UserList
 from dataclasses import FrozenInstanceError
 
 import pytest
@@ -18,16 +19,51 @@ class Extra(Plugin):
     pass
 
 
-def test_composition_keeps_the_supplied_order_and_skips_disabled_entries():
+def test_composition_keeps_the_supplied_order():
     first, choice, last = Extra(name="first"), Choice(), Extra(name="last")
     resolved = Agent(plugins=[first, choice, last])
     assert resolved.plugins == (first, choice, last)
     assert [row.name for row in resolved.describe().plugins] == ["first", "Choice", "last"]
 
 
+def test_composition_flattens_nested_groups_in_order():
+    first = Extra(name="first")
+    choice = Choice()
+    shared = Extra(name="shared")
+    last = Extra(name="last")
+    group = [shared]
+    inputs = iter([first, ([], [choice, (group,)]), group, last])
+
+    resolved = Agent(plugins=inputs)
+
+    assert resolved.plugins == (first, choice, shared, shared, last)
+    assert [row.name for row in resolved.describe().plugins] == [
+        "first",
+        "Choice",
+        "shared",
+        "shared",
+        "last",
+    ]
+
+
+def test_composition_flattens_groups_beyond_the_recursion_limit():
+    plugin = Extra()
+    group = [plugin]
+    for _ in range(2_000):
+        group = [group]
+    assert Agent(plugins=group).plugins == (plugin,)
+
+
+def test_composition_rejects_cyclic_groups():
+    group = []
+    group.append((group,))
+    with pytest.raises(TypeError, match="Plugin groups cannot contain themselves"):
+        Agent(plugins=group)
+
+
 @pytest.mark.parametrize("swap", [False, True])
 def test_duplicate_slots_are_errors_regardless_of_input_order(swap):
-    inputs = [Choice(name="one"), Extra(), Choice(name="two")]
+    inputs = [Choice(name="one"), Extra(), (Choice(name="two"),)]
     if swap:
         inputs.reverse()
     with pytest.raises(PluginConflict, match=r"example\.choice.*(one, two|two, one)"):
@@ -52,7 +88,7 @@ def test_a_model_argument_and_a_model_service_conflict():
         Agent(model=ScriptedModel([]), plugins=[Service(Model, ScriptedModel([]))])
 
 
-@pytest.mark.parametrize("invalid", [False, 42, [Extra()]])
+@pytest.mark.parametrize("invalid", [False, 42, [None], iter([Extra()]), UserList([Extra()])])
 def test_composition_inputs_require_plugins(invalid):
     with pytest.raises(TypeError, match="Expected a Plugin instance"):
         Agent(plugins=[invalid])
@@ -102,7 +138,7 @@ async def test_missing_providers_are_reported_instead_of_resolved_implicitly():
     class Consumer(Plugin, needs=(Provider,)):
         pass
 
-    agent = Agent(model=ScriptedModel([]), plugins=[Consumer()])
+    agent = Agent(model=ScriptedModel([]), plugins=[([Consumer()],)])
     with pytest.raises(PluginDependencyError, match="Consumer requires Provider"):
         async with agent.session():
             pytest.fail("A consumer without its provider must not open")

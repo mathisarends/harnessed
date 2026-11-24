@@ -70,8 +70,6 @@ def compose_plugins(
     descriptions: list[PluginDescription] = []
     claimed: dict[str, str] = {}
     for value in plugins:
-        if not isinstance(value, Plugin):
-            raise TypeError("Expected a Plugin instance")
         if isinstance(value, Service) and value.key is Model:
             raise PluginConflict("Configure the model with Agent(model=...)")
         spec = as_plugin_spec(value)

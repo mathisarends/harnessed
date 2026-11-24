@@ -56,9 +56,12 @@ def workspace(root: Path, *, shell: bool = False) -> list[Plugin]:
     return plugins
 ```
 
-Use `Agent(model=model, plugins=workspace(root))`. Each list entry must be a
-`Plugin` instance. Duplicate slots raise `PluginConflict`. Unslotted features
-are additive. Use a slot when two implementations claim the same capability.
+Use `Agent(model=model, plugins=workspace(root))` or combine recipes with
+`Agent(model=model, plugins=[workspace(root), other_plugins()])`. An agent
+expands nested lists and tuples at any depth in the supplied order. Each leaf
+must be a `Plugin` instance. Duplicate slots raise `PluginConflict`.
+Unslotted features are additive. Use a slot when two implementations claim
+the same capability.
 
 ### Inspect the composition
 
