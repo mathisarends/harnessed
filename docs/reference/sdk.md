@@ -268,10 +268,10 @@ plugin_validation=PluginValidation.ERROR)` resolves reusable configuration.
 | instructions | Text prepended to plugin instructions, a fixed SystemPrompt, or a SystemPrompt.from_plugins collection strategy |
 | approvals | Application approval rules, defaulting to allow |
 | context | Context window, tool output character limit and optional history compaction |
-| plugins | Iterable of Plugin instances, mounted in order; duplicate slots raise PluginConflict |
+| plugins | Iterable of Plugin instances and nested lists or tuples, flattened in order |
 | loop | AgentLoop value with step limits, tool execution and output retries; defaults to `AgentLoop()` |
 | plugin_validation | ERROR rejects unresolved plugins at session startup; WARN emits PluginDependencyWarning and retains them for later activation |
-| agent.plugins | Tuple of configured plugins |
+| agent.plugins | Flat tuple of configured plugins |
 | agent.loop | The configured AgentLoop |
 | agent.describe() | Immutable CompositionDescription with the configured plugins in order |
 | agent.prompt | Inspectable PromptComposition with final order, origins and format |
@@ -331,10 +331,11 @@ See [startup validation](../guides/plugins.md#session-startup-validation).
 ## Composition
 
 Compose an agent with a model, instructions, loop, context, approvals and
-an ordered list of `Plugin` instances. Two plugins claiming the same slot raise
-`PluginConflict`. Return plain lists from composition functions and include
-conditional features when building the list. `agent.describe()` exposes the
-configured model and loop and a tuple of plugin descriptions with their names,
+an ordered iterable of plugins. Nested lists and tuples expand in place at
+any depth. Every leaf must be a `Plugin` instance. Two plugins claiming the
+same slot raise `PluginConflict`. Return plain lists from composition functions
+and include conditional features when building the list. `agent.describe()` exposes
+the configured model and loop and a tuple of plugin descriptions with their names,
 slots and declared dependencies. The runtime mounts this configuration for each
 session. See [plugin composition](../guides/plugins.md).
 

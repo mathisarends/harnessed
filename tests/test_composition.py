@@ -22,7 +22,7 @@ async def test_explicit_project_composition_adds_only_the_requested_tools(tmp_pa
     commands = [Shell()] if shell else []
     app = Agent(
         model=model,
-        plugins=[LocalWorkspace(root=tmp_path), filesystem, *commands],
+        plugins=[LocalWorkspace(root=tmp_path), (filesystem, commands)],
         instructions=SystemPrompt.from_plugins(Instructions.from_file(path=tmp_path / "AGENTS.md")),
     )
     async with app.session() as session:

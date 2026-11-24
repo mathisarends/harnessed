@@ -1,4 +1,4 @@
-from collections.abc import AsyncGenerator, Iterable
+from collections.abc import AsyncGenerator, Iterable, Iterator, Sequence
 from contextlib import asynccontextmanager
 from itertools import chain
 from typing import Any, Unpack, overload
@@ -32,15 +32,17 @@ from harnessed.runtime.session import Session
 from harnessed.sessions import CommitHandler, SessionCheckpoint, SessionState
 from harnessed.sessions.result import RunResult
 
+# A covariant sequence lets lists of concrete plugin types be nested.
+type _PluginEntry = Plugin | Sequence[_PluginEntry]
+
 
 class Agent:
     """Resolve model, instructions, loop settings and plugins into a reusable configuration.
 
-    The composition is exactly the supplied plugin list: nothing is added,
-    replaced or removed implicitly. The runtime core (session log, tool
-    registry, prompt rendering and the loop configured by ``loop``) is not a
-    plugin. Each opened session owns its runtime and plugin lifetimes. The
-    conversation state is returned to the caller rather than archived by the agent.
+    Nested lists and tuples in ``plugins`` are flattened in the supplied order.
+    The session log, tool registry, prompt renderer and configured loop are
+    runtime components. Each opened session owns its runtime and plugin lifetimes.
+    The caller receives and owns the conversation state.
     """
 
     def __init__(
@@ -50,7 +52,7 @@ class Agent:
         instructions: str | SystemPrompt | None = None,
         approvals: Approvals | None = None,
         context: Context | None = None,
-        plugins: Iterable[Plugin] = (),
+        plugins: Iterable[_PluginEntry] = (),
         loop: AgentLoop | None = None,
         plugin_validation: PluginValidation = PluginValidation.ERROR,
     ) -> None:
@@ -67,7 +69,7 @@ class Agent:
         self.approvals = Approvals() if approvals is None else approvals
         if not isinstance(self.context, Context) or not isinstance(self.approvals, Approvals):
             raise ConfigError("Expected Context and Approvals settings")
-        self.plugins = tuple(plugins)
+        self.plugins = tuple(_flatten_plugins(plugins))
         self._description = compose_plugins(self.plugins, model=self.model, loop=loop)
         if instructions is not None and not isinstance(instructions, str | SystemPrompt):
             raise TypeError("instructions must be text or a SystemPrompt")
@@ -198,6 +200,29 @@ class Agent:
         """Run one task in a new session."""
         async with self.session(state=state) as session:
             return await session.run(content, output=output, **options)
+
+
+def _flatten_plugins(plugins: Iterable[_PluginEntry]) -> Iterator[Plugin]:
+    stack = [(plugins, iter(plugins))]
+    active_groups = {id(plugins)}
+    while stack:
+        group, entries = stack[-1]
+        try:
+            entry = next(entries)
+        except StopIteration:
+            stack.pop()
+            active_groups.remove(id(group))
+            continue
+        if isinstance(entry, Plugin):
+            yield entry
+        elif isinstance(entry, list | tuple):
+            group_id = id(entry)
+            if group_id in active_groups:
+                raise TypeError("Plugin groups cannot contain themselves")
+            stack.append((entry, iter(entry)))
+            active_groups.add(group_id)
+        else:
+            raise TypeError("Expected a Plugin instance")
 
 
 def _resolve_model(value: Model | str | None) -> Model | None:
