@@ -4,7 +4,7 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md)
 is the complete version history and upgrade reference.
 
-## 0.28.0 (unreleased)
+## 0.28.0 (2026-11-24)
 
 Agents accept nested lists and tuples in `plugins=` and expand them in order.
 Pass the list returned by a composition function directly alongside individual
