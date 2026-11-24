@@ -5,6 +5,23 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## 0.28.0 (unreleased)
+
+### Added
+
+- `Agent(plugins=...)` expands nested lists and tuples at any depth in the
+  supplied order. Pass a list returned by a composition function directly as
+  an entry. `agent.plugins` and `agent.describe()` expose the individual plugins,
+  and slot and dependency checks apply to each plugin.
+  ([#189](https://github.com/mathisarends/harnessed/pull/189))
+
+### Upgrade from 0.27.2
+
+Update to `0.28.0`. Existing flat plugin lists, conversation snapshots,
+checkpoints, split execution documents and audit envelopes work as before.
+To use the new syntax, replace `plugins=[*file_tools(), tracing]` with
+`plugins=[file_tools(), tracing]`.
+
 ## 0.27.2 (2026-11-23)
 
 ### Fixed

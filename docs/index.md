@@ -8,8 +8,7 @@ Harnessed 0.x is alpha software. Read the
 [release notes and compatibility policy](releases.md) before depending on its
 public APIs or persisted session formats.
 
-Harnessed 0.27.2 fixes cancellation during input commits and rejects reserved
-message IDs before admission.
+Harnessed 0.28.0 adds support for nested lists and tuples in `Agent(plugins=...)`.
 See the [release overview](releases.md) for upgrade steps and earlier releases.
 
 | I want to... | Read |
