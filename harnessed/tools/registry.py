@@ -54,7 +54,7 @@ from .info import (
 from .overrides import ToolOverride, callback_override
 from .parameters import DisabledToolParameterError
 from .policy import OutputLimit, OutputLimitSetting, validate_output_limit
-from .references import ToolReference, ToolSelector, tool_selector
+from .references import ToolReference, ToolSelector, tool_reference, tool_selector
 from .scheduling import (
     PreparedToolCall,
     ResourceSpec,
@@ -230,13 +230,14 @@ class ToolRegistry:
         self._references: list[ToolReference] = []
         self._envelopes: list[_RegistryEnvelope] = []
 
-    def exclude(self, references: frozenset[ToolReference], *, owner: Scope) -> None:
+    def exclude(self, references: Iterable[ToolReference], *, owner: Scope) -> None:
         """Record the recipe exclusions for one activation's lifetime."""
+        excluded = tuple(references)
 
         def install(registration: RegistrationState) -> Callable[[], None]:
             if owner in self._exclusions:
                 raise ValueError("Tool exclusions already configured for this activation")
-            self._exclusions[owner] = RecipeExclusions(references, registration)
+            self._exclusions[owner] = RecipeExclusions(excluded, registration)
 
             def remove() -> None:
                 del self._exclusions[owner]
@@ -273,11 +274,7 @@ class ToolRegistry:
 
     def validate_references(self) -> None:
         for reference in self._references:
-            if not any(
-                reference.matches(tool.callback)
-                for entries in self._tools.values()
-                if (tool := self._visible(entries)) is not None
-            ):
+            if self._current_method(reference) is None:
                 raise ValueError(f"Referenced tool {reference.name!r} is not registered")
 
     def result_converter[T](
@@ -614,23 +611,40 @@ class ToolRegistry:
         tool = self._visible(self._tools.get(name, []))
         return tool is not None and tool.spec.readonly
 
-    def explain(self, name: str, *, scope: Scope | PluginScope) -> ToolExplanation:
+    def _current_method(self, reference: ToolReference) -> _Tool | None:
+        for entries in self._tools.values():
+            tool = self._visible(entries)
+            if tool is not None and reference.matches(tool.callback):
+                return tool
+        return None
+
+    def explain(
+        self, name: str | Callable[..., object] | ToolReference, *, scope: Scope | PluginScope
+    ) -> ToolExplanation:
         """Inspect the current binding, including registrations hidden from the model."""
-        tool = self._visible(self._tools.get(name, []))
+        if isinstance(name, str):
+            selected = name
+            tool = self._visible(self._tools.get(name, []))
+        else:
+            selected = tool_reference(name)
+            tool = self._current_method(selected)
         if tool is None:
-            excluded = any(entry.explains(name) for entry in self._exclusions.values())
+            excluded = any(entry.explains(selected) for entry in self._exclusions.values())
             availability = (
                 ToolAvailability.EXCLUDED if excluded else ToolAvailability.NOT_REGISTERED
             )
-            return ToolExplanation(name, availability)
+            wire_name = selected if isinstance(selected, str) else selected.name
+            return ToolExplanation(wire_name, availability)
         definition = self._layout(tool).definition
         missing = self._missing_services(tool, scope)
         if missing:
-            return ToolExplanation(name, ToolAvailability.MISSING_SERVICES, definition, missing)
+            return ToolExplanation(
+                definition.name, ToolAvailability.MISSING_SERVICES, definition, missing
+            )
         availability = (
             ToolAvailability.AVAILABLE if tool.enabled(scope) else ToolAvailability.DISABLED
         )
-        return ToolExplanation(name, availability, definition)
+        return ToolExplanation(definition.name, availability, definition)
 
     def resolve(self, selector: ToolSelector, *, scope: Scope | PluginScope) -> ToolInfo | None:
         """Describe the registration visible to the model that a selector names, if any."""

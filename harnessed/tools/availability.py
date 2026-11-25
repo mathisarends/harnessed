@@ -32,9 +32,13 @@ class ToolExplanation:
 
 @dataclass(frozen=True)
 class RecipeExclusions:
-    references: frozenset[ToolReference]
+    references: tuple[ToolReference, ...]
     registration: RegistrationState
 
-    def explains(self, name: str) -> bool:
-        """Whether this active recipe excluded a declaration with the model-facing name."""
-        return self.registration.active and any(ref.name == name for ref in self.references)
+    def explains(self, selected: str | ToolReference) -> bool:
+        """Whether this active recipe excluded the requested name or method."""
+        if not self.registration.active:
+            return False
+        if isinstance(selected, str):
+            return any(ref.name == selected for ref in self.references)
+        return any(selected.matches_binding(ref.declaration, ref.owner) for ref in self.references)

@@ -15,6 +15,9 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 
 ### Added
 
+- `session.tools.explain()` accepts a decorated tool method as well as its
+  model-facing name. A method bound to a recipe inspects that recipe's tool.
+
 - `agent.session(id=..., store=...)` persists a session through an
   application-owned `SessionStore` with two methods. `read(session_id)` returns
   the stored documents as a `StoredSession(snapshot, journal)`, and

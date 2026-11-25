@@ -256,6 +256,7 @@ def dependency_diagnostics(scope: Scope, error: PluginDependencyError) -> None:
 
 
 def tool_diagnostics(tools: SessionTools) -> None:
+    assert_type(tools.explain(CountingTools.count), ToolExplanation)
     explanation = tools.explain("lookup")
     assert_type(explanation, ToolExplanation)
     assert_type(explanation.availability, ToolAvailability)

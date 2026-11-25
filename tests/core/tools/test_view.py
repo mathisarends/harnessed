@@ -54,9 +54,12 @@ async def test_session_tools_reflect_visibility_enabled_state_and_replacement():
                 view["work"] = definition
             replacement = await session.mount(Replacement())
             assert view["work"].description == "Replacement work"
+            assert view.explain(Work.work).availability is ToolAvailability.NOT_REGISTERED
+            assert view.explain(Replacement.work) == view.explain("work")
             switch.enabled = False
             assert view.explain("work").availability is ToolAvailability.AVAILABLE
             await replacement.aclose()
+            assert view.explain(Work.work) == view.explain("work")
             assert view.explain("work").availability is ToolAvailability.DISABLED
             switch.enabled = True
             assert view["work"] == definition
@@ -93,7 +96,7 @@ async def test_tool_explanation_tracks_call_and_predicate_services_without_resta
 
     model = ScriptedModel(["before", "after"])
     async with Agent(model=model, plugins=[Dynamic()]).session() as session:
-        snapshot = session.tools.explain("work")
+        snapshot = session.tools.explain(Dynamic.work)
         assert snapshot.availability is ToolAvailability.MISSING_SERVICES
         assert snapshot.missing_services == (Switch, int)
         assert snapshot.definition is not None
