@@ -1,6 +1,6 @@
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import field
 from functools import cached_property
 from typing import Annotated, Literal, Self
@@ -10,7 +10,13 @@ from pydantic.dataclasses import dataclass
 
 from harnessed.errors import SessionFormatError
 from harnessed.events import IncludedObservation, MessageLifetime, SubagentLinkedEvent
-from harnessed.models import AssistantMessage, ImageReference, Message, ToolMessage
+from harnessed.models import (
+    AssistantMessage,
+    ImageReference,
+    Message,
+    SystemMessage,
+    ToolMessage,
+)
 from harnessed.models.assets import AssetRef, AssetValue
 from harnessed.models.messages import SpillRef
 from harnessed.models.values import VALUE_CONFIG, JSONMapping, JSONValue
@@ -149,6 +155,34 @@ class SessionState:
         return cls.from_json(encoded)
 
     @classmethod
+    def from_messages(
+        cls, messages: Iterable[Message], *, assets: Iterable[AssetValue] = ()
+    ) -> Self:
+        """Start a conversation from application-owned messages, oldest first.
+
+        The messages become retained history outside any recorded turn or step,
+        so compaction summarizes them as earlier context once the session has
+        recorded more than ``keep_last_steps`` steps. ``assets`` supplies the bytes
+        of every ``ImageReference`` in the messages and nothing else. Agent
+        configuration stays out of history, so a ``SystemMessage`` is rejected,
+        and so is a tool call without its result: importing never executes tools.
+        """
+        retained = tuple(messages)
+        if any(isinstance(message, SystemMessage) for message in retained):
+            raise SessionFormatError(
+                "Invalid conversation history: configure system instructions on the agent"
+            )
+        values = {value.ref: value for value in assets}
+        try:
+            history = tuple(
+                HistoryEntry(position, message) for position, message in enumerate(retained)
+            )
+            return cls(history=history, assets=tuple(values.values()))
+        except (ValidationError, ValueError, TypeError) as error:
+            reason = _validation_reason(error)
+            raise SessionFormatError(f"Invalid conversation history: {reason}") from error
+
+    @classmethod
     def from_json(cls, payload: str | bytes) -> Self:
         """Validate the current canonical format, including resource integrity."""
         try:
@@ -200,6 +234,15 @@ class SessionState:
                 != resources[value.key].sha256
             ):
                 raise ValueError("Snapshot text resource integrity check failed")
+
+
+def _validation_reason(error: ValidationError | ValueError | TypeError) -> str:
+    """Name the violated invariant instead of the wrapped validation report."""
+    if isinstance(error, ValidationError):
+        return "; ".join(
+            str(detail["msg"]).removeprefix("Value error, ") for detail in error.errors()
+        )
+    return str(error)
 
 
 _STATE = TypeAdapter(SessionState)

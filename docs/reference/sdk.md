@@ -280,6 +280,7 @@ plugin_validation=PluginValidation.ERROR)` resolves reusable configuration.
 | agent.child_session(request) | Factory boundary for a fresh parent-owned child; application code normally uses Subagents |
 | SessionState.from_json(payload) / state.to_json() | Validate or encode the canonical conversation snapshot in memory |
 | SessionState.from_dict(document) / state.to_dict() | The same snapshot as a JSON-compatible dict, for example a JSONB column |
+| SessionState.from_messages(messages, *, assets=()) | Start a conversation from Harnessed messages, oldest first, with the bytes of their referenced images; rejects system messages and unanswered tool calls with SessionFormatError |
 
 `SessionStore`, `StoredSession`, `StoredDocument`, `SessionCommit`,
 `SessionSnapshot`, `JournalEntry`, `SessionRecovery`, `JournalRequest` and
@@ -727,6 +728,8 @@ contains retained history and provenance, plugin session values, compaction meta
 parent/child references and terminal child receipts, and
 referenced image/text resources. It contains no runtime handles, queued turns,
 Python validators, approval grants or historical request/event archive.
+`SessionState.from_messages(messages, assets=())` builds a state holding only
+the given messages, outside any recorded turn, from an application-owned history.
 
 `RunResult.state` captures that result's terminal boundary independently of later
 turns. Imported state opens idle and never re-executes recorded tool calls.

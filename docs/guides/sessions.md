@@ -370,6 +370,45 @@ pending approval is not supported. A discarded queued run has no executed turn;
 its result carries the most recent terminal conversation state when another turn
 is active. Queued work is never imported by a conversation snapshot.
 
+## Start from a message history
+
+A conversation that began elsewhere, or a history the application writes by
+hand, starts a session through `SessionState.from_messages()`:
+
+```python
+from harnessed.models import AssistantMessage, ToolCall, ToolMessage, UserMessage
+from harnessed.sessions import SessionState
+
+lookup = ToolCall("lookup", {"order": "A-17"})
+state = SessionState.from_messages(
+    [
+        UserMessage("Where is order A-17?"),
+        AssistantMessage("", tool_calls=(lookup,)),
+        ToolMessage("Shipped on Monday.", tool_call_id=lookup.id),
+        AssistantMessage("It shipped on Monday."),
+    ]
+)
+
+result = await agent.run("When will it arrive?", state=state)
+```
+
+The messages, oldest first, become the retained history; the state is an
+ordinary `SessionState`, so `agent.session(state=state)` and a store import for
+an ID the store does not hold accept it as well. Importing never executes a
+tool, so every tool call needs its `ToolMessage` before the next assistant
+message. System instructions belong to the `Agent`, and a `SystemMessage` is
+rejected. An image given as an `ImageReference` needs its bytes as an
+`AssetValue` in `assets=`, and `assets=` holds only the referenced images; an
+`ImagePart` URL needs none. An invalid history raises `SessionFormatError`
+naming the violated rule.
+
+Imported messages belong to no recorded turn or step. Compaction summarizes
+them with the earlier context once the session has recorded more than
+`keep_last_steps` steps of its own. The import keeps no plugin session values,
+spill text, child sessions or compaction metadata; capture a `SessionState` to
+carry those. `SessionState.from_messages(session.messages)` therefore copies
+only the messages of a live session.
+
 ## Snapshot contents and compaction
 
 Snapshots contain the active summary, retained messages and the small amount of
