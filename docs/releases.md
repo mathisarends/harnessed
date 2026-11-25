@@ -4,7 +4,7 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md)
 is the complete version history and upgrade reference.
 
-## 0.29.0 (unreleased)
+## 0.29.0 (2026-11-25)
 
 Applications [persist sessions with a `SessionStore`](guides/sessions.md#persist-sessions-with-a-store):
 `read` returns the stored documents and `write` stores each commit, and

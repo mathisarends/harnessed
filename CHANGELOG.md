@@ -5,7 +5,7 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
-## 0.29.0 (unreleased)
+## 0.29.0 (2026-11-25)
 
 **Before upgrading from 0.28.0**, export idle conversations as
 `SessionState`. The new store uses snapshots and a journal. The export
