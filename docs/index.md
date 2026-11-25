@@ -8,7 +8,7 @@ Harnessed 0.x is alpha software. Read the
 [release notes and compatibility policy](releases.md) before depending on its
 public APIs or persisted session formats.
 
-Harnessed 0.28.0 adds support for nested lists and tuples in `Agent(plugins=...)`.
+Harnessed 0.29.0 stores sessions as snapshots and an append-only journal.
 See the [release overview](releases.md) for upgrade steps and earlier releases.
 
 | I want to... | Read |

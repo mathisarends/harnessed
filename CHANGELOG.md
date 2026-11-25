@@ -5,7 +5,12 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
-## Unreleased
+## 0.29.0 (unreleased)
+
+**Before upgrading from 0.28.0**, export idle conversations as
+`SessionState`. The new store uses snapshots and a journal. The export
+preserves conversation state and drops paused turns, queued inputs and pending
+approvals. Follow the [upgrade steps](#upgrade-from-0280).
 
 ### Fixed
 
@@ -162,6 +167,9 @@ Version-specific breaking changes and upgrade instructions are recorded below.
    durable change stores a new snapshot.
 7. Rename `session.snapshot()` to `session.state()`, `session.checkpoint()` to
    `session.recovery()` and the types in the table above.
+8. Replace `SystemPrompt.from_plugins(...)` with `SystemPrompt(...)`.
+   If an explicit prompt previously suppressed plugin instructions, select
+   the individual plugins to omit with `plugin.without_instructions()`.
 
 ## 0.28.0 (2026-11-24)
 

@@ -4,7 +4,7 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md)
 is the complete version history and upgrade reference.
 
-## Unreleased
+## 0.29.0 (unreleased)
 
 Applications [persist sessions with a `SessionStore`](guides/sessions.md#persist-sessions-with-a-store):
 `read` returns the stored documents and `write` stores each commit, and
@@ -13,12 +13,13 @@ as a snapshot and an append-only journal. A commit inside a turn carries only it
 new journal entries, and the snapshot is written once per turn or idle change, so
 storage per turn no longer grows with the conversation.
 
-**Upgrade.** This release breaks the persistence API and stored checkpoints.
-`on_commit` is replaced by `store=`, `session.snapshot()` is now
-`session.state()` and `SessionCheckpoint` is now `SessionRecovery`. Format **5** checkpoints and format **6**
-execution documents cannot be read and are not migrated. Export idle
-conversations as `SessionState` with 0.28.0 first, then import them into a store.
-Follow the
+**Before upgrading**, export idle conversations as `SessionState` with 0.28.0.
+The export preserves conversation state and drops paused turns, queued inputs
+and pending approvals. Then switch from `on_commit` to `store=` and import the
+state into the new store. Old checkpoints and execution documents require this
+export. `SystemPrompt(...)` now appends plugin instructions. Use
+`plugin.without_instructions()` for plugins whose instructions you want to omit.
+See the
 [upgrade steps](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-0280).
 
 ## 0.28.0 (2026-11-24)
