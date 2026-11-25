@@ -33,11 +33,6 @@ Applications own persistence through a `SessionStore` and explicit
   request references it by ID.
 - Reference a contiguous range of the snapshot history from a model request
   instead of listing each message ID.
-- Read-time upcasters for released journal and snapshot formats, applied
-  where `StoredSession` decodes the stored documents, with a documented window
-  of readable versions, once a storage compatibility contract exists.
-- Golden fixtures of stored snapshots and journal entries, so format changes
-  are reviewed explicitly.
 - Add a typed `commit.messages` projection, so handlers need not map
   `InboxAddedEvent` and `AssistantMessageEvent` themselves.
 - Application-supplied blob storage for large resources; current snapshots

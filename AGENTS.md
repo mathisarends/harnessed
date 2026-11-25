@@ -117,10 +117,12 @@ call private Scope lifecycle checks or inspect private registration state.
 Stateful turn and step orchestration belongs to typed runtime components, not
 free functions receiving a Session as a pseudo-`self` argument.
 
-There is no released storage/API compatibility contract yet. Keep one canonical
-current format; remove legacy migrations and transitional aliases rather than
-adding compatibility layers for unreleased formats. Retain an explicit format
-version for future released changes.
+Session document readers support the released format window in
+`docs/guides/sessions.md`. Keep one canonical write format per document. For a
+breaking storage change, append one adjacent step to the owning document's
+upcaster chain, bump its version literal and retain a fixture from the released
+writer. Verify the checkpoint reopens through the normal SDK path. Keep
+unreleased formats and application-defined payloads outside those chains.
 
 Normalize plugin prompt metadata into typed `PromptContribution` values at the
 agent boundary. `PromptComposition` renders these contributions. Tool scheduling
