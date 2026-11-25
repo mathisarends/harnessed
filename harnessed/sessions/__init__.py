@@ -2,7 +2,7 @@ from harnessed.models.assets import AssetValue
 
 from .checkpoint import SessionCheckpoint
 from .children import ChildSession
-from .commit import CommitHandler, SessionCommit
+from .commit import SessionCommit
 from .context import SessionContext
 from .files import TextValue
 from .journal import (
@@ -15,6 +15,7 @@ from .journal import (
     SessionBoundary,
 )
 from .state import HistoryEntry, HistoryStep, HistoryTurn, SessionState
+from .store import SessionStore, StoredDocument, StoredSession
 from .values import BoundSessionValue, SessionValue
 
 __all__ = [
@@ -26,7 +27,6 @@ __all__ = [
     "CheckpointRequest",
     "CheckpointSeed",
     "ChildSession",
-    "CommitHandler",
     "HistoryEntry",
     "HistoryStep",
     "HistoryTurn",
@@ -36,6 +36,9 @@ __all__ = [
     "SessionCommit",
     "SessionContext",
     "SessionState",
+    "SessionStore",
     "SessionValue",
+    "StoredDocument",
+    "StoredSession",
     "TextValue",
 ]

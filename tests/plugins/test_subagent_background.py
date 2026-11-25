@@ -21,7 +21,7 @@ from harnessed.plugins import Subagents
 from harnessed.runtime.hooks import SessionAppended
 from harnessed.sessions import SessionCommit, SessionState
 from harnessed.testing import CallbackModel, ScriptedModel
-from tests._commits import CommitRecorder
+from tests._commits import CommitRecorder, Writes
 
 
 def _spawn(task="Review the code", *, id=None):
@@ -70,7 +70,7 @@ async def test_spawn_returns_before_child_and_completion_wakes_idle_coordinator(
 
     store = CommitRecorder(documents=True)
     parent = _parent(Agent(model=CallbackModel(child_response)), CallbackModel(parent_response))
-    async with parent.session(id="parent", on_commit=store) as session:
+    async with parent.session(id="parent", store=store) as session:
         first = await asyncio.wait_for(session.run("Start"), 2)
         await asyncio.wait_for(started.wait(), 2)
         assert first.text == "Coordinator worked independently"
@@ -217,9 +217,9 @@ async def test_status_asks_child_coalesces_requests_and_does_not_finish_task(
 
     async def delayed_save(commit: SessionCommit) -> None:
         await asyncio.sleep(save_delay)
-        await store(commit)
+        await store.write(commit)
 
-    async with parent.session(on_commit=delayed_save) as session:
+    async with parent.session(store=Writes(delayed_save)) as session:
         session.scope.on(SessionAppended, requested)
         await session.run("Start")
         await asyncio.wait_for(blocked.wait(), coordination_timeout)

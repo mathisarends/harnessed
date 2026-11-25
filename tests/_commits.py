@@ -1,10 +1,17 @@
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
-from harnessed.sessions import JournalEntry, SessionBoundary, SessionCheckpoint, SessionCommit
+from harnessed.sessions import (
+    JournalEntry,
+    SessionBoundary,
+    SessionCheckpoint,
+    SessionCommit,
+    SessionStore,
+    StoredSession,
+)
 
 
-class CommitRecorder:
-    """An application-owned commit handler that keeps every delivered commit.
+class CommitRecorder(SessionStore):
+    """An application-owned session store that keeps every delivered commit.
 
     It stores each session like a database would: the latest boundary and every
     journal entry keyed by its sequence. With ``documents=True`` both are kept as
@@ -18,7 +25,7 @@ class CommitRecorder:
         self._boundaries: dict[str, SessionBoundary | dict[str, object]] = {}
         self._journals: dict[str, dict[int, JournalEntry | dict[str, object]]] = {}
 
-    async def __call__(self, commit: SessionCommit) -> None:
+    async def write(self, commit: SessionCommit) -> None:
         if self.before is not None:
             self.before(commit)
         self.commits.append(commit)
@@ -30,6 +37,25 @@ class CommitRecorder:
         journal = self._journals.setdefault(commit.session_id, {})
         for entry in commit.journal:
             journal[entry.sequence] = entry.to_dict() if self._documents else entry
+
+    def put(self, checkpoint: SessionCheckpoint) -> None:
+        """Store a checkpoint as if its boundary and journal had been written."""
+        session_id = checkpoint.session_id
+        boundary = checkpoint.boundary
+        self._boundaries[session_id] = boundary.to_dict() if self._documents else boundary
+        self._journals[session_id] = {
+            entry.sequence: entry.to_dict() if self._documents else entry
+            for entry in checkpoint.journal
+        }
+
+    async def read(self, session_id: str) -> StoredSession | None:
+        if session_id not in self._boundaries:
+            return None
+        journal = self._journals.get(session_id, {})
+        entries = [journal[key] for key in sorted(journal)]
+        return StoredSession(
+            _document(self._boundaries[session_id]), [_document(entry) for entry in entries]
+        )
 
     def __contains__(self, session_id: str) -> bool:
         return session_id in self._boundaries
@@ -57,3 +83,20 @@ class CommitRecorder:
                 for entry in commit.journal:
                     seen[commit.session_id, entry.sequence] = entry
         return list(seen.values())
+
+
+class Writes(SessionStore):
+    """A store that hands every commit to ``write`` and holds no sessions."""
+
+    def __init__(self, write: Callable[[SessionCommit], Awaitable[None]]) -> None:
+        self._write = write
+
+    async def read(self, session_id: str) -> StoredSession | None:
+        return None
+
+    async def write(self, commit: SessionCommit) -> None:
+        await self._write(commit)
+
+
+def _document(value: SessionBoundary | JournalEntry | dict[str, object]) -> dict[str, object]:
+    return value if isinstance(value, dict) else value.to_dict()

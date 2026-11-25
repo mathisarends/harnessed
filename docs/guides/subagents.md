@@ -203,10 +203,10 @@ snapshots with IDs, originating turn/call IDs, status, answer, recorded usage an
 projection; `SubagentMessageSentEvent` records acknowledged guidance.
 Snapshots are also available from `SessionLog.children` after replay.
 
-Child sessions deliver their commits through the parent session's `on_commit`
-handler; `commit.session_id` identifies the child. Without a parent handler they
-remain ephemeral. Reopen a child with
-`specialist.session(state=checkpoint)`; the checkpoint carries the child's ID. Applications own execution
+Child sessions write their commits through the parent session's store;
+`commit.session_id` identifies the child. Without a parent store they remain
+ephemeral. Reopen a child by its ID with
+`specialist.session(id=child_session_id, store=sessions)`. Applications own execution
 coordination, retention and deletion; deleting a parent does not cascade-delete
 its children.
 

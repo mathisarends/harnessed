@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from harnessed.approvals.responders import Approver
 from harnessed.events import SubagentLinkedEvent
-from harnessed.sessions import CommitHandler
+from harnessed.sessions import SessionStore
 
 if TYPE_CHECKING:
     from harnessed.runtime.session import Session
@@ -32,8 +32,8 @@ class ChildLimits:
 class ChildSessionRequest:
     """Application boundary for opening an isolated, parent-owned session.
 
-    ``on_commit`` is the parent's commit handler, so one application handler
-    receives the commits of a whole delegation tree under the parent's
+    ``store`` is the parent's session store, so one application store receives
+    the commits of a whole delegation tree under the parent's
     ``commit_timeout_seconds``.
     """
 
@@ -41,7 +41,7 @@ class ChildSessionRequest:
     link: SubagentLinkedEvent
     approver: Approver
     reporter: ChildStatusReporter | None = None
-    on_commit: CommitHandler | None = None
+    store: SessionStore | None = None
     commit_timeout_seconds: float | None = None
 
 

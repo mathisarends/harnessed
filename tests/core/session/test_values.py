@@ -152,7 +152,7 @@ async def test_value_observer_can_commit_another_value():
 
     store = CommitRecorder(documents=True)
     agent = Agent(model=ScriptedModel([]), plugins=[Mirror()])
-    async with agent.session(id="mirrored", on_commit=store) as session:
+    async with agent.session(id="mirrored", store=store) as session:
         plugin = session.scope[Mirror]
         deadline_seconds = 3
         async with asyncio.timeout(deadline_seconds):

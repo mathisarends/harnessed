@@ -1,4 +1,5 @@
 import asyncio
+import json
 from dataclasses import replace
 
 import pytest
@@ -28,6 +29,7 @@ from harnessed.sessions import (
     SessionCheckpoint,
     SessionCommit,
     SessionValue,
+    StoredSession,
 )
 from harnessed.testing import ExtractiveSummarizer, ScriptedModel, call
 from tests._commits import CommitRecorder
@@ -48,11 +50,15 @@ def _requests(checkpoint: SessionCheckpoint) -> list[CheckpointRequest]:
 
 def _last_in_turn(store: CommitRecorder, session_id: str) -> SessionCheckpoint:
     """The stored checkpoint as it was at the last commit inside a turn."""
-    checkpoint: SessionCheckpoint | None = None
+    boundary: SessionBoundary | None = None
+    entries: list[JournalEntry] = []
     latest_in_turn: SessionCheckpoint | None = None
     for commit in store.commits:
         if commit.session_id == session_id:
-            checkpoint = SessionCheckpoint.from_commit(commit, checkpoint)
+            boundary = commit.boundary if commit.boundary is not None else boundary
+            entries.extend(commit.journal)
+            assert boundary is not None
+            checkpoint = SessionCheckpoint.from_journal(boundary, entries)
             if checkpoint.journal:
                 latest_in_turn = checkpoint
     assert latest_in_turn is not None
@@ -69,7 +75,7 @@ async def test_only_the_first_commit_turn_ends_and_idle_changes_carry_a_boundary
     store = CommitRecorder()
     model = ScriptedModel([call("look"), "first", call("look"), "second"])
     agent = Agent(model=model, plugins=[Look()], context=Context(compaction=compaction))
-    async with agent.session(on_commit=store) as session:
+    async with agent.session(store=store) as session:
         await session.run("old context " * 500)
         await session.run("two")
         assert await session.compact() is not None
@@ -92,7 +98,7 @@ async def test_only_the_first_commit_turn_ends_and_idle_changes_carry_a_boundary
 async def test_entries_are_appended_once_and_continue_without_gaps():
     store = CommitRecorder()
     model = ScriptedModel([call("look"), "first", "second"])
-    async with Agent(model=model, plugins=[Look()]).session(on_commit=store) as session:
+    async with Agent(model=model, plugins=[Look()]).session(store=store) as session:
         await session.run("one")
         await session.run("two")
     sequences = [entry.sequence for commit in store.commits for entry in commit.journal]
@@ -105,7 +111,7 @@ async def test_entries_are_appended_once_and_continue_without_gaps():
 async def test_idle_entries_after_the_boundary_are_replayed_when_reopening():
     store = CommitRecorder(documents=True)
     agent = Agent(model=ScriptedModel(["warm", "queued"]))
-    async with agent.session(id="idle", on_commit=store) as session:
+    async with agent.session(id="idle", store=store) as session:
         await session.run("Warm up")
         await session.pause()
         handle = await session.submit("Queued while paused")
@@ -136,7 +142,7 @@ async def test_a_paused_turn_reopens_from_its_boundary_and_journal():
 
     store = CommitRecorder(documents=True)
     agent = Agent(model=ScriptedModel(["warm up", call("work"), "finished"]), plugins=[Work()])
-    async with agent.session(id="split", on_commit=store) as session:
+    async with agent.session(id="split", store=store) as session:
         await session.run("Warm up")
         handle = await session.submit("Work", max_steps=2)
         await asyncio.wait_for(entered.wait(), timeout=5)
@@ -156,24 +162,38 @@ async def test_a_paused_turn_reopens_from_its_boundary_and_journal():
         assert restored.messages[-1].text == "finished"
 
 
-async def test_a_document_store_folds_commits_into_the_same_checkpoint():
-    store = CommitRecorder()
-    documents: dict[str, SessionCheckpoint] = {}
-
-    async def fold(commit: SessionCommit) -> None:
-        await store(commit)
-        previous = documents.get(commit.session_id)
-        documents[commit.session_id] = SessionCheckpoint.from_commit(commit, previous)
-
+async def test_stored_documents_decode_to_the_checkpoint_the_session_holds():
+    store = CommitRecorder(documents=True)
     model = ScriptedModel([call("look"), "first", "second"])
-    async with Agent(model=model, plugins=[Look()]).session(id="doc", on_commit=fold) as session:
+    async with Agent(model=model, plugins=[Look()]).session(id="doc", store=store) as session:
         await session.run("one")
         await session.run("two")
-    assert documents["doc"] == store.latest("doc")
-    assert documents["doc"].journal == ()
+        stored = await store.read("doc")
+        assert stored is not None
+        assert stored.checkpoint() == session.checkpoint()
+    text = StoredSession(
+        json.dumps(stored.boundary), [json.dumps(entry).encode() for entry in stored.journal]
+    )
+    assert text.checkpoint() == stored.checkpoint()
 
 
-def test_a_journal_with_a_gap_or_from_another_session_is_rejected():
+async def test_a_store_must_return_the_session_it_was_asked_for():
+    store = CommitRecorder()
+    async with Agent(model=ScriptedModel(["hi"])).session(id="right", store=store) as session:
+        await session.run("hello")
+    stored = await store.read("right")
+    assert stored is not None
+
+    class Mixed(CommitRecorder):
+        async def read(self, session_id: str) -> StoredSession | None:
+            return stored
+
+    with pytest.raises(SessionFormatError, match="another session"):
+        async with Agent(model=ScriptedModel([])).session(id="wrong", store=Mixed()):
+            pass
+
+
+def test_a_journal_with_a_gap_or_an_invalid_document_is_rejected():
     boundary = SessionCheckpoint.from_json(
         '{"boundary": {"session_id": "s", "sequence": 2, "state": {},'
         ' "control": {"type": "session.control.changed", "state": "active"}}}'
@@ -183,13 +203,8 @@ def test_a_journal_with_a_gap_or_from_another_session_is_rejected():
         SessionCheckpoint.from_journal(boundary, [gap])
     earlier = JournalEntry(1, MessageAppendedEvent(UserMessage("before")))
     assert SessionCheckpoint.from_journal(boundary, [earlier]).journal == ()
-    other = replace(boundary, session_id="other")
-    commit = SessionCommit("other", (JournalEntry(2, MessageAppendedEvent(UserMessage("x"))),))
-    with pytest.raises(SessionFormatError, match="own session"):
-        SessionCheckpoint.from_commit(commit, SessionCheckpoint(boundary))
-    with pytest.raises(SessionFormatError, match="carries its boundary"):
-        SessionCheckpoint.from_commit(commit)
-    assert SessionCheckpoint.from_commit(commit, SessionCheckpoint(other)).journal == commit.journal
+    with pytest.raises(SessionFormatError, match="boundary"):
+        StoredSession({"boundary": "not one"}).checkpoint()
 
 
 async def test_nested_plugin_value_type_changes_deliver_a_new_boundary():
@@ -198,7 +213,7 @@ async def test_nested_plugin_value_type_changes_deliver_a_new_boundary():
 
     store = CommitRecorder(documents=True)
     agent = Agent(model=ScriptedModel([]), plugins=[Flags()])
-    async with agent.session(id="types", on_commit=store) as session:
+    async with agent.session(id="types", store=store) as session:
         value = session.scope[Flags].value
         for scalar in (True, 1, 1.0):
             await value.set({"items": [scalar]})
@@ -211,7 +226,7 @@ async def test_nested_plugin_value_type_changes_deliver_a_new_boundary():
 async def test_commit_size_inside_a_turn_does_not_grow_with_retained_images():
     store = CommitRecorder()
     model = ScriptedModel(["seen"] * 6)
-    async with Agent(model=model).session(on_commit=store) as session:
+    async with Agent(model=model).session(store=store) as session:
         sizes = []
         for index in range(6):
             data = bytes([index]) * 64_000
@@ -242,7 +257,7 @@ async def test_commit_size_inside_a_turn_does_not_grow_with_history_text():
         ]
     )
     sizes = []
-    async with Agent(model=model, plugins=[Look()]).session(id="text", on_commit=store) as session:
+    async with Agent(model=model, plugins=[Look()]).session(id="text", store=store) as session:
         for index in range(8):
             start = len(store.commits)
             await session.run(f"question {index} " + "x" * 4_000)
@@ -270,9 +285,7 @@ async def test_requests_changed_by_a_hook_keep_the_messages_the_model_received()
 
     store = CommitRecorder()
     model = ScriptedModel(["one", "two"])
-    async with Agent(model=model, plugins=[Redact()]).session(
-        id="hook", on_commit=store
-    ) as session:
+    async with Agent(model=model, plugins=[Redact()]).session(id="hook", store=store) as session:
         await session.run("secret")
         await session.run("again")
     last = _last_in_turn(store, "hook")
@@ -307,7 +320,7 @@ async def test_rebuilt_request_preserves_provider_state_changed_by_a_hook():
     model = ScriptedModel([response, "second"])
     store = CommitRecorder()
     agent = Agent(model=model, plugins=[UpdateReplay()])
-    async with agent.session(id="replay", on_commit=store) as session:
+    async with agent.session(id="replay", store=store) as session:
         await session.run("one")
         await session.run("two")
     restored = SessionCheckpoint.from_json(_last_in_turn(store, "replay").to_json())
@@ -322,7 +335,7 @@ async def test_rebuilt_request_preserves_provider_state_changed_by_a_hook():
 async def test_a_journal_referring_to_an_unknown_message_is_rejected():
     store = CommitRecorder()
     async with Agent(model=ScriptedModel(["one", "two"])).session(
-        id="unknown", on_commit=store
+        id="unknown", store=store
     ) as session:
         await session.run("first")
         await session.run("second")

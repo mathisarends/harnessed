@@ -28,7 +28,7 @@ async def test_session_opened_observes_the_restored_context_before_entry():
     store = CommitRecorder(documents=True)
     agent = Agent(model=ScriptedModel([]), plugins=[Clock()])
     before = monotonic()
-    async with agent.session(id="case", on_commit=store) as session:
+    async with agent.session(id="case", store=store) as session:
         first = session.scope[Clock]
         (opened,) = openings
         assert before <= first.started == opened.at <= monotonic()
@@ -93,8 +93,9 @@ async def test_reopening_repairs_the_interrupted_turn_after_every_plugin_is_acti
 
     checkpoint = await _interrupted_checkpoint()
     store = CommitRecorder()
+    store.put(checkpoint)
     agent = Agent(model=ScriptedModel([]), plugins=[Watch()])
-    async with agent.session(state=checkpoint, on_commit=store):
+    async with agent.session(id=checkpoint.session_id, store=store):
         assert observed == [
             f"turn.ended({TurnOutcome.ABORTED})",
             "session.opened(open_turn=None)",

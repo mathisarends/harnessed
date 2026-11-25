@@ -59,7 +59,7 @@ async def test_token_deltas_are_live_without_entering_commits():
     def observe(event: TextDeltaEvent | ReasoningDeltaEvent | ToolArgumentsDeltaEvent) -> None:
         live.append(event)
 
-    async with Agent(model=CallbackModel(tokens)).session(id="stream", on_commit=store) as session:
+    async with Agent(model=CallbackModel(tokens)).session(id="stream", store=store) as session:
         session.scope.on(TextDeltaEvent, observe)
         session.scope.on(ReasoningDeltaEvent, observe)
         session.scope.on(ToolArgumentsDeltaEvent, observe)
@@ -105,7 +105,7 @@ async def test_commits_cover_each_live_event_once_even_after_compaction_and_reop
         observed.append((event.seq, event.event))
 
     first_input = "first input " * 500
-    async with agent.session(id="archive", on_commit=store) as session:
+    async with agent.session(id="archive", store=store) as session:
         session.scope.on(SessionAppended, observe)
         await session.run(first_input)
         await session.run("kept")
@@ -121,9 +121,7 @@ async def test_commits_cover_each_live_event_once_even_after_compaction_and_reop
 
     before = len(store.commits)
     next_sequence = store.commits[-1].next_sequence
-    async with agent.session(
-        id="archive", state=store.latest("archive"), on_commit=store
-    ) as restored:
+    async with agent.session(id="archive", store=store) as restored:
         assert len(store.commits) == before
         await restored.run("third input")
         new = [entry for commit in store.commits[before:] for entry in commit.journal]
@@ -137,7 +135,7 @@ async def test_commits_cover_each_live_event_once_even_after_compaction_and_reop
 
 async def test_pending_changes_keep_their_order_and_empty_flush_does_not_deliver():
     store = CommitRecorder()
-    async with Agent(model=ScriptedModel([])).session(on_commit=store) as session:
+    async with Agent(model=ScriptedModel([])).session(store=store) as session:
         await session.scope[PluginValues].commit("seed", "ready")
         before = len(store.commits)
         await session.emit(MessageAppendedEvent(UserMessage("first")))
@@ -162,9 +160,7 @@ async def test_idle_custom_events_are_available_as_changes_without_a_store_catal
         events = (IndexedEvent,)
 
     store = CommitRecorder()
-    async with Agent(model=ScriptedModel([]), plugins=[Indexer()]).session(
-        on_commit=store
-    ) as session:
+    async with Agent(model=ScriptedModel([]), plugins=[Indexer()]).session(store=store) as session:
         await session.emit(IndexedEvent(42))
         commit = store.commits[-1]
         assert not store.latest(session.id).events

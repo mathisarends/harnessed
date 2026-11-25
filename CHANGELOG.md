@@ -7,6 +7,19 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 
 ## Unreleased
 
+### Added
+
+- `agent.session(id=..., store=...)` persists a session through an
+  application-owned `SessionStore` with two methods. `read(session_id)` returns
+  the stored documents as a `StoredSession(boundary, journal)`, and
+  `write(commit)` stores one `SessionCommit` in one transaction. Opening with an
+  ID reopens what the store holds, including a paused or interrupted turn, or
+  starts the session fresh. Harnessed decodes the documents, skips entries
+  before the boundary and rejects gaps, invalid documents and documents of
+  another session with `SessionFormatError`. Child sessions write through their
+  parent's store. See
+  [persist sessions with a store](docs/guides/sessions.md#persist-sessions-with-a-store).
+
 ### Changed
 
 - Session persistence is a boundary plus an append-only journal. A
@@ -18,39 +31,60 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   recorded since the previous commit, so the bytes written per turn depend on
   that turn, not on the conversation before it. Each retained image and spilled
   text is written once, with the boundary or with the entry that first stored
-  it. See
-  [store the boundary and the journal](docs/guides/sessions.md#store-the-boundary-and-the-journal).
-- `SessionCheckpoint.from_journal(boundary, entries)` rebuilds a checkpoint from
-  stored rows and skips entries recorded before the boundary, so a store may
-  keep them as an audit trail or prune them. `SessionCheckpoint.from_commit(commit,
-  previous)` folds a commit into a stored checkpoint for stores that keep one
-  document per session.
+  it.
 
 ### Breaking changes
+
+- `agent.session(on_commit=...)` is replaced by `agent.session(store=...)`, and
+  `CommitHandler` is removed. A store reopens its sessions by ID, so
+  `state=checkpoint` together with `store=` raises `ConfigError`. With a store,
+  `state=` accepts only a `SessionState` for an ID the store does not hold.
+  `ChildSessionRequest.on_commit` is now `ChildSessionRequest.store`.
+
+  ```python
+  # before
+  class ConversationCommits:
+      async def __call__(self, commit: SessionCommit) -> None:
+          await repository.save(commit.session_id, commit.checkpoint.to_dict())
+          for change in commit.changes:
+              project(change.sequence, change.event)
+
+      async def load(self, session_id: str) -> SessionCheckpoint:
+          return SessionCheckpoint.from_dict(await repository.load(session_id))
+
+
+  async with agent.session(id="voyager", on_commit=commits) as session:
+      ...
+  state = await commits.load("voyager")
+  async with agent.session(state=state, on_commit=commits) as session:
+      ...
+
+
+  # after
+  class ConversationStore(SessionStore):
+      async def read(self, session_id: str) -> StoredSession | None:
+          row = await repository.load(session_id)
+          return StoredSession(row.boundary, row.journal) if row is not None else None
+
+      async def write(self, commit: SessionCommit) -> None:
+          async with repository.transaction() as tx:
+              for entry in commit.journal:
+                  await tx.append_entry(commit.session_id, entry.sequence, entry.to_dict())
+                  project(entry.sequence, entry.record)
+              if commit.boundary is not None:
+                  await tx.save_boundary(commit.session_id, commit.boundary.to_dict())
+
+
+  async with agent.session(id="voyager", store=store) as session:
+      ...
+  async with agent.session(id="voyager", store=store) as session:
+      ...
+  ```
 
 - `SessionCommit` is `SessionCommit(session_id, journal, boundary=None)`.
   `commit.checkpoint`, `commit.changes` and `commit.state_changed` are removed.
   `commit.journal` replaces `changes`, and `commit.boundary` is set exactly
-  when the old `state_changed` was true:
-
-  ```python
-  # before
-  async def save(commit: SessionCommit) -> None:
-      await repository.save(commit.session_id, commit.checkpoint.to_dict())
-      for change in commit.changes:
-          project(change.sequence, change.event)
-
-
-  # after
-  async def save(commit: SessionCommit) -> None:
-      async with repository.transaction() as tx:
-          for entry in commit.journal:
-              await tx.append_entry(commit.session_id, entry.sequence, entry.to_dict())
-              project(entry.sequence, entry.record)
-          if commit.boundary is not None:
-              await tx.save_boundary(commit.session_id, commit.boundary.to_dict())
-  ```
-
+  when the old `state_changed` was true.
 - `SessionCheckpoint` is `SessionCheckpoint(boundary, journal)` with format
   **6**. `offset`, `seed` and `control` moved to the boundary as `sequence`,
   `seed` and `control`; `session_id`, `state`, `events`, `assets` and `files`
@@ -73,18 +107,20 @@ Version-specific breaking changes and upgrade instructions are recorded below.
    and export `checkpoint.state.to_json()`. Paused turns, queued inputs and
    pending approvals do not survive this export.
 2. Replace the checkpoint columns with a boundary row per session and a journal
-   table keyed by session and sequence. Write both in the `on_commit`
-   transaction: insert each entry of `commit.journal`, ignoring an existing
-   sequence, and upsert `commit.boundary` when it is not `None`.
-3. Load with `SessionCheckpoint.from_journal(SessionBoundary.from_dict(row),
-   [JournalEntry.from_dict(entry) for entry in rows])`. To keep one document per
-   session instead, store `SessionCheckpoint.from_commit(commit, previous).to_dict()`.
-4. Map domain rows from `entry.record` instead of `change.event`, and read a
+   table keyed by session and sequence.
+3. Turn the `on_commit` handler into a `SessionStore`. In `write`, insert each
+   entry of `commit.journal`, ignoring an existing sequence, and upsert
+   `commit.boundary` when it is not `None`, in one transaction. In `read`,
+   return the boundary document and the journal documents in sequence order, or
+   `None`.
+4. Replace `agent.session(state=await load(id), on_commit=handler)` with
+   `agent.session(id=id, store=store)`.
+5. Map domain rows from `entry.record` instead of `change.event`, and read a
    child's parent link from `commit.boundary.state.parent` on the commits that
    carry a boundary; a session's first commit always does.
-5. Reopen the exported snapshots from step 1 with `agent.session(id=...,
-   state=SessionState.from_json(...))`. Their first commit stores a new
-   boundary.
+6. Import the snapshots from step 1 with `agent.session(id=...,
+   state=SessionState.from_json(...), store=store)`. The session's first
+   durable change stores a new boundary.
 
 ## 0.28.0 (2026-11-24)
 
@@ -184,7 +220,7 @@ read directly.
   barriers inside a turn. The execution part stores recorded model requests as
   `CheckpointRequest` values that refer to the state's messages by ID, so its
   size inside a turn no longer grows with the conversation. See
-  [store state and execution apart](docs/guides/sessions.md#store-the-boundary-and-the-journal).
+  [store state and execution apart](docs/guides/sessions.md#persist-sessions-with-a-store).
   ([#160](https://github.com/mathisarends/harnessed/issues/160))
 
 ### Changed
@@ -279,7 +315,7 @@ read directly.
    `checkpoint.execution` together when `SessionCommit.state_changed` is true
    or when initializing a store. Later execution-only updates must use the
    matching saved state. The new split `SessionExecution` document uses format
-   **6**. See [store state and execution apart](docs/guides/sessions.md#store-the-boundary-and-the-journal).
+   **6**. See [store state and execution apart](docs/guides/sessions.md#persist-sessions-with-a-store).
 
 ## 0.26.0 (2026-11-22)
 
@@ -367,7 +403,7 @@ read directly.
    `commit.session_id` and apply any application changes from `commit.changes`.
    The same handler receives child commits under their own IDs. Implement
    revision checks in your repository if needed and serialize execution per
-   conversation. See [receive commits](docs/guides/sessions.md#receive-commits).
+   conversation. See [receive commits](docs/guides/sessions.md#persist-sessions-with-a-store).
 3. **Import the snapshots.** Read each export with `SessionState.from_json()`
    and pass `id=conversation_id, state=snapshot, on_commit=handler` to
    `agent.session()`. Opening a snapshot does not replay old changes. To seed

@@ -6,15 +6,18 @@ is the complete version history and upgrade reference.
 
 ## Unreleased
 
-Sessions persist as a [boundary and an append-only journal](guides/sessions.md#store-the-boundary-and-the-journal).
-A commit inside a turn carries only its new journal entries, and the boundary is
-written once per turn or idle change, so storage per turn no longer grows with
-the conversation.
+Applications [persist sessions with a `SessionStore`](guides/sessions.md#persist-sessions-with-a-store):
+`read` returns the stored documents and `write` stores each commit, and
+`agent.session(id=..., store=...)` reopens or starts the session. Sessions persist
+as a boundary and an append-only journal. A commit inside a turn carries only its
+new journal entries, and the boundary is written once per turn or idle change, so
+storage per turn no longer grows with the conversation.
 
-**Upgrade.** This release breaks stored checkpoints. Format **5** checkpoints and
-format **6** execution documents cannot be read and are not migrated. Export
-idle conversations as `SessionState` with 0.28.0 first, then store boundaries
-and journal entries. Follow the
+**Upgrade.** This release breaks the persistence API and stored checkpoints.
+`on_commit` is replaced by `store=`. Format **5** checkpoints and format **6**
+execution documents cannot be read and are not migrated. Export idle
+conversations as `SessionState` with 0.28.0 first, then import them into a store.
+Follow the
 [upgrade steps](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-0280).
 
 ## 0.28.0 (2026-11-24)
@@ -46,7 +49,7 @@ See the [0.27.1 changelog](https://github.com/mathisarends/harnessed/blob/main/C
 
 ## 0.27.0 (2026-11-22)
 
-Applications can [store conversation state and execution separately](guides/sessions.md#store-the-boundary-and-the-journal),
+Applications can [store conversation state and execution separately](guides/sessions.md#persist-sessions-with-a-store),
 [read typed plugin activations](guides/sessions.md#read-results-and-usage), and
 keep approval questions pending for turns without an owning stream. Plugin
 authors can import common declarations from `harnessed` and access the active
@@ -60,7 +63,7 @@ document uses format **6**. Follow the
 
 ## 0.26.0 (2026-11-22)
 
-Applications [persist sessions through `on_commit`](guides/sessions.md#receive-commits)
+Applications [persist sessions through `on_commit`](guides/sessions.md#persist-sessions-with-a-store)
 and reopen them from checkpoints that carry their session IDs. Built-in values
 and events use strict Pydantic validation. Plugin recipes can
 [customize a declared tool](guides/tools.md#customize-a-declared-tool).

@@ -347,7 +347,7 @@ class ChildExecution:
             ),
             ParentApprover(self.parent, self.started.child_session_id, self.started.agent),
             self,
-            self.parent.log.commit_handler,
+            self.parent.log.store,
             commit_timeout_seconds=self.parent.log.commit_timeout_seconds,
         )
         async with self.factory.child_session(request) as child:

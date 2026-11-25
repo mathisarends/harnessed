@@ -158,7 +158,7 @@ async def test_custom_event_restoration_uses_the_agent_catalog_not_the_document(
     store = CommitRecorder(documents=True)
     model = ScriptedModel([call(Indexer.index), "finished"])
     agent = Agent(model=model, plugins=[Indexer()])
-    async with agent.session(id="custom", on_commit=store) as session:
+    async with agent.session(id="custom", store=store) as session:
         await session.submit("Index")
         await asyncio.wait_for(entered.wait(), timeout=5)
         pausing = asyncio.create_task(session.pause())

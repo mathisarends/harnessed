@@ -161,7 +161,7 @@ async def test_paused_finalization_restores_the_declared_output_contract() -> No
 
     store = CommitRecorder(documents=True)
     async with Agent(model=CallbackModel(respond), plugins=[Phased()]).session(
-        id="phased", on_commit=store
+        id="phased", store=store
     ) as session:
         session.scope.on(SessionControlChangedEvent, changed)
         await session.submit("Count", output=Answer, max_steps=3)

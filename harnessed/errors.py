@@ -60,7 +60,7 @@ class RunUnavailable(SessionStateError):
 
 
 class CommitTimeout(HarnessedError, TimeoutError):
-    """An ``on_commit`` handler exceeded the session's commit deadline."""
+    """A session store's ``write`` exceeded the session's commit deadline."""
 
 
 class SessionFormatError(HarnessedError, ValueError):

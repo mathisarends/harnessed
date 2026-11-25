@@ -19,7 +19,7 @@ from harnessed.runtime.control import SessionStatus
 from harnessed.sessions import CheckpointRequest, SessionCheckpoint, SessionCommit, SessionState
 from harnessed.sessions.values import PluginValues
 from harnessed.testing import ScriptedModel, call
-from tests._commits import CommitRecorder
+from tests._commits import CommitRecorder, Writes
 
 
 @pytest.fixture(params=["typed", "documents"])
@@ -30,7 +30,7 @@ def recorder(request) -> CommitRecorder:
 async def test_commits_reopen_and_save_context_and_results_before_return(recorder):
     model = ScriptedModel(["first", "second"])
     agent = Agent(model=model, instructions="Current instructions.")
-    async with agent.session(id="tenant:customer/4711", on_commit=recorder) as session:
+    async with agent.session(id="tenant:customer/4711", store=recorder) as session:
         await session.append_message(UserMessage("The customer is Ada."))
         assert recorder.latest(session.id).state.history[0].message.text == ("The customer is Ada.")
         result = await session.run("Remember this.")
@@ -52,7 +52,7 @@ async def test_commits_reopen_and_save_context_and_results_before_return(recorde
 
 async def test_commit_changes_are_contiguous_across_deliveries(recorder):
     agent = Agent(model=ScriptedModel(["one", "two"]))
-    async with agent.session(on_commit=recorder) as session:
+    async with agent.session(store=recorder) as session:
         await session.run("First")
         await session.run("Second")
         session_id = session.id
@@ -72,7 +72,7 @@ async def test_typed_handler_does_not_require_checkpoint_json_encoding(monkeypat
 
     monkeypatch.setattr(SessionCheckpoint, "to_json", forbidden)
     agent = Agent(model=ScriptedModel(["done"]))
-    async with agent.session(on_commit=keep) as session:
+    async with agent.session(store=Writes(keep)) as session:
         await session.run(UserMessage("Hello", id="application-message"))
     boundary = commits[-1].boundary
     assert boundary is not None
@@ -126,7 +126,7 @@ async def test_paused_turn_reopens_without_repeating_tools_and_keeps_limits(reco
 
     model = ScriptedModel([call(Work.work), "finished"])
     agent = Agent(model=model, plugins=[Work()])
-    async with agent.session(id="paused", on_commit=recorder) as session:
+    async with agent.session(id="paused", store=recorder) as session:
         handle = await session.submit("Work", max_steps=2)
         await asyncio.wait_for(entered.wait(), timeout=5)
         pausing = asyncio.create_task(session.pause())
@@ -153,11 +153,9 @@ async def test_paused_turn_reopens_without_repeating_tools_and_keeps_limits(reco
 
 async def test_paused_inbox_and_quiet_context_survive_reopening(recorder):
     agent = Agent(model=ScriptedModel(["one", "two"]))
-    async with agent.session(id="inbox", on_commit=recorder) as session:
+    async with agent.session(id="inbox", store=recorder) as session:
         await session.pause()
-    async with agent.session(id="inbox", state=recorder.latest("inbox"), on_commit=recorder) as (
-        session
-    ):
+    async with agent.session(id="inbox", store=recorder) as (session):
         assert session.status is SessionStatus.PAUSED
         await session.append_message(UserMessage("Status: ready"))
         await session.submit("First")
@@ -180,7 +178,7 @@ async def test_rejected_append_delivers_no_commit(recorder) -> None:
     model = ScriptedModel(["done"])
     agent = Agent(model=model)
     message = UserMessage("queued work")
-    async with agent.session(id="append-collision", on_commit=recorder) as session:
+    async with agent.session(id="append-collision", store=recorder) as session:
         await session.pause()
         await session.submit(message)
         await session.flush()
@@ -208,7 +206,7 @@ async def test_storage_failure_reaches_the_run_caller_without_returning_success(
             raise OSError("storage unavailable")
 
     recorder.before = fail_terminal
-    async with Agent(model=ScriptedModel(["done"])).session(on_commit=recorder) as session:
+    async with Agent(model=ScriptedModel(["done"])).session(store=recorder) as session:
         with pytest.raises(OSError, match="storage unavailable"):
             if mode == "run":
                 await session.run("Work")
@@ -226,7 +224,7 @@ async def test_failed_commit_rejects_later_admissions_until_reopened():
         if failures:
             raise failures.pop()
 
-    async with Agent(model=ScriptedModel([])).session(on_commit=recorder) as session:
+    async with Agent(model=ScriptedModel([])).session(store=recorder) as session:
         await session.append_message(UserMessage("first"))
         recorder.before = fail_once
         with pytest.raises(OSError, match="storage unavailable"):
@@ -234,7 +232,7 @@ async def test_failed_commit_rejects_later_admissions_until_reopened():
         with pytest.raises(OSError, match="storage unavailable"):
             await session.append_message(UserMessage("rejected"))
         session_id = session.id
-    async with agent_session(recorder.latest(session_id), recorder) as restored:
+    async with agent_session(session_id, recorder) as restored:
         await restored.append_message(UserMessage("second"))
         assert [message.text for message in restored.messages] == ["first", "second"]
 
@@ -258,7 +256,7 @@ async def test_handler_writing_to_its_own_session_fails_the_commit(operation):
             seen.append(error)
             raise
 
-    async with Agent(model=ScriptedModel(["hi"])).session(on_commit=handler) as session:
+    async with Agent(model=ScriptedModel(["hi"])).session(store=Writes(handler)) as session:
         holder.append(session)
         async with asyncio.timeout(5):
             with pytest.raises(SessionStateError, match="cannot write to or flush its own"):
@@ -279,7 +277,7 @@ async def test_commit_deadline_fails_a_hung_handler_and_releases_abort_and_close
             await gate.wait()
 
     opening = Agent(model=ScriptedModel(["hi"])).session(
-        on_commit=handler, commit_timeout_seconds=0.2
+        store=Writes(handler), commit_timeout_seconds=0.2
     )
     session = await opening.__aenter__()
     try:
@@ -301,7 +299,7 @@ async def test_commit_deadline_fails_a_hung_handler_and_releases_abort_and_close
 async def test_commit_deadline_does_not_fail_a_handler_that_returns_in_time():
     recorder = CommitRecorder()
     agent = Agent(model=ScriptedModel(["hi"]))
-    async with agent.session(on_commit=recorder, commit_timeout_seconds=5.0) as session:
+    async with agent.session(store=recorder, commit_timeout_seconds=5.0) as session:
         assert (await session.run("x")).text == "hi"
     assert recorder.commits
 
@@ -310,13 +308,13 @@ async def test_commit_deadline_does_not_fail_a_handler_that_returns_in_time():
 async def test_commit_deadline_must_be_positive(seconds):
     with pytest.raises(ConfigError, match="commit_timeout_seconds"):
         async with Agent(model=ScriptedModel([])).session(
-            on_commit=CommitRecorder(), commit_timeout_seconds=seconds
+            store=CommitRecorder(), commit_timeout_seconds=seconds
         ):
             pytest.fail("Session opened with an invalid commit deadline")
 
 
-def agent_session(state: SessionCheckpoint, recorder: CommitRecorder):
-    return Agent(model=ScriptedModel([])).session(state=state, on_commit=recorder)
+def agent_session(session_id: str, recorder: CommitRecorder):
+    return Agent(model=ScriptedModel([])).session(id=session_id, store=recorder)
 
 
 @pytest.mark.parametrize("operation", ["context", "flush"])
@@ -330,7 +328,7 @@ async def test_cancelled_delivery_finishes_before_cancellation_is_delivered(oper
         await release.wait()
         commits.append(commit)
 
-    async with Agent(model=ScriptedModel([])).session(on_commit=slow) as session:
+    async with Agent(model=ScriptedModel([])).session(store=Writes(slow)) as session:
         if operation == "flush":
             await session.emit(MessageAppendedEvent(UserMessage("retained")))
             write = asyncio.create_task(session.flush())
@@ -353,14 +351,14 @@ async def test_restoring_structured_pending_work_requires_the_registered_output_
     contract = OutputContract("answer.v1", Answer)
     model = ScriptedModel([call("final_answer", value=7)])
     agent = Agent(model=model)
-    async with agent.session(id="structured", on_commit=recorder) as session:
+    async with agent.session(id="structured", store=recorder) as session:
         await session.pause()
         await session.submit("Answer", output=contract)
     with pytest.raises(ConfigError, match="Restore output contract"):
-        async with agent.session(state=recorder.latest("structured")):
+        async with agent.session(id="structured", store=recorder):
             pytest.fail("Missing validators must fail before executing stored work")
     async with agent.session(
-        state=recorder.latest("structured"), restore_outputs=[contract]
+        id="structured", store=recorder, restore_outputs=[contract]
     ) as restored:
         await restored.resume()
         await asyncio.wait_for(restored.wait_until_idle(), timeout=5)
@@ -376,15 +374,26 @@ async def test_application_ids_need_no_handler_and_invalid_states_are_rejected()
             pytest.fail("Serialized documents must be validated by the application")
 
 
-async def test_a_checkpoint_reopens_under_its_own_session_id(recorder):
+async def test_a_store_reopens_by_id_and_a_checkpoint_under_its_own_session_id(recorder):
     agent = Agent(model=ScriptedModel(["first"]))
-    async with agent.session(id="conversation-7", on_commit=recorder) as session:
+    async with agent.session(id="conversation-7", store=recorder) as session:
         await session.run("Hello")
+    async with agent.session(id="conversation-7", store=recorder) as session:
+        assert [message.text for message in session.messages] == ["Hello", "first"]
     stored = recorder.latest("conversation-7")
-    assert stored.session_id == "conversation-7"
-    async with agent.session(state=stored, on_commit=recorder) as session:
+    async with agent.session(state=stored) as session:
         assert session.id == "conversation-7"
-        await session.flush()
+    with pytest.raises(ConfigError, match="pass id="):
+        async with agent.session(state=stored, store=recorder):
+            pytest.fail("A store reopens its sessions by id")
+    with pytest.raises(ConfigError, match="already stored"):
+        async with agent.session(id="conversation-7", state=stored.state, store=recorder):
+            pytest.fail("A snapshot must not overwrite a stored session")
+    async with agent.session(id="imported", state=stored.state, store=recorder) as imported:
+        # Nothing is written until the first durable change.
+        assert "imported" not in recorder
+        await imported.append_message(UserMessage("again"))
+    assert "imported" in recorder
     with pytest.raises(ConfigError, match="session_id"):
         async with agent.session(id="other", state=stored):
             pytest.fail("A checkpoint must not be reopened under another ID")
@@ -407,7 +416,7 @@ async def test_approval_grants_survive_reopening(recorder):
             return ApprovalResponse(Decision.ALLOW, remember=True)
 
     agent = Agent(model=ScriptedModel([]))
-    async with agent.session(id="grants", on_commit=recorder) as session:
+    async with agent.session(id="grants", store=recorder) as session:
         answer = await session.approvals.request(
             ToolCall("work"), "Authorize work", approver=Allow()
         )
@@ -415,9 +424,7 @@ async def test_approval_grants_survive_reopening(recorder):
         grant = session.approvals.grant_for("work", scope="tool-policy")
         assert grant is not None
         request_id = grant.request_id
-    async with agent.session(
-        id="grants", state=recorder.latest("grants"), on_commit=recorder
-    ) as restored:
+    async with agent.session(id="grants", store=recorder) as restored:
         grant = restored.approvals.grant_for("work", scope="tool-policy")
         assert grant is not None and grant.request_id == request_id
         await restored.approvals.revoke(request_id)
@@ -438,7 +445,7 @@ async def test_images_and_spilled_text_survive_a_paused_turn(recorder):
 
     model = ScriptedModel([call(Source.source), "finished"])
     agent = Agent(model=model, plugins=[Source(), Spill(threshold_tokens=32)])
-    async with agent.session(id="resources", on_commit=recorder) as session:
+    async with agent.session(id="resources", store=recorder) as session:
         image = await session.assets.put(b"pixels\xff\x00", media_type="image/png")
         await session.submit(UserMessage((ImageReference(image),)))
         await asyncio.wait_for(entered.wait(), timeout=5)
@@ -459,7 +466,7 @@ async def test_images_and_spilled_text_survive_a_paused_turn(recorder):
 async def test_intermediate_changes_wait_for_the_requested_boundary(boundary):
     recorder = CommitRecorder()
     agent = Agent(model=ScriptedModel([]))
-    async with agent.session(id="batch", on_commit=recorder) as session:
+    async with agent.session(id="batch", store=recorder) as session:
         await session.scope[PluginValues].commit("seed", "ready")
         before = len(recorder.commits)
         await session.emit(MessageAppendedEvent(UserMessage("first")))
@@ -483,7 +490,7 @@ async def test_undelivered_changes_are_reported_when_closing():
     recorder.before = unavailable
     agent = Agent(model=ScriptedModel([]))
     with pytest.raises(OSError, match="idle storage unavailable"):
-        async with agent.session(on_commit=recorder) as session:
+        async with agent.session(store=recorder) as session:
             await session.emit(MessageAppendedEvent(UserMessage("pending fact")))
 
 
@@ -496,7 +503,7 @@ async def test_model_request_is_not_executed_when_its_intent_cannot_be_saved():
             raise OSError("model intent unavailable")
 
     recorder.before = unavailable
-    async with Agent(model=model).session(on_commit=recorder) as session:
+    async with Agent(model=model).session(store=recorder) as session:
         with pytest.raises(OSError, match="model intent unavailable"):
             await session.run("Work")
     assert not model.requests

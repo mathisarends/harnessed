@@ -11,7 +11,6 @@ from harnessed.events import TurnEndedEvent, TurnStartedEvent
 from harnessed.models.assets import AssetValue
 from harnessed.models.values import JSONValue
 
-from .commit import SessionCommit
 from .files import TextValue
 from .journal import (
     STORAGE_CONFIG,
@@ -29,16 +28,13 @@ from .state import SessionState
 class SessionCheckpoint:
     """A stored session: a boundary plus the journal entries written after it.
 
-    Pass a checkpoint to ``Agent.session(state=...)`` to reopen the session under
-    its ID. Reopening restores the boundary and replays the journal, so an open
-    turn continues where it stopped. ``journal`` starts at the boundary's
-    ``sequence`` and has no gaps. It may hold idle events such as queued input
-    or control changes, and at most one open turn; a closed turn always ends at
-    a newer boundary.
-
-    Applications usually keep the boundary and the entries apart and combine
-    them with ``from_journal``. A store that keeps one document instead folds
-    each commit in with ``from_commit`` and saves ``to_dict()``.
+    A ``SessionStore`` reopens a session from its stored documents through
+    this value; ``session.checkpoint()`` captures it on demand, and
+    ``Agent.session(state=...)`` accepts it as an in-memory value. Reopening
+    restores the boundary and replays the journal, so an open turn continues
+    where it stopped. ``journal`` starts at the boundary's ``sequence`` and has
+    no gaps. It may hold idle events such as queued input or control changes,
+    and at most one open turn; a closed turn always ends at a newer boundary.
     """
 
     __hash__ = None
@@ -66,24 +62,6 @@ class SessionCheckpoint:
             return cls(boundary, journal)
         except (ValidationError, ValueError, TypeError) as error:
             raise SessionFormatError("The journal does not continue its boundary") from error
-
-    @classmethod
-    def from_commit(cls, commit: SessionCommit, previous: Self | None = None) -> Self:
-        """The checkpoint a store holds after ``commit``.
-
-        ``previous`` is the checkpoint stored before this commit; the session's
-        first commit needs none because it always carries a boundary. A store
-        that keeps one document per session saves the result's ``to_dict()``.
-        """
-        if previous is not None and previous.session_id != commit.session_id:
-            raise SessionFormatError("A commit can only extend its own session's checkpoint")
-        boundary = commit.boundary
-        if boundary is None:
-            if previous is None:
-                raise SessionFormatError("The first commit of a session carries its boundary")
-            boundary = previous.boundary
-        entries = (*previous.journal, *commit.journal) if previous is not None else commit.journal
-        return cls.from_journal(boundary, entries)
 
     @property
     def session_id(self) -> str:

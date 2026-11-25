@@ -58,7 +58,7 @@ from harnessed.runtime.hooks import SessionAppended
 from .approvals import ApprovalProjection
 from .checkpoint import SessionCheckpoint
 from .children import ChildProjection, ChildSession
-from .commit import CommitCapture, CommitDelivery, CommitHandler
+from .commit import CommitCapture, CommitDelivery
 from .control import RunControl
 from .files import MemoryFiles
 from .history import WorkingHistory
@@ -89,6 +89,7 @@ from .state import (
     image_refs,
     validate_conversation_message_id,
 )
+from .store import SessionStore
 from .turns import Turn, TurnProjection, recorded_usage
 
 
@@ -104,7 +105,7 @@ class SessionLog:
         files: MemoryFiles | None = None,
         registry: EventRegistry | None = None,
         assets: MemoryAssets | None = None,
-        on_commit: CommitHandler | None = None,
+        store: SessionStore | None = None,
         commit_timeout_seconds: float | None = None,
     ) -> None:
         if registry is None:
@@ -141,9 +142,10 @@ class SessionLog:
         self._preserved_turns = state.preserved_turns if state else ()
         self._uncompacted_turns = state.turns_since_compaction if state else 0
         self._closed_count = len(self._turn_boundaries)
+        self.store = store
         self._commits = (
-            CommitDelivery(on_commit, timeout_seconds=commit_timeout_seconds)
-            if on_commit is not None
+            CommitDelivery(store.write, timeout_seconds=commit_timeout_seconds)
+            if store is not None
             else None
         )
         self._restoring = False
@@ -165,11 +167,6 @@ class SessionLog:
         """Raise the stored delivery error before acknowledging a projected change."""
         if self._commits is not None:
             self._commits.check()
-
-    @property
-    def commit_handler(self) -> CommitHandler | None:
-        """The application handler receiving this log's commits, if any."""
-        return self._commits.handler if self._commits is not None else None
 
     @property
     def commit_timeout_seconds(self) -> float | None:

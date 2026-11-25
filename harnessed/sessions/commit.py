@@ -145,13 +145,13 @@ class CommitDelivery:
             raise self._failure
 
     def check_reentry(self) -> None:
-        """Reject a write or flush from the task that is running the handler.
+        """Reject a write or flush from the task that is running the store's write.
 
         Tasks the handler spawns cannot be detected; they wait for the lock.
         """
         task = asyncio.current_task()
         if task is not None and task is self._delivering:
-            raise SessionStateError("An on_commit handler cannot write to or flush its own session")
+            raise SessionStateError("A session store cannot write to or flush its own session")
 
     def record(self, entry: JournalEntry) -> bool:
         """Queue an entry and report whether it must be delivered before admission returns."""
@@ -189,7 +189,7 @@ class CommitDelivery:
         except Exception as error:
             if isinstance(error, TimeoutError) and deadline.expired():
                 timeout = CommitTimeout(
-                    f"The on_commit handler did not return within {self.timeout_seconds} seconds"
+                    f"The session store did not return within {self.timeout_seconds} seconds"
                 )
                 self._failure = timeout
                 raise timeout from error

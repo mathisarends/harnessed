@@ -36,7 +36,14 @@ from harnessed.integrations.sandbox.bundle import worker_source
 from harnessed.prompts import Instructions, PromptFormat, SectionDelivery, SystemPromptStore
 from harnessed.runtime.composition import CompositionDescription
 from harnessed.runtime.handles import RunHandle, RunStream
-from harnessed.sessions import SessionCheckpoint, SessionCommit, SessionContext, SessionState
+from harnessed.sessions import (
+    SessionCheckpoint,
+    SessionCommit,
+    SessionContext,
+    SessionState,
+    SessionStore,
+    StoredSession,
+)
 from harnessed.testing import ScriptedModel, call, reply, assert_tool_called, mount_plugin
 from harnessed.tools import SessionTools, ToolPresentation, ToolRegistry
 from pydantic import BaseModel
@@ -139,21 +146,30 @@ async def main():
     assert len(next_turn.state.history) == 4
     assert not hasattr(continuation, "sessions")
 
-    documents: dict[str, dict[str, object]] = {}
+    class Documents(SessionStore):
+        def __init__(self) -> None:
+            self.boundaries: dict[str, dict[str, object]] = {}
+            self.journals: dict[str, dict[int, str]] = {}
 
-    async def save(commit: SessionCommit) -> None:
-        previous = documents.get(commit.session_id)
-        checkpoint = SessionCheckpoint.from_commit(
-            commit, SessionCheckpoint.from_dict(previous) if previous is not None else None
-        )
-        documents[commit.session_id] = checkpoint.to_dict()
+        async def read(self, session_id: str) -> StoredSession | None:
+            if session_id not in self.boundaries:
+                return None
+            journal = self.journals[session_id]
+            return StoredSession(self.boundaries[session_id], [journal[k] for k in sorted(journal)])
 
+        async def write(self, commit: SessionCommit) -> None:
+            journal = self.journals.setdefault(commit.session_id, {})
+            for entry in commit.journal:
+                journal.setdefault(entry.sequence, entry.to_json())
+            if commit.boundary is not None:
+                self.boundaries[commit.session_id] = commit.boundary.to_dict()
+
+    documents = Documents()
     persistent = Agent(model=ScriptedModel(['persisted', 'restored']))
-    async with persistent.session(id='wheel-conversation', on_commit=save) as session:
+    async with persistent.session(id='wheel-conversation', store=documents) as session:
         await session.append_message(UserMessage('The customer is Ada.'))
         await session.run('Remember the customer.')
-    stored = SessionCheckpoint.from_dict(documents['wheel-conversation'])
-    async with persistent.session(state=stored, on_commit=save) as session:
+    async with persistent.session(id='wheel-conversation', store=documents) as session:
         assert session.messages[0].text == 'The customer is Ada.'
         assert (await session.run('Continue.')).text == 'restored'
 

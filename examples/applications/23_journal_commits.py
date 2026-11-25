@@ -7,11 +7,11 @@ from contextlib import closing
 from threading import Lock
 
 from harnessed import Agent, Plugin, tool
-from harnessed.sessions import JournalEntry, SessionBoundary, SessionCheckpoint, SessionCommit
+from harnessed.sessions import SessionCommit, SessionStore, StoredSession
 from harnessed.testing import ScriptedModel, call
 
 
-class JournalStore:
+class JournalStore(SessionStore):
     """Append journal entries per commit and replace the boundary only when it changes.
 
     Both tables of one commit are written in a single transaction, so the stored
@@ -37,17 +37,15 @@ class JournalStore:
             """
         )
 
-    async def __call__(self, commit: SessionCommit) -> None:
+    async def write(self, commit: SessionCommit) -> None:
         boundary = commit.boundary
         entries = [(entry.sequence, entry.to_json()) for entry in commit.journal]
         body = boundary.to_json() if boundary is not None else None
         since = boundary.sequence if boundary is not None else None
         await asyncio.to_thread(self._write, commit.session_id, entries, body, since)
 
-    async def load(self, session: str) -> SessionCheckpoint:
-        boundary, entries = await asyncio.to_thread(self._read, session)
-        journal = [JournalEntry.from_json(entry) for entry in entries]
-        return SessionCheckpoint.from_journal(SessionBoundary.from_json(boundary), journal)
+    async def read(self, session_id: str) -> StoredSession | None:
+        return await asyncio.to_thread(self._read, session_id)
 
     def _write(
         self, session: str, entries: list[tuple[int, str]], boundary: str | None, since: int | None
@@ -69,15 +67,17 @@ class JournalStore:
                 )
                 self.boundary_writes += 1
 
-    def _read(self, session: str) -> tuple[str, list[str]]:
+    def _read(self, session: str) -> StoredSession | None:
         with self._lock:
             boundary = self._connection.execute(
                 "SELECT body FROM boundaries WHERE session = ?", (session,)
             ).fetchone()
+            if boundary is None:
+                return None
             entries = self._connection.execute(
                 "SELECT body FROM journal WHERE session = ? ORDER BY sequence", (session,)
             ).fetchall()
-        return str(boundary[0]), [str(entry[0]) for entry in entries]
+        return StoredSession(str(boundary[0]), [str(entry[0]) for entry in entries])
 
 
 class Notes(Plugin):
@@ -92,13 +92,12 @@ async def main() -> None:
         store = JournalStore(connection)
         model = ScriptedModel([call("read_notes"), "Ada is on the pro plan.", "Continued."])
         agent = Agent(model=model, plugins=[Notes()])
-        async with agent.session(id="support:4711", on_commit=store) as session:
+        async with agent.session(id="support:4711", store=store) as session:
             await session.run("Which plan does the customer have?")
         # Barriers inside the turn appended small entries; the boundary moved at its end.
         assert store.boundary_writes < store.entry_writes
 
-        checkpoint = await store.load("support:4711")
-        async with agent.session(state=checkpoint, on_commit=store) as session:
+        async with agent.session(id="support:4711", store=store) as session:
             result = await session.run("Continue.")
         assert result.text == "Continued."
         print(

@@ -503,8 +503,8 @@ interrupted mid-turn before `SessionOpened`: unfinished tool calls, requests,
 approvals and subagents are closed, and an open turn that was not paused ends
 as `aborted`. The repair runs after every plugin is active, including plugins
 that need `SessionLog` or `SessionContext`, so their hooks observe those
-records. `SessionOpened` observers then see the repaired log, and `on_commit`
-receives the repair records before the session block is entered. A hook that
+records. `SessionOpened` observers then see the repaired log, and a session
+store has written the repair records before the session block is entered. A hook that
 raises during repair fails the opening like a raising `SessionOpened` hook. A
 paused checkpoint keeps its open turn and stays paused.
 

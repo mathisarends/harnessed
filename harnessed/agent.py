@@ -29,7 +29,7 @@ from harnessed.runtime.options import RunOptions
 from harnessed.runtime.plugin import Plugin, Service, plugin_events
 from harnessed.runtime.services import RuntimeServices
 from harnessed.runtime.session import Session
-from harnessed.sessions import CommitHandler, SessionCheckpoint, SessionState
+from harnessed.sessions import SessionCheckpoint, SessionState, SessionStore
 from harnessed.sessions.result import RunResult
 
 # A covariant sequence lets lists of concrete plugin types be nested.
@@ -91,26 +91,29 @@ class Agent:
         *,
         state: SessionState | SessionCheckpoint | None = None,
         id: str | None = None,
-        on_commit: CommitHandler | None = None,
+        store: SessionStore | None = None,
         commit_timeout_seconds: float | None = None,
         restore_outputs: Iterable[type[Any] | OutputContract[Any]] = (),
     ) -> AsyncGenerator[Session]:
         """Open a live conversation, optionally continuing an application-owned value.
 
-        ``state`` accepts a terminal ``SessionState`` or a ``SessionCheckpoint``,
-        whose journal may contain an open turn; interrupted activity is repaired
-        on open.
-        ``on_commit`` receives every ``SessionCommit`` of this session and of the
-        child sessions it delegates to, at durability barriers. Harnessed does
-        not store conversations itself. The handler must not write to or flush
-        its own session. ``commit_timeout_seconds`` bounds each delivery; an
-        expired one fails the commit with ``CommitTimeout``. Child sessions
-        share the deadline.
+        With a ``store``, the session persists itself: opening with an ``id``
+        reopens what the store holds for it, or starts the session fresh, and
+        every ``SessionCommit`` of this session and of its child sessions is
+        written at durability barriers. Harnessed does not store conversations
+        itself. A store's ``write`` must not write to or flush its own session.
+        ``commit_timeout_seconds`` bounds each write; an expired one fails the
+        commit with ``CommitTimeout``. Child sessions share the deadline.
+
+        ``state`` continues an in-memory value instead: a terminal
+        ``SessionState``, or a ``SessionCheckpoint`` whose journal may contain an
+        open turn. Interrupted activity is repaired on open. With a store, only
+        a ``SessionState`` for a session the store does not hold is accepted.
         """
         async with self._open_session(
             state=state,
             id=id,
-            on_commit=on_commit,
+            store=store,
             commit_timeout_seconds=commit_timeout_seconds,
             restore_outputs=restore_outputs,
         ) as session:
@@ -121,7 +124,7 @@ class Agent:
         """Open a fresh isolated session for a parent-owned delegation."""
         async with self._open_session(
             id=request.session_id,
-            on_commit=request.on_commit,
+            store=request.store,
             commit_timeout_seconds=request.commit_timeout_seconds,
             child=request,
         ) as session:
@@ -133,7 +136,7 @@ class Agent:
         *,
         state: SessionState | SessionCheckpoint | None = None,
         id: str | None = None,
-        on_commit: CommitHandler | None = None,
+        store: SessionStore | None = None,
         commit_timeout_seconds: float | None = None,
         restore_outputs: Iterable[type[Any] | OutputContract[Any]] = (),
         child: ChildSessionRequest | None = None,
@@ -165,7 +168,7 @@ class Agent:
                 loop=self.loop,
                 pending=pending,
                 plugin_validation=self.plugin_validation,
-                on_commit=on_commit,
+                store=store,
                 commit_timeout_seconds=commit_timeout_seconds,
                 id=id,
             )
