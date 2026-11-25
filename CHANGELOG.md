@@ -19,6 +19,13 @@ Version-specific breaking changes and upgrade instructions are recorded below.
   another session with `SessionFormatError`. Child sessions write through their
   parent's store. See
   [persist sessions with a store](docs/guides/sessions.md#persist-sessions-with-a-store).
+- `SessionState.from_messages(messages, *, assets=())` starts a conversation
+  from a list or tuple of Harnessed messages, without building a JSON document
+  or history entries by hand. It accepts every answered tool call and the bytes
+  of referenced images, rejects system messages and unanswered tool calls with a
+  `SessionFormatError` that names the violated rule, and works wherever `state=`
+  does. See
+  [start from a message history](docs/guides/sessions.md#start-from-a-message-history).
 
 ### Changed
 
