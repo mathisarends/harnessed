@@ -94,7 +94,7 @@ async def main() -> None:
     agent = Agent(
         model=ScriptedModel([call(files.read_document, name="README.md"), "Read the document."]),
         plugins=(*workspace(backend, files), ReadObserver()),
-        instructions=SystemPrompt.from_plugins("Help with documents.", "Answer concisely."),
+        instructions=SystemPrompt("Help with documents.", "Answer concisely."),
     )
     print(agent.describe())
     result = await agent.run("Read README.md")

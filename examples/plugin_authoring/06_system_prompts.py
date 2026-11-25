@@ -51,7 +51,7 @@ async def main() -> None:
     for format in PromptFormat:
         agent = Agent(
             model=ScriptedModel(["Ready."]),
-            instructions=SystemPrompt.from_plugins("You are a browser agent.", format=format),
+            instructions=SystemPrompt("You are a browser agent.", format=format),
             plugins=[Observe(config=ObserveConfig()), interaction, BrowserTrust()],
         )
         print(agent.prompt)

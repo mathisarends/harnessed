@@ -21,7 +21,7 @@ async def test_session_section_factories_render_once_and_own_their_registrations
     )
     app = Agent(
         model=ScriptedModel(["one", "two"]),
-        instructions=SystemPrompt.from_plugins(Instructions.from_file(path=instructions), section),
+        instructions=SystemPrompt(Instructions.from_file(path=instructions), section),
     )
     async with app.session() as first:
         await first.run("One")

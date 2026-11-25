@@ -160,7 +160,7 @@ with `AgentLoop`, prints the static description and shows a duplicate slot raisi
 ### System prompt composition
 
 `uv run python -m examples.plugin_authoring.06_system_prompts` declares literal and
-configuration-dependent plugin blocks, selects a collection format with `prompt=`,
+configuration-dependent plugin blocks, selects a render format with `instructions=SystemPrompt(...)`,
 and renders the same document as plain text, XML and Markdown. See
 [system prompts and changing context](context.md).
 

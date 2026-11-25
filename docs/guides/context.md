@@ -46,8 +46,8 @@ agent = Agent(
 print(agent.prompt)  # lists every section and the plugin it came from
 ```
 
-Use `SystemPrompt.from_plugins(...)` to keep collection while adding fixed
-content or choosing a format:
+Use `SystemPrompt` to group application instructions or choose a format. The
+agent appends the same plugin blocks when you pass a string or a document.
 
 ```python
 from harnessed import Agent, SystemPrompt
@@ -55,9 +55,7 @@ from harnessed.prompts import PromptFormat
 
 agent = Agent(
     plugins=[Observe(config=ObserveConfig())],
-    instructions=SystemPrompt.from_plugins(
-        "You are a browser agent.", format=PromptFormat.MARKDOWN
-    ),
+    instructions=SystemPrompt("You are a browser agent.", format=PromptFormat.MARKDOWN),
 )
 ```
 
@@ -65,33 +63,7 @@ Collection keeps complete instruction blocks in configured plugin-list order.
 Dependency setup order never changes prompt order. Configuration providers run
 once when constructing the agent; sessions reuse that content.
 
-To own the complete system prompt, pass a document built with the constructor,
-such as `instructions=SystemPrompt("...")`. Plugin instruction blocks are then left out
-without calling their providers, and `print(agent.prompt)` lists the omitted
-plugins so the choice stays visible.
-
-`Agent(instructions="...")` prepends application-owned text. `instructions=` also accepts a
-`SystemPrompt` document or collection strategy. Fixed application content in
-`SystemPrompt.from_plugins(*parts)` follows the caller text and precedes
-plugin blocks. No plugin is moved to the end by its type or name: put completion
-and policy components at their intended list positions.
-
-## Share the strategy with a composition
-
-```python
-from harnessed import Agent, SystemPrompt
-from harnessed.prompts import PromptFormat
-from harnessed.plugins import Filesystem, LocalWorkspace, Shell
-
-agent = Agent(
-    instructions=SystemPrompt.from_plugins(
-        "Help with the workspace.", format=PromptFormat.MARKDOWN
-    ),
-    plugins=[LocalWorkspace(root="."), Filesystem(), Shell()],
-)
-```
-
-The strategy collects instructions from the complete configured plugin list.
+## Customize a plugin's instructions
 
 Use `plugin.with_instructions(...)` to replace one configured plugin's prompt
 block or `plugin.without_instructions()` to omit it. Both methods return a new
@@ -134,10 +106,6 @@ agent = Agent(
 | `PromptFormat.XML` | Escaped `<section title="Title">...</section>` elements |
 
 The outermost format controls nested content and all collected plugin blocks.
-`from_plugins` belongs only to the outermost document. Plugin methods return
-content documents, not another collection strategy. There are no fragments,
-placement selectors, exclusions or unplaced policies. Override a plugin's
-`instructions()` method to replace its whole block or return an empty document.
 
 ## Files, session factories and inspection
 

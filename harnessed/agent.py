@@ -74,11 +74,11 @@ class Agent:
         if instructions is not None and not isinstance(instructions, str | SystemPrompt):
             raise TypeError("instructions must be text or a SystemPrompt")
         self.instructions = instructions
-        self.prompt = PromptComposition(
-            instructions if isinstance(instructions, SystemPrompt) else None,
-            (value.prompt_contribution() for value in self.plugins),
-            instructions=instructions if isinstance(instructions, str) else None,
+        document = (
+            instructions if isinstance(instructions, SystemPrompt) else SystemPrompt(instructions)
         )
+        contributions = tuple(plugin.prompt_contribution() for plugin in self.plugins)
+        self.prompt = PromptComposition(document, contributions)
         self._events = EventRegistry(chain.from_iterable(map(plugin_events, self.plugins)))
 
     def describe(self) -> CompositionDescription:

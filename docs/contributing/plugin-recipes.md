@@ -160,15 +160,9 @@ Plugins return one complete content document through
 configuration helpers return actual content. Methods are pure and synchronous.
 `Instructions` holds literal text or session-owned file/factory sources.
 
-Agents collect plugin blocks by default; applications keep collection
-with `SystemPrompt.from_plugins(format=...)` and opt out with a constructor-built
-`SystemPrompt`. Call providers once at the agent boundary. Preserve whole plugin
-blocks in plugin-list order, independently of setup order. `None` parts and
-plugin-list entries are normalized away.
-
-`Agent(instructions="...")` prepends caller text without replacing the
-strategy. Selected instruction overrides without explicit collection fail before
-provider calls. Providers cannot return another collection strategy.
+Agents append complete plugin blocks after application instructions in plugin-list
+order. Providers run once at agent construction. Application instructions can be
+text or a structured document.
 
 Content documents use strings, `Instructions` and nested `SystemPrompt` values.
 The outer format controls all nested content. There are no descriptors, section

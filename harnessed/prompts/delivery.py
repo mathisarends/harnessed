@@ -10,12 +10,7 @@ from harnessed.kernel import Next, PluginLike, PluginSpec, Scope, as_plugin_spec
 from harnessed.models import ModelRequest, UserMessage
 from harnessed.runtime.hooks import PrepareRequest
 
-from .values import (
-    PromptComposition,
-    PromptContribution,
-    SectionDelivery,
-    SystemPrompt,
-)
+from .values import PromptComposition, PromptContribution, SectionDelivery
 
 
 def runtime_sections(
@@ -35,10 +30,7 @@ def runtime_sections(
     @wraps(spec.factory)
     async def mount(scope: Scope, *args: Any, **kwargs: Any) -> AsyncGenerator[object, None]:
         async with asynccontextmanager(spec.factory)(scope, *args, **kwargs) as instance:
-            composition = PromptComposition(
-                SystemPrompt.from_plugins(),
-                contributions=(contribution,),
-            )
+            composition = PromptComposition(contributions=(contribution,))
             text = await composition.render(scope)
             if text:
                 message = UserMessage(text, id=f"mount-context:{uuid4().hex}")

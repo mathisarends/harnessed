@@ -50,7 +50,7 @@ async def test_application_facade_composes_plugins_and_fixed_ordered_guidance(tm
     app = Agent(
         model=model,
         plugins=[calculator],
-        instructions=SystemPrompt.from_plugins(
+        instructions=SystemPrompt(
             Instructions(text="Be concise."),
             Instructions.from_file(path=path),
         ),
@@ -78,11 +78,11 @@ async def test_model_parameter_is_equivalent_to_model_service():
     await Agent(
         model=one,
         plugins=[calculator],
-        instructions=SystemPrompt.from_plugins(Instructions(text="Rules.")),
+        instructions=SystemPrompt(Instructions(text="Rules.")),
     ).run("Go")
     calculator_4 = Calculator()
     await Agent(
-        instructions=SystemPrompt.from_plugins(Instructions(text="Rules.")),
+        instructions=SystemPrompt(Instructions(text="Rules.")),
         model=two,
         plugins=[calculator_4],
     ).run("Go")

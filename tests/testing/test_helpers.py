@@ -58,13 +58,13 @@ async def test_pytest_fixture_replaces_feature_slots_without_duplicate_configura
     shell = Shell()
     configured = Agent(
         plugins=[LocalWorkspace(tmp_path), filesystem, shell],
-        instructions=SystemPrompt.from_plugins(Instructions(text="Fixed.")),
+        instructions=SystemPrompt(Instructions(text="Fixed.")),
     )
     virtual_files = InMemoryFS({"note.txt": "virtual"})
     virtual_shell = FakeShell()
     async with harnessed_session(
         configured,
-        instructions=SystemPrompt.from_plugins(Instructions(text="Fixed.")),
+        instructions=SystemPrompt(Instructions(text="Fixed.")),
         script=[call("read_file", path="note.txt"), reply("done")],
         plugins=[WorkspaceBackends(filesystem=virtual_files, shell=virtual_shell)],
     ) as session:

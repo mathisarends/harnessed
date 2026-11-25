@@ -76,7 +76,7 @@ async def test_catalog_reads_only_frontmatter_once_per_session_and_loads_body_fr
     app = Agent(
         model=ScriptedModel([]),
         plugins=[recipe],
-        instructions=SystemPrompt.from_plugins(Instructions.from_file(path=instructions)),
+        instructions=SystemPrompt(Instructions.from_file(path=instructions)),
     )
     assert phases == []
     async with app.session() as session:

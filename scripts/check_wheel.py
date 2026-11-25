@@ -176,11 +176,9 @@ async def main():
     guidance = Guidance()
     simple = Agent(instructions='Role.', plugins=[guidance])
     assert await simple.prompt.render() == 'Role.\n\nPlugin guidance.'
-    ordered = Agent(plugins=[guidance], instructions=SystemPrompt.from_plugins('Prefix.'))
-    assert await ordered.prompt.render() == 'Prefix.\n\nPlugin guidance.'
-    explicit = Agent(plugins=[guidance], instructions=SystemPrompt('Only this.'))
-    assert await explicit.prompt.render() == 'Only this.'
-    assert 'Guidance' in str(explicit.prompt)
+    structured = Agent(plugins=[guidance], instructions=SystemPrompt('Role.'))
+    assert await structured.prompt.render() == 'Role.\n\nPlugin guidance.'
+    assert 'Guidance.instructions' in str(structured.prompt)
     mounted_model = ScriptedModel([reply('Ready'), reply('Unmounted')])
     async with Agent(model=mounted_model,
                      instructions='Fixed.').session() as session:
