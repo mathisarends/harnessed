@@ -29,7 +29,7 @@ from harnessed.runtime.options import RunOptions
 from harnessed.runtime.plugin import Plugin, Service, plugin_events
 from harnessed.runtime.services import RuntimeServices
 from harnessed.runtime.session import Session
-from harnessed.sessions import SessionCheckpoint, SessionState, SessionStore
+from harnessed.sessions import SessionRecovery, SessionState, SessionStore
 from harnessed.sessions.result import RunResult
 
 # A covariant sequence lets lists of concrete plugin types be nested.
@@ -89,7 +89,7 @@ class Agent:
     async def session(
         self,
         *,
-        state: SessionState | SessionCheckpoint | None = None,
+        state: SessionState | SessionRecovery | None = None,
         id: str | None = None,
         store: SessionStore | None = None,
         commit_timeout_seconds: float | None = None,
@@ -106,7 +106,7 @@ class Agent:
         commit with ``CommitTimeout``. Child sessions share the deadline.
 
         ``state`` continues an in-memory value instead: a terminal
-        ``SessionState``, or a ``SessionCheckpoint`` whose journal may contain an
+        ``SessionState``, or a ``SessionRecovery`` whose journal may contain an
         open turn. Interrupted activity is repaired on open. With a store, only
         a ``SessionState`` for a session the store does not hold is accepted.
         """
@@ -134,7 +134,7 @@ class Agent:
     async def _open_session(
         self,
         *,
-        state: SessionState | SessionCheckpoint | None = None,
+        state: SessionState | SessionRecovery | None = None,
         id: str | None = None,
         store: SessionStore | None = None,
         commit_timeout_seconds: float | None = None,

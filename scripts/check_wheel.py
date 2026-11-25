@@ -37,7 +37,7 @@ from harnessed.prompts import Instructions, PromptFormat, SectionDelivery, Syste
 from harnessed.runtime.composition import CompositionDescription
 from harnessed.runtime.handles import RunHandle, RunStream
 from harnessed.sessions import (
-    SessionCheckpoint,
+    SessionRecovery,
     SessionCommit,
     SessionContext,
     SessionState,
@@ -148,21 +148,21 @@ async def main():
 
     class Documents(SessionStore):
         def __init__(self) -> None:
-            self.boundaries: dict[str, dict[str, object]] = {}
+            self.snapshots: dict[str, dict[str, object]] = {}
             self.journals: dict[str, dict[int, str]] = {}
 
         async def read(self, session_id: str) -> StoredSession | None:
-            if session_id not in self.boundaries:
+            if session_id not in self.snapshots:
                 return None
             journal = self.journals[session_id]
-            return StoredSession(self.boundaries[session_id], [journal[k] for k in sorted(journal)])
+            return StoredSession(self.snapshots[session_id], [journal[k] for k in sorted(journal)])
 
         async def write(self, commit: SessionCommit) -> None:
             journal = self.journals.setdefault(commit.session_id, {})
             for entry in commit.journal:
                 journal.setdefault(entry.sequence, entry.to_json())
-            if commit.boundary is not None:
-                self.boundaries[commit.session_id] = commit.boundary.to_dict()
+            if commit.snapshot is not None:
+                self.snapshots[commit.session_id] = commit.snapshot.to_dict()
 
     documents = Documents()
     persistent = Agent(model=ScriptedModel(['persisted', 'restored']))

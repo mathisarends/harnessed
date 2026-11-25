@@ -12,10 +12,10 @@ from harnessed.testing import ScriptedModel
 
 
 class JournalFiles(SessionStore):
-    """Application-owned storage: a boundary file and a JSONL journal per session.
+    """Application-owned storage: a snapshot file and a JSONL journal per session.
 
-    Every journal entry becomes one appended line; the boundary file is replaced
-    only when a commit carries a new boundary. Lines before the boundary stay in
+    Every journal entry becomes one appended line; the snapshot file is replaced
+    only when a commit carries a new snapshot. Lines before the snapshot stay in
     the file as an audit trail and are skipped on reopening. The two writes are
     not atomic, so a store that must survive a crash between them writes both in
     one database transaction instead, as the journal-commit example does.
@@ -29,23 +29,23 @@ class JournalFiles(SessionStore):
 
     async def write(self, commit: SessionCommit) -> None:
         lines = "".join(f"{entry.to_json()}\n" for entry in commit.journal)
-        boundary = commit.boundary.to_json() if commit.boundary is not None else None
-        await asyncio.to_thread(self._write, commit.session_id, lines, boundary)
+        snapshot = commit.snapshot.to_json() if commit.snapshot is not None else None
+        await asyncio.to_thread(self._write, commit.session_id, lines, snapshot)
 
     def _read(self, session_id: str) -> StoredSession | None:
-        boundary = self._path(session_id, "boundary.json")
-        if not boundary.exists():
+        snapshot = self._path(session_id, "snapshot.json")
+        if not snapshot.exists():
             return None
         journal = self._path(session_id, "journal.jsonl").read_text("utf-8")
-        return StoredSession(boundary.read_text("utf-8"), journal.splitlines())
+        return StoredSession(snapshot.read_text("utf-8"), journal.splitlines())
 
-    def _write(self, session_id: str, lines: str, boundary: str | None) -> None:
+    def _write(self, session_id: str, lines: str, snapshot: str | None) -> None:
         with self._path(session_id, "journal.jsonl").open("a", encoding="utf-8") as journal:
             journal.write(lines)
-        if boundary is not None:
-            path = self._path(session_id, "boundary.json")
+        if snapshot is not None:
+            path = self._path(session_id, "snapshot.json")
             temporary = path.with_suffix(".tmp")
-            temporary.write_text(boundary, "utf-8")
+            temporary.write_text(snapshot, "utf-8")
             temporary.replace(path)
 
     def _path(self, session_id: str, suffix: str) -> Path:

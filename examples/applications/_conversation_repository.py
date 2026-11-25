@@ -6,11 +6,11 @@ from typing import Any
 class ConversationRow:
     """Example application-owned record; it has no SDK dependency.
 
-    ``boundary`` and each ``journal`` document stand in for JSONB columns, and
+    ``snapshot`` and each ``journal`` document stand in for JSONB columns, and
     ``format_version`` for a plain integer column that queries can use.
     """
 
-    boundary: dict[str, Any]
+    snapshot: dict[str, Any]
     format_version: int
     retained_messages: int
     journal: dict[int, dict[str, Any]] = field(default_factory=dict)
@@ -31,7 +31,7 @@ class ConversationRepository:
         key: str,
         *,
         journal: dict[int, dict[str, Any]],
-        boundary: dict[str, Any] | None,
+        snapshot: dict[str, Any] | None,
         format_version: int,
         retained_messages: int,
     ) -> None:
@@ -39,5 +39,5 @@ class ConversationRepository:
         for sequence, document in journal.items():
             # A redelivered entry is already stored and stays unchanged.
             stored.setdefault(sequence, document)
-        if boundary is not None:
-            self._rows[key] = ConversationRow(boundary, format_version, retained_messages, stored)
+        if snapshot is not None:
+            self._rows[key] = ConversationRow(snapshot, format_version, retained_messages, stored)

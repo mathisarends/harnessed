@@ -58,7 +58,7 @@ async def test_spill_is_owned_by_its_session_and_resumes_with_exact_content(tmp_
             )
             == events
         )
-        state = session.snapshot()
+        state = session.state()
     app = configure(ScriptedModel([]), plugins=[Spill(threshold_tokens=32)])
     async with app.session(state=state) as session:
         assert await session.scope[SpillStore].read(ref.path, limit=16000) == text
@@ -81,7 +81,7 @@ async def test_retention_expiration_is_durable_and_cannot_be_reactivated_by_old_
         assert await session.scope[SpillStore].read(second.path, limit=2) == "bb"
         with pytest.raises(ToolError, match="expired"):
             await session.scope[SpillStore].read(first.path)
-        state = session.snapshot()
+        state = session.state()
     async with app.session(state=state) as session:
         with pytest.raises(ToolError, match="does not belong"):
             await session.scope[SpillStore].read(first.path)

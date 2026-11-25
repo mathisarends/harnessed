@@ -95,7 +95,7 @@ schema, after `PrepareRequest` and before output preparation and token checks.
 `DEFER` withholds both native JSON constraints and the reserved `final_answer`
 tool. Validation uses the effective request schema, so progress text does not
 consume correction attempts. Once enforced, parsing and correction limits are
-unchanged. The declared turn contract remains available for checkpoint restoration.
+unchanged. The declared turn contract remains available when the session reopens.
 
 This hook only controls output constraints. Use `TurnStopping` to continue after
 progress text and ordinary tool-policy hooks for application-specific phase

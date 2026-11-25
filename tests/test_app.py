@@ -131,7 +131,7 @@ async def test_removed_runtime_plugins_are_collectable_while_the_session_stays_o
         await session.scope.settle()
         gc.collect()
         assert all(reference() is None for reference in references)
-        assert not session.snapshot().plugin_values
+        assert not session.state().plugin_values
 
 
 async def test_default_policy_allows_each_unrestricted_tool():
@@ -219,7 +219,7 @@ async def test_feature_instruction_state_survives_compaction_without_creating_me
     )
     text = "\n".join(message.text for message in session.messages)
     assert "current" not in text and "old" not in text
-    replay = SessionLog("context-replay", state=session.snapshot())
+    replay = SessionLog("context-replay", state=session.state())
     assert replay.messages == session.messages
     assert replay.plugin_values == {"user": "current"}
 
@@ -231,7 +231,7 @@ async def test_public_session_type_and_forks_open_as_independent_conversations()
     async with app.session() as session:
         assert isinstance(session, LiveSession)
         await session.run("Remember the original")
-        branch = session.snapshot()
+        branch = session.state()
     async with app.session(state=branch) as alternative:
         await alternative.run("Try another approach")
         assert alternative.messages[-1].text == "alternate"

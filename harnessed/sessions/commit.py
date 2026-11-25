@@ -24,11 +24,11 @@ from harnessed.events import (
 
 from .journal import (
     STORAGE_CONFIG,
-    CheckpointExtension,
-    CheckpointRequest,
     JournalEntry,
+    JournalExtension,
+    JournalRequest,
     Resources,
-    SessionBoundary,
+    SessionSnapshot,
     StoredResources,
     attach_resources,
 )
@@ -37,7 +37,7 @@ from .state import SessionState
 _BARRIERS = (
     InboxAddedEvent
     | InboxRemovedEvent
-    | CheckpointRequest
+    | JournalRequest
     | ToolExecutionStartedEvent
     | ToolExecutionFinishedEvent
     | ToolCallFinishedEvent
@@ -48,7 +48,7 @@ _BARRIERS = (
     | ApprovalRevokedEvent
     | PluginValueChangedEvent
     | CompactionAppliedEvent
-    | CheckpointExtension
+    | JournalExtension
 )
 
 
@@ -56,9 +56,9 @@ _BARRIERS = (
 class SessionCommit:
     """The journal entries a session wrote since its previous commit.
 
-    Append ``journal`` to the session's stored entries. When ``boundary`` is not
-    None, the session reached a new rest point: replace the stored boundary in
-    the same transaction. Entries before the stored boundary are no longer
+    Append ``journal`` to the session's stored entries. When ``snapshot`` is not
+    None, the session reached a new rest point: replace the stored snapshot in
+    the same transaction. Entries before the stored snapshot are no longer
     needed to reopen the session; keep them as an audit trail or delete them.
 
     Sequences are stable and contiguous, so a store can key entries by
@@ -69,7 +69,7 @@ class SessionCommit:
 
     session_id: Annotated[str, Field(min_length=1)]
     journal: tuple[JournalEntry, ...]
-    boundary: SessionBoundary | None = None
+    snapshot: SessionSnapshot | None = None
 
     def __post_init__(self) -> None:
         if not self.journal:
@@ -79,12 +79,12 @@ class SessionCommit:
             for previous, following in pairwise(self.journal)
         ):
             raise ValueError("Journal entries must have contiguous ascending sequences")
-        boundary = self.boundary
-        if boundary is not None:
-            if boundary.session_id != self.session_id:
-                raise ValueError("A commit's boundary must belong to its session")
-            if boundary.sequence > self.next_sequence:
-                raise ValueError("A commit's boundary cannot lie beyond its journal")
+        snapshot = self.snapshot
+        if snapshot is not None:
+            if snapshot.session_id != self.session_id:
+                raise ValueError("A commit's snapshot must belong to its session")
+            if snapshot.sequence > self.next_sequence:
+                raise ValueError("A commit's snapshot cannot lie beyond its journal")
 
     @property
     def next_sequence(self) -> int:
@@ -97,9 +97,9 @@ type CommitHandler = Callable[[SessionCommit], Awaitable[None]]
 
 
 class CommitCapture(NamedTuple):
-    """What a session hands to a delivery: its current boundary and every resource it holds."""
+    """What a session hands to a delivery: its current snapshot and every resource it holds."""
 
-    boundary: SessionBoundary
+    snapshot: SessionSnapshot
     resources: Resources
 
 
@@ -114,9 +114,9 @@ class CommitDelivery:
     admission with the same error: the application's last stored commit stays
     the truth, and the conversation continues by reopening from it.
 
-    A commit carries a new boundary when the conversation state differs from
-    the last delivered boundary's state. Resources travel once: with the
-    boundary that holds them, or on the last entry of the first commit after
+    A commit carries a new snapshot when the conversation state differs from
+    the last delivered snapshot's state. Resources travel once: with the
+    snapshot that holds them, or on the last entry of the first commit after
     the session stored them.
 
     The handler runs while the log holds its admission lock, so it must not
@@ -164,14 +164,14 @@ class CommitDelivery:
         if not self._pending:
             return
         current = capture()
-        boundary = current.boundary if self._is_new(current.boundary.state) else None
-        stored = StoredResources.of(boundary) if boundary is not None else self._stored
+        snapshot = current.snapshot if self._is_new(current.snapshot.state) else None
+        stored = StoredResources.of(snapshot) if snapshot is not None else self._stored
         added = stored.missing(current.resources)
         journal = attach_resources(self._pending, added)
-        commit = SessionCommit(current.boundary.session_id, journal, boundary=boundary)
+        commit = SessionCommit(current.snapshot.session_id, journal, snapshot=snapshot)
         await self._hand_over(commit)
-        if boundary is not None:
-            self._state = boundary.state
+        if snapshot is not None:
+            self._state = snapshot.state
         stored.add(added)
         self._stored = stored
         self._pending.clear()
@@ -199,7 +199,7 @@ class CommitDelivery:
             self._delivering = None
 
     def _is_new(self, state: SessionState) -> bool:
-        """Whether the state differs from the last delivered boundary's state."""
+        """Whether the state differs from the last delivered snapshot's state."""
         previous = self._state
         if previous is state:
             return False

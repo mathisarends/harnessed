@@ -84,7 +84,7 @@ async def test_large_results_spill_to_session_files_and_keep_structured_metadata
         assert AuditProjection(events).messages == agent.log.messages
         assert any(isinstance(e, SpillCreatedEvent) for e in events)
         ref = result.spill
-        state = agent.snapshot()
+        state = agent.state()
     spill_2 = Spill()
     async with Application(
         model=ScriptedModel([]),

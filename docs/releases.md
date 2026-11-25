@@ -9,12 +9,13 @@ is the complete version history and upgrade reference.
 Applications [persist sessions with a `SessionStore`](guides/sessions.md#persist-sessions-with-a-store):
 `read` returns the stored documents and `write` stores each commit, and
 `agent.session(id=..., store=...)` reopens or starts the session. Sessions persist
-as a boundary and an append-only journal. A commit inside a turn carries only its
-new journal entries, and the boundary is written once per turn or idle change, so
+as a snapshot and an append-only journal. A commit inside a turn carries only its
+new journal entries, and the snapshot is written once per turn or idle change, so
 storage per turn no longer grows with the conversation.
 
 **Upgrade.** This release breaks the persistence API and stored checkpoints.
-`on_commit` is replaced by `store=`. Format **5** checkpoints and format **6**
+`on_commit` is replaced by `store=`, `session.snapshot()` is now
+`session.state()` and `SessionCheckpoint` is now `SessionRecovery`. Format **5** checkpoints and format **6**
 execution documents cannot be read and are not migrated. Export idle
 conversations as `SessionState` with 0.28.0 first, then import them into a store.
 Follow the

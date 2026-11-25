@@ -8,7 +8,7 @@ from harnessed.events import TurnEndedEvent, TurnOutcome
 from harnessed.hooks import SessionOpened
 from harnessed.kernel import PluginScope, hook, needs
 from harnessed.models import ModelChunk, UserMessage
-from harnessed.sessions import SessionCheckpoint
+from harnessed.sessions import SessionRecovery
 from harnessed.sessions.log import SessionLog
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._commits import CommitRecorder
@@ -60,7 +60,7 @@ async def test_open_hook_failure_releases_resources_before_propagating():
     assert released == [True]
 
 
-async def _interrupted_checkpoint() -> SessionCheckpoint:
+async def _interrupted_checkpoint() -> SessionRecovery:
     started, release = asyncio.Event(), asyncio.Event()
 
     async def respond(request):
@@ -71,7 +71,7 @@ async def _interrupted_checkpoint() -> SessionCheckpoint:
     async with Agent(model=CallbackModel(respond)).session() as session:
         await session.submit("go")
         await asyncio.wait_for(started.wait(), timeout=5)
-        checkpoint = session.checkpoint()
+        checkpoint = session.recovery()
         release.set()
     assert checkpoint.state is not None
     return checkpoint

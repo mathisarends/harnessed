@@ -269,7 +269,7 @@ async def state_consumer(agent: AppAgent) -> None:
     assert_type(result.state, SessionState)
     assert_type(result.state.to_json(), str)
     async with agent.session(state=SessionState.from_json(result.state.to_json())) as session:
-        assert_type(session.snapshot(), SessionState)
+        assert_type(session.state(), SessionState)
         imported = SessionState.from_messages(session.messages, assets=())
         assert_type(imported, SessionState)
 

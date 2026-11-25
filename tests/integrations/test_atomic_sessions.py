@@ -57,7 +57,7 @@ async def test_reply_and_checkpoint_roll_back_without_reporting_success(mode):
         ]
         stored = await store.read("failed")
         assert stored is not None
-        history = stored.checkpoint().state.history
+        history = stored.recovery().state.history
         assert "done" not in [entry.message.text for entry in history]
         assert len(model.requests) == 1
 

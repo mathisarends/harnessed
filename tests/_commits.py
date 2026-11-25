@@ -2,9 +2,9 @@ from collections.abc import Awaitable, Callable
 
 from harnessed.sessions import (
     JournalEntry,
-    SessionBoundary,
-    SessionCheckpoint,
     SessionCommit,
+    SessionRecovery,
+    SessionSnapshot,
     SessionStore,
     StoredSession,
 )
@@ -13,7 +13,7 @@ from harnessed.sessions import (
 class CommitRecorder(SessionStore):
     """An application-owned session store that keeps every delivered commit.
 
-    It stores each session like a database would: the latest boundary and every
+    It stores each session like a database would: the latest snapshot and every
     journal entry keyed by its sequence. With ``documents=True`` both are kept as
     JSON documents and validated again on read, like JSONB columns.
     """
@@ -22,27 +22,27 @@ class CommitRecorder(SessionStore):
         self.commits: list[SessionCommit] = []
         self.before: Callable[[SessionCommit], None] | None = None
         self._documents = documents
-        self._boundaries: dict[str, SessionBoundary | dict[str, object]] = {}
+        self._boundaries: dict[str, SessionSnapshot | dict[str, object]] = {}
         self._journals: dict[str, dict[int, JournalEntry | dict[str, object]]] = {}
 
     async def write(self, commit: SessionCommit) -> None:
         if self.before is not None:
             self.before(commit)
         self.commits.append(commit)
-        if commit.boundary is not None:
-            boundary = commit.boundary
+        if commit.snapshot is not None:
+            snapshot = commit.snapshot
             self._boundaries[commit.session_id] = (
-                boundary.to_dict() if self._documents else boundary
+                snapshot.to_dict() if self._documents else snapshot
             )
         journal = self._journals.setdefault(commit.session_id, {})
         for entry in commit.journal:
             journal[entry.sequence] = entry.to_dict() if self._documents else entry
 
-    def put(self, checkpoint: SessionCheckpoint) -> None:
-        """Store a checkpoint as if its boundary and journal had been written."""
+    def put(self, checkpoint: SessionRecovery) -> None:
+        """Store a checkpoint as if its snapshot and journal had been written."""
         session_id = checkpoint.session_id
-        boundary = checkpoint.boundary
-        self._boundaries[session_id] = boundary.to_dict() if self._documents else boundary
+        snapshot = checkpoint.snapshot
+        self._boundaries[session_id] = snapshot.to_dict() if self._documents else snapshot
         self._journals[session_id] = {
             entry.sequence: entry.to_dict() if self._documents else entry
             for entry in checkpoint.journal
@@ -60,16 +60,16 @@ class CommitRecorder(SessionStore):
     def __contains__(self, session_id: str) -> bool:
         return session_id in self._boundaries
 
-    def latest(self, session_id: str) -> SessionCheckpoint:
-        boundary = self._boundaries[session_id]
+    def latest(self, session_id: str) -> SessionRecovery:
+        snapshot = self._boundaries[session_id]
         entries = [self._journals[session_id][key] for key in sorted(self._journals[session_id])]
-        if isinstance(boundary, dict):
-            return SessionCheckpoint.from_journal(
-                SessionBoundary.from_dict(boundary),
+        if isinstance(snapshot, dict):
+            return SessionRecovery.from_journal(
+                SessionSnapshot.from_dict(snapshot),
                 [JournalEntry.from_dict(entry) for entry in entries if isinstance(entry, dict)],
             )
-        return SessionCheckpoint.from_journal(
-            boundary, [entry for entry in entries if isinstance(entry, JournalEntry)]
+        return SessionRecovery.from_journal(
+            snapshot, [entry for entry in entries if isinstance(entry, JournalEntry)]
         )
 
     def session_ids(self) -> list[str]:
@@ -98,5 +98,5 @@ class Writes(SessionStore):
         await self._write(commit)
 
 
-def _document(value: SessionBoundary | JournalEntry | dict[str, object]) -> dict[str, object]:
+def _document(value: SessionSnapshot | JournalEntry | dict[str, object]) -> dict[str, object]:
     return value if isinstance(value, dict) else value.to_dict()

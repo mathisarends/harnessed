@@ -20,11 +20,11 @@ from harnessed.events import (
 )
 from harnessed.models import ModelChunk, ModelRequest, ToolCallDelta, UserMessage
 from harnessed.runtime.hooks import SessionAppended
-from harnessed.sessions import CheckpointExtension, JournalEntry, SessionCommit
+from harnessed.sessions import JournalEntry, JournalExtension, SessionCommit
 from harnessed.sessions.values import PluginValues
 from harnessed.testing import CallbackModel, ScriptedModel
-from tests._checkpoints import boundary
 from tests._commits import CommitRecorder
+from tests._recovery import snapshot
 
 
 class Brief:
@@ -111,11 +111,11 @@ async def test_commits_cover_each_live_event_once_even_after_compaction_and_reop
         await session.run("kept")
         await session.run("second input")
         assert any(isinstance(event, CompactionAppliedEvent) for _, event in observed)
-        assert first_input not in [entry.message.text for entry in session.snapshot().history]
+        assert first_input not in [entry.message.text for entry in session.state().history]
         entries = [entry for commit in store.commits for entry in commit.journal]
         assert [entry.sequence for entry in entries] == [seq for seq, _ in observed]
         assert [entry.record.type for entry in entries] == [
-            "checkpoint.request" if event.type == "model.requested" else event.type
+            "journal.request" if event.type == "model.requested" else event.type
             for _, event in observed
         ]
 
@@ -146,8 +146,8 @@ async def test_pending_changes_keep_their_order_and_empty_flush_does_not_deliver
         assert len(store.commits) == before + 1
         assert [entry.sequence for entry in commit.journal] == [1, 2]
         assert all(isinstance(entry.record, MessageAppendedEvent) for entry in commit.journal)
-        assert commit.boundary is not None
-        assert [entry.message.text for entry in commit.boundary.state.history][-2:] == [
+        assert commit.snapshot is not None
+        assert [entry.message.text for entry in commit.snapshot.state.history][-2:] == [
             "first",
             "second",
         ]
@@ -165,7 +165,7 @@ async def test_idle_custom_events_are_available_as_changes_without_a_store_catal
         commit = store.commits[-1]
         assert not store.latest(session.id).events
         (entry,) = commit.journal
-        assert isinstance(entry.record, CheckpointExtension)
+        assert isinstance(entry.record, JournalExtension)
         assert entry.record.tag == "project.indexed" and entry.record.data == {"files": 42}
         adapter = TypeAdapter(SessionCommit)
         assert adapter.validate_json(adapter.dump_json(commit)) == commit
@@ -186,10 +186,10 @@ def test_commit_validates_its_boundary_and_nested_backend_schema():
     with pytest.raises(ValidationError, match="at least one"):
         SessionCommit("session", ())
     with pytest.raises(ValidationError, match="beyond its journal"):
-        SessionCommit("session", (entry,), boundary=boundary(sequence=2))
+        SessionCommit("session", (entry,), snapshot=snapshot(sequence=2))
     with pytest.raises(ValidationError, match="its session"):
-        SessionCommit("other", (entry,), boundary=boundary(sequence=1))
-    value = SessionCommit("session", (entry,), boundary=boundary(sequence=1))
+        SessionCommit("other", (entry,), snapshot=snapshot(sequence=1))
+    value = SessionCommit("session", (entry,), snapshot=snapshot(sequence=1))
     envelope = BackendEnvelope(commit=value)
     assert BackendEnvelope.model_validate_json(envelope.model_dump_json()).commit == value
     assert "JournalEntry" in BackendEnvelope.model_json_schema()["$defs"]

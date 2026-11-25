@@ -75,7 +75,7 @@ async def test_spawn_returns_before_child_and_completion_wakes_idle_coordinator(
         await asyncio.wait_for(started.wait(), 2)
         assert first.text == "Coordinator worked independently"
         assert session.children[0].status is SubagentStatus.RUNNING
-        state = SessionState.from_json(session.snapshot().to_json())
+        state = SessionState.from_json(session.state().to_json())
         assert state.children == session.children
         await session.flush()
         stored = store.latest("parent")

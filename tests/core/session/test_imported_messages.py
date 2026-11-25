@@ -69,7 +69,7 @@ async def test_imported_messages_are_earlier_context_for_compaction():
         assert await session.compact() is None
         await session.run("Recent question.")
         assert await session.compact() is not None
-        history = [entry.message for entry in session.snapshot().history]
+        history = [entry.message for entry in session.state().history]
     assert not any(message in history for message in imported)
     assert history[-1].text == "kept"
 

@@ -16,7 +16,7 @@ from harnessed.models import ApprovalResponse, Decision, ImageReference, ToolCal
 from harnessed.plugins import Spill
 from harnessed.plugins.spill import SpillStore
 from harnessed.runtime.control import SessionStatus
-from harnessed.sessions import CheckpointRequest, SessionCheckpoint, SessionCommit, SessionState
+from harnessed.sessions import JournalRequest, SessionCommit, SessionRecovery, SessionState
 from harnessed.sessions.values import PluginValues
 from harnessed.testing import ScriptedModel, call
 from tests._commits import CommitRecorder, Writes
@@ -62,7 +62,7 @@ async def test_commit_changes_are_contiguous_across_deliveries(recorder):
 
 
 async def test_typed_handler_does_not_require_checkpoint_json_encoding(monkeypatch):
-    def forbidden(_self: SessionCheckpoint) -> str:
+    def forbidden(_self: SessionRecovery) -> str:
         raise AssertionError("The runtime must not require JSON for a typed handler")
 
     commits: list[SessionCommit] = []
@@ -70,16 +70,16 @@ async def test_typed_handler_does_not_require_checkpoint_json_encoding(monkeypat
     async def keep(commit: SessionCommit) -> None:
         commits.append(commit)
 
-    monkeypatch.setattr(SessionCheckpoint, "to_json", forbidden)
+    monkeypatch.setattr(SessionRecovery, "to_json", forbidden)
     agent = Agent(model=ScriptedModel(["done"]))
     async with agent.session(store=Writes(keep)) as session:
         await session.run(UserMessage("Hello", id="application-message"))
-    boundary = commits[-1].boundary
-    assert boundary is not None
-    checkpoint = SessionCheckpoint.from_journal(
-        boundary, [entry for commit in commits for entry in commit.journal]
+    snapshot = commits[-1].snapshot
+    assert snapshot is not None
+    recovery = SessionRecovery.from_journal(
+        snapshot, [entry for commit in commits for entry in commit.journal]
     )
-    async with agent.session(state=checkpoint) as restored:
+    async with agent.session(state=recovery) as restored:
         assert restored.messages[0].id == "application-message"
         assert restored.messages[-1].text == "done"
 
@@ -103,7 +103,7 @@ async def test_session_checkpoint_captures_a_paused_turn_without_a_handler():
         await asyncio.sleep(0)
         release.set()
         await asyncio.wait_for(pausing, timeout=5)
-        checkpoint = SessionCheckpoint.from_json(session.checkpoint().to_json())
+        checkpoint = SessionRecovery.from_json(session.recovery().to_json())
     async with agent.session(state=checkpoint) as restored:
         await restored.resume()
         await asyncio.wait_for(restored.wait_until_idle(), timeout=5)
@@ -200,8 +200,8 @@ async def test_storage_failure_reaches_the_run_caller_without_returning_success(
     recorder = CommitRecorder()
 
     def fail_terminal(commit: SessionCommit) -> None:
-        boundary = commit.boundary
-        history = boundary.state.history if boundary is not None else ()
+        snapshot = commit.snapshot
+        history = snapshot.state.history if snapshot is not None else ()
         if history and history[-1].message.text == "done":
             raise OSError("storage unavailable")
 
@@ -246,7 +246,7 @@ async def test_handler_writing_to_its_own_session_fails_the_commit(operation):
         if not holder:
             return
         session = holder[0]
-        assert session.checkpoint().session_id == commit.session_id
+        assert session.recovery().session_id == commit.session_id
         try:
             if operation == "flush":
                 await session.flush()
@@ -369,7 +369,7 @@ async def test_restoring_structured_pending_work_requires_the_registered_output_
 async def test_application_ids_need_no_handler_and_invalid_states_are_rejected():
     async with Agent(model=ScriptedModel([])).session(id="conversation-7") as session:
         assert session.id == "conversation-7"
-    with pytest.raises(ConfigError, match="SessionCheckpoint"):
+    with pytest.raises(ConfigError, match="SessionRecovery"):
         async with Agent(model=ScriptedModel([])).session(state="{}"):  # type: ignore[arg-type]
             pytest.fail("Serialized documents must be validated by the application")
 
@@ -403,7 +403,7 @@ async def test_a_store_reopens_by_id_and_a_checkpoint_under_its_own_session_id(r
 
 def test_corrupt_documents_raise_a_format_error():
     with pytest.raises(SessionFormatError):
-        SessionCheckpoint.from_dict({"version": 99})
+        SessionRecovery.from_dict({"version": 99})
     with pytest.raises(SessionFormatError):
         SessionState.from_dict({"history": [{"position": "first"}]})
     with pytest.raises(SessionFormatError):
@@ -499,7 +499,7 @@ async def test_model_request_is_not_executed_when_its_intent_cannot_be_saved():
     model = ScriptedModel(["must not execute"])
 
     def unavailable(commit: SessionCommit) -> None:
-        if any(isinstance(entry.record, CheckpointRequest) for entry in commit.journal):
+        if any(isinstance(entry.record, JournalRequest) for entry in commit.journal):
             raise OSError("model intent unavailable")
 
     recorder.before = unavailable

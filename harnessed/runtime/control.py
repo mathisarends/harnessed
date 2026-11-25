@@ -214,7 +214,7 @@ class SessionControl:
         """Repair after a driver failure and discard the queued runs it settles as failed.
 
         A failed commit keeps its queue: the log rejects appends until the
-        application reopens the session from its last stored checkpoint.
+        application reopens the session from its last stored snapshot and journal.
         """
         self.error = error
         await self.finish_termination(discard_inbox=not self.log.persistence_failed)

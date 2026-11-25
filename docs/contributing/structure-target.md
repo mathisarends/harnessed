@@ -18,7 +18,7 @@ The plugin-recipe design is implemented. Future API proposals belong in
 | `tools` | Declarative recipe references and activation-bound prepared calls |
 | `events` | Domain event values and their enums, independent of runtime orchestration |
 | `models` | Provider-independent request, message, usage and diagnostic contracts |
-| `sessions` | Session log, projections, checkpoints and stores |
+| `sessions` | Session log, projections, snapshots, journal and stores |
 | `sessions.result` | Typed turn result and result assembly from durable records |
 | `agent.py` | Resolve composition before collecting contributions and creating sessions |
 | `testing.plugins` | Model-free typed mounts with fake services and cleanup |
