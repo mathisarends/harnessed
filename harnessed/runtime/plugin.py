@@ -316,7 +316,8 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         recipe: Self = self.recipe
         excluded = recipe._excluded_tools
         if excluded:
-            scope[ToolRegistry].exclude(excluded, owner=scope)
+            bound = tuple(replace(ref, owner=self) for ref in excluded)
+            scope[ToolRegistry].exclude(bound, owner=scope)
 
     async def _teardown(self, scope: Scope) -> None:
         await self.teardown(scope.plugin_scope)

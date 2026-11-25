@@ -1,11 +1,11 @@
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 
 from harnessed.kernel import Scope
 from harnessed.models import ToolDefinition
 
 from .availability import ToolExplanation
 from .info import ToolInfo
-from .references import ToolSelector
+from .references import ToolReference, ToolSelector
 from .registry import ToolRegistry
 
 
@@ -37,8 +37,8 @@ class SessionTools(Mapping[str, ToolDefinition]):
     def names(self) -> frozenset[str]:
         return frozenset(self)
 
-    def explain(self, name: str) -> ToolExplanation:
-        """Explain a registered tool's visibility; this does not grant execution permission.
+    def explain(self, name: str | Callable[..., object] | ToolReference) -> ToolExplanation:
+        """Explain the availability of a tool by its model-facing name or decorated method.
 
         Missing services take precedence over predicates. Predicate failures
         propagate as they do when constructing a model request.

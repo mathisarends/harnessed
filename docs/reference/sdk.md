@@ -618,7 +618,7 @@ override `present(service)` to expose a required service as a typed view, as
 `SessionValue` does; the binding remains a lifetime requirement of the plugin.
 Higher-level `Plugin.setup()` and `teardown()` require service fields instead of
 `Inject` parameters; standalone kernel lifecycle injection remains available.
-`session.tools.explain(name)` returns a frozen `ToolExplanation` distinguishing
+`session.tools.explain(...)` accepts a wire name or decorated tool method and returns a frozen `ToolExplanation` distinguishing
 available, missing-service, disabled, excluded and not-registered states through
 `ToolAvailability`. Both types are exported by `harnessed.tools`; the existing
 tool mapping continues to contain only model-visible definitions.

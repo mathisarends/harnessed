@@ -45,9 +45,16 @@ async def test_exclusions_release_names_and_follow_the_mount_lifetime():
         view = session.tools
         async with session.mount(reduced):
             assert view.explain("drag_at").availability is ToolAvailability.EXCLUDED
-            async with session.mount(Pointer(name="full")):
+            assert view.explain(Pointer.drag) == view.explain("drag_at")
+            full = Pointer(name="full")
+            async with session.mount(full):
+                assert view.explain(reduced.drag).availability is ToolAvailability.EXCLUDED
+                assert view.explain(full.drag).name == "drag_at"
+                assert view.explain(full.drag) == view.explain("drag_at")
                 assert view.explain("drag_at").availability is ToolAvailability.AVAILABLE
             assert view.explain("drag_at").availability is ToolAvailability.EXCLUDED
+            assert view.explain(full.drag).availability is ToolAvailability.NOT_REGISTERED
+        assert view.explain(reduced.drag).availability is ToolAvailability.NOT_REGISTERED
         assert view.explain("drag_at").availability is ToolAvailability.NOT_REGISTERED
 
 

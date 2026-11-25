@@ -21,6 +21,10 @@ class ToolReference:
     def matches(self, callback: Callable) -> bool:
         declaration = getattr(callback, "__func__", callback)
         owner = getattr(callback, "__self__", None)
+        return self.matches_binding(declaration, owner)
+
+    def matches_binding(self, declaration: Callable, owner: object | None) -> bool:
+        """Match a registered or excluded declaration by identity and optional owner."""
         return declaration is self.declaration and (
             self.owner is None
             or self.owner is owner

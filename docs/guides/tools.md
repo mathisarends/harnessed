@@ -343,7 +343,12 @@ parameter always belongs to the model. Plugin-owned service bindings normally us
 `session.tools.explain("lookup")` also inspects a registered tool hidden from that
 mapping. It returns a frozen `ToolExplanation` with `name`, `availability`,
 `definition` and `missing_services`. Import `ToolExplanation` and `ToolAvailability`
-from `harnessed.tools`.
+from `harnessed.tools`. Pass a decorated method such as
+`session.tools.explain(Lookups.lookup)` to inspect that declaration. A bound
+method selects its plugin instance or recipe. A method hidden by a different
+override reports `NOT_REGISTERED`. Looking up the wire name reports the current
+override. An active recipe's excluded method reports `EXCLUDED` even if another
+recipe supplies the same name.
 
 `ToolAvailability` distinguishes `AVAILABLE`, `MISSING_SERVICES`, `DISABLED`, `EXCLUDED` and
 `NOT_REGISTERED`. Missing required tool and enabled-predicate services are reported
