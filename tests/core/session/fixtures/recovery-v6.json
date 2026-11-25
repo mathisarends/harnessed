@@ -1,0 +1,58 @@
+{
+  "snapshot": {
+    "session_id": "resting",
+    "sequence": 1,
+    "state": {
+      "version": 4,
+      "history": [
+        {
+          "position": 0,
+          "message": {
+            "content": "Conversation baseline",
+            "id": "user-1",
+            "role": "user"
+          },
+          "turn_id": null,
+          "lifetime": "session",
+          "observation": null,
+          "resources": [],
+          "is_input": false
+        }
+      ],
+      "plugin_values": {},
+      "turns": [],
+      "steps": [],
+      "turns_since_compaction": 0,
+      "compacted_through": 0,
+      "preserved_turns": [],
+      "observation_limit": null,
+      "assets": [],
+      "files": [],
+      "children": [],
+      "parent": null
+    },
+    "control": {
+      "type": "session.control.changed",
+      "state": "active",
+      "keep_inbox": false
+    },
+    "seed": [],
+    "assets": [],
+    "files": [],
+    "version": 1
+  },
+  "journal": [
+    {
+      "sequence": 1,
+      "record": {
+        "type": "session.control.changed",
+        "state": "paused",
+        "keep_inbox": false
+      },
+      "assets": [],
+      "files": [],
+      "version": 1
+    }
+  ],
+  "version": 6
+}

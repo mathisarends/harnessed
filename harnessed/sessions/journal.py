@@ -14,7 +14,7 @@ from dataclasses import field, replace
 from enum import StrEnum
 from typing import TYPE_CHECKING, Annotated, Literal, NamedTuple, Self
 
-from pydantic import ConfigDict, Field, TypeAdapter, ValidationError
+from pydantic import ConfigDict, Field, TypeAdapter
 from pydantic.dataclasses import dataclass
 
 from harnessed.errors import SessionFormatError
@@ -34,7 +34,9 @@ from harnessed.models.assets import AssetValue
 from harnessed.models.values import VALUE_CONFIG, JSONMapping, JSONValue, to_dict
 
 from .files import TextValue
+from .formats import ENTRY, SNAPSHOT
 from .state import HistoryEntry, SessionState
+from .upcasting import integer_version
 
 if TYPE_CHECKING:
     from harnessed.events.registry import EventRegistry
@@ -149,7 +151,7 @@ class SessionSnapshot:
     seed: tuple[SnapshotSeed, ...] = ()
     assets: tuple[AssetValue, ...] = ()
     files: tuple[TextValue, ...] = ()
-    version: Literal[1] = 1
+    version: Annotated[Literal[1], integer_version] = 1
 
     def __post_init__(self) -> None:
         if not self.session_id.strip():
@@ -170,16 +172,12 @@ class SessionSnapshot:
     @classmethod
     def from_dict(cls, payload: Mapping[str, JSONValue]) -> Self:
         """Validate a document returned by ``to_dict``."""
-        return cls.from_json(encode_document(payload, "Invalid session snapshot"))
+        return cls.from_json(SNAPSHOT.encode_input(payload))
 
     @classmethod
     def from_json(cls, payload: str | bytes) -> Self:
         """Validate a document returned by ``to_json``."""
-        adapter = TypeAdapter(cls)
-        try:
-            return adapter.validate_json(payload)
-        except (ValidationError, ValueError, TypeError, KeyError) as error:
-            raise SessionFormatError("Invalid session snapshot") from error
+        return SNAPSHOT.decode(TypeAdapter(cls), payload)
 
 
 @dataclass(frozen=True, config=STORAGE_CONFIG)
@@ -200,7 +198,7 @@ class JournalEntry:
     record: JournalRecord
     assets: tuple[AssetValue, ...] = ()
     files: tuple[TextValue, ...] = ()
-    version: Literal[1] = 1
+    version: Annotated[Literal[1], integer_version] = 1
 
     def __post_init__(self) -> None:
         match self.record:
@@ -222,16 +220,12 @@ class JournalEntry:
     @classmethod
     def from_dict(cls, payload: Mapping[str, JSONValue]) -> Self:
         """Validate a document returned by ``to_dict``."""
-        return cls.from_json(encode_document(payload, "Invalid journal entry"))
+        return cls.from_json(ENTRY.encode_input(payload))
 
     @classmethod
     def from_json(cls, payload: str | bytes) -> Self:
         """Validate a document returned by ``to_json``."""
-        adapter = TypeAdapter(cls)
-        try:
-            return adapter.validate_json(payload)
-        except (ValidationError, ValueError, TypeError, KeyError) as error:
-            raise SessionFormatError("Invalid journal entry") from error
+        return ENTRY.decode(TypeAdapter(cls), payload)
 
 
 class MessageReferences:
@@ -311,14 +305,6 @@ def attach_resources(
         return tuple(entries)
     *earlier, last = entries
     return (*earlier, replace(last, assets=resources.assets, files=resources.files))
-
-
-def encode_document(payload: Mapping[str, JSONValue], failure: str) -> str:
-    """Encode decoded JSON values for validation, failing with a format error."""
-    try:
-        return json.dumps(payload, allow_nan=False)
-    except (TypeError, ValueError) as error:
-        raise SessionFormatError(failure) from error
 
 
 def _slot(message: Message, known: Message | None) -> str | Message:

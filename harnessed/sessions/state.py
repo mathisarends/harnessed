@@ -23,6 +23,8 @@ from harnessed.models.values import VALUE_CONFIG, JSONMapping, JSONValue
 
 from .children import ChildSession
 from .files import TextValue
+from .formats import STATE
+from .upcasting import integer_version
 
 _CONFIG = ConfigDict(**VALUE_CONFIG, ser_json_bytes="base64", val_json_bytes="base64")
 
@@ -100,7 +102,7 @@ class SessionState:
 
     __hash__ = None
 
-    version: Literal[4] = 4
+    version: Annotated[Literal[4], integer_version] = 4
     history: tuple[HistoryEntry, ...] = ()
     plugin_values: JSONMapping = field(default_factory=dict)
     turns: tuple[HistoryTurn, ...] = ()
@@ -148,11 +150,7 @@ class SessionState:
     @classmethod
     def from_dict(cls, payload: Mapping[str, JSONValue]) -> Self:
         """Validate a document returned by ``to_dict`` or decoded from ``to_json``."""
-        try:
-            encoded = json.dumps(payload, allow_nan=False)
-        except (TypeError, ValueError) as error:
-            raise SessionFormatError("Invalid conversation state") from error
-        return cls.from_json(encoded)
+        return cls.from_json(STATE.encode_input(payload))
 
     @classmethod
     def from_messages(
@@ -185,10 +183,7 @@ class SessionState:
     @classmethod
     def from_json(cls, payload: str | bytes) -> Self:
         """Validate the current canonical format, including resource integrity."""
-        try:
-            return TypeAdapter(cls).validate_json(payload)
-        except (ValidationError, ValueError, TypeError) as error:
-            raise SessionFormatError("Invalid conversation state") from error
+        return STATE.decode(TypeAdapter(cls), payload)
 
     def _check_links(self) -> None:
         if len({child.id for child in self.children}) != len(self.children) or len(

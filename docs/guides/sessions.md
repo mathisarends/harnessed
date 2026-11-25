@@ -320,9 +320,46 @@ pending structured work with
 Restoration matches validator identity and schema; stored JSON never imports
 Python code.
 
-Recovery values have format **6**; snapshots and journal entries have format **1**.
-Formats are not automatically migrated. To create an independent
-branch, open the recovery value's terminal `recovery.state` under a new ID.
+To create an independent branch, open the recovery value's terminal
+`recovery.state` under a new ID.
+
+### Read compatibility and offline migration
+
+The SDK reads the following released document versions. Writers always emit
+the current version of each document.
+
+| Document | Readable versions | Written version |
+| --- | --- | --- |
+| Complete recovery (formerly a full checkpoint) | 5, 6 | 6 |
+| Session snapshot | 1 | 1 |
+| Journal entry | 1 | 1 |
+| Conversation state | 4 | 4 |
+
+Use `from_json()` or `from_dict()` as the compatibility boundary. These readers
+apply consecutive upcasters in memory and validate the current result, including
+nested SDK documents. A store that returns snapshot and journal documents via
+`StoredSession` uses the same readers. Opening current-format data takes the
+ordinary typed JSON validation path. Reading performs no storage writes.
+
+For example, a full checkpoint written by Harnessed 0.28 can be resumed directly
+or converted offline for a store with separate snapshot and journal records:
+
+```python
+from harnessed.sessions import SessionRecovery
+
+recovery = SessionRecovery.from_json(old_checkpoint_json)
+snapshot = recovery.snapshot.to_dict()
+journal = [entry.to_dict() for entry in recovery.journal]
+```
+
+For a durable conversion, write that snapshot and journal together in an
+application-owned transaction guarded by the revision you read. Use
+`recovery.to_json()` when the destination stores a single document.
+The version 5 reader expects the complete checkpoint. Stores that kept separate
+0.28 state and execution documents can export a full checkpoint with 0.28's
+`SessionCheckpoint.from_parts(state, execution)` first. Application event data
+retains its original payload and is validated by the registered event class
+when the agent reopens the session.
 
 ## Continue from application-owned state
 

@@ -1,7 +1,7 @@
 import json
 from collections.abc import Iterable, Mapping
 from functools import cached_property
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import TypeAdapter, ValidationError
 from pydantic.dataclasses import dataclass
@@ -12,6 +12,7 @@ from harnessed.models.assets import AssetValue
 from harnessed.models.values import JSONValue
 
 from .files import TextValue
+from .formats import RECOVERY
 from .journal import (
     STORAGE_CONFIG,
     JournalEntry,
@@ -19,9 +20,9 @@ from .journal import (
     JournalRequest,
     MessageReferences,
     SessionSnapshot,
-    encode_document,
 )
 from .state import SessionState
+from .upcasting import integer_version
 
 
 @dataclass(frozen=True, config=STORAGE_CONFIG)
@@ -41,7 +42,7 @@ class SessionRecovery:
 
     snapshot: SessionSnapshot
     journal: tuple[JournalEntry, ...] = ()
-    version: Literal[6] = 6
+    version: Annotated[Literal[6], integer_version] = 6
 
     def __post_init__(self) -> None:
         sequences = [entry.sequence for entry in self.journal]
@@ -116,15 +117,12 @@ class SessionRecovery:
     @classmethod
     def from_dict(cls, payload: Mapping[str, JSONValue]) -> Self:
         """Validate a document returned by ``to_dict``."""
-        return cls.from_json(encode_document(payload, "Invalid session recovery"))
+        return cls.from_json(RECOVERY.encode_input(payload))
 
     @classmethod
     def from_json(cls, payload: str | bytes) -> Self:
         """Validate structural data without needing application event classes."""
-        try:
-            return TypeAdapter(cls).validate_json(payload)
-        except (ValidationError, ValueError, TypeError, KeyError) as error:
-            raise SessionFormatError("Invalid session recovery") from error
+        return RECOVERY.decode(TypeAdapter(cls), payload)
 
 
 def _check_open_turn(events: tuple[JournalEvent, ...]) -> None:
