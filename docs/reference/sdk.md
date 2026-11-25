@@ -265,7 +265,7 @@ plugin_validation=PluginValidation.ERROR)` resolves reusable configuration.
 | Member | Behavior |
 | --- | --- |
 | model | Harnessed Model or provider:model string; wrap native models with PydanticAIModel |
-| instructions | Text prepended to plugin instructions, a fixed SystemPrompt, or a SystemPrompt.from_plugins collection strategy |
+| instructions | Application instructions as text or a SystemPrompt, followed by the selected plugins' instructions |
 | approvals | Application approval rules, defaulting to allow |
 | context | Context window, tool output character limit and optional history compaction |
 | plugins | Iterable of Plugin instances and nested lists or tuples, flattened in order |
@@ -369,17 +369,9 @@ Parts are strings, `Instructions`, nested documents or `None`; `None` is normali
 away. The outermost format controls all nested content. PLAIN joins text with blank
 lines, MARKDOWN adds optional level-two headings, and XML escapes section content.
 
-`SystemPrompt.from_plugins(*parts, format=...)` collects plugin blocks; it is
-also the default when `Agent(instructions=)` is omitted. Fixed parts appear
-before complete plugin blocks in plugin-list order. Providers run once at agent
-construction.
-A plugin provider returns a content document and cannot request collection itself.
-A prompt built with the `SystemPrompt` constructor omits plugin blocks without
-calling their providers; `str(agent.prompt)` lists the omitted plugins.
-Collection strategies cannot be nested inside content.
-
-`Agent(instructions="...")` prepends application text and collects plugin blocks.
-Supply a `SystemPrompt` to select a complete document or collection strategy.
+The agent appends each selected plugin's block in plugin-list order, whether
+`instructions=` is omitted, text or a `SystemPrompt`. Providers run once at agent
+construction. Use `plugin.without_instructions()` to omit an individual block.
 
 `Instructions(text="", title=None, description="")` is a content value, not a
 plugin descriptor. `from_file(path=..., title=..., missing_ok=False)` and

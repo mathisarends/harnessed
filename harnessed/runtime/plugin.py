@@ -136,8 +136,6 @@ class Plugin[ConfigT: BaseModel](KernelPlugin):
         if not isinstance(instructions, str | SystemPrompt):
             raise TypeError("instructions must be text or a SystemPrompt")
         document = SystemPrompt(instructions) if isinstance(instructions, str) else instructions
-        if document.collects_plugins:
-            raise ValueError("Plugin instructions must supply content, not plugin collection")
         configured: Self = self._configured_copy()
         configured._instruction_override = document
         return configured

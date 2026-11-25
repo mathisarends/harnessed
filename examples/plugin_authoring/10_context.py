@@ -94,7 +94,7 @@ async def main():
                 RelevantMemories(),
                 memory_tools,
             ],
-            instructions=SystemPrompt.from_plugins(
+            instructions=SystemPrompt(
                 Instructions(text="You are a code reviewer."),
                 Instructions.from_file(path=root / "AGENTS.md"),
             ),

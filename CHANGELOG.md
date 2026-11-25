@@ -29,6 +29,11 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 
 ### Changed
 
+- `Agent(instructions=SystemPrompt(...))` now includes the configured plugins'
+  instructions after the application sections, just like string instructions.
+  Replace `SystemPrompt.from_plugins(...)` with `SystemPrompt(...)`. The
+  `collects_plugins` field has been removed. Use `plugin.without_instructions()`
+  on individual plugins whose guidance you intend to omit.
 - Session persistence is a snapshot plus an append-only journal. A
   `SessionSnapshot` is the session at its last rest point: the closed
   conversation state, its controls, queued inputs and approvals. Every durable

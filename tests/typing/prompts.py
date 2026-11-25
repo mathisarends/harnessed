@@ -17,11 +17,9 @@ assert_type(feature.with_instructions("Custom usage."), PromptFeature)
 assert_type(feature.with_instructions(SystemPrompt()), PromptFeature)
 assert_type(feature.without_instructions(), PromptFeature)
 feature.with_instructions(42)  # ty: ignore[invalid-argument-type]
-layout = SystemPrompt.from_plugins(format=PromptFormat.MARKDOWN)
+layout = SystemPrompt(format=PromptFormat.MARKDOWN)
 Agent(instructions=layout, plugins=[feature])
 Agent(instructions=layout)
-assert_type(SystemPrompt.from_plugins().collects_plugins, bool)
-SystemPrompt.from_plugins(order="as_listed")  # ty: ignore[unknown-argument]
 SystemPrompt(42)  # ty: ignore[invalid-argument-type]
 SystemPrompt(("raw text",))  # ty: ignore[invalid-argument-type]
 SystemPrompt(sections=("raw text",))  # ty: ignore[unknown-argument]

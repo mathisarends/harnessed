@@ -35,28 +35,29 @@ class Observe(Plugin):
         ),
     ],
 )
-async def test_explicit_collection_renders_complete_blocks(format, expected):
+async def test_structured_prompt_formats_application_and_plugin_sections(format, expected):
     agent = Agent(
-        instructions=SystemPrompt.from_plugins("Role.", format=format),
+        instructions=SystemPrompt("Role.", format=format),
         plugins=[Observe()],
     )
     assert await agent.prompt.render() == expected
     assert "Observe.instructions" in str(agent.prompt)
     async with Agent(
         model=ScriptedModel([]),
-        instructions=SystemPrompt.from_plugins("Role.", format=format),
+        instructions=SystemPrompt("Role.", format=format),
         plugins=[Observe()],
     ).session() as session:
         assert await session.prompt.render() == expected
 
 
-async def test_plugin_instructions_follow_application_instructions_by_default():
-    agent = Agent(instructions="Role.", plugins=[Observe()])
-    assert await agent.prompt.render() == "Role.\n\nDOM snapshot.\n\nUse the latest observation."
-    assert SystemPrompt.from_plugins().collects_plugins
-    assert not SystemPrompt("Fixed.").collects_plugins
-    with pytest.raises(TypeError):
-        SystemPrompt.from_plugins(order="as_listed")
+@pytest.mark.parametrize("instructions", ["Role.", SystemPrompt("Role.")])
+async def test_model_receives_application_and_plugin_instructions(instructions):
+    model = ScriptedModel(["Done."])
+    agent = Agent(model=model, instructions=instructions, plugins=[Observe()])
+    await agent.run("Go")
+    assert model.requests[0].messages[0].text == (
+        "Role.\n\nDOM snapshot.\n\nUse the latest observation."
+    )
 
 
 async def test_with_instructions_replaces_only_the_selected_recipe():
@@ -75,7 +76,7 @@ async def test_with_instructions_replaces_only_the_selected_recipe():
     default = Agent(plugins=[original])
     first = Agent(plugins=[configured])
     second = Agent(
-        instructions=SystemPrompt.from_plugins("Role.", format=PromptFormat.MARKDOWN),
+        instructions=SystemPrompt("Role.", format=PromptFormat.MARKDOWN),
         plugins=[revised, Observe()],
     )
     assert calls == [original]
@@ -107,20 +108,6 @@ async def test_without_instructions_omits_an_existing_replacement():
 def test_with_instructions_requires_content():
     with pytest.raises(TypeError, match="text or a SystemPrompt"):
         Observe().with_instructions(42)
-    with pytest.raises(ValueError, match="must supply content"):
-        Observe().with_instructions(SystemPrompt.from_plugins())
-
-
-async def test_explicit_prompt_omits_plugin_instructions_without_evaluating_them():
-    class Feature(Plugin):
-        def instructions(self) -> SystemPrompt:
-            pytest.fail("An explicit prompt must not evaluate plugin instructions")
-
-    agent = Agent(instructions=SystemPrompt("Role.", "Application text."), plugins=[Feature()])
-    assert await agent.prompt.render() == "Role.\n\nApplication text."
-    assert str(agent.prompt).endswith(
-        "Plugin instructions omitted by the explicit prompt\n  - Feature"
-    )
 
 
 def test_only_selected_configuration_is_evaluated_once():
@@ -166,15 +153,6 @@ def test_plugin_provider_must_return_a_document(value):
         Agent(plugins=[Invalid()])
 
 
-def test_plugin_provider_cannot_request_recursive_collection():
-    class Invalid(Plugin):
-        def instructions(self) -> SystemPrompt:
-            return SystemPrompt.from_plugins()
-
-    with pytest.raises(ValueError, match="must return content"):
-        Agent(plugins=[Invalid()])
-
-
 async def test_none_is_normalized_and_nested_documents_inherit_outer_format():
     agent = Agent(
         instructions=SystemPrompt(
@@ -202,11 +180,6 @@ async def test_xml_escaping_and_empty_sections():
         '<section title=\'A &amp; "B"\'>\na &lt; b &amp; "c"\n</section>'
         "\n\n<section>\nUntitled.\n</section>"
     )
-
-
-def test_collection_only_belongs_to_outer_document():
-    with pytest.raises(ValueError, match="outermost"):
-        SystemPrompt(SystemPrompt.from_plugins())
 
 
 @pytest.mark.parametrize("value", [42, ("text",), ["text"]])
