@@ -14,76 +14,76 @@ from harnessed.models.values import JSONValue
 from .files import TextValue
 from .journal import (
     STORAGE_CONFIG,
-    CheckpointEntry,
-    CheckpointRequest,
     JournalEntry,
+    JournalEvent,
+    JournalRequest,
     MessageReferences,
-    SessionBoundary,
+    SessionSnapshot,
     encode_document,
 )
 from .state import SessionState
 
 
 @dataclass(frozen=True, config=STORAGE_CONFIG)
-class SessionCheckpoint:
-    """A stored session: a boundary plus the journal entries written after it.
+class SessionRecovery:
+    """A stored session: a snapshot plus the journal entries written after it.
 
     A ``SessionStore`` reopens a session from its stored documents through
-    this value; ``session.checkpoint()`` captures it on demand, and
+    this value; ``session.recovery()`` captures it on demand, and
     ``Agent.session(state=...)`` accepts it as an in-memory value. Reopening
-    restores the boundary and replays the journal, so an open turn continues
-    where it stopped. ``journal`` starts at the boundary's ``sequence`` and has
+    restores the snapshot and replays the journal, so an open turn continues
+    where it stopped. ``journal`` starts at the snapshot's ``sequence`` and has
     no gaps. It may hold idle events such as queued input or control changes,
-    and at most one open turn; a closed turn always ends at a newer boundary.
+    and at most one open turn; a closed turn always ends at a newer snapshot.
     """
 
     __hash__ = None
 
-    boundary: SessionBoundary
+    snapshot: SessionSnapshot
     journal: tuple[JournalEntry, ...] = ()
     version: Literal[6] = 6
 
     def __post_init__(self) -> None:
         sequences = [entry.sequence for entry in self.journal]
-        start = self.boundary.sequence
+        start = self.snapshot.sequence
         if sequences != list(range(start, start + len(sequences))):
-            raise ValueError("A journal must continue its boundary without gaps")
+            raise ValueError("A journal must continue its snapshot without gaps")
         _check_open_turn(self.events)
 
     @classmethod
-    def from_journal(cls, boundary: SessionBoundary, entries: Iterable[JournalEntry]) -> Self:
-        """Combine a stored boundary with the stored entries, in sequence order.
+    def from_journal(cls, snapshot: SessionSnapshot, entries: Iterable[JournalEntry]) -> Self:
+        """Combine a stored snapshot with the stored entries, in sequence order.
 
-        Entries before the boundary are skipped, so a store may keep them as an
-        audit trail instead of deleting them when a new boundary arrives.
+        Entries before the snapshot are skipped, so a store may keep them as an
+        audit trail instead of deleting them when a new snapshot arrives.
         """
-        journal = tuple(entry for entry in entries if entry.sequence >= boundary.sequence)
+        journal = tuple(entry for entry in entries if entry.sequence >= snapshot.sequence)
         try:
-            return cls(boundary, journal)
+            return cls(snapshot, journal)
         except (ValidationError, ValueError, TypeError) as error:
-            raise SessionFormatError("The journal does not continue its boundary") from error
+            raise SessionFormatError("The journal does not continue its snapshot") from error
 
     @property
     def session_id(self) -> str:
-        """The session this checkpoint reopens."""
-        return self.boundary.session_id
+        """The session this value reopens."""
+        return self.snapshot.session_id
 
     @property
     def state(self) -> SessionState:
-        """The conversation at the boundary; an open turn is not part of it yet."""
-        return self.boundary.state
+        """The conversation at the snapshot; an open turn is not part of it yet."""
+        return self.snapshot.state
 
     @cached_property
-    def events(self) -> tuple[CheckpointEntry, ...]:
-        """The journal's events after the boundary, with every request rebuilt in full."""
-        # Mirror the encoder: references restart from the boundary when the turn starts.
+    def events(self) -> tuple[JournalEvent, ...]:
+        """The journal's events after the snapshot, with every request rebuilt in full."""
+        # Mirror the encoder: references restart from the snapshot when the turn starts.
         references = MessageReferences()
-        events: list[CheckpointEntry] = []
+        events: list[JournalEvent] = []
         for entry in self.journal:
             record = entry.record
             if isinstance(record, TurnStartedEvent):
-                references = MessageReferences(self.boundary.state.history)
-            if isinstance(record, CheckpointRequest):
+                references = MessageReferences(self.snapshot.state.history)
+            if isinstance(record, JournalRequest):
                 events.append(references.resolve(record))
             else:
                 events.append(record)
@@ -92,7 +92,7 @@ class SessionCheckpoint:
     @property
     def assets(self) -> tuple[AssetValue, ...]:
         """Images the journal needs beyond the conversation state."""
-        values = {value.ref.sha256: value for value in self.boundary.assets}
+        values = {value.ref.sha256: value for value in self.snapshot.assets}
         for entry in self.journal:
             values.update((value.ref.sha256, value) for value in entry.assets)
         return tuple(values.values())
@@ -100,7 +100,7 @@ class SessionCheckpoint:
     @property
     def files(self) -> tuple[TextValue, ...]:
         """Text the journal needs beyond the conversation state, newest per key."""
-        values = {value.key: value for value in self.boundary.files}
+        values = {value.key: value for value in self.snapshot.files}
         for entry in self.journal:
             values.update((value.key, value) for value in entry.files)
         return tuple(values.values())
@@ -116,7 +116,7 @@ class SessionCheckpoint:
     @classmethod
     def from_dict(cls, payload: Mapping[str, JSONValue]) -> Self:
         """Validate a document returned by ``to_dict``."""
-        return cls.from_json(encode_document(payload, "Invalid session checkpoint"))
+        return cls.from_json(encode_document(payload, "Invalid session recovery"))
 
     @classmethod
     def from_json(cls, payload: str | bytes) -> Self:
@@ -124,14 +124,14 @@ class SessionCheckpoint:
         try:
             return TypeAdapter(cls).validate_json(payload)
         except (ValidationError, ValueError, TypeError, KeyError) as error:
-            raise SessionFormatError("Invalid session checkpoint") from error
+            raise SessionFormatError("Invalid session recovery") from error
 
 
-def _check_open_turn(events: tuple[CheckpointEntry, ...]) -> None:
+def _check_open_turn(events: tuple[JournalEvent, ...]) -> None:
     """Allow idle events followed by at most one turn that is still open."""
     starts = sum(isinstance(event, TurnStartedEvent) for event in events)
     if starts > 1 or any(isinstance(event, TurnEndedEvent) for event in events):
-        raise ValueError("A journal after its boundary can hold only one open turn")
+        raise ValueError("A journal after its snapshot can hold only one open turn")
 
 
-_CHECKPOINT = TypeAdapter(SessionCheckpoint)
+_CHECKPOINT = TypeAdapter(SessionRecovery)

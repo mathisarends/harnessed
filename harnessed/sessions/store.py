@@ -12,33 +12,33 @@ from typing import Protocol, runtime_checkable
 
 from harnessed.models.values import JSONValue
 
-from .checkpoint import SessionCheckpoint
 from .commit import SessionCommit
-from .journal import JournalEntry, SessionBoundary
+from .journal import JournalEntry, SessionSnapshot
+from .recovery import SessionRecovery
 
 type StoredDocument = Mapping[str, JSONValue] | str | bytes
-"""A stored boundary or journal entry: a JSON document as a dict, text or bytes."""
+"""A stored snapshot or journal entry: a JSON document as a dict, text or bytes."""
 
 
 @dataclass(frozen=True)
 class StoredSession:
-    """What a store holds for one session: its boundary and the journal after it.
+    """What a store holds for one session: its snapshot and the journal after it.
 
     ``journal`` lists the stored entries in sequence order. It may still contain
-    entries from before the boundary; they are skipped when the session reopens.
+    entries from before the snapshot; they are skipped when the session reopens.
     """
 
-    boundary: StoredDocument
+    snapshot: StoredDocument
     journal: Sequence[StoredDocument] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "journal", tuple(self.journal))
 
-    def checkpoint(self) -> SessionCheckpoint:
-        """Decode the documents into the checkpoint the session reopens from."""
-        boundary = _decode_boundary(self.boundary)
+    def recovery(self) -> SessionRecovery:
+        """Decode the documents into the recovery value the session reopens from."""
+        snapshot = _decode_snapshot(self.snapshot)
         entries = [_decode_entry(document) for document in self.journal]
-        return SessionCheckpoint.from_journal(boundary, entries)
+        return SessionRecovery.from_journal(snapshot, entries)
 
 
 @runtime_checkable
@@ -51,24 +51,24 @@ class SessionStore(Protocol):
     """
 
     async def read(self, session_id: str) -> StoredSession | None:
-        """Return the stored boundary and journal documents, or ``None`` if unknown."""
+        """Return the stored snapshot and journal documents, or ``None`` if unknown."""
         ...
 
     async def write(self, commit: SessionCommit) -> None:
         """Store the commit in one transaction.
 
         Insert every entry of ``commit.journal`` keyed by session and sequence,
-        ignoring an entry that is already stored, and replace the stored boundary
-        when ``commit.boundary`` is set. Domain rows mapped from the entries'
+        ignoring an entry that is already stored, and replace the stored snapshot
+        when ``commit.snapshot`` is set. Domain rows mapped from the entries'
         records belong in the same transaction.
         """
         ...
 
 
-def _decode_boundary(document: StoredDocument) -> SessionBoundary:
+def _decode_snapshot(document: StoredDocument) -> SessionSnapshot:
     if isinstance(document, str | bytes):
-        return SessionBoundary.from_json(document)
-    return SessionBoundary.from_dict(document)
+        return SessionSnapshot.from_json(document)
+    return SessionSnapshot.from_dict(document)
 
 
 def _decode_entry(document: StoredDocument) -> JournalEntry:

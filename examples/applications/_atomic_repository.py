@@ -25,15 +25,15 @@ class JournalRow:
 
 @dataclass(frozen=True)
 class StoredConversation:
-    boundary: bytes
+    snapshot: bytes
     journal: tuple[bytes, ...]
 
 
 class ConversationRepository:
     """Application-owned SQLite example, independent of the SDK and its models.
 
-    ``conversations`` holds each session's latest boundary and ``journal`` its
-    append-only entries, keyed by sequence. Entries before the boundary are kept
+    ``conversations`` holds each session's latest snapshot and ``journal`` its
+    append-only entries, keyed by sequence. Entries before the snapshot are kept
     as an audit trail. The caller owns the connection. A lock lets worker
     threads share this demo's single connection; a backend normally obtains a
     connection from its own pool.
@@ -46,7 +46,7 @@ class ConversationRepository:
             """
             CREATE TABLE conversations (
                 key TEXT PRIMARY KEY,
-                boundary BLOB NOT NULL
+                snapshot BLOB NOT NULL
             );
             CREATE TABLE journal (
                 conversation TEXT NOT NULL,
@@ -74,16 +74,16 @@ class ConversationRepository:
         self,
         key: str,
         *,
-        boundary: bytes | None,
+        snapshot: bytes | None,
         journal: tuple[JournalRow, ...],
         messages: tuple[MessageRow, ...],
     ) -> None:
-        await asyncio.to_thread(self._commit, key, boundary, journal, messages)
+        await asyncio.to_thread(self._commit, key, snapshot, journal, messages)
 
     def _fetch(self, key: str) -> StoredConversation | None:
         with self._lock:
             row = self._connection.execute(
-                "SELECT boundary FROM conversations WHERE key = ?", (key,)
+                "SELECT snapshot FROM conversations WHERE key = ?", (key,)
             ).fetchone()
             if row is None:
                 return None
@@ -103,7 +103,7 @@ class ConversationRepository:
     def _commit(
         self,
         key: str,
-        boundary: bytes | None,
+        snapshot: bytes | None,
         journal: tuple[JournalRow, ...],
         messages: tuple[MessageRow, ...],
     ) -> None:
@@ -121,10 +121,10 @@ class ConversationRepository:
                     "INSERT INTO journal VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
                     (key, entry.sequence, entry.body),
                 )
-            if boundary is not None:
+            if snapshot is not None:
                 self._connection.execute(
                     """INSERT INTO conversations VALUES (?, ?)
-                    ON CONFLICT (key) DO UPDATE SET boundary = excluded.boundary""",
-                    (key, boundary),
+                    ON CONFLICT (key) DO UPDATE SET snapshot = excluded.snapshot""",
+                    (key, snapshot),
                 )
         # Exiting the connection context commits every table; exceptions roll all back.

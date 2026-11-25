@@ -44,7 +44,7 @@ async def compare(name, trigger):
                 f"freed {event.freed_tokens} tokens"
             )
         assert applied and event.after_tokens < event.before_tokens
-        assert SessionState.from_json(session.snapshot().to_json()) == session.snapshot()
+        assert SessionState.from_json(session.state().to_json()) == session.state()
         print("  Recent steps retained; compacted state round trip verified.")
 
 

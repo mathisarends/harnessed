@@ -343,8 +343,8 @@ async def test_loaded_instructions_survive_compaction_and_restart_from_the_log(t
     async with app.session() as session:
         await session.run("Run tests")
         assert await session.compact() is not None
-        assert session.snapshot().plugin_values[LOADED_SKILLS]["testing"] == original
-        state = session.snapshot()
+        assert session.state().plugin_values[LOADED_SKILLS]["testing"] == original
+        state = session.state()
     changed = Skill(
         name="testing", description="Changed description.", instructions="Changed source."
     )
@@ -354,7 +354,7 @@ async def test_loaded_instructions_survive_compaction_and_restart_from_the_log(t
         model=resumed_model,
         plugins=[skills_10],
     ).session(state=state) as restored:
-        assert restored.snapshot().plugin_values[LOADED_SKILLS]["testing"] == original
+        assert restored.state().plugin_values[LOADED_SKILLS]["testing"] == original
         await restored.run("Use the loaded testing skill")
         assert any(original in message.text for message in resumed_model.requests[0].messages)
         assert all(
@@ -372,7 +372,7 @@ async def test_runtime_mount_rejects_system_catalog_before_installing_tools():
         assert session.scope[ToolRegistry].definitions == ()
         assert SkillCatalog not in session.scope
         assert await session.prompt.render() == "Fixed rules."
-        assert not session.snapshot().plugin_values
+        assert not session.state().plugin_values
 
 
 async def test_discovery_is_not_recursive_and_resource_output_is_complete(tmp_path):
@@ -418,13 +418,11 @@ async def test_reloading_after_compaction_updates_the_retained_body_even_with_re
     ).session() as session:
         await session.run("Load")
         assert await session.compact() is not None
-        assert (
-            session.snapshot().plugin_values[LOADED_SKILLS]["pdf-forms"] == "Original instructions."
-        )
+        assert session.state().plugin_values[LOADED_SKILLS]["pdf-forms"] == "Original instructions."
         folder(tmp_path, body="Fresh instructions.")
         model.responses.extend([call("load_skill", name="pdf-forms"), "updated"])
         await session.run("Reload")
-        assert session.snapshot().plugin_values[LOADED_SKILLS]["pdf-forms"] == "Fresh instructions."
+        assert session.state().plugin_values[LOADED_SKILLS]["pdf-forms"] == "Fresh instructions."
 
 
 async def test_yaml_python_tags_are_rejected_as_configuration_errors(tmp_path):

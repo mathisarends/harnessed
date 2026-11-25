@@ -38,7 +38,7 @@ from harnessed.output import OutputContract
 from harnessed.output.contracts import OutputTypes, OutputValues
 from harnessed.output.handler import OutputHandler
 from harnessed.prompts import SectionDelivery, SystemPromptStore
-from harnessed.sessions import ChildSession, SessionCheckpoint, SessionState
+from harnessed.sessions import ChildSession, SessionRecovery, SessionState
 from harnessed.sessions.context import PendingObservations, SessionContext
 from harnessed.sessions.log import SessionLog
 from harnessed.sessions.publishing import SessionPublished
@@ -79,7 +79,7 @@ class Session:
         self._close_task: asyncio.Task[None] | None = None
         self.id = session.id
         scope.provide(TraceSession, TraceSession(self.id))
-        self._boundary_state = session.boundary_state
+        self._boundary_state = session.snapshot_state
         self._compaction = CompactionManager(scope, session)
         scope.provide(ContextMeter, ContextMeter(scope, session))
         self.control = SessionControl(session, self._drive, lambda: _driving.get() is self)
@@ -205,7 +205,7 @@ class Session:
     def last[E: DurableEvent](self, kind: type[E]) -> E | None:
         return self.log.last(kind)
 
-    def snapshot(self) -> SessionState:
+    def state(self) -> SessionState:
         """Export an idle conversation without retaining its runtime or doing I/O."""
         self.control.check_open()
         if (
@@ -214,19 +214,19 @@ class Session:
             or self.status is SessionStatus.PAUSED
         ):
             raise SessionStateError("Export requires an idle session with no queued input")
-        return self.log.snapshot()
+        return self.log.state()
 
     async def emit(self, event: DurableEvent | TransientEvent) -> None:
         await self._context.emit(event)
 
-    def checkpoint(self) -> SessionCheckpoint:
-        """Capture the session as its boundary and the open turn's journal.
+    def recovery(self) -> SessionRecovery:
+        """Capture the session as its snapshot and the open turn's journal.
 
-        Unlike ``snapshot()``, this also works while paused or running: an open
+        Unlike ``state()``, this also works while paused or running: an open
         turn is captured as journal entries and repaired when reopened.
         """
         self.control.check_open()
-        return self.log.checkpoint()
+        return self.log.recovery()
 
     async def flush(self) -> None:
         """Write pending changes to the session store; does nothing without one."""
@@ -312,13 +312,13 @@ class Session:
             request = resolve_request_settings(request, model.settings)
             applied, _ = await self._compaction.compact(request, model=model)
             if self.log.open_turn is None:
-                self._boundary_state = self.log.snapshot()
+                self._boundary_state = self.log.state()
             return applied
 
     def _session_event(self, event: SessionAppended) -> None:
         if isinstance(event.event, TurnEndedEvent):
             self._runner.record_turn(self.log.turns[-1])
-            self._boundary_state = self.log.snapshot()
+            self._boundary_state = self.log.state()
         self._submissions.observe(event.event, boundary=self._boundary_state)
         if isinstance(event.event, SessionControlChangedEvent):
             self.control.synchronize()

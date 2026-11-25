@@ -23,11 +23,11 @@ from harnessed.models import (
 )
 from harnessed.runtime.control import SessionStatus
 from harnessed.sessions import (
-    CheckpointRequest,
     JournalEntry,
-    SessionBoundary,
-    SessionCheckpoint,
+    JournalRequest,
     SessionCommit,
+    SessionRecovery,
+    SessionSnapshot,
     SessionValue,
     StoredSession,
 )
@@ -42,30 +42,30 @@ class Look(Plugin):
         return "Seen."
 
 
-def _requests(checkpoint: SessionCheckpoint) -> list[CheckpointRequest]:
+def _requests(checkpoint: SessionRecovery) -> list[JournalRequest]:
     return [
-        entry.record for entry in checkpoint.journal if isinstance(entry.record, CheckpointRequest)
+        entry.record for entry in checkpoint.journal if isinstance(entry.record, JournalRequest)
     ]
 
 
-def _last_in_turn(store: CommitRecorder, session_id: str) -> SessionCheckpoint:
+def _last_in_turn(store: CommitRecorder, session_id: str) -> SessionRecovery:
     """The stored checkpoint as it was at the last commit inside a turn."""
-    boundary: SessionBoundary | None = None
+    snapshot: SessionSnapshot | None = None
     entries: list[JournalEntry] = []
-    latest_in_turn: SessionCheckpoint | None = None
+    latest_in_turn: SessionRecovery | None = None
     for commit in store.commits:
         if commit.session_id == session_id:
-            boundary = commit.boundary if commit.boundary is not None else boundary
+            snapshot = commit.snapshot if commit.snapshot is not None else snapshot
             entries.extend(commit.journal)
-            assert boundary is not None
-            checkpoint = SessionCheckpoint.from_journal(boundary, entries)
+            assert snapshot is not None
+            checkpoint = SessionRecovery.from_journal(snapshot, entries)
             if checkpoint.journal:
                 latest_in_turn = checkpoint
     assert latest_in_turn is not None
     return latest_in_turn
 
 
-async def test_only_the_first_commit_turn_ends_and_idle_changes_carry_a_boundary():
+async def test_only_the_first_commit_turn_ends_and_idle_changes_carry_a_snapshot():
     compaction = Compaction(
         trigger=lambda _: False,
         keep_last_steps=1,
@@ -80,7 +80,7 @@ async def test_only_the_first_commit_turn_ends_and_idle_changes_carry_a_boundary
         await session.run("two")
         assert await session.compact() is not None
     first, *rest = store.commits
-    assert first.boundary is not None
+    assert first.snapshot is not None
 
     def ends_turn(commit: SessionCommit) -> bool:
         return any(entry.record.type == "turn.ended" for entry in commit.journal)
@@ -88,11 +88,11 @@ async def test_only_the_first_commit_turn_ends_and_idle_changes_carry_a_boundary
     def compacts(commit: SessionCommit) -> bool:
         return any(isinstance(entry.record, CompactionAppliedEvent) for entry in commit.journal)
 
-    assert [commit.boundary is not None for commit in rest if ends_turn(commit)] == [True, True]
-    assert all(commit.boundary is not None for commit in rest if compacts(commit))
+    assert [commit.snapshot is not None for commit in rest if ends_turn(commit)] == [True, True]
+    assert all(commit.snapshot is not None for commit in rest if compacts(commit))
     in_turn = [commit for commit in rest if not ends_turn(commit) and not compacts(commit)]
     # Input admission and every barrier inside a turn only append entries.
-    assert in_turn and all(commit.boundary is None for commit in in_turn)
+    assert in_turn and all(commit.snapshot is None for commit in in_turn)
 
 
 async def test_entries_are_appended_once_and_continue_without_gaps():
@@ -104,8 +104,8 @@ async def test_entries_are_appended_once_and_continue_without_gaps():
     sequences = [entry.sequence for commit in store.commits for entry in commit.journal]
     assert sequences == list(range(len(sequences)))
     for commit in store.commits:
-        if commit.boundary is not None:
-            assert commit.boundary.sequence <= commit.next_sequence
+        if commit.snapshot is not None:
+            assert commit.snapshot.sequence <= commit.next_sequence
 
 
 async def test_idle_entries_after_the_boundary_are_replayed_when_reopening():
@@ -117,7 +117,7 @@ async def test_idle_entries_after_the_boundary_are_replayed_when_reopening():
         handle = await session.submit("Queued while paused")
         latest = store.commits[-1]
         # Pausing and admitting input change no conversation state: entries only.
-        assert latest.boundary is None
+        assert latest.snapshot is None
         assert isinstance(latest.journal[-1].record, InboxAddedEvent)
         del handle
     stored = store.latest("idle")
@@ -170,11 +170,11 @@ async def test_stored_documents_decode_to_the_checkpoint_the_session_holds():
         await session.run("two")
         stored = await store.read("doc")
         assert stored is not None
-        assert stored.checkpoint() == session.checkpoint()
+        assert stored.recovery() == session.recovery()
     text = StoredSession(
-        json.dumps(stored.boundary), [json.dumps(entry).encode() for entry in stored.journal]
+        json.dumps(stored.snapshot), [json.dumps(entry).encode() for entry in stored.journal]
     )
-    assert text.checkpoint() == stored.checkpoint()
+    assert text.recovery() == stored.recovery()
 
 
 async def test_a_store_must_return_the_session_it_was_asked_for():
@@ -194,20 +194,20 @@ async def test_a_store_must_return_the_session_it_was_asked_for():
 
 
 def test_a_journal_with_a_gap_or_an_invalid_document_is_rejected():
-    boundary = SessionCheckpoint.from_json(
-        '{"boundary": {"session_id": "s", "sequence": 2, "state": {},'
+    snapshot = SessionRecovery.from_json(
+        '{"snapshot": {"session_id": "s", "sequence": 2, "state": {},'
         ' "control": {"type": "session.control.changed", "state": "active"}}}'
-    ).boundary
+    ).snapshot
     gap = JournalEntry(3, MessageAppendedEvent(UserMessage("late")))
     with pytest.raises(SessionFormatError, match="does not continue"):
-        SessionCheckpoint.from_journal(boundary, [gap])
+        SessionRecovery.from_journal(snapshot, [gap])
     earlier = JournalEntry(1, MessageAppendedEvent(UserMessage("before")))
-    assert SessionCheckpoint.from_journal(boundary, [earlier]).journal == ()
-    with pytest.raises(SessionFormatError, match="boundary"):
-        StoredSession({"boundary": "not one"}).checkpoint()
+    assert SessionRecovery.from_journal(snapshot, [earlier]).journal == ()
+    with pytest.raises(SessionFormatError, match="snapshot"):
+        StoredSession({"snapshot": "not one"}).recovery()
 
 
-async def test_nested_plugin_value_type_changes_deliver_a_new_boundary():
+async def test_nested_plugin_value_type_changes_deliver_a_new_snapshot():
     class Flags(Plugin, provides=True):
         value = SessionValue(dict[str, list[bool | int | float]], key="flag")
 
@@ -220,7 +220,7 @@ async def test_nested_plugin_value_type_changes_deliver_a_new_boundary():
             actual = store.latest("types").state.plugin_values["flag"]["items"][0]
             assert type(actual) is type(scalar)
         await value.set({"items": [1.0]})
-    assert [commit.boundary is not None for commit in store.commits] == [True, True, True]
+    assert [commit.snapshot is not None for commit in store.commits] == [True, True, True]
 
 
 async def test_commit_size_inside_a_turn_does_not_grow_with_retained_images():
@@ -236,12 +236,12 @@ async def test_commit_size_inside_a_turn_does_not_grow_with_retained_images():
             request = next(
                 commit
                 for commit in store.commits[start:]
-                if any(isinstance(entry.record, CheckpointRequest) for entry in commit.journal)
+                if any(isinstance(entry.record, JournalRequest) for entry in commit.journal)
             )
             sizes.append(sum(len(entry.to_json()) for entry in request.journal))
-        state_size = len(session.checkpoint().state.to_json())
+        state_size = len(session.recovery().state.to_json())
     # Each image travels once, with the commit after it was stored; earlier ones
-    # stay in the boundary. Only the request's references to them grow.
+    # stay in the snapshot. Only the request's references to them grow.
     assert state_size > 6 * 64_000
     assert max(sizes) < 64_000 // 10
 
@@ -261,7 +261,7 @@ async def test_commit_size_inside_a_turn_does_not_grow_with_history_text():
         for index in range(8):
             start = len(store.commits)
             await session.run(f"question {index} " + "x" * 4_000)
-            in_turn = [commit for commit in store.commits[start:] if commit.boundary is None]
+            in_turn = [commit for commit in store.commits[start:] if commit.snapshot is None]
             sizes.append(max(sum(len(e.to_json()) for e in c.journal) for c in in_turn))
         await session.run("look twice")
     # Eight turns add 64 KB of history; a commit carries only its own events and the
@@ -271,7 +271,7 @@ async def test_commit_size_inside_a_turn_does_not_grow_with_history_text():
     requests = _requests(last)
     assert len(requests) == 3
     assert all(isinstance(slot, str) for slot in requests[-1].messages[:16])
-    restored = SessionCheckpoint.from_json(last.to_json())
+    restored = SessionRecovery.from_json(last.to_json())
     assert restored == last and restored.events == last.events
 
 
@@ -292,7 +292,7 @@ async def test_requests_changed_by_a_hook_keep_the_messages_the_model_received()
     (request,) = _requests(last)
     redacted, answer, question = request.messages
     # The changed history message is stored in full, the unchanged one by ID. The
-    # open turn's input is not in the boundary yet, so its first request carries it.
+    # open turn's input is not in the snapshot yet, so its first request carries it.
     assert not isinstance(redacted, str) and redacted.text == "[redacted]"
     assert isinstance(answer, str)
     assert not isinstance(question, str) and question.text == "again"
@@ -323,7 +323,7 @@ async def test_rebuilt_request_preserves_provider_state_changed_by_a_hook():
     async with agent.session(id="replay", store=store) as session:
         await session.run("one")
         await session.run("two")
-    restored = SessionCheckpoint.from_json(_last_in_turn(store, "replay").to_json())
+    restored = SessionRecovery.from_json(_last_in_turn(store, "replay").to_json())
     (event,) = [event for event in restored.events if isinstance(event, ModelRequestedEvent)]
     (reply,) = [
         message for message in event.request.messages if isinstance(message, AssistantMessage)
@@ -344,12 +344,12 @@ async def test_a_journal_referring_to_an_unknown_message_is_rejected():
     (request,) = [
         entry["record"]
         for entry in document["journal"]
-        if entry["record"]["type"] == "checkpoint.request"
+        if entry["record"]["type"] == "journal.request"
     ]
     request["messages"][0] = "missing"
     with pytest.raises(SessionFormatError):
-        SessionCheckpoint.from_dict(document)
-    boundary = SessionBoundary.from_dict(document["boundary"])
+        SessionRecovery.from_dict(document)
+    snapshot = SessionSnapshot.from_dict(document["snapshot"])
     entries = [JournalEntry.from_dict(entry) for entry in document["journal"]]
     with pytest.raises(SessionFormatError, match="does not continue"):
-        SessionCheckpoint.from_journal(boundary, entries)
+        SessionRecovery.from_journal(snapshot, entries)

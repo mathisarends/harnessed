@@ -31,18 +31,18 @@ Applications own persistence through a `SessionStore` and explicit
 - Store a tool result once. A tool result currently appears in its
   `ToolCallFinishedEvent` entry and again in the next request, unless that
   request references it by ID.
-- Reference a contiguous range of the boundary history from a model request
+- Reference a contiguous range of the snapshot history from a model request
   instead of listing each message ID.
-- Read-time upcasters for released journal and boundary formats, applied
+- Read-time upcasters for released journal and snapshot formats, applied
   where `StoredSession` decodes the stored documents, with a documented window
   of readable versions, once a storage compatibility contract exists.
-- Golden fixtures of stored boundaries and journal entries, so format changes
+- Golden fixtures of stored snapshots and journal entries, so format changes
   are reviewed explicitly.
 - Add a typed `commit.messages` projection, so handlers need not map
   `InboxAddedEvent` and `AssistantMessageEvent` themselves.
-- Application-supplied blob storage for large resources; current checkpoints
-  include their image and spill bytes. Each resource is written once, with
-  the boundary or with the journal entry that first stored it.
+- Application-supplied blob storage for large resources; current snapshots
+  and journal entries include their image and spill bytes. Each resource is written once, with
+  the snapshot or with the journal entry that first stored it.
 
 The optional [MCP client](../guides/mcp.md) now exposes tools over stdio and
 Streamable HTTP. Resources, prompts, sampling, elicitation and live catalog

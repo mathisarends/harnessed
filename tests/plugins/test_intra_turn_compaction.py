@@ -354,7 +354,7 @@ async def test_idle_retention_uses_persisted_step_boundaries_after_restart():
     for number in range(1, 5):
         await append_step(log, "prior", number)
     await log.append(TurnEndedEvent("prior"))
-    state = SessionState.from_json(log.snapshot().to_json())
+    state = SessionState.from_json(log.state().to_json())
     assert len(state.steps) == 4
     restored = SessionLog("restored", state=state)
     applied = await compact(restored, keep_last_steps=2)
@@ -363,5 +363,5 @@ async def test_idle_retention_uses_persisted_step_boundaries_after_restart():
         "prior-3",
         "prior-4",
     ]
-    assert len(restored.snapshot().steps) == 2
+    assert len(restored.state().steps) == 2
     assert await compact(restored, keep_last_steps=3) is None

@@ -23,7 +23,7 @@ hash is process-local; it is not a persistent fingerprint. For content addressin
 serialize the intended JSON payload with a defined canonical encoding and hash
 those bytes.
 
-Conversation snapshots have an explicit versioned boundary. `SessionState`
+Conversation state has an explicit versioned format. `SessionState`
 format 4 contains retained context, required metadata and verified resource bytes.
 Its immutable mappings and tuples are detached from mutable runtime containers.
 Old JSONL archives are not accepted as conversation state. Unknown fields,

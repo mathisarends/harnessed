@@ -275,52 +275,52 @@ plugin_validation=PluginValidation.ERROR)` resolves reusable configuration.
 | agent.loop | The configured AgentLoop |
 | agent.describe() | Immutable CompositionDescription with the configured plugins in order |
 | agent.prompt | Inspectable PromptComposition with final order, origins and format |
-| agent.session(*, state=None, id=None, store=None, commit_timeout_seconds=None, restore_outputs=()) | Open a Session; with id and store it reopens what the store holds for that ID or starts fresh, and writes every commit through store.write inside log admission, which must not write to or flush its own session; commit_timeout_seconds bounds each write and fails it with CommitTimeout, shared by subagent sessions; state continues an in-memory SessionState or SessionCheckpoint |
+| agent.session(*, state=None, id=None, store=None, commit_timeout_seconds=None, restore_outputs=()) | Open a Session; with id and store it reopens what the store holds for that ID or starts fresh, and writes every commit through store.write inside log admission, which must not write to or flush its own session; commit_timeout_seconds bounds each write and fails it with CommitTimeout, shared by subagent sessions; state continues an in-memory SessionState or SessionRecovery |
 | agent.run(content, state=None, **options) | Run one turn from text or a Message and return its terminal result and state |
 | agent.child_session(request) | Factory boundary for a fresh parent-owned child; application code normally uses Subagents |
 | SessionState.from_json(payload) / state.to_json() | Validate or encode the canonical conversation snapshot in memory |
 | SessionState.from_dict(document) / state.to_dict() | The same snapshot as a JSON-compatible dict, for example a JSONB column |
 
 `SessionStore`, `StoredSession`, `StoredDocument`, `SessionCommit`,
-`SessionBoundary`, `JournalEntry`, `SessionCheckpoint`, `CheckpointRequest` and
-`CheckpointExtension` are exported from `harnessed.sessions`.
+`SessionSnapshot`, `JournalEntry`, `SessionRecovery`, `JournalRequest` and
+`JournalExtension` are exported from `harnessed.sessions`.
 Harnessed stores nothing itself. An application implements `SessionStore` with
-two methods. `read(session_id)` returns `StoredSession(boundary, journal)` with
+two methods. `read(session_id)` returns `StoredSession(snapshot, journal)` with
 the stored documents, each a dict, JSON string or JSON bytes, in sequence order,
 or `None` for an unknown ID. `write(commit)` stores one `SessionCommit` in one
-transaction. A persisted session is a boundary plus an append-only journal.
-`SessionCommit(session_id, journal, boundary=None)` carries the ordered
+transaction. A persisted session is a snapshot plus an append-only journal.
+`SessionCommit(session_id, journal, snapshot=None)` carries the ordered
 `JournalEntry(sequence, record)` values since the previous commit and, when the
-conversation state changed, the new `SessionBoundary`: the session at its rest
+conversation state changed, the new `SessionSnapshot`: the session at its rest
 point with `sequence`, `state`, `control`, `seed` and the resources beyond the
-state. The first commit of a session always carries a boundary; commits inside a
+state. The first commit of a session always carries a snapshot; commits inside a
 turn carry only entries. Insert the entries, ignoring stored sequences, replace
-the boundary and map domain rows in one application-owned transaction. Old
+the snapshot and map domain rows in one application-owned transaction. Old
 entries are not written again on restore. Token deltas are excluded.
 Commits are awaited inline at input, model/tool intent, result, pause, turn-end
 and custom durable event barriers; other durable events travel with the next
 barrier, `session.flush()` or close. Child sessions write through their parent's
 store. A store exception reaches run/result/stream consumers and rejects later
 admissions; reopen the session by its ID.
-Opening decodes the documents with `StoredSession.checkpoint()`, skips entries
-before the boundary and rejects gaps, invalid documents and documents of another
+Opening decodes the documents with `StoredSession.recovery()`, skips entries
+before the snapshot and rejects gaps, invalid documents and documents of another
 session with `SessionFormatError`. With a store, `state=` accepts only a
 `SessionState` for an ID the store does not hold. In the journal, each
-`ModelRequestedEvent` becomes a `CheckpointRequest` whose `messages` hold the ID
-of a message already in the turn's boundary state or an earlier request, and the
-full message otherwise; `checkpoint.events` resolves them and rejects an unknown
-ID. `session.checkpoint()` captures the `SessionCheckpoint(boundary, journal)` on
-demand, including an open turn. Checkpoints, boundaries and journal entries are
+`ModelRequestedEvent` becomes a `JournalRequest` whose `messages` hold the ID
+of a message already in the turn's snapshot state or an earlier request, and the
+full message otherwise; `recovery.events` resolves them and rejects an unknown
+ID. `session.recovery()` captures the `SessionRecovery(snapshot, journal)` on
+demand, including an open turn. Recovery values, snapshots and journal entries are
 frozen Pydantic dataclasses with `to_dict()` / `from_dict()` and `to_json()` /
 `from_json()` canonical encodings that need no plugin catalog.
-`CheckpointExtension` preserves application-defined event data for validation by
+`JournalExtension` preserves application-defined event data for validation by
 the owning session. The application owns pool lifetime and coordinates active
 workers per ID.
 
 Closing a paused session with a store writes its open turn's journal;
 reopening it remains paused. Explicit `SessionState` values still
 contain terminal conversation state only. See [sessions](../guides/sessions.md)
-for recovery, output-validator restoration and checkpoint format boundaries.
+for recovery, output-validator restoration and stored format versions.
 
 Import `PluginValidation` from `harnessed`. Session startup checks all waiting
 plugins after publishing session services and settling their setup, before
@@ -427,8 +427,9 @@ after completion it raises `SessionStateError` instead of starting a new turn.
 | wait_until_idle() | Wait for idle and an empty inbox |
 | mount(plugin, section_delivery=SectionDelivery.CONTEXT) | Use with async with for a temporary mount, or await a handle and call handle.aclose() |
 | compact() | Summarize completed history while idle or paused; return its record or None |
-| snapshot() | Export immutable conversation state at an idle boundary |
-| flush() | Await pending checkpoint persistence; no I/O without a store |
+| state() | Export immutable conversation state at an idle boundary |
+| recovery() | Capture the snapshot and journal, including an open turn |
+| flush() | Await pending commits to the store; no I/O without a store |
 | subscribe(transient=False) | Independent raw log subscription |
 | events / turns | Current-turn execution buffers, released after terminal delivery |
 | model_request_count | Number of local `ModelRequestedEvent` records across turns, including failed and cancelled requests. Provider transport retries share one request. On reopen, only requests in a restored in-progress turn carry over. |
@@ -705,7 +706,7 @@ The image API has three explicit boundaries:
 | --- | --- |
 | Applications and plugins | `AssetRef`, `ImageReference`, `session.assets.put(...)`, `session.assets.read(...)` |
 | Manual replay and inspection | `session.log.assets`, `await session.log.resolve_request(request)` |
-| Application persistence | `SessionState.from_json(payload)`, `result.state`, `session.snapshot()`, `state.to_json()` |
+| Application persistence | `SessionState.from_json(payload)`, `result.state`, `session.state()`, `state.to_json()` |
 
 `session.assets` and `log.assets` are read-only references to the same backend;
 applications can store/read content but cannot replace session storage in place.
@@ -729,7 +730,7 @@ Python validators, approval grants or historical request/event archive.
 
 `RunResult.state` captures that result's terminal boundary independently of later
 turns. Imported state opens idle and never re-executes recorded tool calls.
-`session.snapshot()` requires an idle open conversation with an empty inbox.
+`session.state()` requires an idle open conversation with an empty inbox.
 Reuse the same immutable state for independent continuations. See
 [the session guide](../guides/sessions.md) for compaction and application storage.
 

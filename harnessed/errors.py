@@ -64,7 +64,7 @@ class CommitTimeout(HarnessedError, TimeoutError):
 
 
 class SessionFormatError(HarnessedError, ValueError):
-    """A session state, checkpoint or record does not match the current format."""
+    """A session state, snapshot, journal entry or record does not match the current format."""
 
 
 class OutputTokenLimit(HarnessedError, RuntimeError):

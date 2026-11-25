@@ -150,7 +150,7 @@ class RunSubmissions:
                     state=(
                         boundary
                         if isinstance(event, TurnEndedEvent) or self._log.open_turn is not None
-                        else self._log.snapshot()
+                        else self._log.state()
                     ),
                 )
             except Exception as error:

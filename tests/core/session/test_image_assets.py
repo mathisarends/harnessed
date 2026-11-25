@@ -91,7 +91,7 @@ async def test_request_hook_inline_images_are_stored_before_recording(tmp_path):
         stored = session.last(ModelRequestedEvent).request
         assert isinstance(stored.messages[-1].content[0], ImageReference)
         assert model.requests[-1].messages[-1].content == (inline(b"hook"),)
-        assert not session.snapshot().assets  # Hook-owned images are supplied by the hook again.
+        assert not session.state().assets  # Hook-owned images are supplied by the hook again.
 
 
 @pytest.mark.parametrize("sha", ["../escape", "A" * 64, "x" * 64, "a" * 63])
@@ -118,7 +118,7 @@ async def test_a_plain_turn_does_not_rehash_retained_images_to_build_snapshots(m
 
         monkeypatch.setattr(hashlib, "sha256", counting)
         await session.run("next")
-        session.checkpoint()
+        session.recovery()
         monkeypatch.undo()
     # Resolving the model request reads each retained image once; snapshots do not hash.
     assert sorted(digests) == sorted(data[:1] for data in images)

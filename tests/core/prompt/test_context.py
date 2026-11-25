@@ -87,7 +87,7 @@ async def test_added_context_is_additive_quiet_and_retained_across_turns():
         await agent.control.join()
         assert model.requests == []
         assert not agent.inbox.pending
-        assert agent.snapshot().turns == ()
+        assert agent.state().turns == ()
         assert not hasattr(agent, "context")
         await agent.steer(user("Check auth"))
         await agent.control.join()
@@ -127,7 +127,7 @@ async def test_added_context_roundtrips_through_an_explicit_snapshot():
     app = Application(model=model)
     async with app.session() as session:
         await session.append_message(UserMessage("Include source URLs."))
-        saved = SessionState.from_json(session.snapshot().to_json())
+        saved = SessionState.from_json(session.state().to_json())
     async with app.session(state=saved) as restored:
         await restored.append_message(UserMessage("Use a comparison table."))
         await restored.run("Compare the missions.")
