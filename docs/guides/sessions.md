@@ -341,20 +341,25 @@ nested SDK documents. A store that returns snapshot and journal documents via
 `StoredSession` uses the same readers. Opening current-format data takes the
 ordinary typed JSON validation path. Reading performs no storage writes.
 
-For example, a full checkpoint written by Harnessed 0.28 can be resumed directly
-or converted offline for a store with separate snapshot and journal records:
+To reopen a full checkpoint written by Harnessed 0.28, pass the decoded value
+directly to `agent.session(state=...)`. For example, if the saved turn was paused:
 
 ```python
 from harnessed.sessions import SessionRecovery
 
-recovery = SessionRecovery.from_json(old_checkpoint_json)
-snapshot = recovery.snapshot.to_dict()
-journal = [entry.to_dict() for entry in recovery.journal]
+async with agent.session(state=SessionRecovery.from_json(old_checkpoint_json)) as session:
+    await session.resume()
+    await session.wait_until_idle()
 ```
 
-For a durable conversion, write that snapshot and journal together in an
-application-owned transaction guarded by the revision you read. Use
-`recovery.to_json()` when the destination stores a single document.
+When a session already lives in a `SessionStore`, open it with
+`agent.session(id=conversation_id, store=store)`. The SDK reads and decodes
+the stored documents.
+
+For an offline database migration, decode the checkpoint once as `recovery`.
+Use `recovery.to_json()` for a single-document destination. For a store with
+separate records, write `recovery.snapshot.to_dict()` and each journal entry's
+`to_dict()` in one application-owned transaction guarded by the revision you read.
 The version 5 reader expects the complete checkpoint. Stores that kept separate
 0.28 state and execution documents can export a full checkpoint with 0.28's
 `SessionCheckpoint.from_parts(state, execution)` first. Application event data
