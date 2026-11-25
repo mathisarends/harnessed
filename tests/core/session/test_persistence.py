@@ -370,6 +370,7 @@ async def test_application_ids_need_no_handler_and_invalid_states_are_rejected()
     async with Agent(model=ScriptedModel([])).session(id="conversation-7") as session:
         assert session.id == "conversation-7"
     with pytest.raises(ConfigError, match="SessionRecovery"):
+        # A raw JSON string violates the typed contract on purpose to reach validation.
         async with Agent(model=ScriptedModel([])).session(state="{}"):  # type: ignore[arg-type]
             pytest.fail("Serialized documents must be validated by the application")
 

@@ -7,6 +7,86 @@ current configuration and complete rule contracts, see the [README](README.md),
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-11-25
+
+See [upgrading from 0.17.0](docs/upgrading.md#0170-to-0180) for hook pins and
+changes to existing rules.
+
+- New opt-in hint `layout/redundant-comment` (LAY012) reports a comment block
+  above a def, class or assignment, or a docstring, whose words only restate
+  the documented name, such as `# Get user by id` above `get_user_by_id`.
+  Required docstrings are reported with advice to improve them, not remove them.
+- New opt-in rule `tests/missing-skip-reason` (TST013) reports pytest skip,
+  skipif, xfail and flaky markers, `pytest.skip`/`pytest.xfail` calls,
+  unittest skip decorators and flaky rerun decorators whose reason names no
+  issue. The reason must match the new `tests.skip_reason_pattern` (a Rust regular
+  expression that matches an issue reference or link by default), in the reason
+  argument or a comment.
+  Environment limits such as `skipif(sys.platform == "win32", ...)` only need a
+  non-empty reason.
+- New opt-in rule `meta/missing-tool-suppression-reason` (MET006) reports
+  `noqa`, `type: ignore`, `pyright: ignore`, `mypy:` and `pylint: disable`
+  comments without a reason, in production and test modules. Text after the
+  directive or a comment right above it counts as the reason.
+  `meta/missing-suppression-reason` (MET002) is unchanged.
+- `idioms/missing-broad-except-reason` (IDM006) no longer accepts `ruff: noqa`,
+  `flake8: noqa` or `mypy:` directives as the reason for a broad handler.
+- `tests/nondeterministic-data` (TST011) also reviews wall-clock reads in
+  tests: `datetime.now`, `datetime.utcnow`, `datetime.today`, `date.today`,
+  `time.time` and `time.time_ns`. Reads inside `freezegun.freeze_time` or
+  `time_machine.travel` contexts and decorators, under
+  `pytest.mark.freeze_time` and in tests using the `freezer` fixture are not
+  reported. `time.monotonic` and `time.perf_counter` stay out of scope.
+- `SMELT_PROFILE=1 smelt check` prints how long each phase of the native core
+  and each project-wide rule took to stderr, to locate a slow check.
+- `smelt check` can write full and path-scoped reports in every format without
+  starting Python. This includes uv workspaces, checks started inside a member,
+  and `--changed` or `--staged` with or without `--base`. Report formats and exit
+  codes stay compatible. Options such as `--fix`, `--diff` and `--statistics`
+  and checks of installed third-party re-exports still use the Python CLI. Set
+  `SMELT_NATIVE_CHECK=0` to use it for every check.
+- Checks reuse directory listings for file discovery and workspace configuration.
+  Directory discovery and project-wide import and structure rules run in parallel.
+
+## [0.17.0] - 2026-11-25
+
+See [upgrading from 0.16.1](docs/upgrading.md#0161-to-0170) for hook pins, the
+removed cache and source installations.
+
+- `smelt check` analyzes in the compiled native core, including `--staged`
+  and `--changed`. Reports match 0.16.1: with every rule selected, this
+  repository and the other projects compared report the same findings. Full
+  checks of this repository take 2 s instead of 28 s on Windows, and checks of
+  the other projects were 3 to 13 times faster. The core parses the newest
+  Python grammar whichever Python runs smelt, so a syntax error no longer
+  suggests running smelt on a newer Python.
+- Checks keep no cache. Every run analyzes the current working tree or staged
+  index, so a result never depends on an earlier run, and smelt no longer
+  writes a `.smelt_cache/` directory; an existing one can be deleted.
+  `--no-cache` is still accepted and has no effect.
+- The installed `smelt` command no longer starts a background worker; every
+  check runs in the foreground and exits. `SMELT_DAEMON` has no effect.
+- Smelt no longer analyzes project sources in Python and no longer depends on
+  `grimp`. The native core also verifies `architecture.canonical_exports`,
+  resolves the imports between uv workspace members, reads the symbols that
+  `smelt init` traces and supplies the sources, tests and policy coverage that
+  `smelt context` reports.
+- `--staged` and `--changed` read the staged index and the base revision in
+  memory instead of writing them to a temporary directory, which saves one to
+  two seconds per check on Windows. Checks of projects with large non-Python
+  directories, such as a Rust `target/`, or with many tests are faster as well.
+  Findings are unchanged.
+- Changed and staged checks accept repositories containing tracked symlinks.
+  Git snapshots omit link entries and analyze regular files at their tracked
+  paths.
+- `visibility/redundant-private-delegate` (VIS006) no longer fails with a
+  recursion error on classes whose local bases inherit from each other. Such
+  classes are treated like classes with an external base and are not reported.
+- Installing from a Git checkout or source distribution now requires Rust 1.98+.
+  Release wheels are unaffected.
+- Release wheels now cover musl Linux, such as Alpine containers, on x86_64 and
+  ARM64, so these platforms no longer need a Rust toolchain.
+
 ## [0.16.1] - 2026-11-22
 
 See [upgrading from 0.16](docs/upgrading.md#016-to-0161) for hook pins and
@@ -32,7 +112,7 @@ cache behavior.
   versions are kept besides the current one. Previously an editable checkout
   or several worktrees on different Smelt versions could accumulate gigabytes
   within the seven-day window. Existing caches remain readable. See
-  [cache behavior](https://github.com/mathisarends/smelt/blob/main/docs/agent-workflow.md#cache-behavior).
+  [cache behavior](https://github.com/mathisarends/smelt/blob/v0.16.1/docs/agent-workflow.md#cache-behavior).
 
 ## [0.16.0] - 2026-11-22
 
@@ -235,7 +315,7 @@ the JSON fix report, third-party import suggestions and facade suppressions.
 - `.smelt_cache/` no longer grows without bound. Facts unused for 14 days are
   pruned once a day, and caches of other Smelt versions unused for 7 days are
   removed. Existing caches are upgraded in place. See
-  [cache behavior](https://github.com/mathisarends/smelt/blob/main/docs/agent-workflow.md#cache-behavior).
+  [cache behavior](https://github.com/mathisarends/smelt/blob/v0.16.1/docs/agent-workflow.md#cache-behavior).
 - Configuration errors arrive in one report. Schema errors such as retired
   keys now list unknown or retired rule names from `rules` and `ignore`
   alongside them. A valid layer declaration also reports unknown layer references
@@ -1671,7 +1751,9 @@ smelt explain SMT313 --format json
 - Import fanout, match suggestions and missing-assertion checks are review aids;
   their default severities differ. Configure policy and severity deliberately.
 
-[Unreleased]: https://github.com/mathisarends/smelt/compare/v0.16.1...HEAD
+[Unreleased]: https://github.com/mathisarends/smelt/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/mathisarends/smelt/compare/v0.17.0...v0.18.0
+[0.17.0]: https://github.com/mathisarends/smelt/compare/v0.16.1...v0.17.0
 [0.16.1]: https://github.com/mathisarends/smelt/compare/v0.16.0...v0.16.1
 [0.16.0]: https://github.com/mathisarends/smelt/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/mathisarends/smelt/compare/v0.14.0...v0.15.0

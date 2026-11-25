@@ -1,5 +1,28 @@
 # Upgrading Smelt
 
+## 0.17.0 to 0.18.0
+
+1. Update your [hook and CI pins](integrations.md) to 0.18.0 and refresh the
+   bundled agent reference with `smelt skill install --force`.
+2. If you already run [TST011](rules/TST011.md), review new findings for
+   wall-clock reads in tests. Projects running [IDM006](rules/IDM006.md) may
+   need to explain broad exception handlers where a linter directive was the
+   only preceding comment.
+3. Existing policies, debt files and report integrations can be used as-is.
+   Set `SMELT_NATIVE_CHECK=0` to run a check through the Python CLI when
+   comparing its output with the new native path.
+
+## 0.16.1 to 0.17.0
+
+1. Update your [hook and CI pins](integrations.md) to 0.17.0 and refresh the
+   bundled agent reference with `smelt skill install --force`.
+2. Smelt no longer writes `.smelt_cache/`. Delete an existing directory and its
+   ignore entry when convenient. `--no-cache` and `SMELT_DAEMON` are still
+   accepted and have no effect, so scripts that pass them keep working.
+3. A hook or install that builds from a Git checkout or source distribution
+   needs Rust 1.98+ and a platform linker. Release wheels need neither.
+4. Policies, debt files and report integrations can be used as-is.
+
 ## 0.16 to 0.16.1
 
 1. Update your [hook and CI pins](integrations.md) to 0.16.1 and refresh the

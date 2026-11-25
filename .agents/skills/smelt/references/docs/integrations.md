@@ -2,15 +2,12 @@
 
 ## Python versions
 
-Smelt runs on Python 3.12 to 3.14 and parses your code with the Python it runs on. Code
-that uses newer syntax (3.14's `except A, B:` or t-strings, 3.13's type parameter defaults)
-needs smelt on that version, e.g. `uvx -p 3.14 --from smelt-cli smelt check`; the syntax error says so when
-`requires-python` or `.python-version` targets a newer Python.
+Smelt runs on Python 3.12 to 3.14. Its native core parses the newest Python grammar
+whichever Python runs smelt, so 3.14's `except A, B:` or t-strings check on 3.12 too.
 
-The installed command uses a native client and reuses a bounded worker for local
-read-only checks. Use `SMELT_DAEMON=0 smelt check` or `python -m smelt check`
-to run directly. A checkout or source distribution requires Rust 1.88+ and a
-platform linker; release wheels include the compiled client.
+The installed command checks in a compiled native core. A checkout or source
+distribution requires Rust 1.98+ and a platform linker; release wheels include
+the compiled core.
 
 
 ## Using Smelt with coding agents
@@ -55,7 +52,7 @@ repos:
         name: smelt (new staged findings)
         entry: smelt check --staged --fail-on warning
         language: python
-        additional_dependencies: [smelt-cli==0.16.1]
+        additional_dependencies: [smelt-cli==0.18.0]
         pass_filenames: false
         always_run: true
         require_serial: true
@@ -87,11 +84,10 @@ Use the project environment when `style.third_party_reexports` lists packages
 for IMP004. Smelt can inspect only the packages available to its interpreter.
 
 To install from source, use `repo: https://github.com/mathisarends/smelt`,
-`rev: v0.16.1` and `id: smelt-staged` (or `id: smelt` for full checks). This source
-installation requires Rust 1.88+ and a platform linker. Use the release's
+`rev: v0.18.0` and `id: smelt-staged` (or `id: smelt` for full checks). This source
+installation requires Rust 1.98+ and a platform linker. Use the release's
 matching `v`-prefixed Git tag. See the [agent workflow](https://github.com/mathisarends/smelt/blob/main/docs/agent-workflow.md) for
-cache behavior and limitations. Smelt's disposable `.smelt_cache/` creates its
-own `.gitignore`; cache files should not enter commits.
+performance and limitations.
 
 prek uses the [pre-commit hook format](https://pre-commit.com/#creating-new-hooks).
 The published `.pre-commit-hooks.yaml` manifest keeps the required filename.
@@ -109,9 +105,9 @@ Install prek in the CI environment before running it (or use `uvx prek run`).
 ```yaml
 - uses: astral-sh/setup-uv@v7
 - run: prek run --all-files --show-diff-on-failure
-- run: uvx --from smelt-cli==0.16.1 smelt check --format github
+- run: uvx --from smelt-cli==0.18.0 smelt check --format github
 # optional: code scanning
-- run: uvx --from smelt-cli==0.16.1 smelt check --format sarif > smelt.sarif || true
+- run: uvx --from smelt-cli==0.18.0 smelt check --format sarif > smelt.sarif || true
 - uses: github/codeql-action/upload-sarif@v3
   with:
     sarif_file: smelt.sarif
