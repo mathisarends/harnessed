@@ -13,7 +13,7 @@ async def main() -> None:
     async with agent.session() as session:
         await session.append_message(UserMessage("The project is Harnessed."))
         result = await session.run("Remember the project.")
-        state = session.snapshot()
+        state = session.state()
         assert state == result.state
     payload = state.to_json()  # The application chooses where to store these bytes.
     restored = SessionState.from_json(payload)

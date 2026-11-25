@@ -156,7 +156,7 @@ async def test_retention_can_only_preserve_currently_available_steps():
         await agent.run("current")
         assert not any(m.text.startswith("OLDER ") for m in model.requests[-1].messages)
         assert any(m.text.startswith("RECENT ") for m in model.requests[-1].messages)
-        state = agent.snapshot()
+        state = agent.state()
     wider = Compaction(trigger=every_turns(1), summarizer=summaries, keep_last_steps=3)
     async with Application(model=model, context=Context(compaction=wider)).session(
         state=state

@@ -101,7 +101,7 @@ async def test_automatic_compaction_carries_fitting_notes_into_first_request_and
         assert summary.requests[0].max_summary_tokens == (10 if include_note else ceiling)
         projected = f"Conversation summary:\n{expected}"
         assert any(message.text == projected for message in model.requests[2].messages)
-        state = SessionState.from_json(session.snapshot().to_json())
+        state = SessionState.from_json(session.state().to_json())
 
     async with agent.session(state=state) as reopened:
         assert any(message.text == projected for message in reopened.messages)
@@ -344,7 +344,7 @@ async def test_unknown_window_requires_finite_limit_but_absolute_target_works():
         with pytest.raises(ConfigError, match="max_summary_tokens"):
             await session.compact()
         assert not summaries.requests
-        state = session.snapshot()
+        state = session.state()
     policy = Compaction(
         trigger=lambda _: False, summarizer=summaries, keep_last_steps=1, target_tokens=200
     )

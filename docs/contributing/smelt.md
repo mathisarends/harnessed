@@ -334,8 +334,8 @@ The upgrade made shared private helpers module-public (`validate_event`,
 `annotation_dependency`, `PluginRuntime`), removed `__all__` from internal modules,
 privatized 17 internal data attributes, named awaited results and anonymous tuple
 records, made excess positional parameters keyword-only and renamed
-`core.prompt.system_prompt` to `core.prompt.system`. The checkpoint extension
-discriminator uses `CheckpointRecordKind.EXTENSION` with an unchanged wire value.
+`core.prompt.system_prompt` to `core.prompt.system`. The journal extension
+discriminator uses `JournalRecordKind.EXTENSION`.
 
 Three exceptions remain inline: `PluginBase` keeps its suffix as a stable kernel
 facade export that core `Plugin` extends, `Agent.plugin_validation` is a public

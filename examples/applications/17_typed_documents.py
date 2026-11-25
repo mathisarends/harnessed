@@ -12,7 +12,7 @@ from harnessed.testing import ScriptedModel
 class ConversationStore(SessionStore):
     """Application adapter; the repository and its rows do not import Harnessed.
 
-    Boundaries and journal entries travel as JSON-compatible dicts, as JSONB
+    Snapshots and journal entries travel as JSON-compatible dicts, as JSONB
     columns would hold them. Harnessed validates them into typed values when the
     session reopens. The typed commit also feeds plain application columns.
     """
@@ -24,16 +24,16 @@ class ConversationStore(SessionStore):
         row = await self._repository.fetch(session_id)
         if row is None:
             return None
-        return StoredSession(row.boundary, [row.journal[key] for key in sorted(row.journal)])
+        return StoredSession(row.snapshot, [row.journal[key] for key in sorted(row.journal)])
 
     async def write(self, commit: SessionCommit) -> None:
-        boundary = commit.boundary
+        snapshot = commit.snapshot
         await self._repository.save(
             commit.session_id,
             journal={entry.sequence: entry.to_dict() for entry in commit.journal},
-            boundary=boundary.to_dict() if boundary is not None else None,
-            format_version=boundary.version if boundary is not None else 0,
-            retained_messages=len(boundary.state.history) if boundary is not None else 0,
+            snapshot=snapshot.to_dict() if snapshot is not None else None,
+            format_version=snapshot.version if snapshot is not None else 0,
+            retained_messages=len(snapshot.state.history) if snapshot is not None else 0,
         )
 
 

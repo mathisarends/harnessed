@@ -57,7 +57,7 @@ async def test_grants_are_cached_only_in_the_live_session_and_not_in_imported_st
         grant = session.approvals.grants[0]
         await session.run("Second")
         assert len(asked) == 1
-        state = session.snapshot()
+        state = session.state()
         await session.approvals.revoke(grant.request_id)
         assert not session.approvals.grants
     async with agent.session(state=state) as session:

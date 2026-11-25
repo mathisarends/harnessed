@@ -94,9 +94,9 @@ async def measure(count: int, chars: int, *, one_shots: bool) -> dict[str, int |
         async with agent.session() as session:
             for _ in range(count):
                 await session.run("question " * max(1, chars // 9))
-            payload = session.snapshot().to_json()
+            payload = session.state().to_json()
             snapshot_bytes = len(payload.encode())
-            assert SessionState.from_json(payload) == session.snapshot()
+            assert SessionState.from_json(payload) == session.state()
             assert not session.events
         del session
     await asyncio.sleep(0)

@@ -8,7 +8,7 @@ from harnessed.events import TurnStartedEvent
 from harnessed.kernel import PluginSpec, Scope
 from harnessed.models.assets import AssetStore, MemoryAssets
 from harnessed.output.contracts import OutputTypes
-from harnessed.sessions import SessionCheckpoint, SessionContext, SessionState, SessionStore
+from harnessed.sessions import SessionContext, SessionRecovery, SessionState, SessionStore
 from harnessed.sessions.files import MemoryFiles, SessionFiles
 from harnessed.sessions.log import SessionLog
 from harnessed.sessions.values import PluginValues
@@ -24,7 +24,7 @@ from .session import Session
 
 async def open_session(
     scope: Scope,
-    state: SessionState | SessionCheckpoint | None,
+    state: SessionState | SessionRecovery | None,
     *,
     loop: AgentLoop,
     pending: tuple[PluginSpec, ...],
@@ -37,14 +37,14 @@ async def open_session(
     _check_options(state, id, store=store, commit_timeout_seconds=commit_timeout_seconds)
     if store is not None and id is not None and ChildSessionRequest not in scope:
         state = await _read_stored(store, id, state)
-    if isinstance(state, SessionCheckpoint):
+    if isinstance(state, SessionRecovery):
         if id is not None and id != state.session_id:
-            raise ConfigError("id must match the checkpoint's session_id")
-        checkpoint: SessionCheckpoint | None = state
+            raise ConfigError("id must match the recovery value's session_id")
+        recovery: SessionRecovery | None = state
         selected: SessionState | None = state.state
         session_id = state.session_id
     else:
-        checkpoint = None
+        recovery = None
         selected = state
         session_id = uuid4().hex if id is None else id
     log = SessionLog(
@@ -54,14 +54,12 @@ async def open_session(
         store=store,
         commit_timeout_seconds=commit_timeout_seconds,
         assets=(
-            MemoryAssets((*checkpoint.state.assets, *checkpoint.assets))
-            if checkpoint is not None
+            MemoryAssets((*recovery.state.assets, *recovery.assets))
+            if recovery is not None
             else None
         ),
         files=(
-            MemoryFiles((*checkpoint.state.files, *checkpoint.files))
-            if checkpoint is not None
-            else None
+            MemoryFiles((*recovery.state.files, *recovery.files)) if recovery is not None else None
         ),
     )
     scope.provide(AssetStore, log.assets)
@@ -71,8 +69,8 @@ async def open_session(
     if ChildSessionRequest in scope:
         await log.append(scope[ChildSessionRequest].link)
         await log.flush()
-    if checkpoint is not None:
-        await log.restore(checkpoint)
+    if recovery is not None:
+        await log.restore(recovery)
         _restore_output_schemas(scope[OutputTypes], log)
     runtime = loop.create(scope, log)
     try:
@@ -111,31 +109,31 @@ def _check_options(
     store: SessionStore | None,
     commit_timeout_seconds: float | None,
 ) -> None:
-    if state is not None and not isinstance(state, SessionState | SessionCheckpoint):
-        raise ConfigError("state must be a SessionState, a SessionCheckpoint or None")
+    if state is not None and not isinstance(state, SessionState | SessionRecovery):
+        raise ConfigError("state must be a SessionState, a SessionRecovery or None")
     if id is not None and (not isinstance(id, str) or not id.strip()):
         raise ConfigError("Conversation IDs must be non-empty strings")
     if store is not None and not isinstance(store, SessionStore):
         raise ConfigError("store must implement SessionStore: async read() and write()")
-    if store is not None and isinstance(state, SessionCheckpoint):
-        raise ConfigError("A store reopens its sessions by id; pass id= instead of a checkpoint")
+    if store is not None and isinstance(state, SessionRecovery):
+        raise ConfigError("A store reopens sessions by id; pass id= instead of a SessionRecovery")
     if commit_timeout_seconds is not None and not commit_timeout_seconds > 0:
         raise ConfigError("commit_timeout_seconds must be positive or None")
 
 
 async def _read_stored(
-    store: SessionStore, session_id: str, state: SessionState | SessionCheckpoint | None
-) -> SessionState | SessionCheckpoint | None:
+    store: SessionStore, session_id: str, state: SessionState | SessionRecovery | None
+) -> SessionState | SessionRecovery | None:
     """Reopen what the store holds for ``session_id``; a new session keeps ``state``."""
     stored = await store.read(session_id)
     if stored is None:
         return state
     if state is not None:
         raise ConfigError(f"Session {session_id!r} is already stored; open it without state=")
-    checkpoint = stored.checkpoint()
-    if checkpoint.session_id != session_id:
+    recovery = stored.recovery()
+    if recovery.session_id != session_id:
         raise SessionFormatError(f"The store returned another session for {session_id!r}")
-    return checkpoint
+    return recovery
 
 
 def _restore_output_schemas(outputs: OutputTypes, log: SessionLog) -> None:

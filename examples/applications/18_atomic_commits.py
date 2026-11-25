@@ -27,7 +27,7 @@ async def main() -> None:
         async with agent.session(id="support:4711", store=store) as session:
             await session.run("Continue.")
         assert len(await repository.messages("support:4711")) == 4
-        print("Messages and recovery checkpoints committed together.")
+        print("Messages, journal entries and snapshots committed together.")
 
 
 if __name__ == "__main__":

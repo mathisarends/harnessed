@@ -36,7 +36,7 @@ async def test_roundtrip_continuation_matches_a_live_conversation_and_uses_curre
         await session.run("Continue.")
         actual = model.requests[-1].messages
         assert [(m.role, m.text) for m in actual] == [(m.role, m.text) for m in expected]
-        assert session.snapshot().plugin_values == {"customer": "one"}
+        assert session.state().plugin_values == {"customer": "one"}
         assert not session.events and not session.turns
     newer = ScriptedModel(["updated"])
     async with Agent(model=newer, instructions="New instructions.").session(
@@ -57,7 +57,7 @@ async def test_two_imports_are_independent_and_snapshots_are_immutable():
     async with agent.session(state=state) as a, agent.session(state=state) as b:
         await a.scope[PluginValues].commit("branch", "a")
         result_a = await a.run("Approach A.")
-        assert "branch" not in b.snapshot().plugin_values
+        assert "branch" not in b.state().plugin_values
         result_b = await b.run("Approach B.")
     assert state.to_json() == saved
     assert result_a.state.plugin_values == {"branch": "a"}
@@ -116,7 +116,7 @@ async def test_compaction_releases_discarded_objects_and_exports_only_active_con
         frozen = first.state.to_json()
         await session.run("kept")
         assert await session.compact() is not None
-        compacted = session.snapshot()
+        compacted = session.state()
         assert len(compacted.history) == 3
         assert len(compacted.turns) == 1
         assert first.state.to_json() == frozen
@@ -127,7 +127,7 @@ async def test_compaction_releases_discarded_objects_and_exports_only_active_con
         assert old() is None
         await session.run("new context " * 500)
         assert await session.compact() is not None
-        again = SessionState.from_json(session.snapshot().to_json())
+        again = SessionState.from_json(session.state().to_json())
         assert sum(entry.message.id.startswith("compaction:") for entry in again.history) == 1
 
 
@@ -156,7 +156,7 @@ async def test_spill_contents_survive_compaction_json_and_session_close():
         ref = first.tool_calls[0][1].spill
         assert ref is not None
         assert await session.compact() is not None
-        state = SessionState.from_json(session.snapshot().to_json())
+        state = SessionState.from_json(session.state().to_json())
     async with agent.session(state=state) as restored:
         assert await restored.scope[SpillStore].read(ref.path, limit=16000) == text[:16000]
         await restored.run("Continue.")
@@ -170,7 +170,7 @@ async def test_queued_stream_results_have_their_own_turn_boundary_state():
         first = await session.submit("First.")
         second = await session.submit("Second.")
         with pytest.raises(SessionStateError):
-            session.snapshot()
+            session.state()
         await session.resume()
         two = await second.result()
         one = await first.result()
@@ -181,7 +181,7 @@ async def test_queued_stream_results_have_their_own_turn_boundary_state():
             "Second.",
             "two",
         ]
-        assert session.snapshot() == two.state
+        assert session.state() == two.state
     async with Agent(model=ScriptedModel(["streamed"])).session(state=one.state) as session:
         async with session.stream("Next.") as run_stream:
             events = [event async for event in run_stream]
@@ -294,7 +294,7 @@ async def test_export_rejects_a_paused_open_turn_and_abort_returns_a_closed_stat
         release.set()
         await asyncio.wait_for(pausing, timeout=5)
         with pytest.raises(SessionStateError):
-            session.snapshot()
+            session.state()
         await session.abort()
         result = await handle.result()
         assert SessionState.from_json(result.state.to_json()) == result.state

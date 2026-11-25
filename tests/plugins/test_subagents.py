@@ -32,12 +32,12 @@ from harnessed.models import (
     UserMessage,
 )
 from harnessed.plugins import Subagents
-from harnessed.sessions import JournalEntry, SessionCheckpoint, SessionState
+from harnessed.sessions import JournalEntry, SessionRecovery, SessionState
 from harnessed.sessions.log import SessionLog
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit, AuditProjection
-from tests._checkpoints import boundary
 from tests._commits import CommitRecorder
+from tests._recovery import snapshot
 
 
 def delegate(agent="review", task="Review this task", *, id=None):
@@ -456,8 +456,8 @@ async def test_interrupted_parent_marks_child_without_repeating_work():
     store = CommitRecorder()
     started = SubagentStartedEvent("child-one", "review", "task", "turn", "call", 1)
     suffix = (TurnStartedEvent("turn", "input"), started)
-    seed = SessionCheckpoint(
-        replace(boundary(), session_id="parent"),
+    seed = SessionRecovery(
+        replace(snapshot(), session_id="parent"),
         tuple(JournalEntry(sequence, event) for sequence, event in enumerate(suffix)),
     )
     store.put(seed)

@@ -25,7 +25,7 @@ async def sample(frames: int, image_bytes: int) -> dict[str, int | float]:
             ref = await session.assets.put(data, media_type="image/png")
             session.observe(UserMessage((ImageReference(ref),)), source="screen")
             await session.run("inspect")
-        state = session.snapshot()
+        state = session.state()
         payload = state.to_json()
         assert len(state.assets) == 1
         assert SessionState.from_json(payload) == state

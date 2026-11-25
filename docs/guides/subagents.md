@@ -219,8 +219,8 @@ stored log and external effects before explicitly issuing a new delegation.
 Child references, bounded runtime state and terminal receipts are retained in
 `SessionState`, including running children at an idle parent boundary. Opening a
 copied snapshot also marks these references interrupted; copying never clones live work.
-A running delegation within a parent turn is represented in the checkpoint's
-current-turn suffix. The parent
+A running delegation within a parent turn is represented in the journal of the
+parent's open turn. The parent
 flushes its start record before opening the child and its receipt before returning
 the tool result. The handler receives those records as journal entries in a `SessionCommit`. Recovery does not promise an atomic commit across parent and
 child sessions. Continuing or copying parent state retains historical child

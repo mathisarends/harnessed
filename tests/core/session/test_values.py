@@ -61,7 +61,7 @@ async def test_values_are_typed_and_survive_serialized_restoration():
         assert plugin.items.get() == []
         assert plugin.handoff.get() is None
         await session.run("Plan")
-        state = SessionState.from_json(session.snapshot().to_json())
+        state = SessionState.from_json(session.state().to_json())
     assert state.plugin_values["tests.todos"] == ({"title": "Write tests", "done": False},)
     async with agent.session(state=state) as restored:
         plugin = await mounted(restored)
@@ -103,7 +103,7 @@ async def test_failed_in_place_update_leaves_each_sessions_default_unchanged():
         with pytest.raises(RuntimeError, match="update failed"):
             await plugin.items.update(fail)
         assert plugin.items.get() == []
-        assert first.snapshot().plugin_values == {}
+        assert first.state().plugin_values == {}
     async with agent.session() as second:
         plugin = await mounted(second)
         assert plugin.items.get() == []
@@ -135,7 +135,7 @@ async def test_value_schema_uses_json_validation_after_restoration():
     selected = date(2026, 11, 21)
     async with agent.session() as session:
         await session.scope[Calendar].day.set(selected)
-        state = SessionState.from_json(session.snapshot().to_json())
+        state = SessionState.from_json(session.state().to_json())
     async with agent.session(state=state) as session:
         assert session.scope[Calendar].day.get() == selected
 

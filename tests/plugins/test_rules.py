@@ -80,7 +80,7 @@ async def test_rule_note_context_steer_order_and_structured_exit_code():
         assert [e.mode for e in inbox] == ["followup", "steer"]
         assert inbox[-1].message.role == Role.USER
         assert any("Consider the failure." in m.text for m in model.requests[-1].messages)
-        assert agent.snapshot().plugin_values[RULES_CONTEXT]["rules:1"] == "Consider the failure."
+        assert agent.state().plugin_values[RULES_CONTEXT]["rules:1"] == "Consider the failure."
         triggered = [e for e in agent_audit.events if isinstance(e, RuleTriggeredEvent)]
         assert triggered[0].actions == ("note", "steer")
         assert AuditProjection(agent_audit.events).messages == agent.log.messages
@@ -317,10 +317,10 @@ async def test_canonical_match_metadata_survives_output_limits_and_context_reset
         assert len(first.tool_calls[0][1].content) == 256
         assert dict(first.tool_calls[0][1].rule_matches)["rules:0"] is True
         await session.run("Second")
-        assert session.snapshot().plugin_values[RULES_CONTEXT]["rules:0"] == "Use a smaller range."
+        assert session.state().plugin_values[RULES_CONTEXT]["rules:0"] == "Use a smaller range."
         source[0] = "fixed"
         await session.run("Success")
-        assert "rules:0" not in session.snapshot().plugin_values[RULES_CONTEXT]
+        assert "rules:0" not in session.state().plugin_values[RULES_CONTEXT]
 
 
 def test_rules_are_immutable_and_require_actions():

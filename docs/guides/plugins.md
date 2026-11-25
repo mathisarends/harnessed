@@ -498,7 +498,7 @@ The hook carries the live `SessionContext` and one `time.monotonic()` reading
 shared by all listeners. Opening the same conversation again gives it a fresh
 timestamp. Plugins mounted later receive future lifecycle notifications only.
 
-Reopening a `SessionState` or `SessionCheckpoint` repairs work that was
+Reopening a `SessionState` or `SessionRecovery` repairs work that was
 interrupted mid-turn before `SessionOpened`: unfinished tool calls, requests,
 approvals and subagents are closed, and an open turn that was not paused ends
 as `aborted`. The repair runs after every plugin is active, including plugins
@@ -506,7 +506,7 @@ that need `SessionLog` or `SessionContext`, so their hooks observe those
 records. `SessionOpened` observers then see the repaired log, and a session
 store has written the repair records before the session block is entered. A hook that
 raises during repair fails the opening like a raising `SessionOpened` hook. A
-paused checkpoint keeps its open turn and stays paused.
+session reopened while paused keeps its open turn and stays paused.
 
 ```python
 from harnessed import Agent, Plugin, hook
