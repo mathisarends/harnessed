@@ -402,9 +402,9 @@ rejected. An image given as an `ImageReference` needs its bytes as an
 `ImagePart` URL needs none. An invalid history raises `SessionFormatError`
 naming the violated rule.
 
-Imported messages belong to no recorded turn or step. Compaction summarizes
-them with the earlier context once the session has recorded more than
-`keep_last_steps` steps of its own. The import keeps no plugin session values,
+Imported messages belong to no recorded turn or step. They can be compacted
+before the first model call when they exceed the input budget, while
+`keep_last_steps` protects recorded steps. The import keeps no plugin session values,
 spill text, child sessions or compaction metadata; capture a `SessionState` to
 carry those. `SessionState.from_messages(session.messages)` therefore copies
 only the messages of a live session.

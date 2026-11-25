@@ -7,6 +7,12 @@ Version-specific breaking changes and upgrade instructions are recorded below.
 
 ## Unreleased
 
+### Fixed
+
+- Compaction can summarize an imported message history before the first model
+  call. The built-in summarizer processes it in blocks when it exceeds the
+  summarizer's context window, then replaces it with one validated summary.
+
 ### Added
 
 - `agent.session(id=..., store=...)` persists a session through an
