@@ -4,7 +4,7 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md)
 is the complete version history and upgrade reference.
 
-## 0.29.1 (Unreleased)
+## 0.29.1 (2026-11-25)
 
 Harnessed can reopen full checkpoints written by 0.28.0, including paused
 turns with completed tool results. Decode the format **5** checkpoint with
