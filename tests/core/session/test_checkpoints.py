@@ -18,9 +18,15 @@ from harnessed.events import (
 from harnessed.events.registry import EventRegistry
 from harnessed.kernel import Inject
 from harnessed.models import ImageReference, ModelChunk, UserMessage
-from harnessed.sessions import CheckpointExtension, SessionCheckpoint, SessionState
+from harnessed.sessions import (
+    CheckpointExtension,
+    JournalEntry,
+    SessionBoundary,
+    SessionCheckpoint,
+    SessionState,
+)
 from harnessed.testing import CallbackModel, ScriptedModel, call
-from tests._checkpoints import checkpoint
+from tests._checkpoints import boundary, checkpoint
 from tests._commits import CommitRecorder
 
 
@@ -34,11 +40,19 @@ class BackendEnvelope(BaseModel):
     checkpoint: SessionCheckpoint
 
 
+def _with_journal(*events) -> SessionCheckpoint:
+    return SessionCheckpoint(
+        boundary(),
+        tuple(JournalEntry(sequence, event) for sequence, event in enumerate(events)),
+    )
+
+
 def test_checkpoint_has_typed_messages_and_nested_pydantic_roundtrip():
-    value = replace(
-        checkpoint(),
-        control=SessionControlChangedEvent(ControlState.PAUSED),
-        events=(TurnStartedEvent("turn"), UserMessageEvent(UserMessage("hello", id="user-id"))),
+    value = SessionCheckpoint(
+        replace(boundary(), control=SessionControlChangedEvent(ControlState.PAUSED)),
+        _with_journal(
+            TurnStartedEvent("turn"), UserMessageEvent(UserMessage("hello", id="user-id"))
+        ).journal,
     )
     envelope = BackendEnvelope(checkpoint=value)
     restored = BackendEnvelope.model_validate_json(envelope.model_dump_json()).checkpoint
@@ -46,15 +60,28 @@ def test_checkpoint_has_typed_messages_and_nested_pydantic_roundtrip():
     message = restored.events[1]
     assert isinstance(message, UserMessageEvent)
     assert message.message.id == "user-id" and message.message.text == "hello"
-    assert restored.control.state is ControlState.PAUSED
-    schema = BackendEnvelope.model_json_schema()
-    assert schema["$defs"]["SessionCheckpoint"]["properties"]["version"]["const"] == 5
-    assert "UserMessageEvent" in schema["$defs"]
+    assert restored.boundary.control.state is ControlState.PAUSED
+    schema = BackendEnvelope.model_json_schema()["$defs"]
+    assert schema["SessionCheckpoint"]["properties"]["version"]["const"] == 6
+    assert schema["SessionBoundary"]["properties"]["version"]["const"] == 1
+    assert schema["JournalEntry"]["properties"]["version"]["const"] == 1
+    assert "UserMessageEvent" in schema
+
+
+def test_boundaries_and_entries_roundtrip_as_separate_documents():
+    value = _with_journal(TurnStartedEvent("turn"), UserMessageEvent(UserMessage("hello")))
+    stored_boundary = SessionBoundary.from_json(value.boundary.to_json())
+    stored_entries = [JournalEntry.from_dict(entry.to_dict()) for entry in value.journal]
+    assert SessionCheckpoint.from_journal(stored_boundary, stored_entries) == value
+    with pytest.raises(SessionFormatError):
+        SessionBoundary.from_dict({"version": 2})
+    with pytest.raises(SessionFormatError):
+        JournalEntry.from_dict({"sequence": -1, "record": {"type": "turn.started"}})
 
 
 def test_checkpoint_extensions_are_immutable_and_roundtrip_without_a_registry():
     extension = CheckpointExtension(tag="project.details", data={"items": [{"name": "a"}]})
-    value = replace(checkpoint(), events=(TurnStartedEvent("turn"), extension))
+    value = _with_journal(TurnStartedEvent("turn"), extension)
     restored = SessionCheckpoint.from_json(value.to_json())
     assert restored == value
     assert (
@@ -66,45 +93,45 @@ def test_checkpoint_extensions_are_immutable_and_roundtrip_without_a_registry():
     with pytest.raises(TypeError):
         extension.data["changed"] = True
     with pytest.raises(FrozenInstanceError):
-        value.offset = 3
+        value.journal = ()
     with pytest.raises(ValidationError):
         CheckpointExtension(tag="project.details", data={"invalid": float("inf")})
 
 
 @pytest.mark.parametrize(
-    "change", ["old-version", "bool-version", "extra", "offset", "seed", "end", "id", "blank-id"]
+    "change",
+    ["old-version", "bool-version", "extra", "sequence", "seed", "end", "gap", "id", "blank-id"],
 )
 def test_checkpoint_rejects_invalid_documents(change):
-    data = json.loads(checkpoint().to_json())
+    data = json.loads(_with_journal(TurnStartedEvent("turn")).to_json())
     if change == "old-version":
-        data["version"] = 4
+        data["version"] = 5
     elif change == "bool-version":
         data["version"] = True
     elif change == "extra":
         data["unknown"] = "ignored?"
-    elif change == "offset":
-        data["offset"] = -1
+    elif change == "sequence":
+        data["boundary"]["sequence"] = -1
     elif change == "id":
-        del data["session_id"]
+        del data["boundary"]["session_id"]
     elif change == "blank-id":
-        data["session_id"] = " "
+        data["boundary"]["session_id"] = " "
     elif change == "seed":
-        data["seed"] = [{"type": "turn.started", "turn_id": "turn"}]
+        data["boundary"]["seed"] = [{"type": "turn.started", "turn_id": "turn"}]
+    elif change == "gap":
+        data["journal"][0]["sequence"] = 1
     else:
-        data["events"] = [
-            {"type": "turn.started", "turn_id": "turn"},
-            {"type": "turn.ended", "turn_id": "turn"},
-        ]
+        data["journal"].append({"sequence": 1, "record": {"type": "turn.ended", "turn_id": "turn"}})
     with pytest.raises(SessionFormatError):
         SessionCheckpoint.from_json(json.dumps(data))
 
 
 def test_checkpoint_construction_and_type_adapter_validate_without_json():
     with pytest.raises(ValidationError):
-        SessionCheckpoint(
+        SessionBoundary(
             session_id="session",
+            sequence=-1,
             state=SessionState(),
-            offset=-1,
             control=SessionControlChangedEvent(ControlState.ACTIVE),
         )
     with pytest.raises(SessionFormatError):
@@ -131,7 +158,7 @@ async def test_custom_event_restoration_uses_the_agent_catalog_not_the_document(
     store = CommitRecorder(documents=True)
     model = ScriptedModel([call(Indexer.index), "finished"])
     agent = Agent(model=model, plugins=[Indexer()])
-    async with agent.session(id="custom", on_commit=store) as session:
+    async with agent.session(id="custom", store=store) as session:
         await session.submit("Index")
         await asyncio.wait_for(entered.wait(), timeout=5)
         pausing = asyncio.create_task(session.pause())
@@ -186,8 +213,12 @@ async def _image_checkpoints() -> tuple[SessionCheckpoint, SessionCheckpoint]:
 async def test_decoding_a_checkpoint_with_tampered_image_bytes_fails(encoding):
     terminal, running = await _image_checkpoints()
     assert running.assets and terminal.state.assets
-    for document, assets in ((terminal.to_dict(), "state"), (running.to_dict(), "suffix")):
-        target = document["state"]["assets"] if assets == "state" else document["assets"]
+    # The open turn's image was stored before the turn began, so its boundary holds it.
+    for document, assets in ((terminal.to_dict(), "state"), (running.to_dict(), "boundary")):
+        if assets == "state":
+            target = document["boundary"]["state"]["assets"]
+        else:
+            target = document["boundary"]["assets"]
         target[0]["data"] = "Y29ycnVwdA=="
         with pytest.raises(SessionFormatError):
             if encoding == "dict":

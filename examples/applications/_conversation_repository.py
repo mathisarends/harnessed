@@ -1,25 +1,27 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
-@dataclass(frozen=True)
+@dataclass
 class ConversationRow:
     """Example application-owned record; it has no SDK dependency.
 
-    ``document`` stands in for a JSONB column and ``format_version`` for a
-    plain integer column that migrations and queries can use.
+    ``boundary`` and each ``journal`` document stand in for JSONB columns, and
+    ``format_version`` for a plain integer column that queries can use.
     """
 
-    document: dict[str, Any]
+    boundary: dict[str, Any]
     format_version: int
     retained_messages: int
+    journal: dict[int, dict[str, Any]] = field(default_factory=dict)
 
 
 class ConversationRepository:
-    """Offline stand-in for an existing repository, such as a Postgres table."""
+    """Offline stand-in for an existing repository, such as two Postgres tables."""
 
     def __init__(self) -> None:
         self._rows: dict[str, ConversationRow] = {}
+        self._journals: dict[str, dict[int, dict[str, Any]]] = {}
 
     async def fetch(self, key: str) -> ConversationRow | None:
         return self._rows.get(key)
@@ -28,8 +30,14 @@ class ConversationRepository:
         self,
         key: str,
         *,
-        document: dict[str, Any],
+        journal: dict[int, dict[str, Any]],
+        boundary: dict[str, Any] | None,
         format_version: int,
         retained_messages: int,
     ) -> None:
-        self._rows[key] = ConversationRow(document, format_version, retained_messages)
+        stored = self._journals.setdefault(key, {})
+        for sequence, document in journal.items():
+            # A redelivered entry is already stored and stays unchanged.
+            stored.setdefault(sequence, document)
+        if boundary is not None:
+            self._rows[key] = ConversationRow(boundary, format_version, retained_messages, stored)

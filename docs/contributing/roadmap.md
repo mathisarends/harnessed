@@ -25,18 +25,24 @@ metadata cached at decoration, is implemented in the public facade.
 
 ## Conversation state follow-ups
 
-Applications own persistence through `SessionState`, `session.checkpoint()` and
-`on_commit` handlers; see the [session guide](../guides/sessions.md). Candidates:
+Applications own persistence through a `SessionStore` and explicit
+`SessionState` values; see the [session guide](../guides/sessions.md). Candidates:
 
-- Merge `SessionState` and `SessionCheckpoint` into one persisted value, so
-  applications store a single type. `SessionCheckpoint.execution` and
-  `from_parts()` already let a store keep the state and the execution part
-  apart; a merged value should keep that split.
+- Store a tool result once. A tool result currently appears in its
+  `ToolCallFinishedEvent` entry and again in the next request, unless that
+  request references it by ID.
+- Reference a contiguous range of the boundary history from a model request
+  instead of listing each message ID.
+- Read-time upcasters for released journal and boundary formats, applied
+  where `StoredSession` decodes the stored documents, with a documented window
+  of readable versions, once a storage compatibility contract exists.
+- Golden fixtures of stored boundaries and journal entries, so format changes
+  are reviewed explicitly.
 - Add a typed `commit.messages` projection, so handlers need not map
   `InboxAddedEvent` and `AssistantMessageEvent` themselves.
 - Application-supplied blob storage for large resources; current checkpoints
-  include their image and spill bytes. The execution part only carries the
-  resources added during the open turn.
+  include their image and spill bytes. Each resource is written once, with
+  the boundary or with the journal entry that first stored it.
 
 The optional [MCP client](../guides/mcp.md) now exposes tools over stdio and
 Streamable HTTP. Resources, prompts, sampling, elicitation and live catalog

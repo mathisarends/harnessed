@@ -20,7 +20,7 @@ from harnessed.runtime.handles import RunHandle, RunStream
 from harnessed.sessions import SessionCommit
 from harnessed.testing import CallbackModel, ScriptedModel, call
 from tests._audit import Audit
-from tests._commits import CommitRecorder
+from tests._commits import CommitRecorder, Writes
 
 
 async def test_submitted_handle_has_no_live_iteration_or_observation_to_close() -> None:
@@ -67,13 +67,13 @@ async def test_cancelled_submit_runs_once_after_its_input_commit_succeeds() -> N
     store = CommitRecorder()
 
     async def persist(commit: SessionCommit) -> None:
-        if any(isinstance(change.event, InboxAddedEvent) for change in commit.changes):
+        if any(isinstance(entry.record, InboxAddedEvent) for entry in commit.journal):
             saving.set()
             await asyncio.wait_for(release.wait(), timeout=3)
-        await store(commit)
+        await store.write(commit)
 
     model = ScriptedModel(["done"])
-    async with Agent(model=model).session(on_commit=persist) as session:
+    async with Agent(model=model).session(store=Writes(persist)) as session:
         submit = asyncio.create_task(session.submit("accepted work"))
         try:
             await asyncio.wait_for(saving.wait(), timeout=3)
@@ -96,7 +96,7 @@ async def test_cancelled_submit_runs_once_after_its_input_commit_succeeds() -> N
 async def test_reserved_input_ids_are_rejected_before_admission(message_id: str) -> None:
     store = CommitRecorder()
     model = ScriptedModel(["done"])
-    async with Agent(model=model).session(on_commit=store) as session:
+    async with Agent(model=model).session(store=store) as session:
         message = UserMessage("invalid", id=message_id)
         with pytest.raises(ValueError, match="reserved"):
             await session.run(message)
@@ -407,13 +407,13 @@ async def test_failing_turn_end_observer_leaves_no_queued_input_behind():
 async def test_discarded_queued_runs_reach_on_commit_and_stay_discarded_after_reopening():
     store = CommitRecorder(documents=True)
     agent = Agent(model=_fail_first_call([]))
-    async with agent.session(id="failing", on_commit=store) as session:
+    async with agent.session(id="failing", store=store) as session:
         await session.submit("first")
         second = await session.submit("second")
         assert await _settle(second) == "raised: provider down"
     assert any(
-        isinstance(change.event, InboxRemovedEvent) and change.event.message_id == second.id
-        for change in store.changes("failing")
+        isinstance(entry.record, InboxRemovedEvent) and entry.record.message_id == second.id
+        for entry in store.entries("failing")
     )
     async with Agent(model=ScriptedModel([])).session(state=store.latest("failing")) as reopened:
         assert reopened.inbox.pending == ()

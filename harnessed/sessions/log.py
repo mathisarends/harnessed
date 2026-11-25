@@ -20,6 +20,7 @@ from harnessed.events import (
     IncludedObservation,
     LogEvent,
     MessageAppendedEvent,
+    ModelRequestedEvent,
     ModelRequestFailedEvent,
     ModelRequestOutcome,
     ObservationRecordedEvent,
@@ -55,14 +56,9 @@ from harnessed.models.values import JSONValue
 from harnessed.runtime.hooks import SessionAppended
 
 from .approvals import ApprovalProjection
-from .checkpoint import (
-    CheckpointEntry,
-    CheckpointExtension,
-    CheckpointSeed,
-    SessionCheckpoint,
-)
+from .checkpoint import SessionCheckpoint
 from .children import ChildProjection, ChildSession
-from .commit import CommitDelivery, CommitHandler, SessionChange
+from .commit import CommitCapture, CommitDelivery
 from .control import RunControl
 from .files import MemoryFiles
 from .history import WorkingHistory
@@ -70,6 +66,17 @@ from .history import derive_messages as derive_messages
 from .history import derive_requests as derive_requests
 from .images import SessionImages
 from .inbox import Inbox, InboxProjection
+from .journal import (
+    CheckpointExtension,
+    CheckpointRecord,
+    CheckpointSeed,
+    JournalEntry,
+    MessageReferences,
+    Resources,
+    SessionBoundary,
+    StoredResources,
+    attach_resources,
+)
 from .observers import LogObservers
 from .publishing import SessionPublished
 from .repair import InterruptedActivity
@@ -82,6 +89,7 @@ from .state import (
     image_refs,
     validate_conversation_message_id,
 )
+from .store import SessionStore
 from .turns import Turn, TurnProjection, recorded_usage
 
 
@@ -97,7 +105,7 @@ class SessionLog:
         files: MemoryFiles | None = None,
         registry: EventRegistry | None = None,
         assets: MemoryAssets | None = None,
-        on_commit: CommitHandler | None = None,
+        store: SessionStore | None = None,
         commit_timeout_seconds: float | None = None,
     ) -> None:
         if registry is None:
@@ -134,16 +142,18 @@ class SessionLog:
         self._preserved_turns = state.preserved_turns if state else ()
         self._uncompacted_turns = state.turns_since_compaction if state else 0
         self._closed_count = len(self._turn_boundaries)
+        self.store = store
         self._commits = (
-            CommitDelivery(on_commit, timeout_seconds=commit_timeout_seconds)
-            if on_commit is not None
+            CommitDelivery(store.write, timeout_seconds=commit_timeout_seconds)
+            if store is not None
             else None
         )
         self._restoring = False
-        self._turn_state: SessionState | None = None
         self._idle_state: SessionState | None = None
-        self._turn_seed: tuple[CheckpointSeed, ...] = ()
-        self._turn_offset = self._sequence
+        # The rest point an open turn started from, and the messages its
+        # recorded requests may name by ID. Both exist only while a turn is open.
+        self._turn_boundary: SessionBoundary | None = None
+        self._references = MessageReferences()
 
     @property
     def persistent(self) -> bool:
@@ -157,11 +167,6 @@ class SessionLog:
         """Raise the stored delivery error before acknowledging a projected change."""
         if self._commits is not None:
             self._commits.check()
-
-    @property
-    def commit_handler(self) -> CommitHandler | None:
-        """The application handler receiving this log's commits, if any."""
-        return self._commits.handler if self._commits is not None else None
 
     @property
     def commit_timeout_seconds(self) -> float | None:
@@ -193,19 +198,28 @@ class SessionLog:
 
     @property
     def boundary_state(self) -> SessionState:
-        return self._turn_state if self._turn_state is not None else self.snapshot()
+        """The conversation state of the current boundary; see ``boundary()``."""
+        if self._turn_boundary is not None:
+            return self._turn_boundary.state
+        return self.snapshot()
 
     async def restore(self, checkpoint: SessionCheckpoint) -> None:
-        """Project a validated checkpoint without dispatching historical hooks."""
-        if self._events or self.open_turn is not None or checkpoint.offset < self._sequence:
-            raise SessionFormatError("Checkpoint offset precedes its conversation state")
+        """Load a stored boundary and replay its journal without dispatching hooks.
+
+        Replayed events go through the same projection as live ones, so queued
+        input, controls and an open turn end up exactly as they were recorded.
+        """
+        boundary = checkpoint.boundary
+        if self._events or self.open_turn is not None or boundary.sequence < self._sequence:
+            raise SessionFormatError("Checkpoint boundary precedes its conversation state")
         self._restoring = True
         try:
-            for event in checkpoint.seed:
+            for event in boundary.seed:
                 await self._append(event)
             self._events.clear()
             self._snapshot = None
-            self._sequence = checkpoint.offset
+            self._sequence = boundary.sequence
+            self._control = RunControl((boundary.control,))
             for event in checkpoint.events:
                 restored = (
                     event.to_event(registry=self.registry)
@@ -213,9 +227,6 @@ class SessionLog:
                     else event
                 )
                 await self._append(restored)
-            if checkpoint.events and self.open_turn is None:
-                raise SessionFormatError("An execution suffix must contain one open turn")
-            self._control = RunControl((checkpoint.control,))
             files = {value.key: value.text for value in self._files.snapshot()}
             for ref in self.resources:
                 if hashlib.sha256(files[ref.path].encode("utf-8")).hexdigest() != ref.sha256:
@@ -226,44 +237,76 @@ class SessionLog:
         finally:
             self._restoring = False
 
+    def boundary(self) -> SessionBoundary:
+        """The rest point that the session's journal continues from.
+
+        While a turn is open this is the boundary the turn started from; it does
+        not change until the turn ends. Otherwise it is the session right now.
+        """
+        if self._turn_boundary is not None:
+            return self._turn_boundary
+        return self._rest_boundary()
+
     def checkpoint(self) -> SessionCheckpoint:
-        """Capture the complete conversation, including an open turn's execution suffix."""
+        """Capture the session as its current boundary and the open turn's journal."""
+        boundary = self.boundary()
         turn = self.open_turn
-        state = self.snapshot() if turn is None else self.boundary_state
-        assets = {value.ref.sha256 for value in state.assets}
-        files = {value.key: value for value in state.files}
-        return SessionCheckpoint(
+        if turn is None:
+            return SessionCheckpoint(boundary)
+        references = MessageReferences(boundary.state.history)
+        entries = [
+            JournalEntry(boundary.sequence + index, self._record(event, references))
+            for index, event in enumerate(turn.events)
+        ]
+        added = StoredResources.of(boundary).missing(self._held_resources())
+        return SessionCheckpoint(boundary, attach_resources(entries, added))
+
+    def _rest_boundary(self) -> SessionBoundary:
+        state = self.snapshot()
+        in_state = StoredResources(Resources(state.assets, state.files))
+        held = in_state.missing(self._held_resources())
+        return SessionBoundary(
             session_id=self.id,
+            sequence=self._sequence,
             state=state,
-            offset=self._turn_offset if turn is not None else self._sequence,
-            seed=self._turn_seed if turn is not None else self._checkpoint_seed(),
-            events=tuple(
-                self._checkpoint_entry(event) for event in (turn.events if turn is not None else ())
-            ),
             control=SessionControlChangedEvent(self._control.state, self._control.keep_inbox),
-            assets=tuple(
-                value for value in self._assets.snapshot() if value.ref.sha256 not in assets
-            ),
-            files=tuple(value for value in self._files.snapshot() if files.get(value.key) != value),
+            seed=self._seed(),
+            assets=held.assets,
+            files=held.files,
         )
 
-    def _checkpoint_entry(self, event: DurableEvent) -> CheckpointEntry:
+    def _held_resources(self) -> Resources:
+        return Resources(self._assets.snapshot(), self._files.snapshot())
+
+    def _capture(self) -> CommitCapture:
+        return CommitCapture(self.boundary(), self._held_resources())
+
+    def _record(self, event: DurableEvent, references: MessageReferences) -> CheckpointRecord:
+        """The storage form of an event; requests name known messages by ID."""
         # The log admits only catalog-validated built-ins or declared extensions.
         if event.type not in SESSION_EVENT_TYPES:
             return CheckpointExtension.from_event(event, registry=self.registry)
+        if isinstance(event, ModelRequestedEvent):
+            return references.refer(event)
         return cast(LogEvent, event)
 
     async def _deliver(self) -> None:
         async with self._lock:
             if self._commits is not None:
-                await self._commits.deliver(self.checkpoint)
+                await self._commits.deliver(self._capture)
 
-    def _checkpoint_seed(self) -> tuple[CheckpointSeed, ...]:
+    def _seed(self) -> tuple[CheckpointSeed, ...]:
+        """The projected facts that a boundary carries beyond its conversation state.
+
+        These are the queued inputs and every approval that later journal
+        entries may still refer to: grants in force and requests still pending.
+        """
         events: list[CheckpointSeed] = list(self._inbox.pending)
-        for grant in self.approvals.grants:
-            events.append(grant.request)
-            if grant.resolution is not None:
-                events.append(grant.resolution)
+        for approval in self.approvals.records:
+            if approval.is_grant or approval.pending:
+                events.append(approval.request)
+                if approval.resolution is not None:
+                    events.append(approval.resolution)
         return tuple(events)
 
     @property
@@ -395,8 +438,6 @@ class SessionLog:
     def _release_turn(self) -> None:
         """Release execution buffers after publishing the terminal result."""
         self._events.clear()
-        self._turn_state = None
-        self._turn_seed = ()
         self._snapshot = None
         self._turns.release_closed()
         self._requests.release_turn()
@@ -620,19 +661,17 @@ class SessionLog:
                 event = replace(event, usage=recorded_usage(self.current_turn().events))
             seq = self._sequence
             if isinstance(event, TurnStartedEvent):
-                self._turn_state = self.snapshot()
-                self._turn_seed = self._checkpoint_seed()
-                self._turn_offset = seq
+                self._turn_boundary = self._rest_boundary()
+                self._references = MessageReferences(self._turn_boundary.state.history)
             if isinstance(event, CompactionAppliedEvent):
                 self._validate_compaction(event, seq)
             self._project(event, seq, approval)
             self.registry.validate(event)
-            if (
-                self._commits is not None
-                and not self._restoring
-                and self._commits.record(SessionChange(seq, self._checkpoint_entry(event)))
-            ):
-                await self._commits.deliver(self.checkpoint)
+            if self._commits is not None:
+                # Encode replayed events too, so the request references stay in step.
+                record = self._record(event, self._references)
+                if not self._restoring and self._commits.record(JournalEntry(seq, record)):
+                    await self._commits.deliver(self._capture)
             if not self._restoring:
                 self._observers.notify(event)
         return seq, event
@@ -732,6 +771,9 @@ class SessionLog:
         if isinstance(event, TurnStartedEvent):
             self._known_turns.add(event.turn_id)
         elif isinstance(event, TurnEndedEvent):
+            # The closed turn belongs to the conversation; the next boundary is a rest point.
+            self._turn_boundary = None
+            self._references = MessageReferences()
             self._turn_boundaries.append((seq + 1, event.turn_id))
             self._closed_count += 1
             self._uncompacted_turns += 1

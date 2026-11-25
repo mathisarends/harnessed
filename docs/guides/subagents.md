@@ -203,10 +203,10 @@ snapshots with IDs, originating turn/call IDs, status, answer, recorded usage an
 projection; `SubagentMessageSentEvent` records acknowledged guidance.
 Snapshots are also available from `SessionLog.children` after replay.
 
-Child sessions deliver their commits through the parent session's `on_commit`
-handler; `commit.session_id` identifies the child. Without a parent handler they
-remain ephemeral. Reopen a child with
-`specialist.session(state=checkpoint)`; the checkpoint carries the child's ID. Applications own execution
+Child sessions write their commits through the parent session's store;
+`commit.session_id` identifies the child. Without a parent store they remain
+ephemeral. Reopen a child by its ID with
+`specialist.session(id=child_session_id, store=sessions)`. Applications own execution
 coordination, retention and deletion; deleting a parent does not cascade-delete
 its children.
 
@@ -222,8 +222,7 @@ copied snapshot also marks these references interrupted; copying never clones li
 A running delegation within a parent turn is represented in the checkpoint's
 current-turn suffix. The parent
 flushes its start record before opening the child and its receipt before returning
-the tool result. The handler receives those changes with their checkpoint in a
-`SessionCommit`. Recovery does not promise an atomic commit across parent and
+the tool result. The handler receives those records as journal entries in a `SessionCommit`. Recovery does not promise an atomic commit across parent and
 child sessions. Continuing or copying parent state retains historical child
 references and receipts; it does not clone children.
 

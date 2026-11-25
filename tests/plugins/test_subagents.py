@@ -32,11 +32,11 @@ from harnessed.models import (
     UserMessage,
 )
 from harnessed.plugins import Subagents
-from harnessed.sessions import SessionState
+from harnessed.sessions import JournalEntry, SessionCheckpoint, SessionState
 from harnessed.sessions.log import SessionLog
 from harnessed.testing import CallbackModel, ScriptedModel
 from tests._audit import Audit, AuditProjection
-from tests._checkpoints import checkpoint
+from tests._checkpoints import boundary
 from tests._commits import CommitRecorder
 
 
@@ -77,7 +77,7 @@ async def test_child_sessions_share_the_parent_commit_deadline():
     child = Agent(model=ScriptedModel(["Child answer"]), plugins=[Deadline()])
     parent = coordinator(child)
     store = CommitRecorder()
-    async with parent.session(on_commit=store, commit_timeout_seconds=30.0) as session:
+    async with parent.session(store=store, commit_timeout_seconds=30.0) as session:
         await session.run("Delegate")
         child_id = session.children[0].id
     assert deadlines == [30.0]
@@ -94,7 +94,7 @@ async def test_isolated_sessions_progress_receipts_and_usage():
     store = CommitRecorder()
     child = Agent(model=child_model, instructions="Specialist instructions", plugins=[Progress()])
     parent = coordinator(child)
-    async with parent.session(on_commit=store) as session:
+    async with parent.session(store=store) as session:
         await session.append_message(UserMessage("Private additive parent context"))
         result = await session.run("Secret parent prompt")
         parent_id = session.id
@@ -200,14 +200,14 @@ async def test_forwarded_reviewer_denial_keeps_its_source_and_reason_in_the_chil
         approvals=Approvals(reviewer=ParentReviewer()),
         plugins=[Subagents({"review": child})],
     )
-    async with parent.session(on_commit=store) as session:
+    async with parent.session(store=store) as session:
         await session.run("Delegate")
         child_id = session.children[0].id
 
     resolutions = [
-        change.event
-        for change in store.changes(child_id)
-        if isinstance(change.event, ApprovalResolvedEvent)
+        entry.record
+        for entry in store.entries(child_id)
+        if isinstance(entry.record, ApprovalResolvedEvent)
     ]
     assert len(resolutions) == 1
     assert resolutions[0].source is ApprovalSource.REVIEWER
@@ -387,7 +387,7 @@ async def test_default_depth_limit_is_inherited_and_cannot_be_raised_by_child(ne
         plugins=[Subagents({"leaf": leaf}, max_depth=10)],
     )
     parent = coordinator(middle)
-    async with parent.session(on_commit=store) as session:
+    async with parent.session(store=store) as session:
         await session.run("Delegate")
         child_id = session.children[0].id
     assert leaf_model.requests == []
@@ -437,7 +437,7 @@ async def test_persistent_parent_and_child_are_replayable_without_running_models
         approvals=Approvals(default=Decision.ALLOW),
         plugins=[Subagents({"review": child})],
     )
-    async with parent.session(id="parent", on_commit=store) as session:
+    async with parent.session(id="parent", store=store) as session:
         result = await session.run("Delegate")
         snapshots = session.children
         assert result.state.children == snapshots
@@ -456,17 +456,20 @@ async def test_interrupted_parent_marks_child_without_repeating_work():
     store = CommitRecorder()
     started = SubagentStartedEvent("child-one", "review", "task", "turn", "call", 1)
     suffix = (TurnStartedEvent("turn", "input"), started)
-    seed = replace(checkpoint(), session_id="parent", events=suffix)
+    seed = SessionCheckpoint(
+        replace(boundary(), session_id="parent"),
+        tuple(JournalEntry(sequence, event) for sequence, event in enumerate(suffix)),
+    )
+    store.put(seed)
     agent = Agent(model=ScriptedModel([]))
-    async with agent.session(id="parent", state=seed, on_commit=store) as session:
+    async with agent.session(id="parent", store=store) as session:
         assert session.children[0].status is SubagentStatus.INTERRUPTED
-    reopened = store.latest("parent")
-    async with agent.session(id="parent", state=reopened, on_commit=store) as session:
+    async with agent.session(id="parent", store=store) as session:
         assert session.children[0].status is SubagentStatus.INTERRUPTED
     receipts = [
-        change.event
-        for change in store.changes("parent")
-        if isinstance(change.event, SubagentFinishedEvent)
+        entry.record
+        for entry in store.entries("parent")
+        if isinstance(entry.record, SubagentFinishedEvent)
     ]
     assert len(receipts) == 1
 
@@ -588,7 +591,7 @@ async def test_always_grants_are_scoped_to_child_and_parent_revocation_is_effect
     )
     parent = coordinator(child)
     requests = []
-    async with parent.session(on_commit=store) as session:
+    async with parent.session(store=store) as session:
         parent_session.append(session)
         async with session.stream("Delegate") as run_stream:
             async for event in run_stream:
@@ -605,9 +608,9 @@ async def test_always_grants_are_scoped_to_child_and_parent_revocation_is_effect
     async with child.session(id=child_id, state=store.latest(child_id)) as session:
         assert not session.approvals.grants
     decisions = [
-        change.event.decision
-        for change in store.changes(child_id)
-        if isinstance(change.event, ApprovalResolvedEvent)
+        entry.record.decision
+        for entry in store.entries(child_id)
+        if isinstance(entry.record, ApprovalResolvedEvent)
     ]
     assert decisions == [Decision.ALLOW, Decision.ALLOW, Decision.DENY]
 
@@ -748,7 +751,7 @@ async def test_snapshot_restoration_preserves_receipts_call_limits_and_parent_li
     child_model = ScriptedModel([[ModelChunk(text="Child answer", usage=ModelUsage(7))]])
     child = Agent(model=child_model)
     parent = coordinator(child, [delegate(id="stable")], max_calls=1)
-    async with parent.session(on_commit=store) as session:
+    async with parent.session(store=store) as session:
         first = await session.run("Delegate once")
     state = SessionState.from_json(first.state.to_json())
     restored = Agent(
@@ -795,9 +798,9 @@ async def test_start_and_receipt_are_committed_before_crossing_session_boundarie
             yield ModelChunk(tool_call=delegate())
         else:
             receipts = [
-                change.event
-                for change in store.changes("parent")
-                if isinstance(change.event, SubagentFinishedEvent)
+                entry.record
+                for entry in store.entries("parent")
+                if isinstance(entry.record, SubagentFinishedEvent)
             ]
             assert len(receipts) == 1
             assert receipts[0].text == "Child answer"
@@ -809,7 +812,7 @@ async def test_start_and_receipt_are_committed_before_crossing_session_boundarie
         approvals=Approvals(allow=[Subagents.delegate]),
         plugins=[Subagents({"review": child})],
     )
-    async with parent.session(id="parent", on_commit=store) as session:
+    async with parent.session(id="parent", store=store) as session:
         result = await session.run("Delegate")
         assert result.text == "Parent answer"
         assert result.state.children[0].status is SubagentStatus.COMPLETED

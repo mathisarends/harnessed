@@ -275,46 +275,50 @@ plugin_validation=PluginValidation.ERROR)` resolves reusable configuration.
 | agent.loop | The configured AgentLoop |
 | agent.describe() | Immutable CompositionDescription with the configured plugins in order |
 | agent.prompt | Inspectable PromptComposition with final order, origins and format |
-| agent.session(*, state=None, id=None, on_commit=None, commit_timeout_seconds=None, restore_outputs=()) | Open a Session, optionally from a SessionState or SessionCheckpoint; on_commit receives its commits inside log admission and must not write to or flush its own session; commit_timeout_seconds bounds each delivery and fails it with CommitTimeout, shared by subagent sessions |
+| agent.session(*, state=None, id=None, store=None, commit_timeout_seconds=None, restore_outputs=()) | Open a Session; with id and store it reopens what the store holds for that ID or starts fresh, and writes every commit through store.write inside log admission, which must not write to or flush its own session; commit_timeout_seconds bounds each write and fails it with CommitTimeout, shared by subagent sessions; state continues an in-memory SessionState or SessionCheckpoint |
 | agent.run(content, state=None, **options) | Run one turn from text or a Message and return its terminal result and state |
 | agent.child_session(request) | Factory boundary for a fresh parent-owned child; application code normally uses Subagents |
 | SessionState.from_json(payload) / state.to_json() | Validate or encode the canonical conversation snapshot in memory |
 | SessionState.from_dict(document) / state.to_dict() | The same snapshot as a JSON-compatible dict, for example a JSONB column |
 
-`SessionCommit`, `SessionChange`, `SessionCheckpoint`, `SessionExecution`,
-`CheckpointRequest`, `ExecutionEntry` and
-`CommitHandler` (`Callable[[SessionCommit], Awaitable[None]]`) are exported from
-`harnessed.sessions`.
-Harnessed stores nothing itself. `SessionCommit(checkpoint, changes)`
-carries the complete recovery checkpoint, whose `session_id` is also
-`commit.session_id`, and the ordered
-`SessionChange(sequence, event)` values since the previous delivered commit.
-Map domain changes and the checkpoint in one application-owned transaction. Old
-changes are not emitted again on restore. Token deltas are excluded.
+`SessionStore`, `StoredSession`, `StoredDocument`, `SessionCommit`,
+`SessionBoundary`, `JournalEntry`, `SessionCheckpoint`, `CheckpointRequest` and
+`CheckpointExtension` are exported from `harnessed.sessions`.
+Harnessed stores nothing itself. An application implements `SessionStore` with
+two methods. `read(session_id)` returns `StoredSession(boundary, journal)` with
+the stored documents, each a dict, JSON string or JSON bytes, in sequence order,
+or `None` for an unknown ID. `write(commit)` stores one `SessionCommit` in one
+transaction. A persisted session is a boundary plus an append-only journal.
+`SessionCommit(session_id, journal, boundary=None)` carries the ordered
+`JournalEntry(sequence, record)` values since the previous commit and, when the
+conversation state changed, the new `SessionBoundary`: the session at its rest
+point with `sequence`, `state`, `control`, `seed` and the resources beyond the
+state. The first commit of a session always carries a boundary; commits inside a
+turn carry only entries. Insert the entries, ignoring stored sequences, replace
+the boundary and map domain rows in one application-owned transaction. Old
+entries are not written again on restore. Token deltas are excluded.
 Commits are awaited inline at input, model/tool intent, result, pause, turn-end
 and custom durable event barriers; other durable events travel with the next
-barrier, `session.flush()` or close. Child sessions deliver through their parent's
-handler. A handler exception reaches run/result/stream consumers and rejects
-later admissions; reopen from the last stored checkpoint.
-`commit.state_changed` is false when `commit.checkpoint.state` equals the state
-of the session's previous delivered commit and true for its first commit.
-`checkpoint.execution` returns the `SessionExecution` without the state, with
-the same `to_dict()` / `from_dict()` and `to_json()` / `from_json()` encoding;
-`SessionCheckpoint.from_parts(state, execution)` rebuilds the checkpoint and
-rejects an execution captured with another state. In `execution.events`, each
+barrier, `session.flush()` or close. Child sessions write through their parent's
+store. A store exception reaches run/result/stream consumers and rejects later
+admissions; reopen the session by its ID.
+Opening decodes the documents with `StoredSession.checkpoint()`, skips entries
+before the boundary and rejects gaps, invalid documents and documents of another
+session with `SessionFormatError`. With a store, `state=` accepts only a
+`SessionState` for an ID the store does not hold. In the journal, each
 `ModelRequestedEvent` becomes a `CheckpointRequest` whose `messages` hold the ID
-of a message already in the state or an earlier request, and the full message
-otherwise; `from_parts()` rejects an ID it cannot resolve.
-`session.checkpoint()` captures the same value on demand, including an open turn.
-Checkpoints are frozen Pydantic dataclasses with typed state, execution events,
-controls and resources. `to_dict()` / `from_dict()` and `to_json()` /
-`from_json()` provide canonical encoding without requiring a plugin catalog.
+of a message already in the turn's boundary state or an earlier request, and the
+full message otherwise; `checkpoint.events` resolves them and rejects an unknown
+ID. `session.checkpoint()` captures the `SessionCheckpoint(boundary, journal)` on
+demand, including an open turn. Checkpoints, boundaries and journal entries are
+frozen Pydantic dataclasses with `to_dict()` / `from_dict()` and `to_json()` /
+`from_json()` canonical encodings that need no plugin catalog.
 `CheckpointExtension` preserves application-defined event data for validation by
 the owning session. The application owns pool lifetime and coordinates active
 workers per ID.
 
-Closing a paused session with a commit handler delivers
-its execution; reopening it remains paused. Explicit `SessionState` values still
+Closing a paused session with a store writes its open turn's journal;
+reopening it remains paused. Explicit `SessionState` values still
 contain terminal conversation state only. See [sessions](../guides/sessions.md)
 for recovery, output-validator restoration and checkpoint format boundaries.
 
@@ -465,7 +469,7 @@ boundaries, including their full observations, plus unfinished/current context.
 Await methods that perform durable writes. Closed handles raise SessionClosed.
 SDK failures derive from `HarnessedError`, importable from `harnessed.errors`: operations
 invalid in the current status raise `SessionStateError` (SessionClosed is one),
-corrupt stored records raise `SessionFormatError`, an `on_commit` delivery that
+corrupt stored records raise `SessionFormatError`, a session store write that
 exceeds `commit_timeout_seconds` raises `CommitTimeout`, and `on_max_tokens=FAIL`
 raises `OutputTokenLimit`.
 See [session boundaries and restart behavior](../guides/sessions.md).

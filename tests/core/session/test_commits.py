@@ -1,6 +1,6 @@
 import asyncio
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Literal
 
 import pytest
@@ -20,10 +20,10 @@ from harnessed.events import (
 )
 from harnessed.models import ModelChunk, ModelRequest, ToolCallDelta, UserMessage
 from harnessed.runtime.hooks import SessionAppended
-from harnessed.sessions import CheckpointExtension, SessionChange, SessionCommit
+from harnessed.sessions import CheckpointExtension, JournalEntry, SessionCommit
 from harnessed.sessions.values import PluginValues
 from harnessed.testing import CallbackModel, ScriptedModel
-from tests._checkpoints import checkpoint
+from tests._checkpoints import boundary
 from tests._commits import CommitRecorder
 
 
@@ -59,7 +59,7 @@ async def test_token_deltas_are_live_without_entering_commits():
     def observe(event: TextDeltaEvent | ReasoningDeltaEvent | ToolArgumentsDeltaEvent) -> None:
         live.append(event)
 
-    async with Agent(model=CallbackModel(tokens)).session(id="stream", on_commit=store) as session:
+    async with Agent(model=CallbackModel(tokens)).session(id="stream", store=store) as session:
         session.scope.on(TextDeltaEvent, observe)
         session.scope.on(ReasoningDeltaEvent, observe)
         session.scope.on(ToolArgumentsDeltaEvent, observe)
@@ -76,10 +76,10 @@ async def test_token_deltas_are_live_without_entering_commits():
             assert len(store.commits) == before_tokens[0]
             assert not any(
                 isinstance(
-                    change.event, TextDeltaEvent | ReasoningDeltaEvent | ToolArgumentsDeltaEvent
+                    entry.record, TextDeltaEvent | ReasoningDeltaEvent | ToolArgumentsDeltaEvent
                 )
                 for commit in store.commits
-                for change in commit.changes
+                for entry in commit.journal
             )
             assert "x" * 1000 not in store.latest("stream").to_json()
         finally:
@@ -105,35 +105,37 @@ async def test_commits_cover_each_live_event_once_even_after_compaction_and_reop
         observed.append((event.seq, event.event))
 
     first_input = "first input " * 500
-    async with agent.session(id="archive", on_commit=store) as session:
+    async with agent.session(id="archive", store=store) as session:
         session.scope.on(SessionAppended, observe)
         await session.run(first_input)
         await session.run("kept")
         await session.run("second input")
         assert any(isinstance(event, CompactionAppliedEvent) for _, event in observed)
         assert first_input not in [entry.message.text for entry in session.snapshot().history]
-        changes = [change for commit in store.commits for change in commit.changes]
-        assert [(change.sequence, change.event) for change in changes] == observed
+        entries = [entry for commit in store.commits for entry in commit.journal]
+        assert [entry.sequence for entry in entries] == [seq for seq, _ in observed]
+        assert [entry.record.type for entry in entries] == [
+            "checkpoint.request" if event.type == "model.requested" else event.type
+            for _, event in observed
+        ]
 
     before = len(store.commits)
-    boundary = store.commits[-1].next_sequence
-    async with agent.session(
-        id="archive", state=store.latest("archive"), on_commit=store
-    ) as restored:
+    next_sequence = store.commits[-1].next_sequence
+    async with agent.session(id="archive", store=store) as restored:
         assert len(store.commits) == before
         await restored.run("third input")
-        new = [change for commit in store.commits[before:] for change in commit.changes]
-        assert new and new[0].sequence == boundary
+        new = [entry for commit in store.commits[before:] for entry in commit.journal]
+        assert new and new[0].sequence == next_sequence
         assert not any(
-            isinstance(change.event, UserMessageEvent)
-            and change.event.message.text in {first_input, "second input"}
-            for change in new
+            isinstance(entry.record, UserMessageEvent)
+            and entry.record.message.text in {first_input, "second input"}
+            for entry in new
         )
 
 
 async def test_pending_changes_keep_their_order_and_empty_flush_does_not_deliver():
     store = CommitRecorder()
-    async with Agent(model=ScriptedModel([])).session(on_commit=store) as session:
+    async with Agent(model=ScriptedModel([])).session(store=store) as session:
         await session.scope[PluginValues].commit("seed", "ready")
         before = len(store.commits)
         await session.emit(MessageAppendedEvent(UserMessage("first")))
@@ -142,9 +144,10 @@ async def test_pending_changes_keep_their_order_and_empty_flush_does_not_deliver
         await session.flush()
         commit = store.commits[-1]
         assert len(store.commits) == before + 1
-        assert [change.sequence for change in commit.changes] == [1, 2]
-        assert all(isinstance(change.event, MessageAppendedEvent) for change in commit.changes)
-        assert [entry.message.text for entry in commit.checkpoint.state.history][-2:] == [
+        assert [entry.sequence for entry in commit.journal] == [1, 2]
+        assert all(isinstance(entry.record, MessageAppendedEvent) for entry in commit.journal)
+        assert commit.boundary is not None
+        assert [entry.message.text for entry in commit.boundary.state.history][-2:] == [
             "first",
             "second",
         ]
@@ -157,38 +160,36 @@ async def test_idle_custom_events_are_available_as_changes_without_a_store_catal
         events = (IndexedEvent,)
 
     store = CommitRecorder()
-    async with Agent(model=ScriptedModel([]), plugins=[Indexer()]).session(
-        on_commit=store
-    ) as session:
+    async with Agent(model=ScriptedModel([]), plugins=[Indexer()]).session(store=store) as session:
         await session.emit(IndexedEvent(42))
         commit = store.commits[-1]
-        assert not commit.checkpoint.events
-        assert len(commit.changes) == 1
-        change = commit.changes[0]
-        assert isinstance(change.event, CheckpointExtension)
-        assert change.event.tag == "project.indexed" and change.event.data == {"files": 42}
+        assert not store.latest(session.id).events
+        (entry,) = commit.journal
+        assert isinstance(entry.record, CheckpointExtension)
+        assert entry.record.tag == "project.indexed" and entry.record.data == {"files": 42}
         adapter = TypeAdapter(SessionCommit)
         assert adapter.validate_json(adapter.dump_json(commit)) == commit
 
 
 @pytest.mark.parametrize("sequences", [(0, 0), (1, 0), (0, 2)])
-def test_commit_rejects_duplicate_reversed_or_gapped_changes(sequences):
+def test_commit_rejects_duplicate_reversed_or_gapped_entries(sequences):
     event = MessageAppendedEvent(UserMessage("fact"))
     with pytest.raises(ValidationError, match="contiguous"):
-        SessionCommit(
-            replace(checkpoint(), offset=3),
-            tuple(SessionChange(sequence, event) for sequence in sequences),
-        )
+        SessionCommit("session", tuple(JournalEntry(sequence, event) for sequence in sequences))
 
 
-def test_commit_validates_its_checkpoint_boundary_and_nested_backend_schema():
+def test_commit_validates_its_boundary_and_nested_backend_schema():
     class BackendEnvelope(BaseModel):
         commit: SessionCommit
 
-    event = MessageAppendedEvent(UserMessage("fact"))
-    with pytest.raises(ValidationError, match="next sequence"):
-        SessionCommit(checkpoint(), (SessionChange(0, event),))
-    value = SessionCommit(replace(checkpoint(), offset=1), (SessionChange(0, event),))
+    entry = JournalEntry(0, MessageAppendedEvent(UserMessage("fact")))
+    with pytest.raises(ValidationError, match="at least one"):
+        SessionCommit("session", ())
+    with pytest.raises(ValidationError, match="beyond its journal"):
+        SessionCommit("session", (entry,), boundary=boundary(sequence=2))
+    with pytest.raises(ValidationError, match="its session"):
+        SessionCommit("other", (entry,), boundary=boundary(sequence=1))
+    value = SessionCommit("session", (entry,), boundary=boundary(sequence=1))
     envelope = BackendEnvelope(commit=value)
     assert BackendEnvelope.model_validate_json(envelope.model_dump_json()).commit == value
-    assert "SessionChange" in BackendEnvelope.model_json_schema()["$defs"]
+    assert "JournalEntry" in BackendEnvelope.model_json_schema()["$defs"]

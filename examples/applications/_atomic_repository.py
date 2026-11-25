@@ -17,11 +17,26 @@ class MessageRow:
     text: str
 
 
+@dataclass(frozen=True)
+class JournalRow:
+    sequence: int
+    body: bytes
+
+
+@dataclass(frozen=True)
+class StoredConversation:
+    boundary: bytes
+    journal: tuple[bytes, ...]
+
+
 class ConversationRepository:
     """Application-owned SQLite example, independent of the SDK and its models.
 
-    The caller owns the connection. A lock lets worker threads share this demo's
-    single connection; a backend normally obtains a connection from its own pool.
+    ``conversations`` holds each session's latest boundary and ``journal`` its
+    append-only entries, keyed by sequence. Entries before the boundary are kept
+    as an audit trail. The caller owns the connection. A lock lets worker
+    threads share this demo's single connection; a backend normally obtains a
+    connection from its own pool.
     """
 
     def __init__(self, connection: sqlite3.Connection) -> None:
@@ -31,7 +46,13 @@ class ConversationRepository:
             """
             CREATE TABLE conversations (
                 key TEXT PRIMARY KEY,
-                body BLOB NOT NULL
+                boundary BLOB NOT NULL
+            );
+            CREATE TABLE journal (
+                conversation TEXT NOT NULL,
+                sequence INTEGER NOT NULL,
+                body BLOB NOT NULL,
+                PRIMARY KEY (conversation, sequence)
             );
             CREATE TABLE messages (
                 conversation TEXT NOT NULL,
@@ -43,7 +64,7 @@ class ConversationRepository:
             """
         )
 
-    async def fetch(self, key: str) -> bytes | None:
+    async def fetch(self, key: str) -> StoredConversation | None:
         return await asyncio.to_thread(self._fetch, key)
 
     async def messages(self, key: str) -> tuple[MessageRow, ...]:
@@ -53,17 +74,23 @@ class ConversationRepository:
         self,
         key: str,
         *,
-        body: bytes,
+        boundary: bytes | None,
+        journal: tuple[JournalRow, ...],
         messages: tuple[MessageRow, ...],
     ) -> None:
-        await asyncio.to_thread(self._commit, key, body, messages)
+        await asyncio.to_thread(self._commit, key, boundary, journal, messages)
 
-    def _fetch(self, key: str) -> bytes | None:
+    def _fetch(self, key: str) -> StoredConversation | None:
         with self._lock:
             row = self._connection.execute(
-                "SELECT body FROM conversations WHERE key = ?", (key,)
+                "SELECT boundary FROM conversations WHERE key = ?", (key,)
             ).fetchone()
-            return None if row is None else bytes(row[0])
+            if row is None:
+                return None
+            entries = self._connection.execute(
+                "SELECT body FROM journal WHERE conversation = ? ORDER BY sequence", (key,)
+            ).fetchall()
+            return StoredConversation(bytes(row[0]), tuple(bytes(entry[0]) for entry in entries))
 
     def _messages(self, key: str) -> tuple[MessageRow, ...]:
         with self._lock:
@@ -76,7 +103,8 @@ class ConversationRepository:
     def _commit(
         self,
         key: str,
-        body: bytes,
+        boundary: bytes | None,
+        journal: tuple[JournalRow, ...],
         messages: tuple[MessageRow, ...],
     ) -> None:
         with self._lock, self._connection:
@@ -87,9 +115,16 @@ class ConversationRepository:
                     SET speaker = excluded.speaker, text = excluded.text""",
                     (key, message.key, message.speaker, message.text),
                 )
-            self._connection.execute(
-                """INSERT INTO conversations VALUES (?, ?)
-                ON CONFLICT (key) DO UPDATE SET body = excluded.body""",
-                (key, body),
-            )
-        # Exiting the connection context commits both tables; exceptions roll both back.
+            for entry in journal:
+                # A redelivered entry is already stored and stays unchanged.
+                self._connection.execute(
+                    "INSERT INTO journal VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
+                    (key, entry.sequence, entry.body),
+                )
+            if boundary is not None:
+                self._connection.execute(
+                    """INSERT INTO conversations VALUES (?, ?)
+                    ON CONFLICT (key) DO UPDATE SET boundary = excluded.boundary""",
+                    (key, boundary),
+                )
+        # Exiting the connection context commits every table; exceptions roll all back.

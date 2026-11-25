@@ -220,16 +220,16 @@ class Session:
         await self._context.emit(event)
 
     def checkpoint(self) -> SessionCheckpoint:
-        """Capture the complete conversation for application-owned storage.
+        """Capture the session as its boundary and the open turn's journal.
 
         Unlike ``snapshot()``, this also works while paused or running: an open
-        turn is captured as its execution suffix and repaired when reopened.
+        turn is captured as journal entries and repaired when reopened.
         """
         self.control.check_open()
         return self.log.checkpoint()
 
     async def flush(self) -> None:
-        """Deliver pending changes to ``on_commit``; does nothing without a handler."""
+        """Write pending changes to the session store; does nothing without one."""
         self.control.check_open()
         await self.log.flush()
 
@@ -270,7 +270,7 @@ class Session:
         Each call appends to conversation history, including repeated messages.
         It follows ordinary history retention and may be summarized by compaction.
         Await this method before starting work that must see the contribution.
-        A configured ``on_commit`` handler receives the contribution before this returns.
+        A configured session store has written the contribution when this returns.
         A message ID still queued in the inbox raises ValueError without changing
         history or the queued run; use a fresh UserMessage for additive input.
         """
