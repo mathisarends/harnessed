@@ -4,6 +4,20 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md)
 is the complete version history and upgrade reference.
 
+## 0.29.1 (Unreleased)
+
+Harnessed can reopen full checkpoints written by 0.28.0, including paused
+turns with completed tool results. Decode the format **5** checkpoint with
+`SessionRecovery.from_json()` or `from_dict()`, then reopen the recovery or
+write its snapshot and journal to a `SessionStore`.
+
+**Upgrade.** Existing 0.29.0 sessions need no migration. For a direct upgrade
+from 0.28.0, first export a full checkpoint if you stored state and execution
+separately. See the
+[session migration guide](guides/sessions.md#read-compatibility-and-offline-migration)
+and the
+[0.29.1 changelog](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-directly-from-0280).
+
 ## 0.29.0 (2026-11-25)
 
 Applications [persist sessions with a `SessionStore`](guides/sessions.md#persist-sessions-with-a-store):
@@ -250,12 +264,12 @@ contract alone does not keep a turn running. Persistence versions remain state
   notes identify these changes and any required upgrade steps.
 - Patch releases within a minor line are intended for compatible fixes. Pin the
   exact package version for reproducible deployments and persisted workflows.
-- Current conversation snapshots use format **4**, full checkpoints use format
-  **5**, split execution documents use format **6**, and standalone audit-event
-  envelopes use version **9**.
-  Unsupported versions fail explicitly. Applications own the storage of new
-  checkpoints. The changelog records earlier formats, including the former JSON
-  session store.
+- Current conversation state uses format **4**, full recovery documents use
+  format **6**, snapshots and journal entries use format **1**, and standalone
+  audit-event envelopes use version **9**. The recovery reader also accepts full
+  format **5** checkpoints. The
+  [session guide](guides/sessions.md#read-compatibility-and-offline-migration)
+  lists the readable versions and explains how to migrate older documents.
 - Back up application-owned state and older archives before upgrading.
   Application-defined events and versioned output contracts have their own
   validation requirements; see
