@@ -98,7 +98,8 @@ class Agent:
         """Open a live conversation, optionally continuing an application-owned value.
 
         ``state`` accepts a terminal ``SessionState`` or a ``SessionCheckpoint``,
-        which may contain an open turn; interrupted activity is repaired on open.
+        whose journal may contain an open turn; interrupted activity is repaired
+        on open.
         ``on_commit`` receives every ``SessionCommit`` of this session and of the
         child sessions it delegates to, at durability barriers. Harnessed does
         not store conversations itself. The handler must not write to or flush

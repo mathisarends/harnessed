@@ -67,7 +67,7 @@ async def test_cancelled_submit_runs_once_after_its_input_commit_succeeds() -> N
     store = CommitRecorder()
 
     async def persist(commit: SessionCommit) -> None:
-        if any(isinstance(change.event, InboxAddedEvent) for change in commit.changes):
+        if any(isinstance(entry.record, InboxAddedEvent) for entry in commit.journal):
             saving.set()
             await asyncio.wait_for(release.wait(), timeout=3)
         await store(commit)
@@ -412,8 +412,8 @@ async def test_discarded_queued_runs_reach_on_commit_and_stay_discarded_after_re
         second = await session.submit("second")
         assert await _settle(second) == "raised: provider down"
     assert any(
-        isinstance(change.event, InboxRemovedEvent) and change.event.message_id == second.id
-        for change in store.changes("failing")
+        isinstance(entry.record, InboxRemovedEvent) and entry.record.message_id == second.id
+        for entry in store.entries("failing")
     )
     async with Agent(model=ScriptedModel([])).session(state=store.latest("failing")) as reopened:
         assert reopened.inbox.pending == ()

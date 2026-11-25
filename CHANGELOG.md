@@ -5,6 +5,87 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## Unreleased
+
+### Changed
+
+- Session persistence is a boundary plus an append-only journal. A
+  `SessionBoundary` is the session at its last rest point: the closed
+  conversation state, its controls, queued inputs and approvals. Every durable
+  event after it becomes one `JournalEntry` that a store writes once. Reopening
+  loads the boundary and replays the journal through the same projection the
+  live session uses. A commit inside a turn now carries only the entries
+  recorded since the previous commit, so the bytes written per turn depend on
+  that turn, not on the conversation before it. Each retained image and spilled
+  text is written once, with the boundary or with the entry that first stored
+  it. See
+  [store the boundary and the journal](docs/guides/sessions.md#store-the-boundary-and-the-journal).
+- `SessionCheckpoint.from_journal(boundary, entries)` rebuilds a checkpoint from
+  stored rows and skips entries recorded before the boundary, so a store may
+  keep them as an audit trail or prune them. `SessionCheckpoint.from_commit(commit,
+  previous)` folds a commit into a stored checkpoint for stores that keep one
+  document per session.
+
+### Breaking changes
+
+- `SessionCommit` is `SessionCommit(session_id, journal, boundary=None)`.
+  `commit.checkpoint`, `commit.changes` and `commit.state_changed` are removed.
+  `commit.journal` replaces `changes`, and `commit.boundary` is set exactly
+  when the old `state_changed` was true:
+
+  ```python
+  # before
+  async def save(commit: SessionCommit) -> None:
+      await repository.save(commit.session_id, commit.checkpoint.to_dict())
+      for change in commit.changes:
+          project(change.sequence, change.event)
+
+
+  # after
+  async def save(commit: SessionCommit) -> None:
+      async with repository.transaction() as tx:
+          for entry in commit.journal:
+              await tx.append_entry(commit.session_id, entry.sequence, entry.to_dict())
+              project(entry.sequence, entry.record)
+          if commit.boundary is not None:
+              await tx.save_boundary(commit.session_id, commit.boundary.to_dict())
+  ```
+
+- `SessionCheckpoint` is `SessionCheckpoint(boundary, journal)` with format
+  **6**. `offset`, `seed` and `control` moved to the boundary as `sequence`,
+  `seed` and `control`; `session_id`, `state`, `events`, `assets` and `files`
+  remain available as properties. `SessionBoundary` and `JournalEntry` are new
+  format **1** documents.
+- `SessionExecution`, `ExecutionEntry`, `SessionChange`,
+  `checkpoint.execution` and `SessionCheckpoint.from_parts()` are removed. The
+  split execution document is replaced by the journal.
+- A `SessionChange.event` is now `JournalEntry.record`. A recorded model request
+  is a `CheckpointRequest` in the journal; `checkpoint.events` still resolves it
+  to the complete `ModelRequestedEvent`.
+- Format **5** checkpoints and format **6** execution documents cannot be read.
+  Harnessed ships no migration for them. Conversation snapshots
+  (`SessionState`, format **4**) and standalone audit envelopes (version **9**)
+  are unchanged.
+
+### Upgrade from 0.28.0
+
+1. Open every stored session with 0.28.0, let it reach an idle turn boundary,
+   and export `checkpoint.state.to_json()`. Paused turns, queued inputs and
+   pending approvals do not survive this export.
+2. Replace the checkpoint columns with a boundary row per session and a journal
+   table keyed by session and sequence. Write both in the `on_commit`
+   transaction: insert each entry of `commit.journal`, ignoring an existing
+   sequence, and upsert `commit.boundary` when it is not `None`.
+3. Load with `SessionCheckpoint.from_journal(SessionBoundary.from_dict(row),
+   [JournalEntry.from_dict(entry) for entry in rows])`. To keep one document per
+   session instead, store `SessionCheckpoint.from_commit(commit, previous).to_dict()`.
+4. Map domain rows from `entry.record` instead of `change.event`, and read a
+   child's parent link from `commit.boundary.state.parent` on the commits that
+   carry a boundary; a session's first commit always does.
+5. Reopen the exported snapshots from step 1 with `agent.session(id=...,
+   state=SessionState.from_json(...))`. Their first commit stores a new
+   boundary.
+
 ## 0.28.0 (2026-11-24)
 
 ### Added
@@ -103,7 +184,7 @@ read directly.
   barriers inside a turn. The execution part stores recorded model requests as
   `CheckpointRequest` values that refer to the state's messages by ID, so its
   size inside a turn no longer grows with the conversation. See
-  [store state and execution apart](docs/guides/sessions.md#store-state-and-execution-apart).
+  [store state and execution apart](docs/guides/sessions.md#store-the-boundary-and-the-journal).
   ([#160](https://github.com/mathisarends/harnessed/issues/160))
 
 ### Changed
@@ -198,7 +279,7 @@ read directly.
    `checkpoint.execution` together when `SessionCommit.state_changed` is true
    or when initializing a store. Later execution-only updates must use the
    matching saved state. The new split `SessionExecution` document uses format
-   **6**. See [store state and execution apart](docs/guides/sessions.md#store-state-and-execution-apart).
+   **6**. See [store state and execution apart](docs/guides/sessions.md#store-the-boundary-and-the-journal).
 
 ## 0.26.0 (2026-11-22)
 

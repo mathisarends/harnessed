@@ -1,18 +1,19 @@
 from harnessed.models.assets import AssetValue
 
-from .checkpoint import (
-    CheckpointEntry,
-    CheckpointExtension,
-    CheckpointRequest,
-    CheckpointSeed,
-    ExecutionEntry,
-    SessionCheckpoint,
-    SessionExecution,
-)
+from .checkpoint import SessionCheckpoint
 from .children import ChildSession
-from .commit import CommitHandler, SessionChange, SessionCommit
+from .commit import CommitHandler, SessionCommit
 from .context import SessionContext
 from .files import TextValue
+from .journal import (
+    CheckpointEntry,
+    CheckpointExtension,
+    CheckpointRecord,
+    CheckpointRequest,
+    CheckpointSeed,
+    JournalEntry,
+    SessionBoundary,
+)
 from .state import HistoryEntry, HistoryStep, HistoryTurn, SessionState
 from .values import BoundSessionValue, SessionValue
 
@@ -21,19 +22,19 @@ __all__ = [
     "BoundSessionValue",
     "CheckpointEntry",
     "CheckpointExtension",
+    "CheckpointRecord",
     "CheckpointRequest",
     "CheckpointSeed",
     "ChildSession",
     "CommitHandler",
-    "ExecutionEntry",
     "HistoryEntry",
     "HistoryStep",
     "HistoryTurn",
-    "SessionChange",
+    "JournalEntry",
+    "SessionBoundary",
     "SessionCheckpoint",
     "SessionCommit",
     "SessionContext",
-    "SessionExecution",
     "SessionState",
     "SessionValue",
     "TextValue",

@@ -4,6 +4,19 @@ Harnessed 0.x is alpha software. This page summarizes the latest release and the
 compatibility policy. The [changelog](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md)
 is the complete version history and upgrade reference.
 
+## Unreleased
+
+Sessions persist as a [boundary and an append-only journal](guides/sessions.md#store-the-boundary-and-the-journal).
+A commit inside a turn carries only its new journal entries, and the boundary is
+written once per turn or idle change, so storage per turn no longer grows with
+the conversation.
+
+**Upgrade.** This release breaks stored checkpoints. Format **5** checkpoints and
+format **6** execution documents cannot be read and are not migrated. Export
+idle conversations as `SessionState` with 0.28.0 first, then store boundaries
+and journal entries. Follow the
+[upgrade steps](https://github.com/mathisarends/harnessed/blob/main/CHANGELOG.md#upgrade-from-0280).
+
 ## 0.28.0 (2026-11-24)
 
 Agents accept nested lists and tuples in `plugins=` and expand them in order.
@@ -33,7 +46,7 @@ See the [0.27.1 changelog](https://github.com/mathisarends/harnessed/blob/main/C
 
 ## 0.27.0 (2026-11-22)
 
-Applications can [store conversation state and execution separately](guides/sessions.md#store-state-and-execution-apart),
+Applications can [store conversation state and execution separately](guides/sessions.md#store-the-boundary-and-the-journal),
 [read typed plugin activations](guides/sessions.md#read-results-and-usage), and
 keep approval questions pending for turns without an owning stream. Plugin
 authors can import common declarations from `harnessed` and access the active

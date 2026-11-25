@@ -100,6 +100,6 @@ async def test_reopening_repairs_the_interrupted_turn_after_every_plugin_is_acti
             "session.opened(open_turn=None)",
         ]
         assert any(
-            isinstance(change.event, TurnEndedEvent) and change.event.reason is TurnOutcome.ABORTED
-            for change in store.changes(checkpoint.session_id)
+            isinstance(entry.record, TurnEndedEvent) and entry.record.reason is TurnOutcome.ABORTED
+            for entry in store.entries(checkpoint.session_id)
         )

@@ -7,38 +7,57 @@ from tempfile import TemporaryDirectory
 
 from harnessed import Agent
 from harnessed.models import UserMessage
-from harnessed.sessions import SessionCheckpoint, SessionCommit
+from harnessed.sessions import JournalEntry, SessionBoundary, SessionCheckpoint, SessionCommit
 from harnessed.testing import ScriptedModel
 
 
-class CheckpointFiles:
-    """Application-owned storage: one JSON checkpoint file per session.
+class JournalFiles:
+    """Application-owned storage: a boundary file and a JSONL journal per session.
 
-    Harnessed calls the instance with each commit and waits for it to return;
-    the application decides where and how the checkpoint is kept.
+    Harnessed calls the instance with each commit and waits for it to return.
+    Every journal entry becomes one appended line; the boundary file is replaced
+    only when a commit carries a new boundary. The two writes are not atomic, so
+    a store that must survive a crash between them writes both in one database
+    transaction instead, as the journal-commit example does.
     """
 
     def __init__(self, root: Path) -> None:
         self._root = root
 
     async def __call__(self, commit: SessionCommit) -> None:
-        document = commit.checkpoint.to_json()
-        await asyncio.to_thread(self._path(commit.session_id).write_text, document, "utf-8")
+        lines = "".join(f"{entry.to_json()}\n" for entry in commit.journal)
+        boundary = commit.boundary.to_json() if commit.boundary is not None else None
+        await asyncio.to_thread(self._write, commit.session_id, lines, boundary)
 
     async def load(self, session_id: str) -> SessionCheckpoint | None:
-        path = self._path(session_id)
-        if not path.exists():
+        if not self._path(session_id, "boundary.json").exists():
             return None
-        document = await asyncio.to_thread(path.read_text, "utf-8")
-        return SessionCheckpoint.from_json(document)
+        boundary, lines = await asyncio.to_thread(self._read, session_id)
+        entries = [JournalEntry.from_json(line) for line in lines]
+        # Lines before the boundary stay in the file as an audit trail; they are skipped.
+        return SessionCheckpoint.from_journal(SessionBoundary.from_json(boundary), entries)
 
-    def _path(self, session_id: str) -> Path:
-        return self._root / f"{hashlib.sha256(session_id.encode()).hexdigest()}.json"
+    def _write(self, session_id: str, lines: str, boundary: str | None) -> None:
+        with self._path(session_id, "journal.jsonl").open("a", encoding="utf-8") as journal:
+            journal.write(lines)
+        if boundary is not None:
+            path = self._path(session_id, "boundary.json")
+            temporary = path.with_suffix(".tmp")
+            temporary.write_text(boundary, "utf-8")
+            temporary.replace(path)
+
+    def _read(self, session_id: str) -> tuple[str, list[str]]:
+        boundary = self._path(session_id, "boundary.json").read_text("utf-8")
+        journal = self._path(session_id, "journal.jsonl").read_text("utf-8")
+        return boundary, journal.splitlines()
+
+    def _path(self, session_id: str, suffix: str) -> Path:
+        return self._root / f"{hashlib.sha256(session_id.encode()).hexdigest()}.{suffix}"
 
 
 async def main() -> None:
     with TemporaryDirectory(prefix="harnessed-sessions-") as directory:
-        files = CheckpointFiles(Path(directory))
+        files = JournalFiles(Path(directory))
         agent = Agent(model=ScriptedModel(["Remembered.", "Continued."]))
         async with agent.session(id="support:4711", on_commit=files) as session:
             await session.append_message(UserMessage("The customer is Ada."))

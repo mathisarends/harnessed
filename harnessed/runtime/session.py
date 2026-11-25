@@ -220,10 +220,10 @@ class Session:
         await self._context.emit(event)
 
     def checkpoint(self) -> SessionCheckpoint:
-        """Capture the complete conversation for application-owned storage.
+        """Capture the session as its boundary and the open turn's journal.
 
         Unlike ``snapshot()``, this also works while paused or running: an open
-        turn is captured as its execution suffix and repaired when reopened.
+        turn is captured as journal entries and repaired when reopened.
         """
         self.control.check_open()
         return self.log.checkpoint()

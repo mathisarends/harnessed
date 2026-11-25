@@ -15,7 +15,7 @@ async def test_input_and_checkpoint_roll_back_together_before_model_execution():
         repository = ConversationRepository(connection)
         commits = ConversationCommits(repository)
         connection.executescript(
-            """CREATE TRIGGER reject_checkpoint BEFORE INSERT ON conversations
+            """CREATE TRIGGER reject_checkpoint BEFORE INSERT ON journal
             BEGIN SELECT RAISE(ABORT, 'checkpoint unavailable'); END;"""
         )
         model = ScriptedModel(["must not run"])
@@ -33,8 +33,11 @@ async def test_reply_and_checkpoint_roll_back_without_reporting_success(mode):
         repository = ConversationRepository(connection)
         commits = ConversationCommits(repository)
         connection.executescript(
-            """CREATE TRIGGER reject_reply BEFORE UPDATE ON conversations
-            WHEN EXISTS (SELECT 1 FROM messages WHERE conversation = NEW.key AND speaker = 'agent')
+            """CREATE TRIGGER reject_reply BEFORE INSERT ON journal
+            WHEN EXISTS (
+                SELECT 1 FROM messages
+                WHERE conversation = NEW.conversation AND speaker = 'agent'
+            )
             BEGIN SELECT RAISE(ABORT, 'reply unavailable'); END;"""
         )
         model = ScriptedModel(["done"])
@@ -67,7 +70,7 @@ async def test_a_failed_transaction_continues_from_the_last_stored_checkpoint():
         async with agent.session(id="retry", on_commit=commits) as session:
             await session.run(UserMessage("Hello", id="customer-message"))
             connection.executescript(
-                """CREATE TRIGGER reject_update BEFORE UPDATE ON conversations
+                """CREATE TRIGGER reject_update BEFORE INSERT ON journal
                 BEGIN SELECT RAISE(ABORT, 'storage unavailable'); END;"""
             )
             with pytest.raises(sqlite3.IntegrityError, match="storage unavailable"):

@@ -142,7 +142,11 @@ async def main():
     documents: dict[str, dict[str, object]] = {}
 
     async def save(commit: SessionCommit) -> None:
-        documents[commit.session_id] = commit.checkpoint.to_dict()
+        previous = documents.get(commit.session_id)
+        checkpoint = SessionCheckpoint.from_commit(
+            commit, SessionCheckpoint.from_dict(previous) if previous is not None else None
+        )
+        documents[commit.session_id] = checkpoint.to_dict()
 
     persistent = Agent(model=ScriptedModel(['persisted', 'restored']))
     async with persistent.session(id='wheel-conversation', on_commit=save) as session:

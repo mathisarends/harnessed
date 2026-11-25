@@ -26,7 +26,7 @@ async def test_answer_and_run_report_the_failed_resolution_commit():
     failure = OSError("Could not save the approval")
 
     async def save(commit):
-        if any(isinstance(change.event, ApprovalResolvedEvent) for change in commit.changes):
+        if any(isinstance(entry.record, ApprovalResolvedEvent) for entry in commit.journal):
             raise failure
 
     async with _agent().session(on_commit=save) as session, session.stream("Publish") as run:

@@ -16,7 +16,7 @@ from harnessed.models import ApprovalResponse, Decision, ImageReference, ToolCal
 from harnessed.plugins import Spill
 from harnessed.plugins.spill import SpillStore
 from harnessed.runtime.control import SessionStatus
-from harnessed.sessions import SessionCheckpoint, SessionCommit, SessionState
+from harnessed.sessions import CheckpointRequest, SessionCheckpoint, SessionCommit, SessionState
 from harnessed.sessions.values import PluginValues
 from harnessed.testing import ScriptedModel, call
 from tests._commits import CommitRecorder
@@ -56,7 +56,7 @@ async def test_commit_changes_are_contiguous_across_deliveries(recorder):
         await session.run("First")
         await session.run("Second")
         session_id = session.id
-    sequences = [change.sequence for change in recorder.changes(session_id)]
+    sequences = [entry.sequence for entry in recorder.entries(session_id)]
     assert sequences == list(range(len(sequences)))
     assert all(commit.session_id == session_id for commit in recorder.commits)
 
@@ -74,7 +74,12 @@ async def test_typed_handler_does_not_require_checkpoint_json_encoding(monkeypat
     agent = Agent(model=ScriptedModel(["done"]))
     async with agent.session(on_commit=keep) as session:
         await session.run(UserMessage("Hello", id="application-message"))
-    async with agent.session(state=commits[-1].checkpoint) as restored:
+    boundary = commits[-1].boundary
+    assert boundary is not None
+    checkpoint = SessionCheckpoint.from_journal(
+        boundary, [entry for commit in commits for entry in commit.journal]
+    )
+    async with agent.session(state=checkpoint) as restored:
         assert restored.messages[0].id == "application-message"
         assert restored.messages[-1].text == "done"
 
@@ -197,7 +202,8 @@ async def test_storage_failure_reaches_the_run_caller_without_returning_success(
     recorder = CommitRecorder()
 
     def fail_terminal(commit: SessionCommit) -> None:
-        history = commit.checkpoint.state.history
+        boundary = commit.boundary
+        history = boundary.state.history if boundary is not None else ()
         if history and history[-1].message.text == "done":
             raise OSError("storage unavailable")
 
@@ -335,7 +341,7 @@ async def test_cancelled_delivery_finishes_before_cancellation_is_delivered(oper
         release.set()
         with pytest.raises(asyncio.CancelledError):
             await asyncio.wait_for(write, timeout=5)
-        assert "retained" in commits[-1].checkpoint.to_json()
+        assert "retained" in commits[-1].journal[-1].to_json()
 
 
 async def test_restoring_structured_pending_work_requires_the_registered_output_identity(
@@ -463,7 +469,7 @@ async def test_intermediate_changes_wait_for_the_requested_boundary(boundary):
             await session.flush()
             assert len(recorder.commits) == before + 1
     assert len(recorder.commits) == before + 1
-    assert len(recorder.commits[-1].changes) == 2
+    assert len(recorder.commits[-1].journal) == 2
     async with agent.session(state=recorder.latest("batch")) as restored:
         assert [message.text for message in restored.messages][-2:] == ["first", "second"]
 
@@ -486,7 +492,7 @@ async def test_model_request_is_not_executed_when_its_intent_cannot_be_saved():
     model = ScriptedModel(["must not execute"])
 
     def unavailable(commit: SessionCommit) -> None:
-        if any(event.type == "model.requested" for event in commit.checkpoint.events):
+        if any(isinstance(entry.record, CheckpointRequest) for entry in commit.journal):
             raise OSError("model intent unavailable")
 
     recorder.before = unavailable

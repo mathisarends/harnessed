@@ -59,14 +59,14 @@ tool-call results. See [the response-contract guide](structured-output.md).
 | 13 | [Context strategies](https://github.com/mathisarends/harnessed/blob/main/examples/applications/13_context_strategies.py) | Combining observations, spill and compaction |
 | 14 | [Session state](https://github.com/mathisarends/harnessed/blob/main/examples/applications/14_session_state.py) | Snapshot export and independent continuations |
 | 15 | [External state](https://github.com/mathisarends/harnessed/blob/main/examples/applications/15_external_state.py) | Application-owned persistence |
-| 16 | [Session commits](https://github.com/mathisarends/harnessed/blob/main/examples/applications/16_session_commits.py) | Application-owned checkpoint files and a persisted pause |
+| 16 | [Session commits](https://github.com/mathisarends/harnessed/blob/main/examples/applications/16_session_commits.py) | A boundary file and an append-only JSONL journal per session, with a persisted pause |
 | 17 | [Typed documents](https://github.com/mathisarends/harnessed/blob/main/examples/applications/17_typed_documents.py) | Checkpoints as JSONB-style documents in a repository |
-| 18 | [Atomic commits](https://github.com/mathisarends/harnessed/blob/main/examples/applications/18_atomic_commits.py) | Domain messages and checkpoints in one transaction |
+| 18 | [Atomic commits](https://github.com/mathisarends/harnessed/blob/main/examples/applications/18_atomic_commits.py) | Domain messages, journal entries and boundaries in one transaction |
 | 19 | [Subagents](#subagents) | Delegating to an isolated child |
 | 20 | [Background subagents](#background-subagents) | A child running while the coordinator continues |
 | 21 | [Tracing](#tracing) | OpenTelemetry spans for a tool loop |
 | 22 | [Reviewing approvals](#reviewing-approvals) | Review shell calls with a separate model and pass uncertain decisions to a UI responder |
-| 23 | [Split commits](https://github.com/mathisarends/harnessed/blob/main/examples/applications/23_split_commits.py) | Store the state once per change and the execution part per commit |
+| 23 | [Journal commits](https://github.com/mathisarends/harnessed/blob/main/examples/applications/23_journal_commits.py) | Append journal entries per commit and replace the boundary once per turn |
 
 ### UI streaming
 

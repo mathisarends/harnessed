@@ -281,40 +281,41 @@ plugin_validation=PluginValidation.ERROR)` resolves reusable configuration.
 | SessionState.from_json(payload) / state.to_json() | Validate or encode the canonical conversation snapshot in memory |
 | SessionState.from_dict(document) / state.to_dict() | The same snapshot as a JSON-compatible dict, for example a JSONB column |
 
-`SessionCommit`, `SessionChange`, `SessionCheckpoint`, `SessionExecution`,
-`CheckpointRequest`, `ExecutionEntry` and
+`SessionCommit`, `SessionBoundary`, `JournalEntry`, `SessionCheckpoint`,
+`CheckpointRequest`, `CheckpointExtension` and
 `CommitHandler` (`Callable[[SessionCommit], Awaitable[None]]`) are exported from
 `harnessed.sessions`.
-Harnessed stores nothing itself. `SessionCommit(checkpoint, changes)`
-carries the complete recovery checkpoint, whose `session_id` is also
-`commit.session_id`, and the ordered
-`SessionChange(sequence, event)` values since the previous delivered commit.
-Map domain changes and the checkpoint in one application-owned transaction. Old
-changes are not emitted again on restore. Token deltas are excluded.
+Harnessed stores nothing itself. A persisted session is a boundary plus an
+append-only journal. `SessionCommit(session_id, journal, boundary=None)` carries
+the ordered `JournalEntry(sequence, record)` values since the previous delivered
+commit and, when the conversation state changed, the new `SessionBoundary`: the
+session at its rest point with `sequence`, `state`, `control`, `seed` and the
+resources beyond the state. The first commit of a session always carries a
+boundary; commits inside a turn carry only entries. Append the entries, replace
+the boundary and map domain rows in one application-owned transaction. Old
+entries are not delivered again on restore. Token deltas are excluded.
 Commits are awaited inline at input, model/tool intent, result, pause, turn-end
 and custom durable event barriers; other durable events travel with the next
 barrier, `session.flush()` or close. Child sessions deliver through their parent's
 handler. A handler exception reaches run/result/stream consumers and rejects
-later admissions; reopen from the last stored checkpoint.
-`commit.state_changed` is false when `commit.checkpoint.state` equals the state
-of the session's previous delivered commit and true for its first commit.
-`checkpoint.execution` returns the `SessionExecution` without the state, with
-the same `to_dict()` / `from_dict()` and `to_json()` / `from_json()` encoding;
-`SessionCheckpoint.from_parts(state, execution)` rebuilds the checkpoint and
-rejects an execution captured with another state. In `execution.events`, each
+later admissions; reopen from the last stored boundary and journal.
+`SessionCheckpoint(boundary, journal)` reopens a session.
+`SessionCheckpoint.from_journal(boundary, entries)` skips entries before the
+boundary and rejects gaps; `SessionCheckpoint.from_commit(commit, previous)`
+folds a commit into a stored checkpoint. In the journal, each
 `ModelRequestedEvent` becomes a `CheckpointRequest` whose `messages` hold the ID
-of a message already in the state or an earlier request, and the full message
-otherwise; `from_parts()` rejects an ID it cannot resolve.
-`session.checkpoint()` captures the same value on demand, including an open turn.
-Checkpoints are frozen Pydantic dataclasses with typed state, execution events,
-controls and resources. `to_dict()` / `from_dict()` and `to_json()` /
-`from_json()` provide canonical encoding without requiring a plugin catalog.
+of a message already in the turn's boundary state or an earlier request, and the
+full message otherwise; `checkpoint.events` resolves them and rejects an unknown
+ID. `session.checkpoint()` captures the same value on demand, including an open
+turn. Checkpoints, boundaries and journal entries are frozen Pydantic dataclasses
+with `to_dict()` / `from_dict()` and `to_json()` / `from_json()` canonical
+encodings that need no plugin catalog.
 `CheckpointExtension` preserves application-defined event data for validation by
 the owning session. The application owns pool lifetime and coordinates active
 workers per ID.
 
 Closing a paused session with a commit handler delivers
-its execution; reopening it remains paused. Explicit `SessionState` values still
+its open turn's journal; reopening it remains paused. Explicit `SessionState` values still
 contain terminal conversation state only. See [sessions](../guides/sessions.md)
 for recovery, output-validator restoration and checkpoint format boundaries.
 

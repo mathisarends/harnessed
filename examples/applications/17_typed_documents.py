@@ -12,15 +12,19 @@ from harnessed.testing import ScriptedModel
 class ConversationCommits:
     """Application adapter; the repository and its rows do not import Harnessed.
 
-    The checkpoint travels as a JSON-compatible document, as a JSONB column
+    The checkpoint travels as one JSON-compatible document, as a JSONB column
     would hold it, and is validated into a typed value when it is read back.
+    Each commit is folded into the stored document, which is then rewritten
+    whole: the simplest store, but its writes grow with the conversation. Keep
+    the boundary and the journal apart when that matters.
     """
 
     def __init__(self, repository: ConversationRepository) -> None:
         self._repository = repository
 
     async def __call__(self, commit: SessionCommit) -> None:
-        checkpoint = commit.checkpoint
+        previous = await self.load(commit.session_id)
+        checkpoint = SessionCheckpoint.from_commit(commit, previous)
         await self._repository.save(
             commit.session_id,
             document=checkpoint.to_dict(),

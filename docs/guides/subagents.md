@@ -222,8 +222,7 @@ copied snapshot also marks these references interrupted; copying never clones li
 A running delegation within a parent turn is represented in the checkpoint's
 current-turn suffix. The parent
 flushes its start record before opening the child and its receipt before returning
-the tool result. The handler receives those changes with their checkpoint in a
-`SessionCommit`. Recovery does not promise an atomic commit across parent and
+the tool result. The handler receives those records as journal entries in a `SessionCommit`. Recovery does not promise an atomic commit across parent and
 child sessions. Continuing or copying parent state retains historical child
 references and receipts; it does not clone children.
 
