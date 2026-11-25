@@ -352,19 +352,24 @@ async with agent.session(state=SessionRecovery.from_json(old_checkpoint_json)) a
     await session.wait_until_idle()
 ```
 
-When a session already lives in a `SessionStore`, open it with
-`agent.session(id=conversation_id, store=store)`. The SDK reads and decodes
-the stored documents.
+Sessions already stored by 0.29.0 need no migration. Open them with
+`agent.session(id=conversation_id, store=store)` and the SDK will decode the
+snapshot and journal.
 
 For an offline database migration, decode the checkpoint once as `recovery`.
 Use `recovery.to_json()` for a single-document destination. For a store with
-separate records, write `recovery.snapshot.to_dict()` and each journal entry's
-`to_dict()` in one application-owned transaction guarded by the revision you read.
-The version 5 reader expects the complete checkpoint. Stores that kept separate
-0.28 state and execution documents can export a full checkpoint with 0.28's
-`SessionCheckpoint.from_parts(state, execution)` first. Application event data
-retains its original payload and is validated by the registered event class
-when the agent reopens the session.
+separate records, write `recovery.snapshot.to_dict()` and each entry's
+`to_dict()` from `recovery.journal` under `recovery.session_id`. Preserve the
+journal sequence numbers and write both in one application-owned transaction
+guarded by the revision you read. Reopen by ID with `store=`.
+
+If you stored a split `SessionExecution` document in 0.28.0, use that version
+to load it and its matching `SessionState`. Export the full checkpoint with
+`SessionCheckpoint.from_parts(state, execution).to_json()` and pass that JSON
+to the 0.29.1 recovery reader. The split execution document and the current
+complete recovery document both use the number **6** for distinct formats.
+Application event data retains its original payload and is validated by the
+registered event class when the agent reopens the session.
 
 ## Continue from application-owned state
 

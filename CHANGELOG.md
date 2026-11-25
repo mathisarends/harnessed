@@ -5,6 +5,46 @@ change in minor releases before 1.0. See the
 [release notes and compatibility policy](docs/releases.md).
 Version-specific breaking changes and upgrade instructions are recorded below.
 
+## 0.29.1 (Unreleased)
+
+### Fixed
+
+- `SessionRecovery.from_json()` and `from_dict()` can read full format **5**
+  checkpoints written by 0.28.0. They convert the checkpoint into a snapshot
+  and journal in memory. A paused turn can be resumed with its recorded tool
+  results so completed tools do not run again.
+- Session document readers validate version numbers and reject unsupported
+  versions, including in nested snapshots, conversation state and journal
+  entries. Recovery documents still write format **6**.
+
+### Upgrade from 0.29.0
+
+Update to `0.29.1`. Existing `SessionStore` records and format **6** recovery
+documents reopen as before. The SDK still writes conversation state in format
+**4**, snapshots and journal entries in format **1**, and standalone audit
+envelopes in version **9**.
+
+### Upgrade directly from 0.28.0
+
+The [0.29.0 API changes](#0290-2026-11-25) still apply, including the switch
+from `on_commit=` to `store=` and the changes to `SystemPrompt`.
+To carry forward saved sessions, use the following paths:
+
+1. For a full format **5** checkpoint, decode it with
+   `SessionRecovery.from_json()` or `SessionRecovery.from_dict()`. Open the
+   recovery with `agent.session(state=recovery)` and call `session.resume()`
+   if the turn was paused.
+2. For a format **6** split `SessionExecution` document, load it and its
+   matching `SessionState` with 0.28.0. Export a full checkpoint with
+   `SessionCheckpoint.from_parts(state, execution).to_json()` before upgrading,
+   then decode that checkpoint with 0.29.1.
+3. To move either result into a `SessionStore`, write the converted snapshot
+   and journal together in one transaction. Reopen by ID with
+   `agent.session(id=recovery.session_id, store=store)`.
+
+See the [session migration guide](docs/guides/sessions.md#read-compatibility-and-offline-migration)
+for the exact formats and storage steps.
+
 ## 0.29.0 (2026-11-25)
 
 **Before upgrading from 0.28.0**, export idle conversations as
@@ -146,6 +186,10 @@ approvals. Follow the [upgrade steps](#upgrade-from-0280).
   are unchanged.
 
 ### Upgrade from 0.28.0
+
+For a direct upgrade to 0.29.1, use the
+[checkpoint migration above](#upgrade-directly-from-0280) in place of the
+conversation-only export and import in steps 1 and 6.
 
 1. Open every stored session with 0.28.0, let it reach an idle turn boundary,
    and export `checkpoint.state.to_json()`. Paused turns, queued inputs and
