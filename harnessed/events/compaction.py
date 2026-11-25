@@ -23,7 +23,7 @@ class CompactionOutcome(StrEnum):
 
 @dataclass(frozen=True, config=VALUE_CONFIG)
 class CompactionAppliedEvent(DurableEvent):
-    """Replace a history prefix at a closed turn or completed step boundary.
+    """Replace a prefix ending at imported history, a closed turn or a completed step.
 
     preserve_turns pins full turns; retained_turns is temporary sliding retention.
     preserve_inputs holds event offsets of task/context inputs kept verbatim.

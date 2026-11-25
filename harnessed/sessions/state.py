@@ -160,9 +160,9 @@ class SessionState:
     ) -> Self:
         """Start a conversation from application-owned messages, oldest first.
 
-        The messages become retained history outside any recorded turn or step,
-        so compaction summarizes them as earlier context once the session has
-        recorded more than ``keep_last_steps`` steps. ``assets`` supplies the bytes
+        The messages become retained history outside any recorded turn or step.
+        Compaction can summarize this prefix before the first model call.
+        ``assets`` supplies the bytes
         of every ``ImageReference`` in the messages and nothing else. Agent
         configuration stays out of history, so a ``SystemMessage`` is rejected,
         and so is a tool call without its result: importing never executes tools.

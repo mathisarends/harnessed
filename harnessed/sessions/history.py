@@ -75,6 +75,23 @@ class WorkingHistory:
     def entries(self) -> tuple[tuple[int, Message], ...]:
         return tuple((item.position, item.message) for item in self.items())
 
+    @property
+    def imported_boundary(self) -> int:
+        """End of the initial history seeded without runtime input or step metadata."""
+        # from_messages() allocates consecutive positions starting at zero. Live
+        # inputs, observations and tool results carry their own provenance.
+        for position in range(len(self._items)):
+            entry = self._items.get(position)
+            if (
+                entry is None
+                or entry.turn_id is not None
+                or entry.is_input
+                or entry.observation is not None
+                or isinstance(entry.message, SystemMessage)
+            ):
+                return position
+        return len(self._items)
+
     def origin(self, seq: int) -> str | None:
         item = self._items.get(seq)
         return item.turn_id if item is not None else None

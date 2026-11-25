@@ -13,7 +13,12 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
-from harnessed.errors import ConfigError, ContextBudgetExceeded
+from harnessed.errors import (
+    ConfigError,
+    ContextBudgetExceeded,
+    ContextLengthExceeded,
+    ProviderError,
+)
 from harnessed.events import (
     CompactionAppliedEvent,
     CompactionFinishedEvent,
@@ -41,6 +46,7 @@ from harnessed.tracing import Span, span
 
 from .compaction_notes import CompactionNotes, FittedNotes, PrepareCompaction
 from .meter import ContextState, measure_context
+from .summary_batches import SummaryBatches
 from .tokens import CalibratedTokenCounter, TokenCounter, count_request
 
 logger = logging.getLogger(__name__)
@@ -106,8 +112,9 @@ class Summarizer(Protocol):
 class ModelSummarizer:
     """Text references omit image bytes; custom summarizers receive typed content.
 
-    All reference sections remain present, and the full summarizer request is
-    budgeted before transport. Images are represented by an explicit marker.
+    All reference sections remain present, and each request is budgeted before
+    transport. Large imported histories can be summarized as a rolling handoff.
+    Images are represented by an explicit marker.
     """
 
     def __init__(
@@ -117,51 +124,124 @@ class ModelSummarizer:
         prompt: CompactionPrompt | None = None,
         counter: TokenCounter,
         generation_allowance: int | None = None,
+        batch_history: bool = False,
     ) -> None:
         self.model = model
         self.prompt = prompt
         self.counter = counter
         self._generation_allowance = generation_allowance
+        self._batch_history = batch_history
 
     async def summarize(self, request: CompactionRequest) -> Summary:
         context = request.context
+        prompt = await self._resolve_prompt(context)
+        system = SystemMessage(prompt)
+        history = _transcript(context.history_to_compact)
+        fixed = (
+            f"RETAINED CONTEXT\n{_transcript(context.retained_context)}\n\n"
+            f"AGENT INSTRUCTIONS\n{_transcript(context.instructions)}"
+        )
+        references = (
+            f"HISTORY TO COMPACT\n{history}\n\n{fixed}\n\n"
+            f"Summary text budget: {request.max_summary_tokens} session tokens."
+        )
+        model_request = self._request(system, references)
+        allowance = self._output_allowance(request.max_summary_tokens)
+        used = await count_request(self.counter, model_request)
+        window = self.model.info.context_window
+        if self._batch_history and history and window is not None:
+            if used + allowance <= window:
+                try:
+                    return await self._generate(model_request, allowance=allowance)
+                except ContextLengthExceeded:
+                    # A provider can reject a request that the local counter underestimates.
+                    pass
+            return await self._summarize_batches(
+                system,
+                history,
+                fixed,
+                window=window,
+                allowance=allowance,
+                summary_tokens=request.max_summary_tokens,
+            )
+        if window is not None:
+            if used >= window:
+                raise ContextBudgetExceeded(used, 1, window)
+            allowance = min(allowance, window - used)
+        return await self._generate(model_request, allowance=allowance)
+
+    async def _resolve_prompt(self, context: CompactionContext) -> str:
         prompt = DEFAULT_COMPACTION_PROMPT if self.prompt is None else self.prompt
         if callable(prompt):
             result = prompt(context)
             prompt = await result if inspect.isawaitable(result) else result
         if not isinstance(prompt, str) or not prompt.strip():
             raise ConfigError("Compaction prompt must be a non-empty string")
-        references = "\n\n".join(
-            label + "\n" + _transcript(messages)
-            for label, messages in (
-                ("HISTORY TO COMPACT", context.history_to_compact),
-                ("RETAINED CONTEXT", context.retained_context),
-                ("AGENT INSTRUCTIONS", context.instructions),
-            )
+        return prompt
+
+    def _request(self, system: SystemMessage, references: str) -> ModelRequest:
+        return resolve_request_settings(
+            ModelRequest((system, UserMessage(references))), self.model.settings
         )
-        references += f"\n\nSummary text budget: {request.max_summary_tokens} session tokens."
-        model_request = resolve_request_settings(
-            ModelRequest((SystemMessage(prompt), UserMessage(references))), self.model.settings
-        )
+
+    def _output_allowance(self, summary_tokens: int) -> int:
         limits = [
-            request.max_summary_tokens
-            if self._generation_allowance is None
-            else self._generation_allowance
+            summary_tokens if self._generation_allowance is None else self._generation_allowance
         ]
         if self.model.info.max_output is not None:
             limits.append(self.model.info.max_output)
         if self.model.settings.max_tokens is not None:
             limits.append(self.model.settings.max_tokens)
-        used = await count_request(self.counter, model_request)
-        window = self.model.info.context_window
-        if window is not None:
-            if used >= window:
-                raise ContextBudgetExceeded(used, 1, window)
-            limits.append(window - used)
-        model_request = replace(
-            model_request, settings=replace(model_request.settings, max_tokens=min(limits))
-        )
-        response = await self.model.request(model_request)
+        return min(limits)
+
+    async def _summarize_batches(
+        self,
+        system: SystemMessage,
+        history: str,
+        fixed: str,
+        *,
+        window: int,
+        allowance: int,
+        summary_tokens: int,
+    ) -> Summary:
+        def render(fragment: str, previous: str) -> ModelRequest:
+            references = (
+                "Update the continuation handoff using both parts of HISTORY TO COMPACT. "
+                "Preserve still-relevant details from the previous handoff.\n\n"
+                f"HISTORY TO COMPACT\nPREVIOUS HANDOFF\n{previous}\n\n"
+                f"NEXT HISTORY BLOCK\n{fragment}\n\n{fixed}\n\n"
+                f"Summary text budget: {summary_tokens} session tokens."
+            )
+            return self._request(system, references)
+
+        batches = SummaryBatches(history, render, counter=self.counter, window=window)
+        allowance = await batches.output_allowance(allowance)
+        summary_tokens = min(summary_tokens, allowance)
+        previous = ""
+        usages: list[ModelUsage] = []
+        try:
+            while batches.pending:
+                batch = await batches.summarize_next(
+                    previous, allowance=allowance, summarize=self._generate
+                )
+                previous = batch.text
+                if batch.usage is not None:
+                    usages.append(batch.usage)
+        except SummaryError as error:
+            usage = sum_usage((*usages, error.usage))
+            raise SummaryError(str(error), usage, truncated=error.truncated) from error
+        except (ContextBudgetExceeded, ProviderError) as error:
+            if not usages:
+                raise
+            usage = sum_usage(usages)
+            raise SummaryError(str(error), usage) from error
+        usage = sum_usage(usages)
+        return Summary(previous, usage)
+
+    async def _generate(self, request: ModelRequest, *, allowance: int | None = None) -> Summary:
+        if allowance is not None:
+            request = replace(request, settings=replace(request.settings, max_tokens=allowance))
+        response = await self.model.request(request)
         if response.stop_reason is StopReason.MAX_TOKENS:
             raise SummaryError("Summarizer output was truncated", response.usage, truncated=True)
         if response.message.tool_calls:
@@ -354,7 +434,9 @@ class CompactionManager:
         selected = policy.llm if policy is not None and policy.llm is not None else model
         summarizer = policy.summarizer if policy is not None else None
         if summarizer is None:
-            summarizer = _model_summarizer(selected, policy, counter)
+            summarizer = _model_summarizer(
+                selected, policy, counter, batch_history=plan.includes_imported_history
+            )
         context = _compaction_context(request, base, plan, state=state, target=target)
         budget = _summary_budget(settings, selected, state, base_tokens=base_tokens, target=target)
         ceiling = budget.ceiling
@@ -387,6 +469,7 @@ class CompactionManager:
                             policy,
                             counter,
                             generation_allowance=fitted.summary_tokens * 2,
+                            batch_history=plan.includes_imported_history,
                         )
                     continue
                 applied, candidate = await _measure_candidate(
@@ -401,6 +484,8 @@ class CompactionManager:
                 after = applied.after_tokens
                 size = counter.count_text(applied.summary)
                 valid = settings.max_summary_tokens is None or size <= settings.max_summary_tokens
+                if plan.includes_imported_history and state.context_window is not None:
+                    valid = valid and after + state.reserve_tokens <= state.context_window
                 if (
                     valid
                     and after < state.input_tokens
@@ -495,13 +580,13 @@ class _CompactionPlan:
     original: tuple[Message, ...]
     retained: tuple[Message, ...]
     previous: CompactionAppliedEvent | None
+    includes_imported_history: bool
 
 
 def _plan_compaction(session: SessionLog, keep_last_steps: int) -> _CompactionPlan | None:
     steps = session.completed_steps
-    if len(steps) <= keep_last_steps:
-        return None
-    through = steps[-keep_last_steps - 1].boundary
+    imported = session.imported_history_boundary
+    through = steps[-keep_last_steps - 1].boundary if len(steps) > keep_last_steps else imported
     if through <= session.compacted_through:
         return None
     protected_turns = {step.turn_id for step in steps[-keep_last_steps:]}
@@ -532,6 +617,7 @@ def _plan_compaction(session: SessionLog, keep_last_steps: int) -> _CompactionPl
             session.messages,
             retained,
             session.last(CompactionAppliedEvent),
+            includes_imported_history=imported > session.compacted_through,
         )
         if messages
         else None
@@ -616,6 +702,7 @@ def _model_summarizer(
     policy: CompactionPolicy | None,
     counter: TokenCounter,
     *,
+    batch_history: bool,
     generation_allowance: int | None = None,
 ) -> ModelSummarizer:
     return ModelSummarizer(
@@ -623,6 +710,7 @@ def _model_summarizer(
         prompt=policy.prompt if policy is not None else None,
         counter=counter,
         generation_allowance=generation_allowance,
+        batch_history=batch_history,
     )
 
 

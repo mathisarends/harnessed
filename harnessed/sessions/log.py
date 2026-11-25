@@ -362,6 +362,11 @@ class SessionLog:
         """Closed steps of the working history, oldest first."""
         return tuple(self._history.completed_steps)
 
+    @property
+    def imported_history_boundary(self) -> int:
+        """First position after the initial imported messages, or zero without them."""
+        return self._history.imported_boundary
+
     def history_entries(self) -> tuple[HistoryEntry, ...]:
         """Entries of the working history in conversation order."""
         return self._history.items()
@@ -737,6 +742,7 @@ class SessionLog:
         if not self._compacted_through < event.through <= seq or not event.summary.strip():
             raise ValueError("Compaction must advance a completed context boundary")
         boundaries = {boundary for boundary, _ in self._turn_boundaries}
+        boundaries.add(self.imported_history_boundary)
         boundaries.update(step.boundary for step in self._history.completed_steps)
         boundaries.update(
             self.event_offset + index + 1
@@ -744,7 +750,7 @@ class SessionLog:
             if isinstance(item, StepEndedEvent) and item.reason is StepOutcome.COMPLETED
         )
         if event.through not in boundaries:
-            raise ValueError("Compaction must end at a completed step or closed turn")
+            raise ValueError("Compaction must end after imported history, a step or a turn")
         if not {*event.preserve_turns, *event.retained_turns} <= self._known_turns:
             raise ValueError("Compaction cannot revive unavailable turns")
         pending_calls: set[str] = set()

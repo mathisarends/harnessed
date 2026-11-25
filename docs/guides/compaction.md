@@ -32,8 +32,9 @@ bypass this checkpoint.
 invocation and its associated tool calls and results. Parallel tool calls count
 as one step; text-only responses also count. Retention spans turn boundaries,
 including while idle. With seven complete steps and `keep_last_steps=3`, steps
-1–4 become a summary and steps 5–7 remain verbatim. Fewer than N complete steps
-leave no eligible older prefix.
+1–4 become a summary and steps 5–7 remain verbatim. An initial history seeded
+with [`SessionState.from_messages()`](sessions.md#start-from-a-message-history)
+can be summarized even before the first recorded step.
 
 The active task's inputs, steering and context remain protected, along with
 inputs needed to interpret retained steps from earlier turns. An unfinished
@@ -69,8 +70,13 @@ Use `llm=some_model` or `llm="provider:model"` to select a separate summarizatio
 model. Omission uses the current session model captured for the request. Wrap
 native PydanticAI models in `PydanticAIModel` explicitly. Owned model resources
 close with the plugin. The built-in path budgets its complete reference request
-against the selected model's window and output limits before transport; it
-fails without changing history if required references do not fit.
+against the selected model's window and output limits before transport. If a
+request with imported history exceeds the summarizer's known window, it
+processes the history text in chronological blocks and carries a handoff from
+one block to the next. If the provider rejects a block for its length, the
+summarizer retries with a smaller block. The history changes only after the final handoff fits
+the session's input budget. The operation fails if the retained reference
+material leaves too little room for a block or if a summary call fails.
 
 Custom implementations use the public service contracts:
 
