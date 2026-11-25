@@ -49,11 +49,13 @@
 | [LAY009](LAY009.md) | layout/redundant-module-name | layout | explicit | hint |
 | [LAY010](LAY010.md) | layout/reexport-only-module | layout | explicit | hint |
 | [LAY011](LAY011.md) | layout/misplaced-module-logger | layout | explicit | warning |
+| [LAY012](LAY012.md) | layout/redundant-comment | layout | explicit | hint |
 | [MET001](MET001.md) | meta/unused-suppression | meta | default | warning |
 | [MET002](MET002.md) | meta/missing-suppression-reason | meta | default | error |
 | [MET003](MET003.md) | meta/resolved-debt | meta | default | warning |
 | [MET004](MET004.md) | meta/missing-rule-policy | meta | default | warning |
 | [MET005](MET005.md) | meta/uncovered-package-facade | meta | default | hint |
+| [MET006](MET006.md) | meta/missing-tool-suppression-reason | meta | explicit | warning |
 | [MOD001](MOD001.md) | modeling/redundant-str-enum-value | modeling | explicit | hint |
 | [MOD002](MOD002.md) | modeling/forbidden-base-class-affix | modeling | explicit | error |
 | [MOD003](MOD003.md) | modeling/prefer-str-enum-discriminator | modeling | explicit | hint |
@@ -78,6 +80,7 @@
 | [TST010](TST010.md) | tests/missing-await-assertion | tests | explicit | warning |
 | [TST011](TST011.md) | tests/nondeterministic-data | tests | explicit | warning |
 | [TST012](TST012.md) | tests/missing-mirror-test | tests | explicit | warning |
+| [TST013](TST013.md) | tests/missing-skip-reason | tests | explicit | warning |
 | [TYP001](TYP001.md) | typing/forbidden-future-annotations | typing | explicit | error |
 | [TYP002](TYP002.md) | typing/redundant-future-annotations | typing | explicit | hint |
 | [TYP003](TYP003.md) | typing/implicit-optional-default | typing | explicit | warning |

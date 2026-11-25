@@ -22,7 +22,6 @@ smelt init --config other.yml       # write a config and editor schema in that d
 smelt check                          # whole project
 smelt check --changed                # only what the working tree introduced since HEAD
 smelt check --staged --fail-on warning  # review the actual commit, including new warnings
-smelt check --staged --no-cache       # recompute to verify the cached result
 smelt check --changed --base origin/main --format json
 smelt check --changed --format concise  # path:line:col CODE family/finding message -> repair
 smelt check --statistics              # findings per rule, hints included

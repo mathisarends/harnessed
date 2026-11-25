@@ -1,8 +1,8 @@
 # Smelt policy and adoption feedback
 
-Harnessed pins `smelt-cli` 0.16.1 in the development group. The executable
+Harnessed pins `smelt-cli` 0.18.0 in the development group. The executable
 policy in `smelt.yaml` complements Ruff, ty, runtime tests and the architecture
-suite. [Smelt 0.16.1 release](https://github.com/mathisarends/smelt/releases/tag/v0.16.1)
+suite. [Smelt 0.18.0 release](https://github.com/mathisarends/smelt/releases/tag/v0.18.0)
 
 ## Architecture policy
 
@@ -57,8 +57,8 @@ package-specific settings under `style.overrides`. Rule selectors use canonical
 
 | Severity | Policy |
 | --- | --- |
-| Error | Import cycles, foreign private access, unused public surface and source conventions such as explicit enum values, duration units, YAML filenames, named inline calculations, no mutable collection fields in frozen dataclasses and at most twelve private top-level definitions per module. |
-| Error | Test quality checks cover private access, patch targets, observable outcomes, bounded waits, awaited mocks and deterministic data. At most three patches per test. Architecture and executable example tests run without mocks. |
+| Error | Import cycles, foreign private access, unused public surface and source conventions such as explicit enum values, duration units, YAML filenames, named inline calculations, no mutable collection fields in frozen dataclasses, at most twelve private top-level definitions per module, reasons on every tool suppression and no comments or docstrings that only restate a name. |
+| Error | Test quality checks cover private access, patch targets, observable outcomes, bounded waits, awaited mocks, deterministic data and tracked skip reasons. At most three patches per test. Architecture and executable example tests run without mocks. |
 | Error (package policy) | `complexity/excess-comprehension-loops` allows one loop and `complexity/excess-constructor-decisions` allows two decisions in `models.pydantic_ai`, `plugins.mcp` and `integrations.sandbox.worker`. |
 | Warning | `imports/excess-package-imports`, parameters beyond the third positional one, unused inline suppressions, logger placement and package re-export spelling. |
 | Hint | Facade gaps, re-export-only modules, inline generic parameters, attribute depth, method calls on inline constructors, mutation in stateful dataclasses, loop-invariant collections, independent test cases, and comprehension and constructor complexity outside the stricter packages. |
@@ -160,9 +160,32 @@ installing/updating Smelt:
 uv run smelt config schema > .smelt.schema.json
 ```
 
-If a bundled Smelt agent skill is installed locally, refresh it with
-`uv run smelt skill install --force`, preserving its custom destination and any
-local edits first. This repository does not vendor a generated skill copy.
+The bundled Smelt agent skill is vendored under `.agents/skills/smelt`. Refresh
+it with `uv run smelt skill install --force` after each Smelt upgrade so its
+reference matches the pinned version.
+
+## Review after the 0.18.0 upgrade
+
+The upgrade from 0.16.1 reviews 0.17.0 and 0.18.0 together. Checks now run in
+the native core and keep no cache, so the `.smelt_cache/` ignore entries are
+gone. Configuration format 2, the layer map and every existing rule severity
+stay unchanged. The wider wall-clock coverage of `tests/nondeterministic-data`
+(TST011) and the stricter `idioms/missing-broad-except-reason` (IDM006) report
+nothing new. The three new opt-in rules run as errors:
+
+- `meta/missing-tool-suppression-reason` (MET006) requires a reason for every
+  `noqa`, `type: ignore`, `pyright: ignore`, `mypy:` and `pylint: disable`
+  comment. The two initial findings gained a reason on the line above: the
+  sandbox mount reads its recipe's private service key, and a persistence test
+  passes a raw string to reach runtime validation.
+- `layout/redundant-comment` (LAY012) rejects comments and docstrings that only
+  restate the documented name. It reports nothing today and keeps new comments
+  explaining a reason or constraint.
+- `tests/missing-skip-reason` (TST013) requires an issue reference for a skip,
+  xfail or flaky quarantine and a reason for an environment limit. It reports
+  nothing today; the default `tests.skip_reason_pattern` accepts `#123` and links.
+
+[Upstream upgrade guide](https://github.com/mathisarends/smelt/blob/v0.18.0/docs/upgrading.md#0170-to-0180)
 
 ## Review after the 0.16.1 upgrade
 

@@ -14,5 +14,3 @@ dist/
 .python/
 .harnessed/
 .smelt.schema.json
-.smelt/cache/
-.smelt_cache/

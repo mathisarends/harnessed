@@ -141,7 +141,7 @@ workflows and bump the key when Python validation behavior changes.
 
 ## Architecture and convention checks
 
-`smelt.yaml` is the executable policy and `uv.lock` pins Smelt CLI 0.16.1.
+`smelt.yaml` is the executable policy and `uv.lock` pins Smelt CLI 0.18.0.
 Layer assignments live in `architecture.layers.<layer>.modules`, and package APIs
 live under `architecture.packages`. Activate rules and set their limits in `rules`.
 Shared conventions live under `style` and package exceptions under `style.overrides`.
@@ -156,7 +156,11 @@ Before finishing, run `uv run smelt check --show-hints --fail-on warning`,
 `uv run pylint harnessed examples scripts`, `uv run ty check --error-on-warning`
 and the relevant tests. Prek and CI run the same static checks. Smelt also checks
 concrete runtime module cycles; annotation imports still count for boundaries.
-Unnecessary future imports and implicit truthiness defaults are errors. Review
+Unnecessary future imports and implicit truthiness defaults are errors. Give every
+`noqa`, `type: ignore` and `pylint: disable` a reason after ` -- ` or in the
+comment directly above it. Comments and docstrings add a reason or constraint
+instead of restating the name. Skip, xfail and flaky markers reference an issue;
+a conditional environment skip names its limit. Review
 `complexity/excess-attribute-depth` hints against ownership and public API contracts.
 Document placeholder Protocol/abstract methods and the reason for broad exception
 handlers. Expand nested conditional expressions into explicit branches while

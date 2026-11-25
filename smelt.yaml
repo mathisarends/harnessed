@@ -214,6 +214,8 @@ rules:
   complexity/forbidden-nested-conditional: error
   idioms/missing-interface-docstring: error
   idioms/missing-broad-except-reason: error
+  meta/missing-tool-suppression-reason: error
+  layout/redundant-comment: error
   complexity/duplicate-function: error
   modeling/duplicate-class-name: error
   idioms/duplicate-narrowing-assert: error
@@ -245,6 +247,7 @@ rules:
   tests/unbounded-wait: error
   tests/missing-await-assertion: error
   tests/nondeterministic-data: error
+  tests/missing-skip-reason: error
   # Design reviews
   complexity/excess-attribute-depth: hint
   complexity/inline-constructor-receiver: hint

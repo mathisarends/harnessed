@@ -89,6 +89,7 @@ class Sandbox(Plugin[SandboxConfig], slot="workspace"):
 
     def services(self, session: Session) -> SandboxServices:
         """Resolve this recipe's ready shell and file_system in the selected live session."""
+        # The recipe is another Sandbox instance; its key stays private to this class.
         return session.scope[self.recipe._services_key]  # noqa: SLF001
 
     async def export(self, session: Session, *, source: str, destination: str | Path) -> None:

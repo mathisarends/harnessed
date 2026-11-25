@@ -682,8 +682,8 @@ the project environment (`uv run smelt`); a package it cannot find is skipped. I
 parses their initializers without importing them. Stubs (`__init__.pyi`) win over
 sources, star imports count when the target declares a static `__all__`, and names
 imported under `TYPE_CHECKING` count when a module `__getattr__` serves them and
-`__all__` lists them, as pydantic does. The listed package sources are part of
-the cache key, so upgrading a dependency refreshes the findings.
+`__all__` lists them, as pydantic does. Every check reads the listed package
+sources again, so upgrading a dependency refreshes the findings.
 
 To find names that are widely imported but missing from a facade, configure
 [ARC008 `architecture/missing-facade-export`](rules/ARC008.md):
